@@ -6,13 +6,13 @@ import { ethers } from 'ethers';
 import type {
   RegistrationFile,
   Endpoint,
-} from '../models/interfaces';
-import type { AgentId, Address, URI } from '../models/types';
-import { EndpointType, TrustModel } from '../models/enums';
-import type { SDK } from './sdk';
-import { EndpointCrawler } from './endpoint-crawler';
-import { parseAgentId } from '../utils/id-format';
-import { TIMEOUTS } from '../utils/constants';
+} from '../models/interfaces.js';
+import type { AgentId, Address, URI } from '../models/types.js';
+import { EndpointType, TrustModel } from '../models/enums.js';
+import type { SDK } from './sdk.js';
+import { EndpointCrawler } from './endpoint-crawler.js';
+import { parseAgentId } from '../utils/id-format.js';
+import { TIMEOUTS } from '../utils/constants.js';
 
 /**
  * Agent class for managing individual agents

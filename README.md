@@ -35,6 +35,12 @@ Agent0 SDK v0.21 is in **alpha** with bugs and is not production ready. We're ac
 npm install agent0-sdk
 ```
 
+**Note:** This package is an ESM (ECMAScript Module) package. Use `import` statements in your code:
+
+```typescript
+import { SDK } from 'agent0-sdk';
+```
+
 ### Install from Source
 
 ```bash

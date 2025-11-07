@@ -3,11 +3,11 @@
  * Simplified version focused on subgraph queries (no local ML indexing)
  */
 
-import type { AgentSummary, SearchParams } from '../models/interfaces';
-import type { AgentId } from '../models/types';
-import type { Web3Client } from './web3-client';
-import type { SubgraphClient } from './subgraph-client';
-import { normalizeAddress } from '../utils/validation';
+import type { AgentSummary, SearchParams } from '../models/interfaces.js';
+import type { AgentId } from '../models/types.js';
+import type { Web3Client } from './web3-client.js';
+import type { SubgraphClient } from './subgraph-client.js';
+import { normalizeAddress } from '../utils/validation.js';
 
 /**
  * Simplified indexer that primarily uses subgraph for queries

@@ -2,7 +2,7 @@
  * Smart contract ABIs and interfaces for ERC-8004
  */
 
-import type { ChainId } from '../models/types';
+import type { ChainId } from '../models/types.js';
 
 // ERC-721 ABI (minimal required functions)
 export const ERC721_ABI = [

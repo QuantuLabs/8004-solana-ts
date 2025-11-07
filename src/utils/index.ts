@@ -2,7 +2,7 @@
  * Utility functions
  */
 
-export * from './id-format';
-export * from './validation';
-export * from './constants';
+export * from './id-format.js';
+export * from './validation.js';
+export * from './constants.js';
 

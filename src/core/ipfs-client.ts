@@ -6,8 +6,8 @@
  */
 
 import type { IPFSHTTPClient } from 'ipfs-http-client';
-import type { RegistrationFile } from '../models/interfaces';
-import { IPFS_GATEWAYS, TIMEOUTS } from '../utils/constants';
+import type { RegistrationFile } from '../models/interfaces.js';
+import { IPFS_GATEWAYS, TIMEOUTS } from '../utils/constants.js';
 
 export interface IPFSClientConfig {
   url?: string; // IPFS node URL (e.g., "http://localhost:5001")

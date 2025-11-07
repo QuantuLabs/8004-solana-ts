@@ -2,8 +2,8 @@
  * Core interfaces for Agent0 SDK
  */
 
-import type { AgentId, Address, URI, Timestamp } from './types';
-import type { EndpointType, TrustModel } from './enums';
+import type { AgentId, Address, URI, Timestamp } from './types.js';
+import type { EndpointType, TrustModel } from './enums.js';
 
 /**
  * Represents an agent endpoint
