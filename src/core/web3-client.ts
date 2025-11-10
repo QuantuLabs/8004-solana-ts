@@ -37,6 +37,10 @@ export class Web3Client {
     if (signerOrKey) {
       if (typeof signerOrKey === 'string') {
         // Private key string - create a new Wallet
+        // Validate that it's not an empty string
+        if (signerOrKey.trim() === '') {
+          throw new Error('Private key cannot be empty');
+        }
         this.signer = new ethers.Wallet(signerOrKey, this.provider);
       } else {
         // Already a Wallet or Signer - connect to provider if needed
