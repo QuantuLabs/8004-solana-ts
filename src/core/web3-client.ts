@@ -39,8 +39,22 @@ export class Web3Client {
         // Private key string - create a new Wallet
         this.signer = new ethers.Wallet(signerOrKey, this.provider);
       } else {
-        // Already a Wallet or Signer - connect to provider
-        this.signer = signerOrKey.connect ? signerOrKey.connect(this.provider) : signerOrKey;
+        // Already a Wallet or Signer - connect to provider if needed
+        const currentProvider = (signerOrKey as any).provider;
+        if (currentProvider && currentProvider === this.provider) {
+          // Already connected to the same provider
+          this.signer = signerOrKey;
+        } else if (typeof signerOrKey.connect === 'function') {
+          // Connect to provider
+          try {
+            this.signer = signerOrKey.connect(this.provider);
+          } catch (error) {
+            throw new Error(`Failed to connect signer to provider: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        } else {
+          // Signer without connect method - use as-is
+          this.signer = signerOrKey;
+        }
       }
     }
 
