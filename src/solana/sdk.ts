@@ -4,14 +4,14 @@
  */
 
 import { PublicKey, Keypair } from '@solana/web3.js';
-import { SolanaClient, Cluster, createDevnetClient, createMainnetClient } from './solana-client.js';
-import { SolanaFeedbackManager } from './solana-feedback-manager.js';
+import { SolanaClient, Cluster, createDevnetClient, createMainnetClient } from './client.js';
+import { SolanaFeedbackManager } from './feedback-manager.js';
 import type { IPFSClient } from './ipfs-client.js';
 import type { ArweaveClient } from './arweave-client.js';
 import { StorageClient } from './storage-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
-import { AgentAccount } from '../models/borsh-schemas.js';
+import { AgentAccount } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
   ReputationTransactionBuilder,

@@ -11,7 +11,7 @@ import {
 } from '@solana/web3.js';
 import { serialize } from 'borsh';
 import { getProgramIds } from './programs.js';
-import type { Cluster } from './solana-client.js';
+import type { Cluster } from './client.js';
 
 /**
  * Instruction discriminators (8-byte hashes)

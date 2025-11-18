@@ -18,7 +18,7 @@ import {
   ReputationInstructionBuilder,
   ValidationInstructionBuilder,
 } from './instruction-builder.js';
-import type { Cluster } from './solana-client.js';
+import type { Cluster } from './client.js';
 import { stringToBytes32 } from './pda-helpers.js';
 
 export interface TransactionResult {

@@ -4,7 +4,7 @@
  */
 
 import { PublicKey } from '@solana/web3.js';
-import type { Cluster } from './solana-client.js';
+import type { Cluster } from './client.js';
 
 /**
  * Program IDs by cluster

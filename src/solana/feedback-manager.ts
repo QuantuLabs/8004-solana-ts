@@ -4,7 +4,7 @@
  */
 
 import { PublicKey } from '@solana/web3.js';
-import type { SolanaClient } from './solana-client.js';
+import type { SolanaClient } from './client.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import {
@@ -13,7 +13,7 @@ import {
   ClientIndexAccount,
   ResponseIndexAccount,
   ResponseAccount,
-} from '../models/borsh-schemas.js';
+} from './borsh-schemas.js';
 
 /**
  * Summary result matching ERC-8004 getSummary interface
