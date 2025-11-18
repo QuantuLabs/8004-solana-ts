@@ -1,9 +1,9 @@
 /**
  * Solana SDK for Agent0 - ERC-8004 implementation
- * Provides read-only access to Solana-based agent registries
+ * Provides read and write access to Solana-based agent registries
  */
 
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster, createDevnetClient, createMainnetClient } from './solana-client.js';
 import { SolanaFeedbackManager } from './solana-feedback-manager.js';
 import type { IPFSClient } from './ipfs-client.js';
@@ -12,10 +12,17 @@ import { StorageClient } from './storage-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { AgentAccount } from '../models/borsh-schemas.js';
+import {
+  IdentityTransactionBuilder,
+  ReputationTransactionBuilder,
+  ValidationTransactionBuilder,
+} from './transaction-builder.js';
 
 export interface SolanaSDKConfig {
   cluster: Cluster;
   rpcUrl?: string;
+  // Signer for write operations (optional - read-only if not provided)
+  signer?: Keypair;
   // Storage configuration
   ipfsClient?: IPFSClient;
   arweaveClient?: ArweaveClient;
@@ -24,7 +31,7 @@ export interface SolanaSDKConfig {
 
 /**
  * Main SDK class for Solana ERC-8004 implementation
- * Provides read-only access to agent registries on Solana
+ * Provides read and write access to agent registries on Solana
  */
 export class SolanaSDK {
   private readonly client: SolanaClient;
@@ -32,10 +39,15 @@ export class SolanaSDK {
   private readonly storageClient?: StorageClient;
   private readonly cluster: Cluster;
   private readonly programIds: ReturnType<typeof getProgramIds>;
+  private readonly signer?: Keypair;
+  private readonly identityTxBuilder?: IdentityTransactionBuilder;
+  private readonly reputationTxBuilder?: ReputationTransactionBuilder;
+  private readonly validationTxBuilder?: ValidationTransactionBuilder;
 
   constructor(config: SolanaSDKConfig) {
     this.cluster = config.cluster;
     this.programIds = getProgramIds(config.cluster);
+    this.signer = config.signer;
 
     // Initialize Solana client
     if (config.rpcUrl) {
@@ -62,6 +74,26 @@ export class SolanaSDK {
 
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
+
+    // Initialize transaction builders if signer provided (write operations)
+    if (this.signer) {
+      const connection = this.client.getConnection();
+      this.identityTxBuilder = new IdentityTransactionBuilder(
+        connection,
+        this.cluster,
+        this.signer
+      );
+      this.reputationTxBuilder = new ReputationTransactionBuilder(
+        connection,
+        this.cluster,
+        this.signer
+      );
+      this.validationTxBuilder = new ValidationTransactionBuilder(
+        connection,
+        this.cluster,
+        this.signer
+      );
+    }
   }
 
   // ==================== Agent Methods ====================
@@ -198,6 +230,163 @@ export class SolanaSDK {
    */
   async readResponses(agentId: bigint, client: PublicKey, feedbackIndex: bigint) {
     return await this.feedbackManager.readResponses(agentId, client, feedbackIndex);
+  }
+
+  // ==================== Write Methods (require signer) ====================
+
+  /**
+   * Check if SDK has write permissions
+   */
+  get canWrite(): boolean {
+    return this.signer !== undefined;
+  }
+
+  /**
+   * Register a new agent (write operation)
+   * @param tokenUri - Optional token URI
+   * @returns Transaction result with agent ID
+   */
+  async registerAgent(tokenUri?: string) {
+    if (!this.identityTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.identityTxBuilder.registerAgent(tokenUri);
+  }
+
+  /**
+   * Set agent URI (write operation)
+   * @param agentId - Agent ID
+   * @param newUri - New URI
+   */
+  async setAgentUri(agentId: bigint, newUri: string) {
+    if (!this.identityTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.identityTxBuilder.setAgentUri(agentId, newUri);
+  }
+
+  /**
+   * Set agent metadata (write operation)
+   * @param agentId - Agent ID
+   * @param key - Metadata key
+   * @param value - Metadata value
+   */
+  async setMetadata(agentId: bigint, key: string, value: string) {
+    if (!this.identityTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.identityTxBuilder.setMetadata(agentId, key, value);
+  }
+
+  /**
+   * Give feedback to an agent (write operation)
+   * @param agentId - Agent ID
+   * @param score - Score 0-100
+   * @param fileUri - IPFS/Arweave URI
+   * @param fileHash - File hash
+   */
+  async giveFeedback(
+    agentId: bigint,
+    score: number,
+    fileUri: string,
+    fileHash: Buffer
+  ) {
+    if (!this.reputationTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.reputationTxBuilder.giveFeedback(
+      agentId,
+      score,
+      fileUri,
+      fileHash
+    );
+  }
+
+  /**
+   * Revoke feedback (write operation)
+   * @param agentId - Agent ID
+   * @param feedbackIndex - Feedback index to revoke
+   */
+  async revokeFeedback(agentId: bigint, feedbackIndex: bigint) {
+    if (!this.reputationTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.reputationTxBuilder.revokeFeedback(agentId, feedbackIndex);
+  }
+
+  /**
+   * Append response to feedback (write operation)
+   * @param agentId - Agent ID
+   * @param client - Client who gave feedback
+   * @param feedbackIndex - Feedback index
+   * @param responseUri - Response URI
+   * @param responseHash - Response hash
+   */
+  async appendResponse(
+    agentId: bigint,
+    client: PublicKey,
+    feedbackIndex: bigint,
+    responseUri: string,
+    responseHash: Buffer
+  ) {
+    if (!this.reputationTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.reputationTxBuilder.appendResponse(
+      agentId,
+      client,
+      feedbackIndex,
+      responseUri,
+      responseHash
+    );
+  }
+
+  /**
+   * Request validation (write operation)
+   * @param agentId - Agent ID
+   * @param validator - Validator public key
+   * @param requestHash - Request hash
+   */
+  async requestValidation(
+    agentId: bigint,
+    validator: PublicKey,
+    requestHash: Buffer
+  ) {
+    if (!this.validationTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.validationTxBuilder.requestValidation(
+      agentId,
+      validator,
+      requestHash
+    );
+  }
+
+  /**
+   * Respond to validation request (write operation)
+   * @param agentId - Agent ID
+   * @param requester - Requester public key
+   * @param nonce - Request nonce
+   * @param response - Response (0=rejected, 1=approved)
+   * @param responseHash - Response hash
+   */
+  async respondToValidation(
+    agentId: bigint,
+    requester: PublicKey,
+    nonce: number,
+    response: number,
+    responseHash: Buffer
+  ) {
+    if (!this.validationTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    return await this.validationTxBuilder.respondToValidation(
+      agentId,
+      requester,
+      nonce,
+      response,
+      responseHash
+    );
   }
 
   // ==================== Storage Methods ====================
