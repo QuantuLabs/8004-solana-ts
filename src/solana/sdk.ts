@@ -7,8 +7,6 @@ import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster, createDevnetClient, createMainnetClient } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager.js';
 import type { IPFSClient } from './ipfs-client.js';
-import type { ArweaveClient } from './arweave-client.js';
-import { StorageClient } from './storage-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { AgentAccount } from './borsh-schemas.js';
@@ -25,8 +23,7 @@ export interface SolanaSDKConfig {
   signer?: Keypair;
   // Storage configuration
   ipfsClient?: IPFSClient;
-  arweaveClient?: ArweaveClient;
-  defaultStorage?: 'ipfs' | 'arweave';
+  
 }
 
 /**
@@ -36,7 +33,6 @@ export interface SolanaSDKConfig {
 export class SolanaSDK {
   private readonly client: SolanaClient;
   private readonly feedbackManager: SolanaFeedbackManager;
-  private readonly storageClient?: StorageClient;
   private readonly cluster: Cluster;
   private readonly programIds: ReturnType<typeof getProgramIds>;
   private readonly signer?: Keypair;
@@ -61,15 +57,6 @@ export class SolanaSDK {
         config.cluster === 'mainnet-beta'
           ? createMainnetClient()
           : createDevnetClient();
-    }
-
-    // Initialize storage client if providers configured
-    if (config.ipfsClient || config.arweaveClient) {
-      this.storageClient = new StorageClient(
-        config.ipfsClient,
-        config.arweaveClient,
-        config.defaultStorage || 'ipfs'
-      );
     }
 
     // Initialize feedback manager
@@ -389,56 +376,6 @@ export class SolanaSDK {
     );
   }
 
-  // ==================== Storage Methods ====================
-
-  /**
-   * Upload data to configured storage
-   * @param data - Data to upload
-   * @returns Storage URI (ipfs:// or ar://)
-   */
-  async uploadToStorage(data: string | Buffer): Promise<string> {
-    if (!this.storageClient) {
-      throw new Error('No storage client configured');
-    }
-    return await this.storageClient.upload(data);
-  }
-
-  /**
-   * Upload JSON to configured storage
-   * @param obj - Object to upload
-   * @returns Storage URI
-   */
-  async uploadJSON(obj: any): Promise<string> {
-    if (!this.storageClient) {
-      throw new Error('No storage client configured');
-    }
-    return await this.storageClient.uploadJSON(obj);
-  }
-
-  /**
-   * Download data from storage
-   * @param uri - Storage URI (ipfs:// or ar://)
-   * @returns Downloaded data
-   */
-  async downloadFromStorage(uri: string): Promise<string> {
-    if (!this.storageClient) {
-      throw new Error('No storage client configured');
-    }
-    return await this.storageClient.download(uri);
-  }
-
-  /**
-   * Download and parse JSON from storage
-   * @param uri - Storage URI
-   * @returns Parsed JSON object
-   */
-  async downloadJSON(uri: string): Promise<any> {
-    if (!this.storageClient) {
-      throw new Error('No storage client configured');
-    }
-    return await this.storageClient.downloadJSON(uri);
-  }
-
   // ==================== Utility Methods ====================
 
   /**
@@ -467,13 +404,6 @@ export class SolanaSDK {
    */
   getFeedbackManager(): SolanaFeedbackManager {
     return this.feedbackManager;
-  }
-
-  /**
-   * Get storage client for advanced usage
-   */
-  getStorageClient(): StorageClient | undefined {
-    return this.storageClient;
   }
 }
 

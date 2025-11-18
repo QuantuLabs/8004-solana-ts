@@ -15,20 +15,6 @@ export type { Cluster, SolanaClientConfig } from './client.js';
 export { SolanaFeedbackManager } from './feedback-manager.js';
 export type { SolanaAgentSummary, SolanaFeedback, SolanaResponse } from './feedback-manager.js';
 
-// Storage
-export { ArweaveClient, createArweaveClient, createArweaveTestnetClient } from './arweave-client.js';
-export type { ArweaveClientConfig } from './arweave-client.js';
-
-export {
-  StorageClient,
-  IPFSStorageAdapter,
-  ArweaveStorageAdapter,
-  createIPFSStorageClient,
-  createArweaveStorageClient,
-  createDualStorageClient,
-} from './storage-client.js';
-export type { StorageProvider, StorageAdapter } from './storage-client.js';
-
 // PDA helpers
 export { PDAHelpers, stringToBytes32, bytes32ToString } from './pda-helpers.js';
 export {
