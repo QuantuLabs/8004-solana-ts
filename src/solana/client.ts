@@ -12,10 +12,10 @@ import {
   Commitment,
 } from '@solana/web3.js';
 
-export type Cluster = 'devnet' | 'mainnet-beta' | 'testnet' | 'localnet';
+export type Cluster = 'devnet';
 
 export interface SolanaClientConfig {
-  cluster: Cluster;
+  cluster?: Cluster;
   rpcUrl?: string;
   commitment?: Commitment;
 }
@@ -29,25 +29,9 @@ export class SolanaClient {
   public readonly cluster: Cluster;
 
   constructor(config: SolanaClientConfig) {
-    this.cluster = config.cluster;
-    const rpcUrl = config.rpcUrl || this.getDefaultRpcUrl(config.cluster);
+    this.cluster = config.cluster || 'devnet';
+    const rpcUrl = config.rpcUrl || 'https://api.devnet.solana.com';
     this.connection = new Connection(rpcUrl, config.commitment || 'confirmed');
-  }
-
-  /**
-   * Get default RPC URL for cluster
-   */
-  private getDefaultRpcUrl(cluster: Cluster): string {
-    switch (cluster) {
-      case 'mainnet-beta':
-        return 'https://api.mainnet-beta.solana.com';
-      case 'devnet':
-        return 'https://api.devnet.solana.com';
-      case 'testnet':
-        return 'https://api.testnet.solana.com';
-      case 'localnet':
-        return 'http://localhost:8899';
-    }
   }
 
   /**
@@ -184,28 +168,6 @@ export function createDevnetClient(rpcUrl?: string): SolanaClient {
   return new SolanaClient({
     cluster: 'devnet',
     rpcUrl,
-    commitment: 'confirmed',
-  });
-}
-
-/**
- * Create a Solana client for mainnet
- */
-export function createMainnetClient(rpcUrl?: string): SolanaClient {
-  return new SolanaClient({
-    cluster: 'mainnet-beta',
-    rpcUrl,
-    commitment: 'confirmed',
-  });
-}
-
-/**
- * Create a Solana client for localnet
- */
-export function createLocalnetClient(rpcUrl?: string): SolanaClient {
-  return new SolanaClient({
-    cluster: 'localnet',
-    rpcUrl: rpcUrl || 'http://localhost:8899',
     commitment: 'confirmed',
   });
 }

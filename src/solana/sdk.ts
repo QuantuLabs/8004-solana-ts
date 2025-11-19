@@ -4,9 +4,9 @@
  */
 
 import { PublicKey, Keypair } from '@solana/web3.js';
-import { SolanaClient, Cluster, createDevnetClient, createMainnetClient } from './client.js';
+import { SolanaClient, Cluster, createDevnetClient } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager.js';
-import type { IPFSClient } from './ipfs-client.js';
+import type { IPFSClient } from '../core/ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { AgentAccount } from './borsh-schemas.js';
@@ -17,13 +17,13 @@ import {
 } from './transaction-builder.js';
 
 export interface SolanaSDKConfig {
-  cluster: Cluster;
+  cluster?: Cluster;
   rpcUrl?: string;
   // Signer for write operations (optional - read-only if not provided)
   signer?: Keypair;
   // Storage configuration
   ipfsClient?: IPFSClient;
-  
+
 }
 
 /**
@@ -41,23 +41,17 @@ export class SolanaSDK {
   private readonly validationTxBuilder?: ValidationTransactionBuilder;
 
   constructor(config: SolanaSDKConfig) {
-    this.cluster = config.cluster;
-    this.programIds = getProgramIds(config.cluster);
+    this.cluster = config.cluster || 'devnet';
+    this.programIds = getProgramIds();
     this.signer = config.signer;
 
-    // Initialize Solana client
-    if (config.rpcUrl) {
-      this.client = new SolanaClient({
-        cluster: config.cluster,
-        rpcUrl: config.rpcUrl,
-      });
-    } else {
-      // Use default RPC URLs
-      this.client =
-        config.cluster === 'mainnet-beta'
-          ? createMainnetClient()
-          : createDevnetClient();
-    }
+    // Initialize Solana client (devnet only)
+    this.client = config.rpcUrl
+      ? new SolanaClient({
+          cluster: this.cluster,
+          rpcUrl: config.rpcUrl,
+        })
+      : createDevnetClient();
 
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
@@ -413,27 +407,6 @@ export class SolanaSDK {
 export function createDevnetSDK(config?: Omit<SolanaSDKConfig, 'cluster'>): SolanaSDK {
   return new SolanaSDK({
     cluster: 'devnet',
-    ...config,
-  });
-}
-
-/**
- * Create SDK instance for Solana mainnet
- */
-export function createMainnetSDK(config?: Omit<SolanaSDKConfig, 'cluster'>): SolanaSDK {
-  return new SolanaSDK({
-    cluster: 'mainnet-beta',
-    ...config,
-  });
-}
-
-/**
- * Create SDK instance for localnet
- */
-export function createLocalnetSDK(config?: Omit<SolanaSDKConfig, 'cluster'>): SolanaSDK {
-  return new SolanaSDK({
-    cluster: 'localnet',
-    rpcUrl: config?.rpcUrl || 'http://localhost:8899',
     ...config,
   });
 }

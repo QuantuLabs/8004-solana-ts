@@ -20,6 +20,9 @@ export class PDAHelpers {
    * Seeds: ["agent", agent_id]
    */
   static async getAgentPDA(agentId: bigint): Promise<[PublicKey, number]> {
+    if (agentId === undefined || agentId === null) {
+      throw new Error('agentId is required and cannot be undefined or null');
+    }
     const agentIdBuffer = Buffer.alloc(8);
     agentIdBuffer.writeBigUInt64LE(agentId);
 

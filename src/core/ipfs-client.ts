@@ -94,7 +94,7 @@ export class IPFSClient {
         throw new Error(`Failed to pin to Pinata: HTTP ${response.status} - ${errorText}`);
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as any;
 
       // v3 API returns CID in data.cid
       const cid = result?.data?.cid || result?.cid || result?.IpfsHash;

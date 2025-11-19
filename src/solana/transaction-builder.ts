@@ -12,12 +12,15 @@ import {
   TransactionSignature,
   Signer,
 } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { PDAHelpers } from './pda-helpers.js';
 import {
   IdentityInstructionBuilder,
   ReputationInstructionBuilder,
   ValidationInstructionBuilder,
 } from './instruction-builder.js';
+import { fetchRegistryConfig } from './config-reader.js';
+import { getMetadataPDA, getMasterEditionPDA } from './metaplex-helpers.js';
 import type { Cluster } from './client.js';
 import { stringToBytes32 } from './pda-helpers.js';
 
@@ -48,35 +51,51 @@ export class IdentityTransactionBuilder {
    */
   async registerAgent(tokenUri?: string): Promise<TransactionResult & { agentId?: bigint }> {
     try {
+      // Fetch registry config from on-chain
+      const configData = await fetchRegistryConfig(this.connection);
+      if (!configData) {
+        throw new Error('Registry not initialized. Please initialize the registry first.');
+      }
+
+      // Get the real next agent ID from config
+      const agentId = configData.next_agent_id;
+
       // Generate new mint for agent NFT
       const agentMint = Keypair.generate();
 
       // Derive PDAs
-      const [config] = await PDAHelpers.getRegistryConfigPDA();
+      const [configPda] = await PDAHelpers.getRegistryConfigPDA();
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentId);
 
-      // Get next agent ID from config (simplified - should fetch from chain)
-      // For now, we'll use timestamp as mock
-      const agentId = BigInt(Date.now());
+      // Get collection mint from config
+      const collectionMint = configData.getCollectionMintPublicKey();
+      const authority = configData.getAuthorityPublicKey();
 
-      const [agent] = await PDAHelpers.getAgentPDA(agentId);
+      // Calculate Metaplex PDAs
+      const agentMetadata = getMetadataPDA(agentMint.publicKey);
+      const agentMasterEdition = getMasterEditionPDA(agentMint.publicKey);
+      const collectionMetadata = getMetadataPDA(collectionMint);
+      const collectionMasterEdition = getMasterEditionPDA(collectionMint);
 
-      // Get associated token account
-      // Note: In real implementation, use getAssociatedTokenAddress from @solana/spl-token
-      const tokenAccount = this.payer.publicKey; // Placeholder
-
-      // Collection mint and metadata (should be fetched from config)
-      const collectionMint = PublicKey.default;
-      const collectionMetadata = PublicKey.default;
-
-      // Build instruction
-      const instruction = this.instructionBuilder.buildRegisterAgent(
-        this.payer.publicKey,
+      // Calculate Associated Token Account
+      const tokenAccount = getAssociatedTokenAddressSync(
         agentMint.publicKey,
+        this.payer.publicKey
+      );
+
+      // Build instruction with all required accounts
+      const instruction = this.instructionBuilder.buildRegisterAgent(
+        configPda,
+        authority,
+        agentPda,
+        agentMint.publicKey,
+        agentMetadata,
+        agentMasterEdition,
         tokenAccount,
-        config,
-        agent,
         collectionMint,
         collectionMetadata,
+        collectionMasterEdition,
+        this.payer.publicKey,
         tokenUri
       );
 
@@ -98,6 +117,7 @@ export class IdentityTransactionBuilder {
         signature: '',
         success: false,
         error: error instanceof Error ? error.message : String(error),
+        agentId: undefined,
       };
     }
   }

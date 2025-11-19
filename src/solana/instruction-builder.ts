@@ -8,10 +8,13 @@ import {
   TransactionInstruction,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { serialize } from 'borsh';
 import { getProgramIds } from './programs.js';
 import type { Cluster } from './client.js';
+import { TOKEN_METADATA_PROGRAM_ID } from './metaplex-helpers.js';
 
 /**
  * Instruction discriminators (8-byte hashes)
@@ -44,29 +47,37 @@ export class IdentityInstructionBuilder {
   private programId: PublicKey;
 
   constructor(cluster: Cluster) {
-    const programIds = getProgramIds(cluster);
+    const programIds = getProgramIds();
     this.programId = programIds.identityRegistry;
   }
 
   /**
    * Build registerAgent instruction
-   * @param payer - Transaction payer
-   * @param agentMint - New mint for agent NFT
-   * @param tokenAccount - Associated token account
    * @param config - Registry config PDA
+   * @param authority - Authority from config
    * @param agent - Agent account PDA
-   * @param collectionMint - Collection mint
-   * @param collectionMetadata - Collection metadata
+   * @param agentMint - Agent NFT mint (signer)
+   * @param agentMetadata - Agent metadata PDA
+   * @param agentMasterEdition - Agent master edition PDA
+   * @param tokenAccount - Associated token account
+   * @param collectionMint - Collection mint from config
+   * @param collectionMetadata - Collection metadata PDA
+   * @param collectionMasterEdition - Collection master edition PDA
+   * @param owner - Owner/payer (signer)
    * @param tokenUri - Optional token URI
    */
   buildRegisterAgent(
-    payer: PublicKey,
-    agentMint: PublicKey,
-    tokenAccount: PublicKey,
     config: PublicKey,
+    authority: PublicKey,
     agent: PublicKey,
+    agentMint: PublicKey,
+    agentMetadata: PublicKey,
+    agentMasterEdition: PublicKey,
+    tokenAccount: PublicKey,
     collectionMint: PublicKey,
     collectionMetadata: PublicKey,
+    collectionMasterEdition: PublicKey,
+    owner: PublicKey,
     tokenUri?: string
   ): TransactionInstruction {
     // Serialize instruction data
@@ -78,16 +89,23 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: payer, isSigner: true, isWritable: true },
-        { pubkey: agentMint, isSigner: true, isWritable: true },
-        { pubkey: tokenAccount, isSigner: false, isWritable: true },
         { pubkey: config, isSigner: false, isWritable: true },
+        { pubkey: authority, isSigner: false, isWritable: false },
         { pubkey: agent, isSigner: false, isWritable: true },
+        { pubkey: agentMint, isSigner: true, isWritable: true },
+        { pubkey: agentMetadata, isSigner: false, isWritable: true },
+        { pubkey: agentMasterEdition, isSigner: false, isWritable: true },
+        { pubkey: tokenAccount, isSigner: false, isWritable: true },
         { pubkey: collectionMint, isSigner: false, isWritable: false },
         { pubkey: collectionMetadata, isSigner: false, isWritable: true },
+        { pubkey: collectionMasterEdition, isSigner: false, isWritable: false },
+        { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-        // Add Metaplex program IDs here
+        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
       ],
       data,
     });
@@ -171,7 +189,7 @@ export class ReputationInstructionBuilder {
   private programId: PublicKey;
 
   constructor(cluster: Cluster) {
-    const programIds = getProgramIds(cluster);
+    const programIds = getProgramIds();
     this.programId = programIds.reputationRegistry;
   }
 
@@ -298,7 +316,7 @@ export class ValidationInstructionBuilder {
   private programId: PublicKey;
 
   constructor(cluster: Cluster) {
-    const programIds = getProgramIds(cluster);
+    const programIds = getProgramIds();
     this.programId = programIds.validationRegistry;
   }
 

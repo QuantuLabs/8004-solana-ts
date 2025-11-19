@@ -4,42 +4,22 @@
  */
 
 import { PublicKey } from '@solana/web3.js';
-import type { Cluster } from './client.js';
 
 /**
- * Program IDs by cluster
+ * Program IDs for devnet deployment
+ * These are the deployed program addresses on Solana devnet
  */
 export const PROGRAM_IDS = {
-  devnet: {
-    identityRegistry: new PublicKey('AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR'),
-    reputationRegistry: new PublicKey('9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa'),
-    validationRegistry: new PublicKey('2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x'),
-  },
-  'mainnet-beta': {
-    // TODO: Add mainnet program IDs when deployed
-    identityRegistry: new PublicKey('11111111111111111111111111111111'), // Placeholder
-    reputationRegistry: new PublicKey('11111111111111111111111111111111'), // Placeholder
-    validationRegistry: new PublicKey('11111111111111111111111111111111'), // Placeholder
-  },
-  testnet: {
-    // Solana testnet is rarely used, defaults to devnet
-    identityRegistry: new PublicKey('AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR'),
-    reputationRegistry: new PublicKey('9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa'),
-    validationRegistry: new PublicKey('2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x'),
-  },
-  localnet: {
-    // For local development with anchor localnet
-    identityRegistry: new PublicKey('11111111111111111111111111111111'), // Placeholder
-    reputationRegistry: new PublicKey('11111111111111111111111111111111'), // Placeholder
-    validationRegistry: new PublicKey('11111111111111111111111111111111'), // Placeholder
-  },
+  identityRegistry: new PublicKey('AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR'),
+  reputationRegistry: new PublicKey('9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa'),
+  validationRegistry: new PublicKey('2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x'),
 } as const;
 
 /**
- * Get program IDs for a specific cluster
+ * Get program IDs (devnet only)
  */
-export function getProgramIds(cluster: Cluster) {
-  return PROGRAM_IDS[cluster];
+export function getProgramIds() {
+  return PROGRAM_IDS;
 }
 
 /**

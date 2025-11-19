@@ -17,6 +17,6 @@
     "allowSyntheticDefaultImports": true,
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/solana/**/*", "src/models/**/*", "src/core/ipfs-client.ts"],
   "exclude": ["node_modules", "dist", "tests"]
 }

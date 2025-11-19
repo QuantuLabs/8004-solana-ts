@@ -1,5 +1,5 @@
 {
-  "name": "agent0-sdk",
+  "name": "agent0-sdk-solana",
   "version": "0.31.0",
   "description": "TypeScript SDK for agent portability, discovery and trust based on ERC-8004",
   "type": "module",
@@ -46,6 +46,8 @@
     "access": "public"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "borsh": "^0.7.0",
     "dotenv": "^16.3.1",
     "ethers": "^6.9.0",
     "graphql-request": "^6.1.0",

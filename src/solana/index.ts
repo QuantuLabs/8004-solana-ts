@@ -4,11 +4,11 @@
  */
 
 // Main SDK
-export { SolanaSDK, createDevnetSDK, createMainnetSDK, createLocalnetSDK } from './sdk.js';
+export { SolanaSDK, createDevnetSDK } from './sdk.js';
 export type { SolanaSDKConfig } from './sdk.js';
 
 // Core clients
-export { SolanaClient, createDevnetClient, createMainnetClient, createLocalnetClient } from './client.js';
+export { SolanaClient, createDevnetClient } from './client.js';
 export type { Cluster, SolanaClientConfig } from './client.js';
 
 // Feedback manager (read functions)

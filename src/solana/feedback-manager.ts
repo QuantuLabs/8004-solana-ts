@@ -5,8 +5,8 @@
 
 import { PublicKey } from '@solana/web3.js';
 import type { SolanaClient } from './client.js';
-import type { IPFSClient } from './ipfs-client.js';
-import { PDAHelpers } from './pda-helpers.js';
+import type { IPFSClient } from '../core/ipfs-client.js';
+import { PDAHelpers, REPUTATION_PROGRAM_ID } from './pda-helpers.js';
 import {
   FeedbackAccount,
   AgentReputationAccount,
@@ -158,7 +158,7 @@ export class SolanaFeedbackManager {
    */
   async readAllFeedback(agentId: bigint, includeRevoked: boolean = false): Promise<SolanaFeedback[]> {
     try {
-      const programId = PDAHelpers.REPUTATION_PROGRAM_ID;
+      const programId = REPUTATION_PROGRAM_ID;
 
       // Create memcmp filter for agent_id (offset 8 to skip discriminator)
       const agentIdBuffer = Buffer.alloc(8);
@@ -223,7 +223,7 @@ export class SolanaFeedbackManager {
    */
   async getClients(agentId: bigint): Promise<PublicKey[]> {
     try {
-      const programId = PDAHelpers.REPUTATION_PROGRAM_ID;
+      const programId = REPUTATION_PROGRAM_ID;
 
       // Create memcmp filter for agent_id
       const agentIdBuffer = Buffer.alloc(8);
@@ -304,7 +304,7 @@ export class SolanaFeedbackManager {
     feedbackIndex: bigint
   ): Promise<SolanaResponse[]> {
     try {
-      const programId = PDAHelpers.REPUTATION_PROGRAM_ID;
+      const programId = REPUTATION_PROGRAM_ID;
 
       // Get response count first
       const responseCount = await this.getResponseCount(agentId, client, feedbackIndex);

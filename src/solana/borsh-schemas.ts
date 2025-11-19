@@ -138,10 +138,22 @@ export class FeedbackAccount {
   static deserialize(data: Buffer): FeedbackAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    const deserialized = deserialize(this.schema, FeedbackAccount, accountData);
-    // Convert u8 to boolean
-    deserialized.revoked = deserialized.revoked === 1;
-    return deserialized;
+    const raw = deserialize(this.schema, FeedbackAccount, accountData) as any;
+
+    // Convert u8 to boolean with proper type safety
+    return new FeedbackAccount({
+      agent_id: raw.agent_id,
+      client: raw.client,
+      feedback_index: raw.feedback_index,
+      score: raw.score,
+      performance_tags: raw.performance_tags,
+      functionality_tags: raw.functionality_tags,
+      file_uri: raw.file_uri,
+      file_hash: raw.file_hash,
+      revoked: raw.revoked === 1,
+      created_at: raw.created_at,
+      bump: raw.bump,
+    });
   }
 
   getClientPublicKey(): PublicKey {
@@ -417,5 +429,61 @@ export class MetadataEntry {
     const nullIndex = this.key.indexOf(0);
     const keyBytes = nullIndex >= 0 ? this.key.slice(0, nullIndex) : this.key;
     return Buffer.from(keyBytes).toString('utf8');
+  }
+}
+
+/**
+ * Registry Config Account (Identity Registry) - 73 bytes
+ * Configuration for the identity registry
+ */
+export class RegistryConfig {
+  authority: Uint8Array;
+  next_agent_id: bigint;
+  total_agents: bigint;
+  collection_mint: Uint8Array;
+  bump: number;
+
+  constructor(fields: {
+    authority: Uint8Array;
+    next_agent_id: bigint;
+    total_agents: bigint;
+    collection_mint: Uint8Array;
+    bump: number;
+  }) {
+    this.authority = fields.authority;
+    this.next_agent_id = fields.next_agent_id;
+    this.total_agents = fields.total_agents;
+    this.collection_mint = fields.collection_mint;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      RegistryConfig,
+      {
+        kind: 'struct',
+        fields: [
+          ['authority', [32]],
+          ['next_agent_id', 'u64'],
+          ['total_agents', 'u64'],
+          ['collection_mint', [32]],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): RegistryConfig {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserialize(this.schema, RegistryConfig, accountData);
+  }
+
+  getAuthorityPublicKey(): PublicKey {
+    return new PublicKey(this.authority);
+  }
+
+  getCollectionMintPublicKey(): PublicKey {
+    return new PublicKey(this.collection_mint);
   }
 }
