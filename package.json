@@ -1,14 +1,11 @@
 {
-  "name": "agent0-sdk-solana",
-  "version": "0.31.0",
-  "description": "TypeScript SDK for agent portability, discovery and trust based on ERC-8004",
+  "name": "8004-solana-ts",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for ERC-8004 on Solana - Agent identity, reputation and discovery",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "codegen": "graphql-codegen --config codegen.yml",
-    "postinstall": "npm run codegen",
-    "prebuild": "npm run codegen",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "jest",
@@ -19,22 +16,24 @@
     "clean": "rm -rf dist"
   },
   "keywords": [
+    "solana",
     "erc-8004",
     "agent",
+    "reputation",
+    "identity",
     "blockchain",
-    "ethereum",
-    "ipfs",
-    "reputation"
+    "web3",
+    "nft"
   ],
-  "author": "Marco De Rossi <marco.derossi@consensys.net>",
+  "author": "QuantumAgentic",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/agent0lab/agent0-ts"
+    "url": "https://github.com/QuantumAgentic/8004-solana-ts.git"
   },
-  "homepage": "https://sdk.ag0.xyz",
+  "homepage": "https://github.com/QuantumAgentic/8004-solana-ts",
   "bugs": {
-    "url": "https://github.com/agent0lab/agent0-ts/issues"
+    "url": "https://github.com/QuantumAgentic/8004-solana-ts/issues"
   },
   "files": [
     "dist/**/*",
@@ -47,17 +46,12 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.0",
     "borsh": "^0.7.0",
     "dotenv": "^16.3.1",
-    "ethers": "^6.9.0",
-    "graphql-request": "^6.1.0",
     "ipfs-http-client": "^60.0.1"
   },
   "devDependencies": {
-    "@graphql-codegen/cli": "^6.0.1",
-    "@graphql-codegen/introspection": "^5.0.0",
-    "@graphql-codegen/typescript": "^5.0.2",
-    "@graphql-codegen/typescript-operations": "^5.0.2",
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.6",
     "@typescript-eslint/eslint-plugin": "^6.17.0",
