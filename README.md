@@ -4,7 +4,9 @@
 > Agent identity, reputation and discovery standard
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/8004-solana-ts.svg)](https://www.npmjs.com/package/8004-solana-ts)
+[![GitHub](https://img.shields.io/badge/GitHub-QuantumAgentic%2F8004--solana--ts-blue)](https://github.com/QuantumAgentic/8004-solana-ts)
+
+> ⚠️ **Alpha Release** - Not yet published to npm. Install from GitHub.
 
 ---
 
@@ -24,12 +26,27 @@ Built with compatibility in mind - API inspired by the reference [agent0 SDK](ht
 
 ## 📦 Installation
 
+### Install from GitHub (recommended for now)
+
 \`\`\`bash
-npm install 8004-solana-ts
+npm install github:QuantumAgentic/8004-solana-ts
 # or
-yarn add 8004-solana-ts
+yarn add github:QuantumAgentic/8004-solana-ts
 # or
-pnpm add 8004-solana-ts
+pnpm add github:QuantumAgentic/8004-solana-ts
+\`\`\`
+
+### Or clone and link locally
+
+\`\`\`bash
+git clone https://github.com/QuantumAgentic/8004-solana-ts.git
+cd 8004-solana-ts
+npm install
+npm run build
+npm link
+
+# In your project
+npm link 8004-solana-ts
 \`\`\`
 
 ---
