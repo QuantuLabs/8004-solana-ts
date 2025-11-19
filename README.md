@@ -28,17 +28,17 @@ Built with compatibility in mind - API inspired by the reference [agent0 SDK](ht
 
 ### Install from GitHub (recommended for now)
 
-\`\`\`bash
+```bash
 npm install github:QuantumAgentic/8004-solana-ts
 # or
 yarn add github:QuantumAgentic/8004-solana-ts
 # or
 pnpm add github:QuantumAgentic/8004-solana-ts
-\`\`\`
+```
 
 ### Or clone and link locally
 
-\`\`\`bash
+```bash
 git clone https://github.com/QuantumAgentic/8004-solana-ts.git
 cd 8004-solana-ts
 npm install
@@ -47,13 +47,13 @@ npm link
 
 # In your project
 npm link 8004-solana-ts
-\`\`\`
+```
 
 ---
 
 ## 🔧 Quick Start
 
-\`\`\`typescript
+```typescript
 import { SDK } from '8004-solana-ts';
 import { Keypair, Connection } from '@solana/web3.js';
 
@@ -77,7 +77,7 @@ agent.addDomain('customer-support');
 
 // Register on-chain
 const registration = await agent.registerIPFS();
-console.log(\`✅ Agent registered: \${registration.agentId}\`);
+console.log(`✅ Agent registered: ${registration.agentId}`);
 
 // Give feedback
 const feedback = sdk.prepareFeedback(
@@ -92,9 +92,9 @@ console.log('✅ Feedback submitted');
 
 // Query reputation
 const reputation = await sdk.getReputationSummary(registration.agentId);
-console.log(\`📊 Average score: \${reputation.averageScore}/100\`);
-console.log(\`📊 Total feedbacks: \${reputation.count}\`);
-\`\`\`
+console.log(`📊 Average score: ${reputation.averageScore}/100`);
+console.log(`📊 Total feedbacks: ${reputation.count}`);
+```
 
 ---
 
@@ -106,47 +106,47 @@ console.log(\`📊 Total feedbacks: \${reputation.count}\`);
 
 Main entry point for the SDK.
 
-\`\`\`typescript
+```typescript
 const sdk = new SDK({
   cluster: 'devnet' | 'testnet' | 'mainnet-beta',
   connection: Connection,
   signer: Keypair
 });
-\`\`\`
+```
 
 **Methods:**
-- \`createAgent(name, description, image?)\` - Create agent instance
-- \`loadAgent(agentId)\` - Load existing agent from blockchain
-- \`getAgent(agentId)\` - Get agent summary
-- \`giveFeedback(agentId, feedbackFile)\` - Submit feedback
-- \`getReputationSummary(agentId)\` - Get reputation statistics
-- \`transferAgent(agentId, newOwner)\` - Transfer ownership
+- `createAgent(name, description, image?)` - Create agent instance
+- `loadAgent(agentId)` - Load existing agent from blockchain
+- `getAgent(agentId)` - Get agent summary
+- `giveFeedback(agentId, feedbackFile)` - Submit feedback
+- `getReputationSummary(agentId)` - Get reputation statistics
+- `transferAgent(agentId, newOwner)` - Transfer ownership
 
 #### Agent
 
 Represents an agent with configuration and metadata.
 
 **Configuration Methods:**
-- \`setMCP(endpoint, version?)\` - Set Model Context Protocol endpoint
-- \`setA2A(agentcard, version?)\` - Set Agent-to-Agent card
-- \`setENS(name, version?)\` - Set ENS name
-- \`setAgentWallet(address, chainId)\` - Set agent wallet
+- `setMCP(endpoint, version?)` - Set Model Context Protocol endpoint
+- `setA2A(agentcard, version?)` - Set Agent-to-Agent card
+- `setENS(name, version?)` - Set ENS name
+- `setAgentWallet(address, chainId)` - Set agent wallet
 
 **OASF Methods:**
-- \`addSkill(slug)\` - Add OASF skill taxonomy
-- \`addDomain(slug)\` - Add OASF domain taxonomy
-- \`removeSkill(slug)\` - Remove skill
-- \`removeDomain(slug)\` - Remove domain
+- `addSkill(slug)` - Add OASF skill taxonomy
+- `addDomain(slug)` - Add OASF domain taxonomy
+- `removeSkill(slug)` - Remove skill
+- `removeDomain(slug)` - Remove domain
 
 **Metadata Methods:**
-- \`setMetadata(kv)\` - Set custom metadata key-value pairs
-- \`setTrust(reputation?, cryptoEconomic?, teeAttestation?)\` - Set trust models
-- \`setActive(active)\` - Set agent active status
+- `setMetadata(kv)` - Set custom metadata key-value pairs
+- `setTrust(reputation?, cryptoEconomic?, teeAttestation?)` - Set trust models
+- `setActive(active)` - Set agent active status
 
 **Registration Methods:**
-- \`registerIPFS()\` - Register agent with IPFS storage
-- \`registerHTTP(uri)\` - Register agent with HTTP URI
-- \`transfer(newOwner)\` - Transfer agent ownership
+- `registerIPFS()` - Register agent with IPFS storage
+- `registerHTTP(uri)` - Register agent with HTTP URI
+- `transfer(newOwner)` - Transfer agent ownership
 
 ---
 
@@ -164,7 +164,7 @@ Programs are deployed on Solana devnet and mainnet.
 
 ## 🧪 Development
 
-\`\`\`bash
+```bash
 # Clone repository
 git clone https://github.com/QuantumAgentic/8004-solana-ts.git
 cd 8004-solana-ts
@@ -183,7 +183,7 @@ npm run lint
 
 # Format
 npm run format
-\`\`\`
+```
 
 ---
 
@@ -214,9 +214,9 @@ Contributions welcome! This is a **public build** project - we're building in th
 ### How to Contribute
 
 1. **Fork** the repository
-2. **Create** a feature branch (\`git checkout -b feature/amazing-feature\`)
-3. **Commit** your changes (\`git commit -m 'feat: add amazing feature'\`)
-4. **Push** to the branch (\`git push origin feature/amazing-feature\`)
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'feat: add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
 5. **Open** a Pull Request
 
 ### Contribution Guidelines
