@@ -46,6 +46,7 @@ export class IdentityInstructionBuilder {
    * @param collectionMasterEdition - Collection master edition PDA
    * @param owner - Owner/payer (signer)
    * @param tokenUri - Optional token URI
+   * @param metadata - Optional metadata entries
    */
   buildRegisterAgent(
     config: PublicKey,
@@ -59,12 +60,28 @@ export class IdentityInstructionBuilder {
     collectionMetadata: PublicKey,
     collectionMasterEdition: PublicKey,
     owner: PublicKey,
-    tokenUri?: string
+    tokenUri?: string,
+    metadata?: Array<{ key: string; value: string }>
   ): TransactionInstruction {
+    // Validate metadata count (inline storage limit is 10 entries)
+    // Note: If metadata > 10, transaction-builder should split into inline + extensions
+    if (metadata && metadata.length > 10) {
+      throw new Error(
+        `buildRegisterAgent() accepts max 10 inline metadata. Got ${metadata.length}. ` +
+        `Use transaction-builder to auto-split into inline + MetadataExtension PDAs.`
+      );
+    }
+
+    // Choose discriminator based on whether metadata is provided
+    const discriminator = metadata && metadata.length > 0
+      ? IDENTITY_DISCRIMINATORS.registerWithMetadata
+      : IDENTITY_DISCRIMINATORS.register;
+
     // Serialize instruction data
     const data = Buffer.concat([
-      IDENTITY_DISCRIMINATORS.register,
+      discriminator,
       this.serializeString(tokenUri || ''),
+      this.serializeMetadata(metadata || []),
     ]);
 
     return new TransactionInstruction({
@@ -123,32 +140,86 @@ export class IdentityInstructionBuilder {
   }
 
   /**
-   * Build setMetadata instruction
+   * Build setMetadata instruction (inline metadata storage)
    * @param owner - Agent owner (signer)
    * @param agent - Agent account PDA
-   * @param metadataEntry - Metadata entry PDA
-   * @param key - Metadata key (bytes32)
-   * @param value - Metadata value (string)
+   * @param agentMint - Agent NFT mint
+   * @param key - Metadata key (max 32 bytes)
+   * @param value - Metadata value (max 256 bytes)
    */
   buildSetMetadata(
     owner: PublicKey,
     agent: PublicKey,
-    metadataEntry: PublicKey,
-    key: Buffer,
+    agentMint: PublicKey,
+    key: string,
     value: string
   ): TransactionInstruction {
+    // Serialize value as Vec<u8>
+    const valueBytes = Buffer.from(value, 'utf8');
+    const valueLen = Buffer.alloc(4);
+    valueLen.writeUInt32LE(valueBytes.length);
+    const serializedValue = Buffer.concat([valueLen, valueBytes]);
+
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.setMetadata,
-      key, // 32 bytes
-      this.serializeString(value),
+      this.serializeString(key),
+      serializedValue,
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: agent, isSigner: false, isWritable: true },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: owner, isSigner: true, isWritable: false },
+      ],
+      data,
+    });
+  }
+
+  /**
+   * Build setMetadataExtended instruction (extension PDA metadata storage)
+   * @param owner - Agent owner (signer)
+   * @param agent - Agent account PDA
+   * @param agentMint - Agent NFT mint
+   * @param metadataExtension - MetadataExtension PDA
+   * @param extensionIndex - Extension index (0-255)
+   * @param key - Metadata key (max 32 bytes)
+   * @param value - Metadata value (max 256 bytes)
+   */
+  buildSetMetadataExtended(
+    owner: PublicKey,
+    agent: PublicKey,
+    agentMint: PublicKey,
+    metadataExtension: PublicKey,
+    extensionIndex: number,
+    key: string,
+    value: string
+  ): TransactionInstruction {
+    // Serialize extension_index as u8
+    const indexBuf = Buffer.alloc(1);
+    indexBuf.writeUInt8(extensionIndex);
+
+    // Serialize value as Vec<u8>
+    const valueBytes = Buffer.from(value, 'utf8');
+    const valueLen = Buffer.alloc(4);
+    valueLen.writeUInt32LE(valueBytes.length);
+    const serializedValue = Buffer.concat([valueLen, valueBytes]);
+
+    const data = Buffer.concat([
+      IDENTITY_DISCRIMINATORS.setMetadataExtended,
+      indexBuf,
+      this.serializeString(key),
+      serializedValue,
+    ]);
+
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: metadataExtension, isSigner: false, isWritable: true },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: agent, isSigner: false, isWritable: false },
-        { pubkey: metadataEntry, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -160,6 +231,32 @@ export class IdentityInstructionBuilder {
     const len = Buffer.alloc(4);
     len.writeUInt32LE(strBytes.length);
     return Buffer.concat([len, strBytes]);
+  }
+
+  private serializeMetadata(metadata: Array<{ key: string; value: string }>): Buffer {
+    // Vec length (u32)
+    const vecLen = Buffer.alloc(4);
+    vecLen.writeUInt32LE(metadata.length);
+
+    if (metadata.length === 0) {
+      return vecLen;
+    }
+
+    // Serialize each MetadataEntry { key: String, value: Vec<u8> }
+    const entries = metadata.map(entry => {
+      // Serialize key as String
+      const key = this.serializeString(entry.key);
+
+      // Serialize value as Vec<u8>
+      const valueBytes = Buffer.from(entry.value, 'utf8');
+      const valueLen = Buffer.alloc(4);
+      valueLen.writeUInt32LE(valueBytes.length);
+      const value = Buffer.concat([valueLen, valueBytes]);
+
+      return Buffer.concat([key, value]);
+    });
+
+    return Buffer.concat([vecLen, ...entries]);
   }
 }
 

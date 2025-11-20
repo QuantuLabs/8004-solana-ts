@@ -11,6 +11,7 @@ import {
   sendAndConfirmTransaction,
   TransactionSignature,
   Signer,
+  ComputeBudgetProgram,
 } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { PDAHelpers } from './pda-helpers.js';
@@ -47,9 +48,13 @@ export class IdentityTransactionBuilder {
   /**
    * Register a new agent
    * @param tokenUri - Optional token URI
-   * @returns Transaction result with agent ID
+   * @param metadata - Optional metadata entries (key-value pairs)
+   * @returns Transaction result with agent ID, agentMint, and all signatures
    */
-  async registerAgent(tokenUri?: string): Promise<TransactionResult & { agentId?: bigint }> {
+  async registerAgent(
+    tokenUri?: string,
+    metadata?: Array<{ key: string; value: string }>
+  ): Promise<TransactionResult & { agentId?: bigint; agentMint?: PublicKey; signatures?: string[] }> {
     try {
       // Fetch registry config from on-chain
       const configData = await fetchRegistryConfig(this.connection);
@@ -83,8 +88,16 @@ export class IdentityTransactionBuilder {
         this.payer.publicKey
       );
 
-      // Build instruction with all required accounts
-      const instruction = this.instructionBuilder.buildRegisterAgent(
+      // Split metadata: first 10 inline, rest in extensions
+      const inlineMetadata = metadata && metadata.length > 10
+        ? metadata.slice(0, 10)
+        : metadata;
+      const extendedMetadata = metadata && metadata.length > 10
+        ? metadata.slice(10)
+        : [];
+
+      // Build register instruction with inline metadata only (max 10)
+      const registerInstruction = this.instructionBuilder.buildRegisterAgent(
         configPda,
         authority,
         agentPda,
@@ -96,19 +109,81 @@ export class IdentityTransactionBuilder {
         collectionMetadata,
         collectionMasterEdition,
         this.payer.publicKey,
-        tokenUri
+        tokenUri,
+        inlineMetadata
       );
 
-      // Create and send transaction
-      const transaction = new Transaction().add(instruction);
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
+      // Create transaction with increased compute budget
+      // Note: We allocate 400K CUs but only pay for what's actually consumed
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400_000, // Increase from default 200K to 400K
+      });
+
+      const registerTransaction = new Transaction()
+        .add(computeBudgetIx)  // Add compute budget first
+        .add(registerInstruction);      // Then add the actual instruction
+
+      // Send register transaction with retry
+      const registerSignature = await this.sendWithRetry(
+        registerTransaction,
         [this.payer, agentMint]
       );
 
+      const allSignatures = [registerSignature];
+
+      // If we have extended metadata, create additional transactions
+      if (extendedMetadata.length > 0) {
+        console.log(`Creating ${extendedMetadata.length} metadata extensions...`);
+
+        // Calculate optimal batching based on actual metadata sizes
+        const batchSize = this.calculateOptimalBatch(extendedMetadata);
+        console.log(`Batch size: ${batchSize} instructions per transaction`);
+
+        // Split into batches
+        for (let i = 0; i < extendedMetadata.length; i += batchSize) {
+          const batch = extendedMetadata.slice(i, Math.min(i + batchSize, extendedMetadata.length));
+          const batchIndex = Math.floor(i / batchSize);
+
+          console.log(`Processing batch ${batchIndex + 1} with ${batch.length} metadata entries...`);
+
+          // Create transaction for this batch
+          const extTx = new Transaction().add(computeBudgetIx);
+
+          for (let j = 0; j < batch.length; j++) {
+            const extensionIndex = i + j; // Global extension index
+            const { key, value } = batch[j];
+
+            const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(
+              agentMint.publicKey,
+              extensionIndex
+            );
+
+            const extInstruction = this.instructionBuilder.buildSetMetadataExtended(
+              this.payer.publicKey,
+              agentPda,
+              agentMint.publicKey,
+              metadataExtension,
+              extensionIndex,
+              key,
+              value
+            );
+
+            extTx.add(extInstruction);
+          }
+
+          // Send batch transaction with retry
+          const batchSignature = await this.sendWithRetry(extTx, [this.payer]);
+          allSignatures.push(batchSignature);
+
+          console.log(`Batch ${batchIndex + 1} completed: ${batchSignature}`);
+        }
+
+        console.log(`All metadata extensions created successfully.`);
+      }
+
       return {
-        signature,
+        signature: allSignatures[0], // First signature for backward compatibility
+        signatures: allSignatures,   // All signatures
         success: true,
         agentId,
         agentMint: agentMint.publicKey,
@@ -168,22 +243,48 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Set metadata for agent
+   * Set metadata for agent (inline storage)
    * @param agentId - Agent ID
-   * @param key - Metadata key (will be converted to bytes32)
+   * @param key - Metadata key
    * @param value - Metadata value
    */
   async setMetadata(agentId: bigint, key: string, value: string): Promise<TransactionResult> {
     try {
-      const [agent] = await PDAHelpers.getAgentPDA(agentId);
-      const keyBytes = stringToBytes32(key);
-      const [metadataEntry] = await PDAHelpers.getMetadataPDA(agentId, keyBytes);
+      // Need to resolve agentId -> agentMint first
+      // This is similar to setAgentUri, but we don't have the mint yet
+      // For now, this will work for agents we've just created
+      // TODO: In a full implementation, we'd need to fetch the agent account
+      // to get the mint, or use the AgentMintResolver
+
+      throw new Error('setMetadata() requires agentMint. Use setMetadataByMint() or fetch agent first.');
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Set metadata for agent by mint (inline storage)
+   * @param agentMint - Agent mint public key
+   * @param key - Metadata key
+   * @param value - Metadata value
+   */
+  async setMetadataByMint(
+    agentMint: PublicKey,
+    key: string,
+    value: string
+  ): Promise<TransactionResult> {
+    try {
+      const [agent] = await PDAHelpers.getAgentPDA(agentMint);
 
       const instruction = this.instructionBuilder.buildSetMetadata(
         this.payer.publicKey,
         agent,
-        metadataEntry,
-        keyBytes,
+        agentMint,
+        key,
         value
       );
 
@@ -202,6 +303,123 @@ export class IdentityTransactionBuilder {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * Set metadata extended for agent by mint (extension PDA storage)
+   * @param agentMint - Agent mint public key
+   * @param extensionIndex - Extension index (0-255)
+   * @param key - Metadata key
+   * @param value - Metadata value
+   */
+  async setMetadataExtendedByMint(
+    agentMint: PublicKey,
+    extensionIndex: number,
+    key: string,
+    value: string
+  ): Promise<TransactionResult> {
+    try {
+      const [agent] = await PDAHelpers.getAgentPDA(agentMint);
+      const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(
+        agentMint,
+        extensionIndex
+      );
+
+      const instruction = this.instructionBuilder.buildSetMetadataExtended(
+        this.payer.publicKey,
+        agent,
+        agentMint,
+        metadataExtension,
+        extensionIndex,
+        key,
+        value
+      );
+
+      const transaction = new Transaction().add(instruction);
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Private helper: Estimate size of a setMetadataExtended instruction
+   */
+  private estimateInstructionSize(key: string, value: string): number {
+    // Discriminator: 8 bytes
+    // extension_index: 1 byte
+    // key serialization: 4 (length) + key.length
+    // value serialization: 4 (length) + value.length
+    // Accounts metadata: ~60 bytes (5 accounts × ~12 bytes each)
+    return 8 + 1 + 4 + key.length + 4 + value.length + 60;
+  }
+
+  /**
+   * Private helper: Calculate optimal batch size for metadata extensions
+   */
+  private calculateOptimalBatch(
+    metadataEntries: Array<{ key: string; value: string }>
+  ): number {
+    const MAX_TX_SIZE = 1232; // Solana transaction MTU
+    const TX_OVERHEAD = 200; // Signatures + base overhead
+
+    let batchSize = 0;
+    let currentSize = TX_OVERHEAD;
+
+    for (const entry of metadataEntries) {
+      const ixSize = this.estimateInstructionSize(entry.key, entry.value);
+      if (currentSize + ixSize > MAX_TX_SIZE) {
+        break;
+      }
+      currentSize += ixSize;
+      batchSize++;
+    }
+
+    return Math.max(1, batchSize); // At least 1 instruction per batch
+  }
+
+  /**
+   * Private helper: Send transaction with retry logic
+   */
+  private async sendWithRetry(
+    transaction: Transaction,
+    signers: Signer[],
+    maxRetries: number = 3
+  ): Promise<string> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const signature = await sendAndConfirmTransaction(
+          this.connection,
+          transaction,
+          signers
+        );
+        return signature;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.warn(`Transaction attempt ${attempt}/${maxRetries} failed:`, lastError.message);
+
+        if (attempt < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('Transaction failed after retries');
   }
 }
 

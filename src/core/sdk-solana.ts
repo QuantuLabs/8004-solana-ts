@@ -136,10 +136,127 @@ export class SolanaSDK {
         return null;
       }
 
-      return AgentAccount.deserialize(data);
+      const agentAccount = AgentAccount.deserialize(data);
+
+      // Load MetadataExtension PDAs (try getProgramAccounts first, fallback to sequential)
+      const extendedMetadata = await this.loadMetadataExtensions(id, agentMint);
+
+      // Merge inline + extended metadata
+      if (extendedMetadata.length > 0) {
+        agentAccount.metadata = [...agentAccount.metadata, ...extendedMetadata];
+      }
+
+      return agentAccount;
     } catch (error) {
       console.error(`Error loading agent ${agentId}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Private helper: Load metadata extensions for an agent
+   * Uses getProgramAccounts with memcmp filter, falls back to sequential if not supported
+   */
+  private async loadMetadataExtensions(
+    agentId: bigint,
+    agentMint: PublicKey
+  ): Promise<Array<{ key: string; value: Uint8Array }>> {
+    const connection = this.client.getConnection();
+    const programId = this.programIds.identityRegistry;
+
+    try {
+      // Try getProgramAccounts with memcmp filter (fast)
+      // Filter by agent_id at offset 8 (after 8-byte discriminator)
+      const agentIdBuffer = Buffer.alloc(8);
+      agentIdBuffer.writeBigUInt64LE(agentId);
+
+      const accounts = await connection.getProgramAccounts(programId, {
+        filters: [
+          { dataSize: 307 }, // MetadataExtensionAccount size
+          {
+            memcmp: {
+              offset: 8, // Skip discriminator
+              bytes: agentIdBuffer.toString('base64'),
+            },
+          },
+        ],
+      });
+
+      // Parse and extract metadata from extensions
+      const extensions: Array<{ key: string; value: Uint8Array }> = [];
+
+      for (const account of accounts) {
+        try {
+          // MetadataExtensionAccount structure (from borsh-schemas.ts)
+          // discriminator: 8 bytes (skipped)
+          // agent_id: u64 (8 bytes)
+          // key: [u8; 32] (32 bytes)
+          // value: String (4 bytes length + data)
+          // bump: u8 (1 byte)
+          // created_at: u64 (8 bytes)
+
+          const accountData = account.account.data;
+          let offset = 8; // Skip discriminator
+
+          // Skip agent_id (8 bytes)
+          offset += 8;
+
+          // Read key ([u8; 32])
+          const keyBytes = accountData.slice(offset, offset + 32);
+          offset += 32;
+          const nullIndex = keyBytes.indexOf(0);
+          const key = keyBytes.slice(0, nullIndex >= 0 ? nullIndex : 32).toString('utf8');
+
+          // Read value (String = u32 length + bytes)
+          const valueLen = accountData.readUInt32LE(offset);
+          offset += 4;
+          const value = accountData.slice(offset, offset + valueLen);
+
+          extensions.push({ key, value });
+        } catch (parseError) {
+          console.warn('Failed to parse metadata extension:', parseError);
+        }
+      }
+
+      return extensions;
+    } catch (error) {
+      // Fallback: sequential loading (slower but always works)
+      console.warn('getProgramAccounts with memcmp failed, using sequential fallback:', error);
+
+      const extensions: Array<{ key: string; value: Uint8Array }> = [];
+
+      // Try indices 0-255 sequentially
+      for (let i = 0; i < 256; i++) {
+        try {
+          const [extPDA] = await PDAHelpers.getMetadataExtensionPDA(agentMint, i);
+          const extData = await this.client.getAccount(extPDA);
+
+          if (!extData) {
+            // Assume extensions are sequential, stop at first gap
+            break;
+          }
+
+          // Parse extension data
+          let offset = 8; // Skip discriminator
+          offset += 8; // Skip agent_id
+
+          const keyBytes = extData.slice(offset, offset + 32);
+          offset += 32;
+          const nullIndex = keyBytes.indexOf(0);
+          const key = keyBytes.slice(0, nullIndex >= 0 ? nullIndex : 32).toString('utf8');
+
+          const valueLen = extData.readUInt32LE(offset);
+          offset += 4;
+          const value = extData.slice(offset, offset + valueLen);
+
+          extensions.push({ key, value });
+        } catch {
+          // Stop at first failed extension
+          break;
+        }
+      }
+
+      return extensions;
     }
   }
 
@@ -278,9 +395,13 @@ export class SolanaSDK {
   /**
    * Register a new agent (write operation)
    * @param tokenUri - Optional token URI
+   * @param metadata - Optional metadata entries (key-value pairs)
    * @returns Transaction result with agent ID
    */
-  async registerAgent(tokenUri?: string) {
+  async registerAgent(
+    tokenUri?: string,
+    metadata?: Array<{ key: string; value: string }>
+  ) {
     if (!this.identityTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
@@ -288,7 +409,7 @@ export class SolanaSDK {
     // Initialize resolver to cache the mint after registration
     await this.initializeMintResolver();
 
-    const result = await this.identityTxBuilder.registerAgent(tokenUri);
+    const result = await this.identityTxBuilder.registerAgent(tokenUri, metadata);
 
     // Cache the agentId → mint mapping for instant lookup
     if (result.success && result.agentId !== undefined && result.agentMint) {
