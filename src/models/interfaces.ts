@@ -96,6 +96,36 @@ export type FeedbackIdTuple = [AgentId, Address, number];
 export type FeedbackId = string;
 
 /**
+ * Feedback authentication signature (ERC-8004 spec requirement)
+ * Prevents spam by requiring agent owner pre-authorization
+ */
+export interface FeedbackAuth {
+  /** Agent ID this auth is for */
+  agentId: AgentId;
+
+  /** Client address authorized to give feedback */
+  clientAddress: Address;
+
+  /** Maximum number of feedbacks this client can submit */
+  indexLimit: number;
+
+  /** Expiry timestamp (Unix epoch seconds) */
+  expiry: number;
+
+  /** Chain identifier (e.g., "solana-mainnet", "solana-devnet") */
+  chainId: string;
+
+  /** Identity Registry program ID */
+  identityRegistry: Address;
+
+  /** Signer address (agent owner or delegate) */
+  signerAddress: Address;
+
+  /** Ed25519 signature (64 bytes) */
+  signature: Uint8Array;
+}
+
+/**
  * Parameters for agent search
  */
 export interface SearchParams {
