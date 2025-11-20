@@ -3,26 +3,25 @@
  * Based on ERC-8004 Solana program account structures
  */
 
-import { Schema, deserialize } from 'borsh';
+import { Schema, deserializeUnchecked } from 'borsh';
 import { PublicKey } from '@solana/web3.js';
 
 /**
  * Metadata Entry (inline struct for AgentAccount)
+ * Matches Rust: { key: String, value: Vec<u8> }
  */
 export class MetadataEntry {
-  key: Uint8Array; // 32 bytes
-  value: string;
+  key: string;        // String in Rust
+  value: Uint8Array;  // Vec<u8> in Rust
 
-  constructor(fields: { key: Uint8Array; value: string }) {
+  constructor(fields: { key: string; value: Uint8Array }) {
     this.key = fields.key;
     this.value = fields.value;
   }
 
-  getKeyString(): string {
-    // Convert bytes32 key to string (null-terminated)
-    const nullIndex = this.key.indexOf(0);
-    const keyBytes = nullIndex >= 0 ? this.key.slice(0, nullIndex) : this.key;
-    return Buffer.from(keyBytes).toString('utf8');
+  getValueString(): string {
+    // Convert value bytes to string if it's UTF-8
+    return Buffer.from(this.value).toString('utf8');
   }
 }
 
@@ -69,8 +68,8 @@ export class AgentAccount {
       {
         kind: 'struct',
         fields: [
-          ['key', [32]],
-          ['value', 'string'],
+          ['key', 'string'],      // String in Rust
+          ['value', ['u8']],      // Vec<u8> in Rust
         ],
       },
     ],
@@ -85,8 +84,8 @@ export class AgentAccount {
           ['token_uri', 'string'],
           ['nft_name', 'string'],
           ['nft_symbol', 'string'],
-          ['metadata', [MetadataEntry]],
-          ['created_at', 'i64'],
+          ['metadata', [MetadataEntry]],  // Vec<MetadataEntry>
+          ['created_at', 'u64'],
           ['bump', 'u8'],
         ],
       },
@@ -96,7 +95,7 @@ export class AgentAccount {
   static deserialize(data: Buffer): AgentAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, AgentAccount, accountData);
+    return deserializeUnchecked(this.schema, AgentAccount, accountData);
   }
 
   getOwnerPublicKey(): PublicKey {
@@ -166,7 +165,7 @@ export class FeedbackAccount {
           ['file_uri', 'string'],
           ['file_hash', [32]],
           ['revoked', 'u8'],
-          ['created_at', 'i64'],
+          ['created_at', 'u64'],
           ['bump', 'u8'],
         ],
       },
@@ -237,7 +236,7 @@ export class AgentReputationAccount {
           ['total_feedbacks', 'u64'],
           ['sum_scores', 'u64'],
           ['average_score', 'u8'],
-          ['last_updated', 'i64'],
+          ['last_updated', 'u64'],
           ['bump', 'u8'],
         ],
       },
@@ -247,7 +246,7 @@ export class AgentReputationAccount {
   static deserialize(data: Buffer): AgentReputationAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, AgentReputationAccount, accountData);
+    return deserializeUnchecked(this.schema, AgentReputationAccount, accountData);
   }
 }
 
@@ -291,7 +290,7 @@ export class ClientIndexAccount {
   static deserialize(data: Buffer): ClientIndexAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, ClientIndexAccount, accountData);
+    return deserializeUnchecked(this.schema, ClientIndexAccount, accountData);
   }
 
   getClientPublicKey(): PublicKey {
@@ -343,7 +342,7 @@ export class ResponseIndexAccount {
   static deserialize(data: Buffer): ResponseIndexAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, ResponseIndexAccount, accountData);
+    return deserializeUnchecked(this.schema, ResponseIndexAccount, accountData);
   }
 }
 
@@ -397,7 +396,7 @@ export class ResponseAccount {
           ['responder', [32]],
           ['response_uri', 'string'],
           ['response_hash', [32]],
-          ['created_at', 'i64'],
+          ['created_at', 'u64'],
           ['bump', 'u8'],
         ],
       },
@@ -407,7 +406,7 @@ export class ResponseAccount {
   static deserialize(data: Buffer): ResponseAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, ResponseAccount, accountData);
+    return deserializeUnchecked(this.schema, ResponseAccount, accountData);
   }
 
   getResponderPublicKey(): PublicKey {
@@ -450,7 +449,7 @@ export class MetadataExtensionAccount {
           ['key', [32]],
           ['value', 'string'],
           ['bump', 'u8'],
-          ['created_at', 'i64'],
+          ['created_at', 'u64'],
         ],
       },
     ],
@@ -459,7 +458,7 @@ export class MetadataExtensionAccount {
   static deserialize(data: Buffer): MetadataExtensionAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, MetadataExtensionAccount, accountData);
+    return deserializeUnchecked(this.schema, MetadataExtensionAccount, accountData);
   }
 
   getKeyString(): string {
@@ -514,7 +513,7 @@ export class RegistryConfig {
   static deserialize(data: Buffer): RegistryConfig {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, RegistryConfig, accountData);
+    return deserializeUnchecked(this.schema, RegistryConfig, accountData);
   }
 
   getAuthorityPublicKey(): PublicKey {

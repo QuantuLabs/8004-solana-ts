@@ -120,7 +120,7 @@ async function main() {
   logInfo(`  Created at: ${agentData.created_at}`);
 
   // Verify data matches expected values
-  if (agentData.agent_id !== agentId) {
+  if (agentData.agent_id.toString() !== agentId.toString()) {
     logError(`Agent ID mismatch! Expected ${agentId}, got ${agentData.agent_id}`);
     process.exit(1);
   }
@@ -158,7 +158,7 @@ async function main() {
   logInfo(`  Agent Mint: ${loadedAgent.getMintPublicKey().toBase58()}`);
 
   // Verify SDK data matches direct read
-  if (loadedAgent.agent_id !== agentData.agent_id) {
+  if (loadedAgent.agent_id.toString() !== agentData.agent_id) {
     logError('Agent ID mismatch between SDK and direct read!');
     process.exit(1);
   }
@@ -192,7 +192,7 @@ async function main() {
   logSuccess('loadAgent(bigint) works ✓');
 
   logInfo('Verifying both return same data...');
-  if (agent1.agent_id !== agent2.agent_id) {
+  if (agent1.agent_id.toString() !== agent2.agent_id) {
     logError('Data mismatch between number and bigint calls!');
     process.exit(1);
   }

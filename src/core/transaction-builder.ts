@@ -57,15 +57,15 @@ export class IdentityTransactionBuilder {
         throw new Error('Registry not initialized. Please initialize the registry first.');
       }
 
-      // Get the real next agent ID from config
-      const agentId = configData.next_agent_id;
+      // Get the real next agent ID from config (ensure it's a BigInt)
+      const agentId = BigInt(configData.next_agent_id);
 
       // Generate new mint for agent NFT
       const agentMint = Keypair.generate();
 
       // Derive PDAs
       const [configPda] = await PDAHelpers.getRegistryConfigPDA();
-      const [agentPda] = await PDAHelpers.getAgentPDA(agentId);
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint.publicKey);
 
       // Get collection mint from config
       const collectionMint = configData.getCollectionMintPublicKey();
@@ -111,13 +111,16 @@ export class IdentityTransactionBuilder {
         signature,
         success: true,
         agentId,
+        agentMint: agentMint.publicKey,
       };
     } catch (error) {
+      console.error('registerAgent error:', error);
       return {
         signature: '',
         success: false,
         error: error instanceof Error ? error.message : String(error),
         agentId: undefined,
+        agentMint: undefined,
       };
     }
   }

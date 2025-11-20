@@ -19,8 +19,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { createDevnetSDK } from '../../src/solana/sdk.js';
-import type { SolanaSDK } from '../../src/solana/sdk.js';
+import { createDevnetSDK } from '../../src/core/sdk-solana.js';
+import type { SolanaSDK } from '../../src/core/sdk-solana.js';
 
 describe('E2E: Full Agent Lifecycle on Devnet', () => {
   let sdk: SolanaSDK;
