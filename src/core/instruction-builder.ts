@@ -15,30 +15,11 @@ import { serialize } from 'borsh';
 import { getProgramIds } from './programs.js';
 import type { Cluster } from './client.js';
 import { TOKEN_METADATA_PROGRAM_ID } from './metaplex-helpers.js';
-
-/**
- * Instruction discriminators (8-byte hashes)
- * These match the Anchor program discriminators
- */
-const INSTRUCTION_DISCRIMINATORS = {
-  // Identity Registry
-  initializeRegistry: Buffer.from([0x9a, 0x1c, 0x7f, 0x3d, 0x2e, 0x5b, 0x8a, 0x4c]),
-  registerAgent: Buffer.from([0x1f, 0x3e, 0x5d, 0x7c, 0x9b, 0xba, 0xd9, 0xf8]),
-  setAgentUri: Buffer.from([0x2e, 0x4d, 0x6c, 0x8b, 0xaa, 0xc9, 0xe8, 0x07]),
-  setMetadata: Buffer.from([0x3d, 0x5c, 0x7b, 0x9a, 0xb9, 0xd8, 0xf7, 0x16]),
-  transferAgent: Buffer.from([0x4c, 0x6b, 0x8a, 0xa9, 0xc8, 0xe7, 0x06, 0x25]),
-  syncOwner: Buffer.from([0x5b, 0x7a, 0x99, 0xb8, 0xd7, 0xf6, 0x15, 0x34]),
-
-  // Reputation Registry
-  giveFeedback: Buffer.from([0x6a, 0x89, 0xa8, 0xc7, 0xe6, 0x05, 0x24, 0x43]),
-  revokeFeedback: Buffer.from([0x79, 0x98, 0xb7, 0xd6, 0xf5, 0x14, 0x33, 0x52]),
-  appendResponse: Buffer.from([0x88, 0xa7, 0xc6, 0xe5, 0x04, 0x23, 0x42, 0x61]),
-
-  // Validation Registry
-  initializeValidation: Buffer.from([0x97, 0xb6, 0xd5, 0xf4, 0x13, 0x32, 0x51, 0x70]),
-  requestValidation: Buffer.from([0xa6, 0xc5, 0xe4, 0x03, 0x22, 0x41, 0x60, 0x7f]),
-  respondToValidation: Buffer.from([0xb5, 0xd4, 0xf3, 0x12, 0x31, 0x50, 0x6f, 0x8e]),
-};
+import {
+  IDENTITY_DISCRIMINATORS,
+  REPUTATION_DISCRIMINATORS,
+  VALIDATION_DISCRIMINATORS,
+} from './instruction-discriminators.js';
 
 /**
  * Instruction builder for Identity Registry
@@ -82,7 +63,7 @@ export class IdentityInstructionBuilder {
   ): TransactionInstruction {
     // Serialize instruction data
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.registerAgent,
+      IDENTITY_DISCRIMINATORS.register,
       this.serializeString(tokenUri || ''),
     ]);
 
@@ -125,7 +106,7 @@ export class IdentityInstructionBuilder {
     newUri: string
   ): TransactionInstruction {
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.setAgentUri,
+      IDENTITY_DISCRIMINATORS.setAgentUri,
       this.serializeString(newUri),
     ]);
 
@@ -157,7 +138,7 @@ export class IdentityInstructionBuilder {
     value: string
   ): TransactionInstruction {
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.setMetadata,
+      IDENTITY_DISCRIMINATORS.setMetadata,
       key, // 32 bytes
       this.serializeString(value),
     ]);
@@ -219,7 +200,7 @@ export class ReputationInstructionBuilder {
     fileHash: Buffer
   ): TransactionInstruction {
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.giveFeedback,
+      REPUTATION_DISCRIMINATORS.giveFeedback,
       Buffer.from([score]), // u8
       performanceTags, // 32 bytes
       functionalityTags, // 32 bytes
@@ -252,7 +233,7 @@ export class ReputationInstructionBuilder {
     feedback: PublicKey,
     agentReputation: PublicKey
   ): TransactionInstruction {
-    const data = INSTRUCTION_DISCRIMINATORS.revokeFeedback;
+    const data = REPUTATION_DISCRIMINATORS.revokeFeedback;
 
     return new TransactionInstruction({
       programId: this.programId,
@@ -283,7 +264,7 @@ export class ReputationInstructionBuilder {
     responseHash: Buffer
   ): TransactionInstruction {
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.appendResponse,
+      REPUTATION_DISCRIMINATORS.appendResponse,
       this.serializeString(responseUri),
       responseHash, // 32 bytes
     ]);
@@ -336,7 +317,7 @@ export class ValidationInstructionBuilder {
     requestHash: Buffer
   ): TransactionInstruction {
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.requestValidation,
+      VALIDATION_DISCRIMINATORS.requestValidation,
       requestHash, // 32 bytes
     ]);
 
@@ -367,7 +348,7 @@ export class ValidationInstructionBuilder {
     responseHash: Buffer
   ): TransactionInstruction {
     const data = Buffer.concat([
-      INSTRUCTION_DISCRIMINATORS.respondToValidation,
+      VALIDATION_DISCRIMINATORS.respondToValidation,
       Buffer.from([response]), // u8
       responseHash, // 32 bytes
     ]);

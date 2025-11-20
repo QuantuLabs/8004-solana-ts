@@ -7,7 +7,27 @@ import { Schema, deserialize } from 'borsh';
 import { PublicKey } from '@solana/web3.js';
 
 /**
- * Agent Account (Identity Registry) - 297 bytes
+ * Metadata Entry (inline struct for AgentAccount)
+ */
+export class MetadataEntry {
+  key: Uint8Array; // 32 bytes
+  value: string;
+
+  constructor(fields: { key: Uint8Array; value: string }) {
+    this.key = fields.key;
+    this.value = fields.value;
+  }
+
+  getKeyString(): string {
+    // Convert bytes32 key to string (null-terminated)
+    const nullIndex = this.key.indexOf(0);
+    const keyBytes = nullIndex >= 0 ? this.key.slice(0, nullIndex) : this.key;
+    return Buffer.from(keyBytes).toString('utf8');
+  }
+}
+
+/**
+ * Agent Account (Identity Registry) - Variable size (dynamic metadata)
  * Represents an agent NFT with metadata
  */
 export class AgentAccount {
@@ -15,8 +35,10 @@ export class AgentAccount {
   owner: Uint8Array;
   agent_mint: Uint8Array;
   token_uri: string;
+  nft_name: string;
+  nft_symbol: string;
+  metadata: MetadataEntry[];
   created_at: bigint;
-  status: number;
   bump: number;
 
   constructor(fields: {
@@ -24,20 +46,34 @@ export class AgentAccount {
     owner: Uint8Array;
     agent_mint: Uint8Array;
     token_uri: string;
+    nft_name: string;
+    nft_symbol: string;
+    metadata: MetadataEntry[];
     created_at: bigint;
-    status: number;
     bump: number;
   }) {
     this.agent_id = fields.agent_id;
     this.owner = fields.owner;
     this.agent_mint = fields.agent_mint;
     this.token_uri = fields.token_uri;
+    this.nft_name = fields.nft_name;
+    this.nft_symbol = fields.nft_symbol;
+    this.metadata = fields.metadata;
     this.created_at = fields.created_at;
-    this.status = fields.status;
     this.bump = fields.bump;
   }
 
   static schema: Schema = new Map([
+    [
+      MetadataEntry,
+      {
+        kind: 'struct',
+        fields: [
+          ['key', [32]],
+          ['value', 'string'],
+        ],
+      },
+    ],
     [
       AgentAccount,
       {
@@ -47,8 +83,10 @@ export class AgentAccount {
           ['owner', [32]],
           ['agent_mint', [32]],
           ['token_uri', 'string'],
+          ['nft_name', 'string'],
+          ['nft_symbol', 'string'],
+          ['metadata', [MetadataEntry]],
           ['created_at', 'i64'],
-          ['status', 'u8'],
           ['bump', 'u8'],
         ],
       },
@@ -378,10 +416,10 @@ export class ResponseAccount {
 }
 
 /**
- * Metadata Entry Account (Identity Registry) - 307 bytes
- * Stores key-value metadata for an agent
+ * Metadata Extension Account (Identity Registry) - 307 bytes
+ * Stores key-value metadata for an agent (PDA account)
  */
-export class MetadataEntry {
+export class MetadataExtensionAccount {
   agent_id: bigint;
   key: Uint8Array;
   value: string;
@@ -404,7 +442,7 @@ export class MetadataEntry {
 
   static schema: Schema = new Map([
     [
-      MetadataEntry,
+      MetadataExtensionAccount,
       {
         kind: 'struct',
         fields: [
@@ -418,10 +456,10 @@ export class MetadataEntry {
     ],
   ]);
 
-  static deserialize(data: Buffer): MetadataEntry {
+  static deserialize(data: Buffer): MetadataExtensionAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserialize(this.schema, MetadataEntry, accountData);
+    return deserialize(this.schema, MetadataExtensionAccount, accountData);
   }
 
   getKeyString(): string {

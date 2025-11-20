@@ -6,9 +6,9 @@
 import { PublicKey } from '@solana/web3.js';
 
 // Program IDs for Devnet
-export const IDENTITY_PROGRAM_ID = new PublicKey('AcngQwqu55Ut92MAP5owPh6PhsJUZhaTAG5ULyvW1TpR');
+export const IDENTITY_PROGRAM_ID = new PublicKey('5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn');
 export const REPUTATION_PROGRAM_ID = new PublicKey('9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa');
-export const VALIDATION_PROGRAM_ID = new PublicKey('2masQXYbHKXMrTV9aNLTWS4NMbNHfJhgcsLBtP6N5j6x');
+export const VALIDATION_PROGRAM_ID = new PublicKey('CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW');
 
 /**
  * PDA derivation helpers
@@ -17,17 +17,11 @@ export const VALIDATION_PROGRAM_ID = new PublicKey('2masQXYbHKXMrTV9aNLTWS4NMbNH
 export class PDAHelpers {
   /**
    * Get Agent Account PDA (Identity Registry)
-   * Seeds: ["agent", agent_id]
+   * Seeds: ["agent", agent_mint]
    */
-  static async getAgentPDA(agentId: bigint): Promise<[PublicKey, number]> {
-    if (agentId === undefined || agentId === null) {
-      throw new Error('agentId is required and cannot be undefined or null');
-    }
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
-
+  static async getAgentPDA(agentMint: PublicKey): Promise<[PublicKey, number]> {
     return await PublicKey.findProgramAddress(
-      [Buffer.from('agent'), agentIdBuffer],
+      [Buffer.from('agent'), agentMint.toBuffer()],
       IDENTITY_PROGRAM_ID
     );
   }

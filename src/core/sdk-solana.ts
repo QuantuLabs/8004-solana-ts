@@ -5,8 +5,8 @@
 
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster, createDevnetClient } from './client.js';
-import { SolanaFeedbackManager } from './feedback-manager.js';
-import type { IPFSClient } from '../core/ipfs-client.js';
+import { SolanaFeedbackManager } from './feedback-manager-solana.js';
+import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { AgentAccount } from './borsh-schemas.js';
@@ -15,6 +15,8 @@ import {
   ReputationTransactionBuilder,
   ValidationTransactionBuilder,
 } from './transaction-builder.js';
+import { AgentMintResolver } from './agent-mint-resolver.js';
+import { fetchRegistryConfig } from './config-reader.js';
 
 export interface SolanaSDKConfig {
   cluster?: Cluster;
@@ -39,6 +41,8 @@ export class SolanaSDK {
   private readonly identityTxBuilder?: IdentityTransactionBuilder;
   private readonly reputationTxBuilder?: ReputationTransactionBuilder;
   private readonly validationTxBuilder?: ValidationTransactionBuilder;
+  private mintResolver?: AgentMintResolver;
+  private collectionMint?: PublicKey;
 
   constructor(config: SolanaSDKConfig) {
     this.cluster = config.cluster || 'devnet';
@@ -75,18 +79,57 @@ export class SolanaSDK {
         this.signer
       );
     }
+
+    // Initialize mint resolver (lazy - will be created on first use)
+    // This avoids blocking the constructor with async operations
+  }
+
+  /**
+   * Initialize the agent mint resolver (lazy initialization)
+   * Fetches registry config and creates resolver
+   */
+  private async initializeMintResolver(): Promise<void> {
+    if (this.mintResolver) {
+      return; // Already initialized
+    }
+
+    try {
+      const connection = this.client.getConnection();
+      const configData = await fetchRegistryConfig(connection);
+
+      if (!configData) {
+        throw new Error('Registry config not found. Registry may not be initialized.');
+      }
+
+      this.collectionMint = configData.getCollectionMintPublicKey();
+      this.mintResolver = new AgentMintResolver(connection, this.collectionMint);
+    } catch (error) {
+      throw new Error(`Failed to initialize agent mint resolver: ${error}`);
+    }
   }
 
   // ==================== Agent Methods ====================
 
   /**
    * Load agent by ID
-   * @param agentId - Agent ID (bigint)
+   * @param agentId - Agent ID (number or bigint)
    * @returns Agent account data or null if not found
    */
-  async loadAgent(agentId: bigint): Promise<AgentAccount | null> {
+  async loadAgent(agentId: number | bigint): Promise<AgentAccount | null> {
     try {
-      const [agentPDA] = await PDAHelpers.getAgentPDA(agentId);
+      // Convert to bigint if needed
+      const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
+      // Initialize resolver if needed
+      await this.initializeMintResolver();
+
+      // Resolve agentId → mint via NFT metadata
+      const agentMint = await this.mintResolver!.resolve(id);
+
+      // Derive PDA from mint
+      const [agentPDA] = await PDAHelpers.getAgentPDA(agentMint);
+
+      // Fetch account data
       const data = await this.client.getAccount(agentPDA);
 
       if (!data) {
@@ -130,10 +173,10 @@ export class SolanaSDK {
 
   /**
    * Check if agent exists
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @returns True if agent exists
    */
-  async agentExists(agentId: bigint): Promise<boolean> {
+  async agentExists(agentId: number | bigint): Promise<boolean> {
     const agent = await this.loadAgent(agentId);
     return agent !== null;
   }
@@ -142,75 +185,85 @@ export class SolanaSDK {
 
   /**
    * 1. Get agent reputation summary
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param minScore - Optional minimum score filter
    * @param clientFilter - Optional client filter
    * @returns Reputation summary with average score and total feedbacks
    */
-  async getSummary(agentId: bigint, minScore?: number, clientFilter?: PublicKey) {
-    return await this.feedbackManager.getSummary(agentId, minScore, clientFilter);
+  async getSummary(agentId: number | bigint, minScore?: number, clientFilter?: PublicKey) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    return await this.feedbackManager.getSummary(id, minScore, clientFilter);
   }
 
   /**
    * 2. Read single feedback
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param client - Client public key
-   * @param feedbackIndex - Feedback index
+   * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Feedback object or null
    */
-  async readFeedback(agentId: bigint, client: PublicKey, feedbackIndex: bigint) {
-    return await this.feedbackManager.readFeedback(agentId, client, feedbackIndex);
+  async readFeedback(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    return await this.feedbackManager.readFeedback(id, client, idx);
   }
 
   /**
    * 3. Read all feedbacks for an agent
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param includeRevoked - Include revoked feedbacks
    * @returns Array of feedback objects
    */
-  async readAllFeedback(agentId: bigint, includeRevoked: boolean = false) {
-    return await this.feedbackManager.readAllFeedback(agentId, includeRevoked);
+  async readAllFeedback(agentId: number | bigint, includeRevoked: boolean = false) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    return await this.feedbackManager.readAllFeedback(id, includeRevoked);
   }
 
   /**
    * 4. Get last feedback index for a client
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param client - Client public key
    * @returns Last feedback index
    */
-  async getLastIndex(agentId: bigint, client: PublicKey) {
-    return await this.feedbackManager.getLastIndex(agentId, client);
+  async getLastIndex(agentId: number | bigint, client: PublicKey) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    return await this.feedbackManager.getLastIndex(id, client);
   }
 
   /**
    * 5. Get all clients who gave feedback
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @returns Array of client public keys
    */
-  async getClients(agentId: bigint) {
-    return await this.feedbackManager.getClients(agentId);
+  async getClients(agentId: number | bigint) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    return await this.feedbackManager.getClients(id);
   }
 
   /**
    * 6. Get response count for a feedback
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param client - Client public key
-   * @param feedbackIndex - Feedback index
+   * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Number of responses
    */
-  async getResponseCount(agentId: bigint, client: PublicKey, feedbackIndex: bigint) {
-    return await this.feedbackManager.getResponseCount(agentId, client, feedbackIndex);
+  async getResponseCount(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    return await this.feedbackManager.getResponseCount(id, client, idx);
   }
 
   /**
    * Bonus: Read all responses for a feedback
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param client - Client public key
-   * @param feedbackIndex - Feedback index
+   * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Array of response objects
    */
-  async readResponses(agentId: bigint, client: PublicKey, feedbackIndex: bigint) {
-    return await this.feedbackManager.readResponses(agentId, client, feedbackIndex);
+  async readResponses(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint) {
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    return await this.feedbackManager.readResponses(id, client, idx);
   }
 
   // ==================== Write Methods (require signer) ====================
@@ -231,43 +284,56 @@ export class SolanaSDK {
     if (!this.identityTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
-    return await this.identityTxBuilder.registerAgent(tokenUri);
+
+    // Initialize resolver to cache the mint after registration
+    await this.initializeMintResolver();
+
+    const result = await this.identityTxBuilder.registerAgent(tokenUri);
+
+    // Cache the agentId → mint mapping for instant lookup
+    if (result.success && result.agentId !== undefined && result.agentMint) {
+      this.mintResolver!.addToCache(result.agentId, result.agentMint);
+    }
+
+    return result;
   }
 
   /**
    * Set agent URI (write operation)
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param newUri - New URI
    */
-  async setAgentUri(agentId: bigint, newUri: string) {
+  async setAgentUri(agentId: number | bigint, newUri: string) {
     if (!this.identityTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
-    return await this.identityTxBuilder.setAgentUri(agentId, newUri);
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    return await this.identityTxBuilder.setAgentUri(id, newUri);
   }
 
   /**
    * Set agent metadata (write operation)
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param key - Metadata key
    * @param value - Metadata value
    */
-  async setMetadata(agentId: bigint, key: string, value: string) {
+  async setMetadata(agentId: number | bigint, key: string, value: string) {
     if (!this.identityTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
-    return await this.identityTxBuilder.setMetadata(agentId, key, value);
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    return await this.identityTxBuilder.setMetadata(id, key, value);
   }
 
   /**
    * Give feedback to an agent (write operation)
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param score - Score 0-100
    * @param fileUri - IPFS/Arweave URI
    * @param fileHash - File hash
    */
   async giveFeedback(
-    agentId: bigint,
+    agentId: number | bigint,
     score: number,
     fileUri: string,
     fileHash: Buffer
@@ -275,8 +341,9 @@ export class SolanaSDK {
     if (!this.reputationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     return await this.reputationTxBuilder.giveFeedback(
-      agentId,
+      id,
       score,
       fileUri,
       fileHash
@@ -285,38 +352,42 @@ export class SolanaSDK {
 
   /**
    * Revoke feedback (write operation)
-   * @param agentId - Agent ID
-   * @param feedbackIndex - Feedback index to revoke
+   * @param agentId - Agent ID (number or bigint)
+   * @param feedbackIndex - Feedback index to revoke (number or bigint)
    */
-  async revokeFeedback(agentId: bigint, feedbackIndex: bigint) {
+  async revokeFeedback(agentId: number | bigint, feedbackIndex: number | bigint) {
     if (!this.reputationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
-    return await this.reputationTxBuilder.revokeFeedback(agentId, feedbackIndex);
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    return await this.reputationTxBuilder.revokeFeedback(id, idx);
   }
 
   /**
    * Append response to feedback (write operation)
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param client - Client who gave feedback
-   * @param feedbackIndex - Feedback index
+   * @param feedbackIndex - Feedback index (number or bigint)
    * @param responseUri - Response URI
    * @param responseHash - Response hash
    */
   async appendResponse(
-    agentId: bigint,
+    agentId: number | bigint,
     client: PublicKey,
-    feedbackIndex: bigint,
+    feedbackIndex: number | bigint,
     responseUri: string,
     responseHash: Buffer
   ) {
     if (!this.reputationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
     return await this.reputationTxBuilder.appendResponse(
-      agentId,
+      id,
       client,
-      feedbackIndex,
+      idx,
       responseUri,
       responseHash
     );
@@ -324,20 +395,21 @@ export class SolanaSDK {
 
   /**
    * Request validation (write operation)
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param validator - Validator public key
    * @param requestHash - Request hash
    */
   async requestValidation(
-    agentId: bigint,
+    agentId: number | bigint,
     validator: PublicKey,
     requestHash: Buffer
   ) {
     if (!this.validationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     return await this.validationTxBuilder.requestValidation(
-      agentId,
+      id,
       validator,
       requestHash
     );
@@ -345,14 +417,14 @@ export class SolanaSDK {
 
   /**
    * Respond to validation request (write operation)
-   * @param agentId - Agent ID
+   * @param agentId - Agent ID (number or bigint)
    * @param requester - Requester public key
    * @param nonce - Request nonce
    * @param response - Response (0=rejected, 1=approved)
    * @param responseHash - Response hash
    */
   async respondToValidation(
-    agentId: bigint,
+    agentId: number | bigint,
     requester: PublicKey,
     nonce: number,
     response: number,
@@ -361,8 +433,9 @@ export class SolanaSDK {
     if (!this.validationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     return await this.validationTxBuilder.respondToValidation(
-      agentId,
+      id,
       requester,
       nonce,
       response,
