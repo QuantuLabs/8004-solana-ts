@@ -5,8 +5,8 @@
 
 import { PublicKey } from '@solana/web3.js';
 
-// Program IDs for Devnet
-export const IDENTITY_PROGRAM_ID = new PublicKey('5euA2SjKFduF6FvXJuJdyqEo6ViAHMrw54CJB5PLaEJn');
+// Program IDs for Devnet - Must match 8004-solana declare_id! values
+export const IDENTITY_PROGRAM_ID = new PublicKey('2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ');
 export const REPUTATION_PROGRAM_ID = new PublicKey('9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa');
 export const VALIDATION_PROGRAM_ID = new PublicKey('CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW');
 
@@ -36,6 +36,24 @@ export class PDAHelpers {
 
     return await PublicKey.findProgramAddress(
       [Buffer.from('metadata'), agentIdBuffer, key],
+      IDENTITY_PROGRAM_ID
+    );
+  }
+
+  /**
+   * Get Metadata Extension PDA (Identity Registry)
+   * Seeds: ["metadata_ext", agent_mint, extension_index]
+   * Used for storing additional metadata beyond the 10 inline entries
+   */
+  static async getMetadataExtensionPDA(
+    agentMint: PublicKey,
+    extensionIndex: number
+  ): Promise<[PublicKey, number]> {
+    const indexBuffer = Buffer.alloc(1);
+    indexBuffer.writeUInt8(extensionIndex);
+
+    return await PublicKey.findProgramAddress(
+      [Buffer.from('metadata_ext'), agentMint.toBuffer(), indexBuffer],
       IDENTITY_PROGRAM_ID
     );
   }
@@ -170,7 +188,8 @@ export class PDAHelpers {
 
   /**
    * Get Validation Request PDA (Validation Registry)
-   * Seeds: ["validation_request", agent_id, validator, nonce]
+   * Seeds: ["validation", agent_id, validator_address, nonce]
+   * Note: Seed is "validation", not "validation_request"
    */
   static async getValidationRequestPDA(
     agentId: bigint,
@@ -185,11 +204,22 @@ export class PDAHelpers {
 
     return await PublicKey.findProgramAddress(
       [
-        Buffer.from('validation_request'),
+        Buffer.from('validation'),
         agentIdBuffer,
         validator.toBuffer(),
         nonceBuffer,
       ],
+      VALIDATION_PROGRAM_ID
+    );
+  }
+
+  /**
+   * Get Validation Config PDA (Validation Registry)
+   * Seeds: ["config"]
+   */
+  static async getValidationConfigPDA(): Promise<[PublicKey, number]> {
+    return await PublicKey.findProgramAddress(
+      [Buffer.from('config')],
       VALIDATION_PROGRAM_ID
     );
   }
