@@ -1,39 +1,49 @@
 /**
  * Borsh schemas for deserializing Solana account data
  * Based on ERC-8004 Solana program account structures
+ * Must match exactly the Rust structs in 8004-solana programs
  */
 
 import { Schema, deserializeUnchecked } from 'borsh';
 import { PublicKey } from '@solana/web3.js';
 
 /**
- * Metadata Entry (inline struct for AgentAccount)
- * Matches Rust: { key: String, value: Vec<u8> }
+ * Metadata Entry (inline struct for AgentAccount and MetadataExtension)
+ * Matches Rust: { metadata_key: String, metadata_value: Vec<u8> }
  */
 export class MetadataEntry {
-  key: string;        // String in Rust
-  value: Uint8Array;  // Vec<u8> in Rust
+  metadata_key: string;    // String in Rust (max 32 bytes)
+  metadata_value: Uint8Array;  // Vec<u8> in Rust (max 256 bytes)
 
-  constructor(fields: { key: string; value: Uint8Array }) {
-    this.key = fields.key;
-    this.value = fields.value;
+  constructor(fields: { metadata_key: string; metadata_value: Uint8Array }) {
+    this.metadata_key = fields.metadata_key;
+    this.metadata_value = fields.metadata_value;
   }
 
   getValueString(): string {
-    // Convert value bytes to string if it's UTF-8
-    return Buffer.from(this.value).toString('utf8');
+    return Buffer.from(this.metadata_value).toString('utf8');
+  }
+
+  // Alias for backwards compatibility
+  get key(): string {
+    return this.metadata_key;
+  }
+
+  get value(): Uint8Array {
+    return this.metadata_value;
   }
 }
 
 /**
  * Agent Account (Identity Registry) - Variable size (dynamic metadata)
  * Represents an agent NFT with metadata
+ * Seeds: ["agent", mint.key()]
  */
 export class AgentAccount {
   agent_id: bigint;
   owner: Uint8Array;
   agent_mint: Uint8Array;
-  token_uri: string;
+  agent_uri: string;         // Note: field name is agent_uri, not token_uri
   nft_name: string;
   nft_symbol: string;
   metadata: MetadataEntry[];
@@ -44,7 +54,7 @@ export class AgentAccount {
     agent_id: bigint;
     owner: Uint8Array;
     agent_mint: Uint8Array;
-    token_uri: string;
+    agent_uri: string;
     nft_name: string;
     nft_symbol: string;
     metadata: MetadataEntry[];
@@ -54,7 +64,7 @@ export class AgentAccount {
     this.agent_id = fields.agent_id;
     this.owner = fields.owner;
     this.agent_mint = fields.agent_mint;
-    this.token_uri = fields.token_uri;
+    this.agent_uri = fields.agent_uri;
     this.nft_name = fields.nft_name;
     this.nft_symbol = fields.nft_symbol;
     this.metadata = fields.metadata;
@@ -68,8 +78,8 @@ export class AgentAccount {
       {
         kind: 'struct',
         fields: [
-          ['key', 'string'],      // String in Rust
-          ['value', ['u8']],      // Vec<u8> in Rust
+          ['metadata_key', 'string'],      // String in Rust
+          ['metadata_value', ['u8']],      // Vec<u8> in Rust
         ],
       },
     ],
@@ -81,11 +91,11 @@ export class AgentAccount {
           ['agent_id', 'u64'],
           ['owner', [32]],
           ['agent_mint', [32]],
-          ['token_uri', 'string'],
+          ['agent_uri', 'string'],         // agent_uri not token_uri
           ['nft_name', 'string'],
           ['nft_symbol', 'string'],
-          ['metadata', [MetadataEntry]],  // Vec<MetadataEntry>
-          ['created_at', 'u64'],
+          ['metadata', [MetadataEntry]],   // Vec<MetadataEntry>
+          ['created_at', 'i64'],           // Note: i64, not u64 (timestamp)
           ['bump', 'u8'],
         ],
       },
@@ -105,379 +115,23 @@ export class AgentAccount {
   getMintPublicKey(): PublicKey {
     return new PublicKey(this.agent_mint);
   }
-}
 
-/**
- * Feedback Account (Reputation Registry) - 526 bytes
- * Represents feedback given by a client to an agent
- */
-export class FeedbackAccount {
-  agent_id: bigint;
-  client: Uint8Array;
-  feedback_index: bigint;
-  score: number;
-  performance_tags: Uint8Array;
-  functionality_tags: Uint8Array;
-  file_uri: string;
-  file_hash: Uint8Array;
-  revoked: boolean;
-  created_at: bigint;
-  bump: number;
-
-  constructor(fields: {
-    agent_id: bigint;
-    client: Uint8Array;
-    feedback_index: bigint;
-    score: number;
-    performance_tags: Uint8Array;
-    functionality_tags: Uint8Array;
-    file_uri: string;
-    file_hash: Uint8Array;
-    revoked: boolean;
-    created_at: bigint;
-    bump: number;
-  }) {
-    this.agent_id = fields.agent_id;
-    this.client = fields.client;
-    this.feedback_index = fields.feedback_index;
-    this.score = fields.score;
-    this.performance_tags = fields.performance_tags;
-    this.functionality_tags = fields.functionality_tags;
-    this.file_uri = fields.file_uri;
-    this.file_hash = fields.file_hash;
-    this.revoked = fields.revoked;
-    this.created_at = fields.created_at;
-    this.bump = fields.bump;
-  }
-
-  static schema: Schema = new Map([
-    [
-      FeedbackAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['client', [32]],
-          ['feedback_index', 'u64'],
-          ['score', 'u8'],
-          ['performance_tags', [32]],
-          ['functionality_tags', [32]],
-          ['file_uri', 'string'],
-          ['file_hash', [32]],
-          ['revoked', 'u8'],
-          ['created_at', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  static deserialize(data: Buffer): FeedbackAccount {
-    // Skip 8-byte Anchor discriminator
-    const accountData = data.slice(8);
-    const raw = deserialize(this.schema, FeedbackAccount, accountData) as any;
-
-    // Convert u8 to boolean with proper type safety
-    return new FeedbackAccount({
-      agent_id: raw.agent_id,
-      client: raw.client,
-      feedback_index: raw.feedback_index,
-      score: raw.score,
-      performance_tags: raw.performance_tags,
-      functionality_tags: raw.functionality_tags,
-      file_uri: raw.file_uri,
-      file_hash: raw.file_hash,
-      revoked: raw.revoked === 1,
-      created_at: raw.created_at,
-      bump: raw.bump,
-    });
-  }
-
-  getClientPublicKey(): PublicKey {
-    return new PublicKey(this.client);
+  // Alias for backwards compatibility
+  get token_uri(): string {
+    return this.agent_uri;
   }
 }
 
 /**
- * Agent Reputation Account (Reputation Registry) - Cached aggregates
- * Stores pre-computed reputation metrics for O(1) queries
- */
-export class AgentReputationAccount {
-  agent_id: bigint;
-  total_feedbacks: bigint;
-  sum_scores: bigint;
-  average_score: number;
-  last_updated: bigint;
-  bump: number;
-
-  constructor(fields: {
-    agent_id: bigint;
-    total_feedbacks: bigint;
-    sum_scores: bigint;
-    average_score: number;
-    last_updated: bigint;
-    bump: number;
-  }) {
-    this.agent_id = fields.agent_id;
-    this.total_feedbacks = fields.total_feedbacks;
-    this.sum_scores = fields.sum_scores;
-    this.average_score = fields.average_score;
-    this.last_updated = fields.last_updated;
-    this.bump = fields.bump;
-  }
-
-  static schema: Schema = new Map([
-    [
-      AgentReputationAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['total_feedbacks', 'u64'],
-          ['sum_scores', 'u64'],
-          ['average_score', 'u8'],
-          ['last_updated', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  static deserialize(data: Buffer): AgentReputationAccount {
-    // Skip 8-byte Anchor discriminator
-    const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, AgentReputationAccount, accountData);
-  }
-}
-
-/**
- * Client Index Account (Reputation Registry)
- * Tracks the last feedback index for a specific client
- */
-export class ClientIndexAccount {
-  agent_id: bigint;
-  client: Uint8Array;
-  last_feedback_index: bigint;
-  bump: number;
-
-  constructor(fields: {
-    agent_id: bigint;
-    client: Uint8Array;
-    last_feedback_index: bigint;
-    bump: number;
-  }) {
-    this.agent_id = fields.agent_id;
-    this.client = fields.client;
-    this.last_feedback_index = fields.last_feedback_index;
-    this.bump = fields.bump;
-  }
-
-  static schema: Schema = new Map([
-    [
-      ClientIndexAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['client', [32]],
-          ['last_feedback_index', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  static deserialize(data: Buffer): ClientIndexAccount {
-    // Skip 8-byte Anchor discriminator
-    const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, ClientIndexAccount, accountData);
-  }
-
-  getClientPublicKey(): PublicKey {
-    return new PublicKey(this.client);
-  }
-}
-
-/**
- * Response Index Account (Reputation Registry)
- * Tracks the number of responses for a specific feedback
- */
-export class ResponseIndexAccount {
-  agent_id: bigint;
-  client: Uint8Array;
-  feedback_index: bigint;
-  response_count: bigint;
-  bump: number;
-
-  constructor(fields: {
-    agent_id: bigint;
-    client: Uint8Array;
-    feedback_index: bigint;
-    response_count: bigint;
-    bump: number;
-  }) {
-    this.agent_id = fields.agent_id;
-    this.client = fields.client;
-    this.feedback_index = fields.feedback_index;
-    this.response_count = fields.response_count;
-    this.bump = fields.bump;
-  }
-
-  static schema: Schema = new Map([
-    [
-      ResponseIndexAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['client', [32]],
-          ['feedback_index', 'u64'],
-          ['response_count', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  static deserialize(data: Buffer): ResponseIndexAccount {
-    // Skip 8-byte Anchor discriminator
-    const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, ResponseIndexAccount, accountData);
-  }
-}
-
-/**
- * Response Account (Reputation Registry) - 322 bytes
- * Represents a response to feedback (from agent, aggregator, or community)
- */
-export class ResponseAccount {
-  agent_id: bigint;
-  client: Uint8Array;
-  feedback_index: bigint;
-  response_index: bigint;
-  responder: Uint8Array;
-  response_uri: string;
-  response_hash: Uint8Array;
-  created_at: bigint;
-  bump: number;
-
-  constructor(fields: {
-    agent_id: bigint;
-    client: Uint8Array;
-    feedback_index: bigint;
-    response_index: bigint;
-    responder: Uint8Array;
-    response_uri: string;
-    response_hash: Uint8Array;
-    created_at: bigint;
-    bump: number;
-  }) {
-    this.agent_id = fields.agent_id;
-    this.client = fields.client;
-    this.feedback_index = fields.feedback_index;
-    this.response_index = fields.response_index;
-    this.responder = fields.responder;
-    this.response_uri = fields.response_uri;
-    this.response_hash = fields.response_hash;
-    this.created_at = fields.created_at;
-    this.bump = fields.bump;
-  }
-
-  static schema: Schema = new Map([
-    [
-      ResponseAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['client', [32]],
-          ['feedback_index', 'u64'],
-          ['response_index', 'u64'],
-          ['responder', [32]],
-          ['response_uri', 'string'],
-          ['response_hash', [32]],
-          ['created_at', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  static deserialize(data: Buffer): ResponseAccount {
-    // Skip 8-byte Anchor discriminator
-    const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, ResponseAccount, accountData);
-  }
-
-  getResponderPublicKey(): PublicKey {
-    return new PublicKey(this.responder);
-  }
-}
-
-/**
- * Metadata Extension Account (Identity Registry) - 307 bytes
- * Stores key-value metadata for an agent (PDA account)
- */
-export class MetadataExtensionAccount {
-  agent_id: bigint;
-  key: Uint8Array;
-  value: string;
-  bump: number;
-  created_at: bigint;
-
-  constructor(fields: {
-    agent_id: bigint;
-    key: Uint8Array;
-    value: string;
-    bump: number;
-    created_at: bigint;
-  }) {
-    this.agent_id = fields.agent_id;
-    this.key = fields.key;
-    this.value = fields.value;
-    this.bump = fields.bump;
-    this.created_at = fields.created_at;
-  }
-
-  static schema: Schema = new Map([
-    [
-      MetadataExtensionAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['key', [32]],
-          ['value', 'string'],
-          ['bump', 'u8'],
-          ['created_at', 'u64'],
-        ],
-      },
-    ],
-  ]);
-
-  static deserialize(data: Buffer): MetadataExtensionAccount {
-    // Skip 8-byte Anchor discriminator
-    const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, MetadataExtensionAccount, accountData);
-  }
-
-  getKeyString(): string {
-    // Convert bytes32 key to string (null-terminated)
-    const nullIndex = this.key.indexOf(0);
-    const keyBytes = nullIndex >= 0 ? this.key.slice(0, nullIndex) : this.key;
-    return Buffer.from(keyBytes).toString('utf8');
-  }
-}
-
-/**
- * Registry Config Account (Identity Registry) - 73 bytes
- * Configuration for the identity registry
+ * Registry Config Account (Identity Registry)
+ * Seeds: ["config"]
  */
 export class RegistryConfig {
   authority: Uint8Array;
   next_agent_id: bigint;
   total_agents: bigint;
   collection_mint: Uint8Array;
+  collection_authority_bump: number;  // Added - was missing
   bump: number;
 
   constructor(fields: {
@@ -485,12 +139,14 @@ export class RegistryConfig {
     next_agent_id: bigint;
     total_agents: bigint;
     collection_mint: Uint8Array;
+    collection_authority_bump: number;
     bump: number;
   }) {
     this.authority = fields.authority;
     this.next_agent_id = fields.next_agent_id;
     this.total_agents = fields.total_agents;
     this.collection_mint = fields.collection_mint;
+    this.collection_authority_bump = fields.collection_authority_bump;
     this.bump = fields.bump;
   }
 
@@ -504,6 +160,7 @@ export class RegistryConfig {
           ['next_agent_id', 'u64'],
           ['total_agents', 'u64'],
           ['collection_mint', [32]],
+          ['collection_authority_bump', 'u8'],  // Added
           ['bump', 'u8'],
         ],
       },
@@ -522,5 +179,545 @@ export class RegistryConfig {
 
   getCollectionMintPublicKey(): PublicKey {
     return new PublicKey(this.collection_mint);
+  }
+}
+
+/**
+ * Metadata Extension Account (Identity Registry)
+ * Stores additional metadata entries beyond the base 10
+ * Seeds: ["metadata_ext", mint.key(), extension_index]
+ */
+export class MetadataExtensionAccount {
+  agent_mint: Uint8Array;        // Reference to agent NFT mint
+  extension_index: number;        // Extension index (0, 1, 2, ...)
+  metadata: MetadataEntry[];      // Vec<MetadataEntry> (max 10 per extension)
+  bump: number;
+
+  constructor(fields: {
+    agent_mint: Uint8Array;
+    extension_index: number;
+    metadata: MetadataEntry[];
+    bump: number;
+  }) {
+    this.agent_mint = fields.agent_mint;
+    this.extension_index = fields.extension_index;
+    this.metadata = fields.metadata;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      MetadataEntry,
+      {
+        kind: 'struct',
+        fields: [
+          ['metadata_key', 'string'],
+          ['metadata_value', ['u8']],
+        ],
+      },
+    ],
+    [
+      MetadataExtensionAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_mint', [32]],
+          ['extension_index', 'u8'],
+          ['metadata', [MetadataEntry]],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): MetadataExtensionAccount {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, MetadataExtensionAccount, accountData);
+  }
+
+  getMintPublicKey(): PublicKey {
+    return new PublicKey(this.agent_mint);
+  }
+}
+
+/**
+ * Feedback Account (Reputation Registry)
+ * Represents feedback given by a client to an agent
+ * Seeds: ["feedback", agent_id (LE), client_address, feedback_index (LE)]
+ */
+export class FeedbackAccount {
+  agent_id: bigint;
+  client_address: Uint8Array;     // Renamed from client
+  feedback_index: bigint;
+  score: number;
+  tag1: string;                   // Changed from bytes32 to String
+  tag2: string;                   // Changed from bytes32 to String
+  file_uri: string;
+  file_hash: Uint8Array;
+  is_revoked: boolean;            // Renamed from revoked
+  created_at: bigint;
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    client_address: Uint8Array;
+    feedback_index: bigint;
+    score: number;
+    tag1: string;
+    tag2: string;
+    file_uri: string;
+    file_hash: Uint8Array;
+    is_revoked: boolean;
+    created_at: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.client_address = fields.client_address;
+    this.feedback_index = fields.feedback_index;
+    this.score = fields.score;
+    this.tag1 = fields.tag1;
+    this.tag2 = fields.tag2;
+    this.file_uri = fields.file_uri;
+    this.file_hash = fields.file_hash;
+    this.is_revoked = fields.is_revoked;
+    this.created_at = fields.created_at;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      FeedbackAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['client_address', [32]],
+          ['feedback_index', 'u64'],
+          ['score', 'u8'],
+          ['tag1', 'string'],           // String, not bytes32
+          ['tag2', 'string'],           // String, not bytes32
+          ['file_uri', 'string'],
+          ['file_hash', [32]],
+          ['is_revoked', 'u8'],         // bool serialized as u8
+          ['created_at', 'i64'],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): FeedbackAccount {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    const raw = deserializeUnchecked(this.schema, FeedbackAccount, accountData) as any;
+
+    // Convert u8 to boolean
+    return new FeedbackAccount({
+      agent_id: raw.agent_id,
+      client_address: raw.client_address,
+      feedback_index: raw.feedback_index,
+      score: raw.score,
+      tag1: raw.tag1,
+      tag2: raw.tag2,
+      file_uri: raw.file_uri,
+      file_hash: raw.file_hash,
+      is_revoked: raw.is_revoked === 1,
+      created_at: raw.created_at,
+      bump: raw.bump,
+    });
+  }
+
+  getClientPublicKey(): PublicKey {
+    return new PublicKey(this.client_address);
+  }
+
+  // Alias for backwards compatibility
+  get client(): Uint8Array {
+    return this.client_address;
+  }
+
+  get revoked(): boolean {
+    return this.is_revoked;
+  }
+}
+
+/**
+ * Agent Reputation Metadata Account (Reputation Registry)
+ * Cached aggregated stats for O(1) queries
+ * Seeds: ["agent_reputation", agent_id (LE)]
+ */
+export class AgentReputationAccount {
+  agent_id: bigint;
+  total_feedbacks: bigint;
+  total_score_sum: bigint;        // Renamed from sum_scores
+  average_score: number;
+  last_updated: bigint;
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    total_feedbacks: bigint;
+    total_score_sum: bigint;
+    average_score: number;
+    last_updated: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.total_feedbacks = fields.total_feedbacks;
+    this.total_score_sum = fields.total_score_sum;
+    this.average_score = fields.average_score;
+    this.last_updated = fields.last_updated;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      AgentReputationAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['total_feedbacks', 'u64'],
+          ['total_score_sum', 'u64'],     // Renamed from sum_scores
+          ['average_score', 'u8'],
+          ['last_updated', 'i64'],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): AgentReputationAccount {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, AgentReputationAccount, accountData);
+  }
+
+  // Alias for backwards compatibility
+  get sum_scores(): bigint {
+    return this.total_score_sum;
+  }
+}
+
+/**
+ * Client Index Account (Reputation Registry)
+ * Tracks the next feedback index for a specific client-agent pair
+ * Seeds: ["client_index", agent_id (LE), client_address]
+ */
+export class ClientIndexAccount {
+  agent_id: bigint;
+  client_address: Uint8Array;     // Renamed from client
+  last_index: bigint;             // Renamed from last_feedback_index
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    client_address: Uint8Array;
+    last_index: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.client_address = fields.client_address;
+    this.last_index = fields.last_index;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      ClientIndexAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['client_address', [32]],
+          ['last_index', 'u64'],          // Renamed from last_feedback_index
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): ClientIndexAccount {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, ClientIndexAccount, accountData);
+  }
+
+  getClientPublicKey(): PublicKey {
+    return new PublicKey(this.client_address);
+  }
+
+  // Alias for backwards compatibility
+  get client(): Uint8Array {
+    return this.client_address;
+  }
+
+  get last_feedback_index(): bigint {
+    return this.last_index;
+  }
+}
+
+/**
+ * Response Index Account (Reputation Registry)
+ * Tracks the next response index for a specific feedback
+ * Seeds: ["response_index", agent_id (LE), client_address, feedback_index (LE)]
+ */
+export class ResponseIndexAccount {
+  agent_id: bigint;
+  client_address: Uint8Array;     // Renamed from client
+  feedback_index: bigint;
+  next_index: bigint;             // Renamed from response_count
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    client_address: Uint8Array;
+    feedback_index: bigint;
+    next_index: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.client_address = fields.client_address;
+    this.feedback_index = fields.feedback_index;
+    this.next_index = fields.next_index;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      ResponseIndexAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['client_address', [32]],
+          ['feedback_index', 'u64'],
+          ['next_index', 'u64'],          // Renamed from response_count
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): ResponseIndexAccount {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, ResponseIndexAccount, accountData);
+  }
+
+  // Alias for backwards compatibility
+  get client(): Uint8Array {
+    return this.client_address;
+  }
+
+  get response_count(): bigint {
+    return this.next_index;
+  }
+}
+
+/**
+ * Response Account (Reputation Registry)
+ * Represents a response to feedback (from agent, aggregator, or community)
+ * Seeds: ["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]
+ */
+export class ResponseAccount {
+  agent_id: bigint;
+  client_address: Uint8Array;     // Renamed from client
+  feedback_index: bigint;
+  response_index: bigint;
+  responder: Uint8Array;
+  response_uri: string;
+  response_hash: Uint8Array;
+  created_at: bigint;
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    client_address: Uint8Array;
+    feedback_index: bigint;
+    response_index: bigint;
+    responder: Uint8Array;
+    response_uri: string;
+    response_hash: Uint8Array;
+    created_at: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.client_address = fields.client_address;
+    this.feedback_index = fields.feedback_index;
+    this.response_index = fields.response_index;
+    this.responder = fields.responder;
+    this.response_uri = fields.response_uri;
+    this.response_hash = fields.response_hash;
+    this.created_at = fields.created_at;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      ResponseAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['client_address', [32]],
+          ['feedback_index', 'u64'],
+          ['response_index', 'u64'],
+          ['responder', [32]],
+          ['response_uri', 'string'],
+          ['response_hash', [32]],
+          ['created_at', 'i64'],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): ResponseAccount {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, ResponseAccount, accountData);
+  }
+
+  getResponderPublicKey(): PublicKey {
+    return new PublicKey(this.responder);
+  }
+
+  // Alias for backwards compatibility
+  get client(): Uint8Array {
+    return this.client_address;
+  }
+}
+
+/**
+ * Validation Config Account (Validation Registry)
+ * Seeds: ["config"]
+ */
+export class ValidationConfig {
+  authority: Uint8Array;
+  identity_registry: Uint8Array;
+  total_requests: bigint;
+  total_responses: bigint;
+  bump: number;
+
+  constructor(fields: {
+    authority: Uint8Array;
+    identity_registry: Uint8Array;
+    total_requests: bigint;
+    total_responses: bigint;
+    bump: number;
+  }) {
+    this.authority = fields.authority;
+    this.identity_registry = fields.identity_registry;
+    this.total_requests = fields.total_requests;
+    this.total_responses = fields.total_responses;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      ValidationConfig,
+      {
+        kind: 'struct',
+        fields: [
+          ['authority', [32]],
+          ['identity_registry', [32]],
+          ['total_requests', 'u64'],
+          ['total_responses', 'u64'],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): ValidationConfig {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, ValidationConfig, accountData);
+  }
+
+  getAuthorityPublicKey(): PublicKey {
+    return new PublicKey(this.authority);
+  }
+
+  getIdentityRegistryPublicKey(): PublicKey {
+    return new PublicKey(this.identity_registry);
+  }
+}
+
+/**
+ * Validation Request Account (Validation Registry)
+ * Seeds: ["validation", agent_id (LE), validator_address, nonce (LE)]
+ */
+export class ValidationRequest {
+  agent_id: bigint;
+  validator_address: Uint8Array;
+  nonce: number;                  // u32
+  request_hash: Uint8Array;
+  response_hash: Uint8Array;
+  response: number;               // u8 (0-100)
+  created_at: bigint;
+  responded_at: bigint;
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    validator_address: Uint8Array;
+    nonce: number;
+    request_hash: Uint8Array;
+    response_hash: Uint8Array;
+    response: number;
+    created_at: bigint;
+    responded_at: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.validator_address = fields.validator_address;
+    this.nonce = fields.nonce;
+    this.request_hash = fields.request_hash;
+    this.response_hash = fields.response_hash;
+    this.response = fields.response;
+    this.created_at = fields.created_at;
+    this.responded_at = fields.responded_at;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map([
+    [
+      ValidationRequest,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['validator_address', [32]],
+          ['nonce', 'u32'],
+          ['request_hash', [32]],
+          ['response_hash', [32]],
+          ['response', 'u8'],
+          ['created_at', 'i64'],
+          ['responded_at', 'i64'],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): ValidationRequest {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, ValidationRequest, accountData);
+  }
+
+  getValidatorPublicKey(): PublicKey {
+    return new PublicKey(this.validator_address);
+  }
+
+  hasResponse(): boolean {
+    return this.responded_at !== BigInt(0);
+  }
+
+  isPending(): boolean {
+    return this.responded_at === BigInt(0);
   }
 }
