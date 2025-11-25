@@ -44,3 +44,16 @@ export function getMasterEditionPDA(mint: PublicKey): PublicKey {
   );
   return pda;
 }
+
+/**
+ * Get Collection Authority PDA for Identity Registry
+ * Seeds: ["collection_authority"]
+ * This PDA signs for Metaplex collection verification
+ */
+export function getCollectionAuthorityPDA(programId: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('collection_authority')],
+    programId
+  );
+  return pda;
+}
