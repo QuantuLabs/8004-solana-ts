@@ -1,6 +1,7 @@
 /**
  * Transaction builder for ERC-8004 Solana programs
  * Handles transaction creation, signing, and sending without Anchor
+ * Updated to match 8004-solana program interfaces
  */
 
 import {
@@ -14,16 +15,16 @@ import {
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { PDAHelpers } from './pda-helpers.js';
+import { PDAHelpers, IDENTITY_PROGRAM_ID } from './pda-helpers.js';
 import {
   IdentityInstructionBuilder,
   ReputationInstructionBuilder,
   ValidationInstructionBuilder,
 } from './instruction-builder.js';
 import { fetchRegistryConfig } from './config-reader.js';
-import { getMetadataPDA, getMasterEditionPDA } from './metaplex-helpers.js';
+import { getMetadataPDA, getMasterEditionPDA, getCollectionAuthorityPDA } from './metaplex-helpers.js';
 import type { Cluster } from './client.js';
-import { stringToBytes32 } from './pda-helpers.js';
+import { ClientIndexAccount, AgentAccount } from './borsh-schemas.js';
 
 export interface TransactionResult {
   signature: TransactionSignature;
@@ -47,12 +48,12 @@ export class IdentityTransactionBuilder {
 
   /**
    * Register a new agent
-   * @param tokenUri - Optional token URI
+   * @param agentUri - Optional agent URI
    * @param metadata - Optional metadata entries (key-value pairs)
    * @returns Transaction result with agent ID, agentMint, and all signatures
    */
   async registerAgent(
-    tokenUri?: string,
+    agentUri?: string,
     metadata?: Array<{ key: string; value: string }>
   ): Promise<TransactionResult & { agentId?: bigint; agentMint?: PublicKey; signatures?: string[] }> {
     try {
@@ -62,7 +63,7 @@ export class IdentityTransactionBuilder {
         throw new Error('Registry not initialized. Please initialize the registry first.');
       }
 
-      // Get the real next agent ID from config (ensure it's a BigInt)
+      // Get the real next agent ID from config
       const agentId = BigInt(configData.next_agent_id);
 
       // Generate new mint for agent NFT
@@ -72,9 +73,11 @@ export class IdentityTransactionBuilder {
       const [configPda] = await PDAHelpers.getRegistryConfigPDA();
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint.publicKey);
 
+      // Get collection authority PDA - needed for signing collection verification
+      const collectionAuthorityPda = getCollectionAuthorityPDA(IDENTITY_PROGRAM_ID);
+
       // Get collection mint from config
       const collectionMint = configData.getCollectionMintPublicKey();
-      const authority = configData.getAuthorityPublicKey();
 
       // Calculate Metaplex PDAs
       const agentMetadata = getMetadataPDA(agentMint.publicKey);
@@ -83,7 +86,7 @@ export class IdentityTransactionBuilder {
       const collectionMasterEdition = getMasterEditionPDA(collectionMint);
 
       // Calculate Associated Token Account
-      const tokenAccount = getAssociatedTokenAddressSync(
+      const agentTokenAccount = getAssociatedTokenAddressSync(
         agentMint.publicKey,
         this.payer.publicKey
       );
@@ -96,32 +99,46 @@ export class IdentityTransactionBuilder {
         ? metadata.slice(10)
         : [];
 
-      // Build register instruction with inline metadata only (max 10)
-      const registerInstruction = this.instructionBuilder.buildRegisterAgent(
-        configPda,
-        authority,
-        agentPda,
-        agentMint.publicKey,
-        agentMetadata,
-        agentMasterEdition,
-        tokenAccount,
-        collectionMint,
-        collectionMetadata,
-        collectionMasterEdition,
-        this.payer.publicKey,
-        tokenUri,
-        inlineMetadata
-      );
+      // Build register instruction - choose based on metadata presence
+      const registerInstruction = inlineMetadata && inlineMetadata.length > 0
+        ? this.instructionBuilder.buildRegisterWithMetadata(
+            configPda,
+            collectionAuthorityPda,
+            agentPda,
+            agentMint.publicKey,
+            agentMetadata,
+            agentMasterEdition,
+            agentTokenAccount,
+            collectionMint,
+            collectionMetadata,
+            collectionMasterEdition,
+            this.payer.publicKey,
+            agentUri || '',
+            inlineMetadata
+          )
+        : this.instructionBuilder.buildRegister(
+            configPda,
+            collectionAuthorityPda,
+            agentPda,
+            agentMint.publicKey,
+            agentMetadata,
+            agentMasterEdition,
+            agentTokenAccount,
+            collectionMint,
+            collectionMetadata,
+            collectionMasterEdition,
+            this.payer.publicKey,
+            agentUri || ''
+          );
 
       // Create transaction with increased compute budget
-      // Note: We allocate 400K CUs but only pay for what's actually consumed
       const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-        units: 400_000, // Increase from default 200K to 400K
+        units: 400_000,
       });
 
       const registerTransaction = new Transaction()
-        .add(computeBudgetIx)  // Add compute budget first
-        .add(registerInstruction);      // Then add the actual instruction
+        .add(computeBudgetIx)
+        .add(registerInstruction);
 
       // Send register transaction with retry
       const registerSignature = await this.sendWithRetry(
@@ -135,22 +152,19 @@ export class IdentityTransactionBuilder {
       if (extendedMetadata.length > 0) {
         console.log(`Creating ${extendedMetadata.length} metadata extensions...`);
 
-        // Calculate optimal batching based on actual metadata sizes
         const batchSize = this.calculateOptimalBatch(extendedMetadata);
         console.log(`Batch size: ${batchSize} instructions per transaction`);
 
-        // Split into batches
         for (let i = 0; i < extendedMetadata.length; i += batchSize) {
           const batch = extendedMetadata.slice(i, Math.min(i + batchSize, extendedMetadata.length));
           const batchIndex = Math.floor(i / batchSize);
 
           console.log(`Processing batch ${batchIndex + 1} with ${batch.length} metadata entries...`);
 
-          // Create transaction for this batch
           const extTx = new Transaction().add(computeBudgetIx);
 
           for (let j = 0; j < batch.length; j++) {
-            const extensionIndex = i + j; // Global extension index
+            const extensionIndex = i + j;
             const { key, value } = batch[j];
 
             const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(
@@ -158,20 +172,29 @@ export class IdentityTransactionBuilder {
               extensionIndex
             );
 
-            const extInstruction = this.instructionBuilder.buildSetMetadataExtended(
-              this.payer.publicKey,
-              agentPda,
-              agentMint.publicKey,
+            // First create the extension PDA if needed
+            const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(
               metadataExtension,
+              agentMint.publicKey,
+              agentPda,
+              this.payer.publicKey,
+              extensionIndex
+            );
+            extTx.add(createExtIx);
+
+            // Then set the metadata
+            const setExtIx = this.instructionBuilder.buildSetMetadataExtended(
+              metadataExtension,
+              agentMint.publicKey,
+              agentPda,
+              this.payer.publicKey,
               extensionIndex,
               key,
               value
             );
-
-            extTx.add(extInstruction);
+            extTx.add(setExtIx);
           }
 
-          // Send batch transaction with retry
           const batchSignature = await this.sendWithRetry(extTx, [this.payer]);
           allSignatures.push(batchSignature);
 
@@ -182,8 +205,8 @@ export class IdentityTransactionBuilder {
       }
 
       return {
-        signature: allSignatures[0], // First signature for backward compatibility
-        signatures: allSignatures,   // All signatures
+        signature: allSignatures[0],
+        signatures: allSignatures,
         success: true,
         agentId,
         agentMint: agentMint.publicKey,
@@ -201,27 +224,18 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Set agent URI
-   * @param agentId - Agent ID
-   * @param newUri - New URI
+   * Set agent URI by mint
    */
-  async setAgentUri(agentId: bigint, newUri: string): Promise<TransactionResult> {
+  async setAgentUri(agentMint: PublicKey, newUri: string): Promise<TransactionResult> {
     try {
-      const [agent] = await PDAHelpers.getAgentPDA(agentId);
-
-      // Fetch agent to get mint
-      const agentData = await this.connection.getAccountInfo(agent);
-      if (!agentData) {
-        throw new Error('Agent not found');
-      }
-
-      // Extract mint from agent account (would need proper deserialization)
-      const agentMint = PublicKey.default; // Placeholder
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
+      const agentMetadata = getMetadataPDA(agentMint);
 
       const instruction = this.instructionBuilder.buildSetAgentUri(
-        this.payer.publicKey,
-        agent,
+        agentPda,
+        agentMetadata,
         agentMint,
+        this.payer.publicKey,
         newUri
       );
 
@@ -243,34 +257,7 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Set metadata for agent (inline storage)
-   * @param agentId - Agent ID
-   * @param key - Metadata key
-   * @param value - Metadata value
-   */
-  async setMetadata(agentId: bigint, key: string, value: string): Promise<TransactionResult> {
-    try {
-      // Need to resolve agentId -> agentMint first
-      // This is similar to setAgentUri, but we don't have the mint yet
-      // For now, this will work for agents we've just created
-      // TODO: In a full implementation, we'd need to fetch the agent account
-      // to get the mint, or use the AgentMintResolver
-
-      throw new Error('setMetadata() requires agentMint. Use setMetadataByMint() or fetch agent first.');
-    } catch (error) {
-      return {
-        signature: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /**
    * Set metadata for agent by mint (inline storage)
-   * @param agentMint - Agent mint public key
-   * @param key - Metadata key
-   * @param value - Metadata value
    */
   async setMetadataByMint(
     agentMint: PublicKey,
@@ -278,12 +265,12 @@ export class IdentityTransactionBuilder {
     value: string
   ): Promise<TransactionResult> {
     try {
-      const [agent] = await PDAHelpers.getAgentPDA(agentMint);
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
 
       const instruction = this.instructionBuilder.buildSetMetadata(
-        this.payer.publicKey,
-        agent,
+        agentPda,
         agentMint,
+        this.payer.publicKey,
         key,
         value
       );
@@ -307,10 +294,6 @@ export class IdentityTransactionBuilder {
 
   /**
    * Set metadata extended for agent by mint (extension PDA storage)
-   * @param agentMint - Agent mint public key
-   * @param extensionIndex - Extension index (0-255)
-   * @param key - Metadata key
-   * @param value - Metadata value
    */
   async setMetadataExtendedByMint(
     agentMint: PublicKey,
@@ -319,17 +302,17 @@ export class IdentityTransactionBuilder {
     value: string
   ): Promise<TransactionResult> {
     try {
-      const [agent] = await PDAHelpers.getAgentPDA(agentMint);
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(
         agentMint,
         extensionIndex
       );
 
       const instruction = this.instructionBuilder.buildSetMetadataExtended(
-        this.payer.publicKey,
-        agent,
-        agentMint,
         metadataExtension,
+        agentMint,
+        agentPda,
+        this.payer.publicKey,
         extensionIndex,
         key,
         value
@@ -353,31 +336,66 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Private helper: Estimate size of a setMetadataExtended instruction
+   * Transfer agent to another owner
    */
+  async transferAgent(
+    agentMint: PublicKey,
+    toOwner: PublicKey
+  ): Promise<TransactionResult> {
+    try {
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
+      const agentMetadata = getMetadataPDA(agentMint);
+
+      const fromTokenAccount = getAssociatedTokenAddressSync(
+        agentMint,
+        this.payer.publicKey
+      );
+      const toTokenAccount = getAssociatedTokenAddressSync(
+        agentMint,
+        toOwner
+      );
+
+      const instruction = this.instructionBuilder.buildTransferAgent(
+        agentPda,
+        fromTokenAccount,
+        toTokenAccount,
+        agentMint,
+        agentMetadata,
+        this.payer.publicKey
+      );
+
+      const transaction = new Transaction().add(instruction);
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   private estimateInstructionSize(key: string, value: string): number {
-    // Discriminator: 8 bytes
-    // extension_index: 1 byte
-    // key serialization: 4 (length) + key.length
-    // value serialization: 4 (length) + value.length
-    // Accounts metadata: ~60 bytes (5 accounts × ~12 bytes each)
     return 8 + 1 + 4 + key.length + 4 + value.length + 60;
   }
 
-  /**
-   * Private helper: Calculate optimal batch size for metadata extensions
-   */
   private calculateOptimalBatch(
     metadataEntries: Array<{ key: string; value: string }>
   ): number {
-    const MAX_TX_SIZE = 1232; // Solana transaction MTU
-    const TX_OVERHEAD = 200; // Signatures + base overhead
+    const MAX_TX_SIZE = 1232;
+    const TX_OVERHEAD = 200;
 
     let batchSize = 0;
     let currentSize = TX_OVERHEAD;
 
     for (const entry of metadataEntries) {
-      const ixSize = this.estimateInstructionSize(entry.key, entry.value);
+      const ixSize = this.estimateInstructionSize(entry.key, entry.value) * 2; // x2 for create + set
       if (currentSize + ixSize > MAX_TX_SIZE) {
         break;
       }
@@ -385,12 +403,9 @@ export class IdentityTransactionBuilder {
       batchSize++;
     }
 
-    return Math.max(1, batchSize); // At least 1 instruction per batch
+    return Math.max(1, batchSize);
   }
 
-  /**
-   * Private helper: Send transaction with retry logic
-   */
   private async sendWithRetry(
     transaction: Transaction,
     signers: Signer[],
@@ -411,7 +426,6 @@ export class IdentityTransactionBuilder {
         console.warn(`Transaction attempt ${attempt}/${maxRetries} failed:`, lastError.message);
 
         if (attempt < maxRetries) {
-          // Exponential backoff: 1s, 2s, 4s
           const delay = Math.pow(2, attempt - 1) * 1000;
           console.log(`Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -439,56 +453,77 @@ export class ReputationTransactionBuilder {
 
   /**
    * Give feedback to an agent
+   * @param agentMint - Agent NFT mint
    * @param agentId - Agent ID
    * @param score - Score 0-100
+   * @param tag1 - Tag 1 (max 32 bytes)
+   * @param tag2 - Tag 2 (max 32 bytes)
    * @param fileUri - IPFS/Arweave URI
-   * @param fileHash - File hash
-   * @param performanceTags - Performance tags (optional)
-   * @param functionalityTags - Functionality tags (optional)
+   * @param fileHash - File hash (32 bytes)
    */
   async giveFeedback(
+    agentMint: PublicKey,
     agentId: bigint,
     score: number,
+    tag1: string,
+    tag2: string,
     fileUri: string,
-    fileHash: Buffer,
-    performanceTags?: Buffer,
-    functionalityTags?: Buffer
+    fileHash: Buffer
   ): Promise<TransactionResult & { feedbackIndex?: bigint }> {
     try {
-      // Validate score
+      // Validate inputs
       if (score < 0 || score > 100) {
         throw new Error('Score must be between 0 and 100');
       }
-
-      // Get last index for this client
-      const [clientIndex] = await PDAHelpers.getClientIndexPDA(
-        agentId,
-        this.payer.publicKey
-      );
-
-      // Fetch current index (simplified)
-      const feedbackIndex = BigInt(0); // Should fetch from clientIndex account
+      if (tag1.length > 32) {
+        throw new Error('tag1 must be <= 32 bytes');
+      }
+      if (tag2.length > 32) {
+        throw new Error('tag2 must be <= 32 bytes');
+      }
+      if (fileUri.length > 200) {
+        throw new Error('fileUri must be <= 200 bytes');
+      }
+      if (fileHash.length !== 32) {
+        throw new Error('fileHash must be 32 bytes');
+      }
 
       // Derive PDAs
-      const [agent] = await PDAHelpers.getAgentPDA(agentId);
-      const [feedback] = await PDAHelpers.getFeedbackPDA(
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
+      const [clientIndex] = await PDAHelpers.getClientIndexPDA(agentId, this.payer.publicKey);
+      const [agentReputation] = await PDAHelpers.getAgentReputationPDA(agentId);
+
+      // Fetch current feedback index from client_index account (or 0 if doesn't exist)
+      let feedbackIndex = BigInt(0);
+      const clientIndexInfo = await this.connection.getAccountInfo(clientIndex);
+      if (clientIndexInfo) {
+        const clientIndexData = ClientIndexAccount.deserialize(clientIndexInfo.data);
+        feedbackIndex = clientIndexData.last_index;
+      }
+
+      // Derive feedback PDA
+      const [feedbackPda] = await PDAHelpers.getFeedbackPDA(
         agentId,
         this.payer.publicKey,
         feedbackIndex
       );
-      const [agentReputation] = await PDAHelpers.getAgentReputationPDA(agentId);
 
       const instruction = this.instructionBuilder.buildGiveFeedback(
-        this.payer.publicKey,
-        agent,
-        feedback,
-        clientIndex,
-        agentReputation,
+        this.payer.publicKey,       // client
+        this.payer.publicKey,       // payer
+        agentMint,                   // agent_mint
+        agentPda,                    // agent_account
+        clientIndex,                 // client_index
+        feedbackPda,                 // feedback_account
+        agentReputation,             // agent_reputation
+        IDENTITY_PROGRAM_ID,         // identity_registry_program
+        agentId,
         score,
-        performanceTags || Buffer.alloc(32),
-        functionalityTags || Buffer.alloc(32),
+        tag1,
+        tag2,
         fileUri,
-        fileHash
+        fileHash,
+        feedbackIndex
       );
 
       const transaction = new Transaction().add(instruction);
@@ -510,15 +545,13 @@ export class ReputationTransactionBuilder {
 
   /**
    * Revoke feedback
-   * @param agentId - Agent ID
-   * @param feedbackIndex - Feedback index to revoke
    */
   async revokeFeedback(
     agentId: bigint,
     feedbackIndex: bigint
   ): Promise<TransactionResult> {
     try {
-      const [feedback] = await PDAHelpers.getFeedbackPDA(
+      const [feedbackPda] = await PDAHelpers.getFeedbackPDA(
         agentId,
         this.payer.publicKey,
         feedbackIndex
@@ -527,8 +560,10 @@ export class ReputationTransactionBuilder {
 
       const instruction = this.instructionBuilder.buildRevokeFeedback(
         this.payer.publicKey,
-        feedback,
-        agentReputation
+        feedbackPda,
+        agentReputation,
+        agentId,
+        feedbackIndex
       );
 
       const transaction = new Transaction().add(instruction);
@@ -550,43 +585,51 @@ export class ReputationTransactionBuilder {
 
   /**
    * Append response to feedback
-   * @param agentId - Agent ID
-   * @param client - Client who gave feedback
-   * @param feedbackIndex - Feedback index
-   * @param responseUri - Response URI
-   * @param responseHash - Response hash
    */
   async appendResponse(
     agentId: bigint,
-    client: PublicKey,
+    clientAddress: PublicKey,
     feedbackIndex: bigint,
     responseUri: string,
     responseHash: Buffer
   ): Promise<TransactionResult & { responseIndex?: bigint }> {
     try {
-      // Get response index
-      const [responseIndex] = await PDAHelpers.getResponseIndexPDA(
-        agentId,
-        client,
-        feedbackIndex
-      );
+      if (responseUri.length > 200) {
+        throw new Error('responseUri must be <= 200 bytes');
+      }
+      if (responseHash.length !== 32) {
+        throw new Error('responseHash must be 32 bytes');
+      }
 
-      // Fetch current count (simplified)
-      const responseIndexValue = BigInt(0); // Should fetch from responseIndex account
+      // Derive PDAs
+      const [feedbackPda] = await PDAHelpers.getFeedbackPDA(agentId, clientAddress, feedbackIndex);
+      const [responseIndexPda] = await PDAHelpers.getResponseIndexPDA(agentId, clientAddress, feedbackIndex);
 
-      const [feedback] = await PDAHelpers.getFeedbackPDA(agentId, client, feedbackIndex);
-      const [response] = await PDAHelpers.getResponsePDA(
+      // Fetch current response index
+      let responseIndexValue = BigInt(0);
+      const responseIndexInfo = await this.connection.getAccountInfo(responseIndexPda);
+      if (responseIndexInfo) {
+        // Parse the account - simplified, assumes next_index is at offset 8+8+32+8 = 56
+        const data = responseIndexInfo.data.slice(8); // Skip discriminator
+        responseIndexValue = data.readBigUInt64LE(8 + 32 + 8); // After agent_id + client + feedback_index
+      }
+
+      const [responsePda] = await PDAHelpers.getResponsePDA(
         agentId,
-        client,
+        clientAddress,
         feedbackIndex,
         responseIndexValue
       );
 
       const instruction = this.instructionBuilder.buildAppendResponse(
-        this.payer.publicKey,
-        feedback,
-        response,
-        responseIndex,
+        this.payer.publicKey,       // responder
+        this.payer.publicKey,       // payer
+        feedbackPda,
+        responseIndexPda,
+        responsePda,
+        agentId,
+        clientAddress,
+        feedbackIndex,
         responseUri,
         responseHash
       );
@@ -624,33 +667,45 @@ export class ValidationTransactionBuilder {
   }
 
   /**
-   * Request validation
-   * @param agentId - Agent ID
-   * @param validator - Validator public key
-   * @param requestHash - Request hash
+   * Request validation for an agent
    */
   async requestValidation(
+    agentMint: PublicKey,
     agentId: bigint,
-    validator: PublicKey,
+    validatorAddress: PublicKey,
+    nonce: number,
+    requestUri: string,
     requestHash: Buffer
   ): Promise<TransactionResult> {
     try {
-      const [agent] = await PDAHelpers.getAgentPDA(agentId);
+      if (requestUri.length > 200) {
+        throw new Error('requestUri must be <= 200 bytes');
+      }
+      if (requestHash.length !== 32) {
+        throw new Error('requestHash must be 32 bytes');
+      }
 
-      // Get nonce (simplified - should track per validator)
-      const nonce = 0;
-
-      const [validationRequest] = await PDAHelpers.getValidationRequestPDA(
+      // Derive PDAs
+      const [configPda] = await PDAHelpers.getValidationConfigPDA();
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
+      const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
         agentId,
-        validator,
+        validatorAddress,
         nonce
       );
 
       const instruction = this.instructionBuilder.buildRequestValidation(
-        this.payer.publicKey,
-        agent,
-        validationRequest,
-        validator,
+        configPda,
+        this.payer.publicKey,       // requester (must be agent owner)
+        this.payer.publicKey,       // payer
+        agentMint,
+        agentPda,
+        validationRequestPda,
+        IDENTITY_PROGRAM_ID,
+        agentId,
+        validatorAddress,
+        nonce,
+        requestUri,
         requestHash
       );
 
@@ -673,31 +728,135 @@ export class ValidationTransactionBuilder {
 
   /**
    * Respond to validation request
-   * @param agentId - Agent ID
-   * @param requester - Requester public key (for PDA)
-   * @param nonce - Request nonce
-   * @param response - Response value (0=rejected, 1=approved)
-   * @param responseHash - Response hash
    */
   async respondToValidation(
     agentId: bigint,
-    requester: PublicKey,
     nonce: number,
     response: number,
-    responseHash: Buffer
+    responseUri: string,
+    responseHash: Buffer,
+    tag: string
   ): Promise<TransactionResult> {
     try {
-      const [validationRequest] = await PDAHelpers.getValidationRequestPDA(
+      if (response < 0 || response > 100) {
+        throw new Error('Response must be between 0 and 100');
+      }
+      if (responseUri.length > 200) {
+        throw new Error('responseUri must be <= 200 bytes');
+      }
+      if (responseHash.length !== 32) {
+        throw new Error('responseHash must be 32 bytes');
+      }
+      if (tag.length > 32) {
+        throw new Error('tag must be <= 32 bytes');
+      }
+
+      const [configPda] = await PDAHelpers.getValidationConfigPDA();
+      const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
         agentId,
         this.payer.publicKey, // validator
         nonce
       );
 
       const instruction = this.instructionBuilder.buildRespondToValidation(
+        configPda,
         this.payer.publicKey,
-        validationRequest,
+        validationRequestPda,
         response,
-        responseHash
+        responseUri,
+        responseHash,
+        tag
+      );
+
+      const transaction = new Transaction().add(instruction);
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Update validation (same as respond but semantically for updates)
+   */
+  async updateValidation(
+    agentId: bigint,
+    nonce: number,
+    response: number,
+    responseUri: string,
+    responseHash: Buffer,
+    tag: string
+  ): Promise<TransactionResult> {
+    try {
+      if (response < 0 || response > 100) {
+        throw new Error('Response must be between 0 and 100');
+      }
+
+      const [configPda] = await PDAHelpers.getValidationConfigPDA();
+      const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
+        agentId,
+        this.payer.publicKey,
+        nonce
+      );
+
+      const instruction = this.instructionBuilder.buildUpdateValidation(
+        configPda,
+        this.payer.publicKey,
+        validationRequestPda,
+        response,
+        responseUri,
+        responseHash,
+        tag
+      );
+
+      const transaction = new Transaction().add(instruction);
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Close validation request to recover rent
+   */
+  async closeValidation(
+    agentId: bigint,
+    validatorAddress: PublicKey,
+    nonce: number,
+    rentReceiver?: PublicKey
+  ): Promise<TransactionResult> {
+    try {
+      const [configPda] = await PDAHelpers.getValidationConfigPDA();
+      const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
+        agentId,
+        validatorAddress,
+        nonce
+      );
+
+      const instruction = this.instructionBuilder.buildCloseValidation(
+        configPda,
+        this.payer.publicKey,
+        validationRequestPda,
+        rentReceiver || this.payer.publicKey
       );
 
       const transaction = new Transaction().add(instruction);
