@@ -1,6 +1,7 @@
 /**
  * Manual instruction builder for ERC-8004 Solana programs
  * Builds transactions without Anchor dependency
+ * Must match exactly the instruction layouts in 8004-solana programs
  */
 
 import {
@@ -11,8 +12,7 @@ import {
   SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { serialize } from 'borsh';
-import { getProgramIds } from './programs.js';
+import { getProgramIds, PROGRAM_IDS } from './programs.js';
 import type { Cluster } from './client.js';
 import { TOKEN_METADATA_PROGRAM_ID } from './metaplex-helpers.js';
 import {
@@ -20,80 +20,108 @@ import {
   REPUTATION_DISCRIMINATORS,
   VALIDATION_DISCRIMINATORS,
 } from './instruction-discriminators.js';
+import { IDENTITY_PROGRAM_ID, REPUTATION_PROGRAM_ID, VALIDATION_PROGRAM_ID } from './pda-helpers.js';
 
 /**
  * Instruction builder for Identity Registry
+ * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
  */
 export class IdentityInstructionBuilder {
   private programId: PublicKey;
 
-  constructor(cluster: Cluster) {
-    const programIds = getProgramIds();
-    this.programId = programIds.identityRegistry;
+  constructor(cluster: Cluster = 'devnet') {
+    this.programId = IDENTITY_PROGRAM_ID;
   }
 
   /**
-   * Build registerAgent instruction
-   * @param config - Registry config PDA
-   * @param authority - Authority from config
-   * @param agent - Agent account PDA
-   * @param agentMint - Agent NFT mint (signer)
-   * @param agentMetadata - Agent metadata PDA
-   * @param agentMasterEdition - Agent master edition PDA
-   * @param tokenAccount - Associated token account
-   * @param collectionMint - Collection mint from config
-   * @param collectionMetadata - Collection metadata PDA
-   * @param collectionMasterEdition - Collection master edition PDA
-   * @param owner - Owner/payer (signer)
-   * @param tokenUri - Optional token URI
-   * @param metadata - Optional metadata entries
+   * Build register instruction (with optional URI)
    */
-  buildRegisterAgent(
+  buildRegister(
     config: PublicKey,
-    authority: PublicKey,
-    agent: PublicKey,
+    collectionAuthorityPda: PublicKey,
+    agentAccount: PublicKey,
     agentMint: PublicKey,
     agentMetadata: PublicKey,
     agentMasterEdition: PublicKey,
-    tokenAccount: PublicKey,
+    agentTokenAccount: PublicKey,
     collectionMint: PublicKey,
     collectionMetadata: PublicKey,
     collectionMasterEdition: PublicKey,
     owner: PublicKey,
-    tokenUri?: string,
-    metadata?: Array<{ key: string; value: string }>
+    agentUri: string = '',
   ): TransactionInstruction {
-    // Validate metadata count (inline storage limit is 10 entries)
-    // Note: If metadata > 10, transaction-builder should split into inline + extensions
-    if (metadata && metadata.length > 10) {
-      throw new Error(
-        `buildRegisterAgent() accepts max 10 inline metadata. Got ${metadata.length}. ` +
-        `Use transaction-builder to auto-split into inline + MetadataExtension PDAs.`
-      );
-    }
-
-    // Choose discriminator based on whether metadata is provided
-    const discriminator = metadata && metadata.length > 0
-      ? IDENTITY_DISCRIMINATORS.registerWithMetadata
-      : IDENTITY_DISCRIMINATORS.register;
-
-    // Serialize instruction data
     const data = Buffer.concat([
-      discriminator,
-      this.serializeString(tokenUri || ''),
-      this.serializeMetadata(metadata || []),
+      IDENTITY_DISCRIMINATORS.register,
+      this.serializeString(agentUri),
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: config, isSigner: false, isWritable: true },
-        { pubkey: authority, isSigner: false, isWritable: false },
-        { pubkey: agent, isSigner: false, isWritable: true },
+        { pubkey: collectionAuthorityPda, isSigner: false, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: true, isWritable: true },
         { pubkey: agentMetadata, isSigner: false, isWritable: true },
         { pubkey: agentMasterEdition, isSigner: false, isWritable: true },
-        { pubkey: tokenAccount, isSigner: false, isWritable: true },
+        { pubkey: agentTokenAccount, isSigner: false, isWritable: true },
+        { pubkey: collectionMint, isSigner: false, isWritable: false },
+        { pubkey: collectionMetadata, isSigner: false, isWritable: true },
+        { pubkey: collectionMasterEdition, isSigner: false, isWritable: false },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+  }
+
+  /**
+   * Build registerWithMetadata instruction
+   * @param metadata - Array of metadata entries (max 10)
+   */
+  buildRegisterWithMetadata(
+    config: PublicKey,
+    collectionAuthorityPda: PublicKey,
+    agentAccount: PublicKey,
+    agentMint: PublicKey,
+    agentMetadata: PublicKey,
+    agentMasterEdition: PublicKey,
+    agentTokenAccount: PublicKey,
+    collectionMint: PublicKey,
+    collectionMetadata: PublicKey,
+    collectionMasterEdition: PublicKey,
+    owner: PublicKey,
+    agentUri: string = '',
+    metadata: Array<{ key: string; value: string }> = [],
+  ): TransactionInstruction {
+    if (metadata.length > 10) {
+      throw new Error(
+        `buildRegisterWithMetadata() accepts max 10 inline metadata. Got ${metadata.length}. ` +
+        `Use transaction-builder to auto-split into inline + MetadataExtension PDAs.`
+      );
+    }
+
+    const data = Buffer.concat([
+      IDENTITY_DISCRIMINATORS.registerWithMetadata,
+      this.serializeString(agentUri),
+      this.serializeMetadata(metadata),
+    ]);
+
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: config, isSigner: false, isWritable: true },
+        { pubkey: collectionAuthorityPda, isSigner: false, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: agentMint, isSigner: true, isWritable: true },
+        { pubkey: agentMetadata, isSigner: false, isWritable: true },
+        { pubkey: agentMasterEdition, isSigner: false, isWritable: true },
+        { pubkey: agentTokenAccount, isSigner: false, isWritable: true },
         { pubkey: collectionMint, isSigner: false, isWritable: false },
         { pubkey: collectionMetadata, isSigner: false, isWritable: true },
         { pubkey: collectionMasterEdition, isSigner: false, isWritable: false },
@@ -111,16 +139,13 @@ export class IdentityInstructionBuilder {
 
   /**
    * Build setAgentUri instruction
-   * @param owner - Agent owner (signer)
-   * @param agent - Agent account PDA
-   * @param agentMint - Agent NFT mint
-   * @param newUri - New URI to set
    */
   buildSetAgentUri(
-    owner: PublicKey,
-    agent: PublicKey,
+    agentAccount: PublicKey,
+    agentMetadata: PublicKey,
     agentMint: PublicKey,
-    newUri: string
+    owner: PublicKey,
+    newUri: string,
   ): TransactionInstruction {
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.setAgentUri,
@@ -130,10 +155,13 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: owner, isSigner: true, isWritable: false },
-        { pubkey: agent, isSigner: false, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: agentMetadata, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
-        // Add Metaplex accounts
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
       ],
       data,
     });
@@ -141,20 +169,14 @@ export class IdentityInstructionBuilder {
 
   /**
    * Build setMetadata instruction (inline metadata storage)
-   * @param owner - Agent owner (signer)
-   * @param agent - Agent account PDA
-   * @param agentMint - Agent NFT mint
-   * @param key - Metadata key (max 32 bytes)
-   * @param value - Metadata value (max 256 bytes)
    */
   buildSetMetadata(
-    owner: PublicKey,
-    agent: PublicKey,
+    agentAccount: PublicKey,
     agentMint: PublicKey,
+    owner: PublicKey,
     key: string,
-    value: string
+    value: string,
   ): TransactionInstruction {
-    // Serialize value as Vec<u8>
     const valueBytes = Buffer.from(value, 'utf8');
     const valueLen = Buffer.alloc(4);
     valueLen.writeUInt32LE(valueBytes.length);
@@ -169,7 +191,7 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: agent, isSigner: false, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: false },
       ],
@@ -178,29 +200,45 @@ export class IdentityInstructionBuilder {
   }
 
   /**
+   * Build createMetadataExtension instruction
+   */
+  buildCreateMetadataExtension(
+    metadataExtension: PublicKey,
+    agentMint: PublicKey,
+    agentAccount: PublicKey,
+    owner: PublicKey,
+    extensionIndex: number,
+  ): TransactionInstruction {
+    const data = Buffer.concat([
+      IDENTITY_DISCRIMINATORS.createMetadataExtension,
+      Buffer.from([extensionIndex]),
+    ]);
+
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: metadataExtension, isSigner: false, isWritable: true },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+  }
+
+  /**
    * Build setMetadataExtended instruction (extension PDA metadata storage)
-   * @param owner - Agent owner (signer)
-   * @param agent - Agent account PDA
-   * @param agentMint - Agent NFT mint
-   * @param metadataExtension - MetadataExtension PDA
-   * @param extensionIndex - Extension index (0-255)
-   * @param key - Metadata key (max 32 bytes)
-   * @param value - Metadata value (max 256 bytes)
    */
   buildSetMetadataExtended(
-    owner: PublicKey,
-    agent: PublicKey,
-    agentMint: PublicKey,
     metadataExtension: PublicKey,
+    agentMint: PublicKey,
+    agentAccount: PublicKey,
+    owner: PublicKey,
     extensionIndex: number,
     key: string,
-    value: string
+    value: string,
   ): TransactionInstruction {
-    // Serialize extension_index as u8
-    const indexBuf = Buffer.alloc(1);
-    indexBuf.writeUInt8(extensionIndex);
-
-    // Serialize value as Vec<u8>
     const valueBytes = Buffer.from(value, 'utf8');
     const valueLen = Buffer.alloc(4);
     valueLen.writeUInt32LE(valueBytes.length);
@@ -208,7 +246,7 @@ export class IdentityInstructionBuilder {
 
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.setMetadataExtended,
-      indexBuf,
+      Buffer.from([extensionIndex]),
       this.serializeString(key),
       serializedValue,
     ]);
@@ -218,11 +256,40 @@ export class IdentityInstructionBuilder {
       keys: [
         { pubkey: metadataExtension, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
-        { pubkey: agent, isSigner: false, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
+    });
+  }
+
+  /**
+   * Build transferAgent instruction
+   */
+  buildTransferAgent(
+    agentAccount: PublicKey,
+    fromTokenAccount: PublicKey,
+    toTokenAccount: PublicKey,
+    agentMint: PublicKey,
+    agentMetadata: PublicKey,
+    owner: PublicKey,
+  ): TransactionInstruction {
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: fromTokenAccount, isSigner: false, isWritable: true },
+        { pubkey: toTokenAccount, isSigner: false, isWritable: true },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: agentMetadata, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+      ],
+      data: IDENTITY_DISCRIMINATORS.transferAgent,
     });
   }
 
@@ -234,7 +301,6 @@ export class IdentityInstructionBuilder {
   }
 
   private serializeMetadata(metadata: Array<{ key: string; value: string }>): Buffer {
-    // Vec length (u32)
     const vecLen = Buffer.alloc(4);
     vecLen.writeUInt32LE(metadata.length);
 
@@ -242,17 +308,12 @@ export class IdentityInstructionBuilder {
       return vecLen;
     }
 
-    // Serialize each MetadataEntry { key: String, value: Vec<u8> }
     const entries = metadata.map(entry => {
-      // Serialize key as String
       const key = this.serializeString(entry.key);
-
-      // Serialize value as Vec<u8>
       const valueBytes = Buffer.from(entry.value, 'utf8');
       const valueLen = Buffer.alloc(4);
       valueLen.writeUInt32LE(valueBytes.length);
       const value = Buffer.concat([valueLen, valueBytes]);
-
       return Buffer.concat([key, value]);
     });
 
@@ -262,57 +323,58 @@ export class IdentityInstructionBuilder {
 
 /**
  * Instruction builder for Reputation Registry
+ * Program: 9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa
  */
 export class ReputationInstructionBuilder {
   private programId: PublicKey;
 
-  constructor(cluster: Cluster) {
-    const programIds = getProgramIds();
-    this.programId = programIds.reputationRegistry;
+  constructor(cluster: Cluster = 'devnet') {
+    this.programId = REPUTATION_PROGRAM_ID;
   }
 
   /**
    * Build giveFeedback instruction
-   * @param client - Client giving feedback (signer)
-   * @param agent - Agent account (from identity registry)
-   * @param feedback - Feedback account PDA
-   * @param clientIndex - Client index PDA
-   * @param agentReputation - Agent reputation PDA
-   * @param score - Score 0-100
-   * @param performanceTags - Performance tags (bytes32)
-   * @param functionalityTags - Functionality tags (bytes32)
-   * @param fileUri - IPFS/Arweave URI
-   * @param fileHash - File hash (bytes32)
+   * Matches: give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)
    */
   buildGiveFeedback(
     client: PublicKey,
-    agent: PublicKey,
-    feedback: PublicKey,
+    payer: PublicKey,
+    agentMint: PublicKey,
+    agentAccount: PublicKey,
     clientIndex: PublicKey,
+    feedbackAccount: PublicKey,
     agentReputation: PublicKey,
+    identityRegistryProgram: PublicKey,
+    agentId: bigint,
     score: number,
-    performanceTags: Buffer,
-    functionalityTags: Buffer,
+    tag1: string,
+    tag2: string,
     fileUri: string,
-    fileHash: Buffer
+    fileHash: Buffer,
+    feedbackIndex: bigint,
   ): TransactionInstruction {
     const data = Buffer.concat([
       REPUTATION_DISCRIMINATORS.giveFeedback,
-      Buffer.from([score]), // u8
-      performanceTags, // 32 bytes
-      functionalityTags, // 32 bytes
+      this.serializeU64(agentId),
+      Buffer.from([score]),
+      this.serializeString(tag1),
+      this.serializeString(tag2),
       this.serializeString(fileUri),
-      fileHash, // 32 bytes
+      fileHash,
+      this.serializeU64(feedbackIndex),
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: client, isSigner: true, isWritable: true },
-        { pubkey: agent, isSigner: false, isWritable: false },
-        { pubkey: feedback, isSigner: false, isWritable: true },
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: clientIndex, isSigner: false, isWritable: true },
+        { pubkey: feedbackAccount, isSigner: false, isWritable: true },
         { pubkey: agentReputation, isSigner: false, isWritable: true },
+        { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -321,22 +383,26 @@ export class ReputationInstructionBuilder {
 
   /**
    * Build revokeFeedback instruction
-   * @param client - Client who gave feedback (signer)
-   * @param feedback - Feedback account PDA
-   * @param agentReputation - Agent reputation PDA
+   * Matches: revoke_feedback(agent_id, feedback_index)
    */
   buildRevokeFeedback(
     client: PublicKey,
-    feedback: PublicKey,
-    agentReputation: PublicKey
+    feedbackAccount: PublicKey,
+    agentReputation: PublicKey,
+    agentId: bigint,
+    feedbackIndex: bigint,
   ): TransactionInstruction {
-    const data = REPUTATION_DISCRIMINATORS.revokeFeedback;
+    const data = Buffer.concat([
+      REPUTATION_DISCRIMINATORS.revokeFeedback,
+      this.serializeU64(agentId),
+      this.serializeU64(feedbackIndex),
+    ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: client, isSigner: true, isWritable: false },
-        { pubkey: feedback, isSigner: false, isWritable: true },
+        { pubkey: feedbackAccount, isSigner: false, isWritable: true },
         { pubkey: agentReputation, isSigner: false, isWritable: true },
       ],
       data,
@@ -345,34 +411,37 @@ export class ReputationInstructionBuilder {
 
   /**
    * Build appendResponse instruction
-   * @param responder - Responder (signer)
-   * @param feedback - Feedback account PDA
-   * @param response - Response account PDA
-   * @param responseIndex - Response index PDA
-   * @param responseUri - Response URI
-   * @param responseHash - Response hash (bytes32)
+   * Matches: append_response(agent_id, client_address, feedback_index, response_uri, response_hash)
    */
   buildAppendResponse(
     responder: PublicKey,
-    feedback: PublicKey,
-    response: PublicKey,
+    payer: PublicKey,
+    feedbackAccount: PublicKey,
     responseIndex: PublicKey,
+    responseAccount: PublicKey,
+    agentId: bigint,
+    clientAddress: PublicKey,
+    feedbackIndex: bigint,
     responseUri: string,
-    responseHash: Buffer
+    responseHash: Buffer,
   ): TransactionInstruction {
     const data = Buffer.concat([
       REPUTATION_DISCRIMINATORS.appendResponse,
+      this.serializeU64(agentId),
+      clientAddress.toBuffer(),
+      this.serializeU64(feedbackIndex),
       this.serializeString(responseUri),
-      responseHash, // 32 bytes
+      responseHash,
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: responder, isSigner: true, isWritable: true },
-        { pubkey: feedback, isSigner: false, isWritable: false },
-        { pubkey: response, isSigner: false, isWritable: true },
+        { pubkey: responder, isSigner: true, isWritable: false },
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: feedbackAccount, isSigner: false, isWritable: false },
         { pubkey: responseIndex, isSigner: false, isWritable: true },
+        { pubkey: responseAccount, isSigner: false, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -385,46 +454,62 @@ export class ReputationInstructionBuilder {
     len.writeUInt32LE(strBytes.length);
     return Buffer.concat([len, strBytes]);
   }
+
+  private serializeU64(value: bigint): Buffer {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64LE(value);
+    return buf;
+  }
 }
 
 /**
  * Instruction builder for Validation Registry
+ * Program: CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW
  */
 export class ValidationInstructionBuilder {
   private programId: PublicKey;
 
-  constructor(cluster: Cluster) {
-    const programIds = getProgramIds();
-    this.programId = programIds.validationRegistry;
+  constructor(cluster: Cluster = 'devnet') {
+    this.programId = VALIDATION_PROGRAM_ID;
   }
 
   /**
    * Build requestValidation instruction
-   * @param requester - Requester (signer)
-   * @param agent - Agent account
-   * @param validationRequest - Validation request PDA
-   * @param validator - Validator public key
-   * @param requestHash - Request hash (bytes32)
+   * Matches: request_validation(agent_id, validator_address, nonce, request_uri, request_hash)
    */
   buildRequestValidation(
+    config: PublicKey,
     requester: PublicKey,
-    agent: PublicKey,
+    payer: PublicKey,
+    agentMint: PublicKey,
+    agentAccount: PublicKey,
     validationRequest: PublicKey,
-    validator: PublicKey,
-    requestHash: Buffer
+    identityRegistryProgram: PublicKey,
+    agentId: bigint,
+    validatorAddress: PublicKey,
+    nonce: number,
+    requestUri: string,
+    requestHash: Buffer,
   ): TransactionInstruction {
     const data = Buffer.concat([
       VALIDATION_DISCRIMINATORS.requestValidation,
-      requestHash, // 32 bytes
+      this.serializeU64(agentId),
+      validatorAddress.toBuffer(),
+      this.serializeU32(nonce),
+      this.serializeString(requestUri),
+      requestHash,
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: requester, isSigner: true, isWritable: true },
-        { pubkey: agent, isSigner: false, isWritable: false },
+        { pubkey: config, isSigner: false, isWritable: true },
+        { pubkey: requester, isSigner: true, isWritable: false },
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
-        { pubkey: validator, isSigner: false, isWritable: false },
+        { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -433,30 +518,104 @@ export class ValidationInstructionBuilder {
 
   /**
    * Build respondToValidation instruction
-   * @param validator - Validator (signer)
-   * @param validationRequest - Validation request PDA
-   * @param response - Response value (0=rejected, 1=approved)
-   * @param responseHash - Response hash (bytes32)
+   * Matches: respond_to_validation(response, response_uri, response_hash, tag)
    */
   buildRespondToValidation(
+    config: PublicKey,
     validator: PublicKey,
     validationRequest: PublicKey,
     response: number,
-    responseHash: Buffer
+    responseUri: string,
+    responseHash: Buffer,
+    tag: string,
   ): TransactionInstruction {
     const data = Buffer.concat([
       VALIDATION_DISCRIMINATORS.respondToValidation,
-      Buffer.from([response]), // u8
-      responseHash, // 32 bytes
+      Buffer.from([response]),
+      this.serializeString(responseUri),
+      responseHash,
+      this.serializeString(tag),
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
+        { pubkey: config, isSigner: false, isWritable: true },
         { pubkey: validator, isSigner: true, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
       ],
       data,
     });
+  }
+
+  /**
+   * Build updateValidation instruction (same as respondToValidation)
+   */
+  buildUpdateValidation(
+    config: PublicKey,
+    validator: PublicKey,
+    validationRequest: PublicKey,
+    response: number,
+    responseUri: string,
+    responseHash: Buffer,
+    tag: string,
+  ): TransactionInstruction {
+    const data = Buffer.concat([
+      VALIDATION_DISCRIMINATORS.updateValidation,
+      Buffer.from([response]),
+      this.serializeString(responseUri),
+      responseHash,
+      this.serializeString(tag),
+    ]);
+
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: config, isSigner: false, isWritable: true },
+        { pubkey: validator, isSigner: true, isWritable: false },
+        { pubkey: validationRequest, isSigner: false, isWritable: true },
+      ],
+      data,
+    });
+  }
+
+  /**
+   * Build closeValidation instruction
+   */
+  buildCloseValidation(
+    config: PublicKey,
+    authority: PublicKey,
+    validationRequest: PublicKey,
+    rentReceiver: PublicKey,
+  ): TransactionInstruction {
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: config, isSigner: false, isWritable: false },
+        { pubkey: authority, isSigner: true, isWritable: false },
+        { pubkey: validationRequest, isSigner: false, isWritable: true },
+        { pubkey: rentReceiver, isSigner: false, isWritable: true },
+      ],
+      data: VALIDATION_DISCRIMINATORS.closeValidation,
+    });
+  }
+
+  private serializeString(str: string): Buffer {
+    const strBytes = Buffer.from(str, 'utf8');
+    const len = Buffer.alloc(4);
+    len.writeUInt32LE(strBytes.length);
+    return Buffer.concat([len, strBytes]);
+  }
+
+  private serializeU64(value: bigint): Buffer {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64LE(value);
+    return buf;
+  }
+
+  private serializeU32(value: number): Buffer {
+    const buf = Buffer.alloc(4);
+    buf.writeUInt32LE(value);
+    return buf;
   }
 }
