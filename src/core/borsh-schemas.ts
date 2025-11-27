@@ -714,10 +714,18 @@ export class ValidationRequest {
   }
 
   hasResponse(): boolean {
-    return this.responded_at !== BigInt(0);
+    // Handle both BigInt and BN (bn.js) from borsh deserialization
+    const respondedAt = typeof this.responded_at === 'bigint'
+      ? this.responded_at
+      : BigInt((this.responded_at as unknown as { toString(): string }).toString());
+    return respondedAt !== BigInt(0);
   }
 
   isPending(): boolean {
-    return this.responded_at === BigInt(0);
+    // Handle both BigInt and BN (bn.js) from borsh deserialization
+    const respondedAt = typeof this.responded_at === 'bigint'
+      ? this.responded_at
+      : BigInt((this.responded_at as unknown as { toString(): string }).toString());
+    return respondedAt === BigInt(0);
   }
 }

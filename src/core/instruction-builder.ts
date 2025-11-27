@@ -169,10 +169,10 @@ export class IdentityInstructionBuilder {
 
   /**
    * Build setMetadata instruction (inline metadata storage)
+   * Accounts: agent_account (mut), owner (signer)
    */
   buildSetMetadata(
     agentAccount: PublicKey,
-    agentMint: PublicKey,
     owner: PublicKey,
     key: string,
     value: string,
@@ -192,7 +192,6 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: false },
       ],
       data,
@@ -584,16 +583,22 @@ export class ValidationInstructionBuilder {
    */
   buildCloseValidation(
     config: PublicKey,
-    authority: PublicKey,
+    closer: PublicKey,
+    agentMint: PublicKey,
+    agentAccount: PublicKey,
     validationRequest: PublicKey,
+    identityRegistryProgram: PublicKey,
     rentReceiver: PublicKey,
   ): TransactionInstruction {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: config, isSigner: false, isWritable: false },
-        { pubkey: authority, isSigner: true, isWritable: false },
+        { pubkey: closer, isSigner: true, isWritable: false },
+        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
+        { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: rentReceiver, isSigner: false, isWritable: true },
       ],
       data: VALIDATION_DISCRIMINATORS.closeValidation,

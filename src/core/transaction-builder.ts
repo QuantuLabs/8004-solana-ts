@@ -91,12 +91,12 @@ export class IdentityTransactionBuilder {
         this.payer.publicKey
       );
 
-      // Split metadata: first 10 inline, rest in extensions
-      const inlineMetadata = metadata && metadata.length > 10
-        ? metadata.slice(0, 10)
+      // Split metadata: first 1 inline (MAX_METADATA_ENTRIES=1), rest in extensions
+      const inlineMetadata = metadata && metadata.length > 1
+        ? metadata.slice(0, 1)
         : metadata;
-      const extendedMetadata = metadata && metadata.length > 10
-        ? metadata.slice(10)
+      const extendedMetadata = metadata && metadata.length > 1
+        ? metadata.slice(1)
         : [];
 
       // Build register instruction - choose based on metadata presence
@@ -269,7 +269,6 @@ export class IdentityTransactionBuilder {
 
       const instruction = this.instructionBuilder.buildSetMetadata(
         agentPda,
-        agentMint,
         this.payer.publicKey,
         key,
         value
@@ -839,6 +838,7 @@ export class ValidationTransactionBuilder {
    * Close validation request to recover rent
    */
   async closeValidation(
+    agentMint: PublicKey,
     agentId: bigint,
     validatorAddress: PublicKey,
     nonce: number,
@@ -846,6 +846,7 @@ export class ValidationTransactionBuilder {
   ): Promise<TransactionResult> {
     try {
       const [configPda] = await PDAHelpers.getValidationConfigPDA();
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
         agentId,
         validatorAddress,
@@ -855,7 +856,10 @@ export class ValidationTransactionBuilder {
       const instruction = this.instructionBuilder.buildCloseValidation(
         configPda,
         this.payer.publicKey,
+        agentMint,
+        agentPda,
         validationRequestPda,
+        IDENTITY_PROGRAM_ID,
         rentReceiver || this.payer.publicKey
       );
 
