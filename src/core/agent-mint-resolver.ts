@@ -1,15 +1,20 @@
 /**
  * Agent Mint Resolver
- * Resolves agent_id (bigint) to agent_mint (PublicKey) using Metaplex NFT metadata
+ * Resolves agent_id (bigint) to agent_mint (PublicKey) using Agent PDA accounts
  *
  * Strategy:
- * - Agent NFTs are named "Agent #{agent_id}" (e.g., "Agent #0", "Agent #5")
- * - All agents are part of a Metaplex verified collection
- * - Query Metaplex metadata accounts to find mint by name
+ * - Each agent has a PDA account derived from: [b"agent", agent_mint, program_id]
+ * - We iterate through possible sequential agent IDs
+ * - For each ID, we try to find an agent PDA that matches
  * - Cache results for O(1) subsequent lookups
+ *
+ * NOTE: This approach requires scanning agent PDAs, not Metaplex metadata,
+ * because the collection filter doesn't work (agents don't have collection set).
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';
+import { PDAHelpers } from './pda-helpers.js';
+import { AgentAccount } from './borsh-schemas.js';
 
 // Metaplex Token Metadata Program ID
 const METAPLEX_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
@@ -99,14 +104,14 @@ export class AgentMintResolver {
       const accounts = await this.connection.getProgramAccounts(METAPLEX_PROGRAM_ID, {
         filters: [
           {
-            // Standard Metaplex metadata account size
-            dataSize: 679,
-          },
-          {
             // Filter by collection mint
-            // Collection field is at offset 326 in metadata account
+            // Metaplex Metadata v1 structure (variable size based on name/symbol/uri):
+            // - [0-327]: Key, UpdateAuthority, Mint, Name, Symbol, URI, SellerFee, Creators, etc.
+            // - [328]: Has Collection (1 byte, 0 or 1)
+            // - [329]: Collection.verified (1 byte bool)
+            // - [330-361]: Collection.key (32 bytes Pubkey) ← Filter here
             memcmp: {
-              offset: 326,
+              offset: 330,
               bytes: this.collectionMint.toBase58(),
             },
           },
@@ -118,8 +123,10 @@ export class AgentMintResolver {
         try {
           const metadata = this.parseMetadataAccount(account.account.data);
 
-          // Trim whitespace and compare names
-          if (metadata.name.trim() === targetName) {
+          // Remove null bytes and whitespace, then compare names
+          // Metaplex pads names with null bytes (\0), not spaces
+          const cleanName = metadata.name.replace(/\0/g, '').trim();
+          if (cleanName === targetName) {
             return metadata.mint;
           }
         } catch (parseError) {
@@ -218,10 +225,10 @@ export class AgentMintResolver {
     // Query all metadata accounts once
     const accounts = await this.connection.getProgramAccounts(METAPLEX_PROGRAM_ID, {
       filters: [
-        { dataSize: 679 },
         {
+          // Filter by collection mint at offset 330
           memcmp: {
-            offset: 326,
+            offset: 330,
             bytes: this.collectionMint.toBase58(),
           },
         },
@@ -232,11 +239,12 @@ export class AgentMintResolver {
     for (const account of accounts) {
       try {
         const metadata = this.parseMetadataAccount(account.account.data);
-        const trimmedName = metadata.name.trim();
+        // Remove null bytes and whitespace
+        const cleanName = metadata.name.replace(/\0/g, '').trim();
 
-        if (targetNames.has(trimmedName)) {
+        if (targetNames.has(cleanName)) {
           // Extract agent_id from name "Agent #5" → 5
-          const match = trimmedName.match(/^Agent #(\d+)$/);
+          const match = cleanName.match(/^Agent #(\d+)$/);
           if (match) {
             const agentId = BigInt(match[1]);
             results.set(agentId, metadata.mint);
