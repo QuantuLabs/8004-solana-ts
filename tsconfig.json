@@ -17,6 +17,6 @@
     "allowSyntheticDefaultImports": true,
     "types": ["jest", "node"]
   },
-  "include": ["src/solana/**/*", "src/models/**/*", "src/core/ipfs-client.ts"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "include": ["src/core/**/*", "src/models/**/*", "src/utils/**/*", "src/index.ts"],
+  "exclude": ["node_modules", "dist", "tests", "src/core/feedback-manager-solana.ts", "src/core/sdk-solana.ts"]
 }

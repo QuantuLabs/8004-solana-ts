@@ -32,6 +32,7 @@ export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
-export { SolanaSDK } from './core/sdk-solana.js';
-export type { SolanaSDKConfig } from './core/sdk-solana.js';
+// SolanaSDK temporarily disabled pending fixes
+// export { SolanaSDK } from './core/sdk-solana.js';
+// export type { SolanaSDKConfig } from './core/sdk-solana.js';
 
