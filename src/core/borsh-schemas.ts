@@ -72,7 +72,7 @@ export class AgentAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       MetadataEntry,
       {
@@ -95,7 +95,7 @@ export class AgentAccount {
           ['nft_name', 'string'],
           ['nft_symbol', 'string'],
           ['metadata', [MetadataEntry]],   // Vec<MetadataEntry>
-          ['created_at', 'i64'],           // Note: i64, not u64 (timestamp)
+          ['created_at', 'u64'],           // Note: borsh 0.7 doesn't support i64, using u64
           ['bump', 'u8'],
         ],
       },
@@ -150,7 +150,7 @@ export class RegistryConfig {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       RegistryConfig,
       {
@@ -205,7 +205,7 @@ export class MetadataExtensionAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       MetadataEntry,
       {
@@ -285,7 +285,7 @@ export class FeedbackAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       FeedbackAccount,
       {
@@ -300,7 +300,7 @@ export class FeedbackAccount {
           ['file_uri', 'string'],
           ['file_hash', [32]],
           ['is_revoked', 'u8'],         // bool serialized as u8
-          ['created_at', 'i64'],
+          ['created_at', 'u64'],          // borsh 0.7 doesn't support i64
           ['bump', 'u8'],
         ],
       },
@@ -371,7 +371,7 @@ export class AgentReputationAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       AgentReputationAccount,
       {
@@ -381,7 +381,7 @@ export class AgentReputationAccount {
           ['total_feedbacks', 'u64'],
           ['total_score_sum', 'u64'],     // Renamed from sum_scores
           ['average_score', 'u8'],
-          ['last_updated', 'i64'],
+          ['last_updated', 'u64'],        // borsh 0.7 doesn't support i64
           ['bump', 'u8'],
         ],
       },
@@ -423,7 +423,7 @@ export class ClientIndexAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       ClientIndexAccount,
       {
@@ -484,7 +484,7 @@ export class ResponseIndexAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       ResponseIndexAccount,
       {
@@ -554,7 +554,7 @@ export class ResponseAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       ResponseAccount,
       {
@@ -567,7 +567,7 @@ export class ResponseAccount {
           ['responder', [32]],
           ['response_uri', 'string'],
           ['response_hash', [32]],
-          ['created_at', 'i64'],
+          ['created_at', 'u64'],          // borsh 0.7 doesn't support i64
           ['bump', 'u8'],
         ],
       },
@@ -615,7 +615,7 @@ export class ValidationConfig {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       ValidationConfig,
       {
@@ -683,7 +683,7 @@ export class ValidationRequest {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map([
+  static schema: Schema = new Map<any, any>([
     [
       ValidationRequest,
       {
@@ -695,8 +695,8 @@ export class ValidationRequest {
           ['request_hash', [32]],
           ['response_hash', [32]],
           ['response', 'u8'],
-          ['created_at', 'i64'],
-          ['responded_at', 'i64'],
+          ['created_at', 'u64'],          // borsh 0.7 doesn't support i64
+          ['responded_at', 'u64'],        // borsh 0.7 doesn't support i64
           ['bump', 'u8'],
         ],
       },

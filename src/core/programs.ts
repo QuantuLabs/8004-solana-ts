@@ -10,9 +10,9 @@ import { PublicKey } from '@solana/web3.js';
  * These are the deployed program addresses on Solana devnet
  */
 export const PROGRAM_IDS = {
-  identityRegistry: new PublicKey('2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ'),
-  reputationRegistry: new PublicKey('9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa'),
-  validationRegistry: new PublicKey('CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW'),
+  identityRegistry: new PublicKey('CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss'),
+  reputationRegistry: new PublicKey('Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr'),
+  validationRegistry: new PublicKey('2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw'),
 } as const;
 
 /**
