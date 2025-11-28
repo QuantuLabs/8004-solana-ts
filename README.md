@@ -1,4 +1,4 @@
-# agent0-ts-solana
+# 8004-solana-ts
 
 > TypeScript SDK for ERC-8004 on Solana
 > Agent identity, reputation and discovery standard
@@ -13,7 +13,7 @@
 
 ## About
 
-**agent0-ts-solana** is a TypeScript SDK implementing the [ERC-8004 standard](https://eips.ethereum.org/EIPS/eip-8004) on Solana. It provides a seamless way to:
+**8004-solana-ts** is a TypeScript SDK implementing the [ERC-8004 standard](https://eips.ethereum.org/EIPS/eip-8004) on Solana. It provides a seamless way to:
 
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
@@ -47,7 +47,7 @@ npm run build
 npm link
 
 # In your project
-npm link agent0-ts-solana
+npm link 8004-solana-ts
 ```
 
 ---
@@ -55,7 +55,7 @@ npm link agent0-ts-solana
 ## Quick Start
 
 ```typescript
-import { SolanaSDK } from 'agent0-ts-solana';
+import { SolanaSDK } from '8004-solana-ts';
 import { Keypair } from '@solana/web3.js';
 
 // Create SDK (devnet by default, no signer = read-only)
@@ -94,7 +94,7 @@ await writeSdk.giveFeedback(13, {
 ### Constructor
 
 ```typescript
-import { SolanaSDK } from 'agent0-ts-solana';
+import { SolanaSDK } from '8004-solana-ts';
 import { Keypair } from '@solana/web3.js';
 
 // Default: devnet, read-only
