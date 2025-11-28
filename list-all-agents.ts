@@ -12,6 +12,8 @@ import {
   AgentAccount,
   FeedbackAccount,
   AgentReputationAccount,
+  ACCOUNT_DISCRIMINATORS,
+  matchesDiscriminator,
 } from './src/index.js';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
@@ -82,24 +84,23 @@ async function main() {
   const allReputationAccounts = await connection.getProgramAccounts(REPUTATION_PROGRAM_ID);
   console.log(`  Found ${allReputationAccounts.length} accounts\n`);
 
-  // Pre-parse all reputation and feedback accounts
+  // Pre-parse all reputation and feedback accounts using discriminators
   const reputationByAgentId = new Map<string, AgentReputationAccount>();
   const feedbacksByAgentId = new Map<string, FeedbackAccount[]>();
 
   for (const { account } of allReputationAccounts) {
-    // Try parsing as AgentReputationAccount (smaller, ~50 bytes after discriminator)
-    if (account.data.length > 40 && account.data.length < 80) {
+    const data = Buffer.from(account.data);
+
+    // Check discriminator to identify account type
+    if (matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.AgentReputationMetadata)) {
       try {
         const rep = AgentReputationAccount.deserialize(account.data);
         const agentIdStr = rep.agent_id.toString();
         reputationByAgentId.set(agentIdStr, rep);
       } catch (e) {
-        // Not a reputation account
+        // Parsing failed
       }
-    }
-
-    // Try parsing as FeedbackAccount (larger, >100 bytes)
-    if (account.data.length > 100) {
+    } else if (matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.FeedbackAccount)) {
       try {
         const feedback = FeedbackAccount.deserialize(account.data);
         const agentIdStr = feedback.agent_id.toString();
@@ -108,19 +109,22 @@ async function main() {
         }
         feedbacksByAgentId.get(agentIdStr)!.push(feedback);
       } catch (e) {
-        // Not a feedback account
+        // Parsing failed
       }
     }
+    // Skip ClientIndexAccount, ResponseIndexAccount, ResponseAccount - not needed for listing
   }
 
   const agents: AgentInfo[] = [];
 
-  // Parse each Identity account
+  // Parse each Identity account using discriminators
   for (const { pubkey, account } of allIdentityAccounts) {
-    // Skip config account (smaller size)
-    if (account.data.length < 100) continue;
+    const data = Buffer.from(account.data);
 
-    // Skip if it's the config account
+    // Skip if not an AgentAccount (using discriminator)
+    if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.AgentAccount)) continue;
+
+    // Skip if it's the config account (shouldn't happen with discriminator check, but safety)
     if (pubkey.equals(configPda)) continue;
 
     try {
