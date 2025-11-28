@@ -44,6 +44,6 @@ export {
 export type { Cluster, SolanaClientConfig } from './core/client.js';
 
 // Export Solana SDK
-export { SolanaSDK, createDevnetSDK } from './core/sdk-solana.js';
+export { SolanaSDK } from './core/sdk-solana.js';
 export type { SolanaSDKConfig } from './core/sdk-solana.js';
 

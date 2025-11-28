@@ -55,18 +55,11 @@ npm link agent0-ts-solana
 ## Quick Start
 
 ```typescript
-import { SolanaSDK, createDevnetSDK } from 'agent0-ts-solana';
+import { SolanaSDK } from 'agent0-ts-solana';
 import { Keypair } from '@solana/web3.js';
 
-// Create read-only SDK (for queries)
-const readOnlySDK = createDevnetSDK();
-
-// Or create SDK with signer (for transactions)
-const signer = Keypair.fromSecretKey(/* your keypair */);
-const sdk = new SolanaSDK({
-  rpcUrl: 'https://api.devnet.solana.com',
-  signer,
-});
+// Create SDK (devnet by default, no signer = read-only)
+const sdk = new SolanaSDK();
 
 // Load an existing agent
 const agent = await sdk.loadAgent(13);
@@ -77,8 +70,12 @@ const summary = await sdk.getReputationSummary(13);
 console.log(`Average score: ${summary.averageScore}`);
 console.log(`Total feedbacks: ${summary.count}`);
 
+// For write operations, provide a signer
+const signer = Keypair.fromSecretKey(/* your keypair */);
+const writeSdk = new SolanaSDK({ signer });
+
 // Submit feedback (requires signer)
-await sdk.giveFeedback(13, {
+await writeSdk.giveFeedback(13, {
   score: 85,
   tag1: 'helpful',
   tag2: 'accurate',
@@ -98,18 +95,23 @@ await sdk.giveFeedback(13, {
 
 ```typescript
 import { SolanaSDK } from 'agent0-ts-solana';
+import { Keypair } from '@solana/web3.js';
 
-// Read-only mode
-const sdk = new SolanaSDK({ rpcUrl: 'https://api.devnet.solana.com' });
+// Default: devnet, read-only
+const sdk = new SolanaSDK();
 
 // With signer (for write operations)
-const sdk = new SolanaSDK({
-  rpcUrl: 'https://api.devnet.solana.com',
-  signer: Keypair.generate(),
-});
+const sdk = new SolanaSDK({ signer: Keypair.generate() });
 
-// Using cluster shorthand
-const sdk = new SolanaSDK({ cluster: 'devnet' });
+// Custom RPC (for advanced queries)
+const sdk = new SolanaSDK({ rpcUrl: 'https://your-rpc.helius.dev' });
+
+// Full config
+const sdk = new SolanaSDK({
+  cluster: 'devnet',      // 'devnet' | 'mainnet-beta' (default: 'devnet')
+  rpcUrl: 'https://...',  // Optional custom RPC
+  signer: keypair,        // Optional signer for write operations
+});
 ```
 
 ### Utility Methods

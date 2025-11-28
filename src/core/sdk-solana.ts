@@ -778,13 +778,3 @@ export class SolanaSDK {
     return this.client.rpcUrl;
   }
 }
-
-/**
- * Create SDK instance for Solana devnet
- */
-export function createDevnetSDK(config?: Omit<SolanaSDKConfig, 'cluster'>): SolanaSDK {
-  return new SolanaSDK({
-    cluster: 'devnet',
-    ...config,
-  });
-}

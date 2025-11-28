@@ -4,13 +4,13 @@
  * Demonstrates feedback submission, reading, and responses
  */
 import { Keypair } from '@solana/web3.js';
-import { SolanaSDK, createDevnetSDK } from '../src/index.js';
+import { SolanaSDK } from '../src/index.js';
 
 async function main() {
   const agentId = 1n;
 
-  // === READ FEEDBACK ===
-  const sdk = createDevnetSDK();
+  // Create SDK (devnet by default)
+  const sdk = new SolanaSDK();
 
   // Get reputation summary
   const summary = await sdk.getReputationSummary(agentId);
@@ -32,7 +32,7 @@ async function main() {
   if (!secretKey) return;
 
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
-  const writeSdk = new SolanaSDK({ cluster: 'devnet', signer });
+  const writeSdk = new SolanaSDK({ signer });
 
   // Submit feedback
   const result = await writeSdk.giveFeedback(agentId, {
