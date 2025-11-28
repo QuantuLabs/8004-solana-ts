@@ -378,6 +378,17 @@ export class SolanaSDK {
   }
 
   /**
+   * Get feedback (alias for readFeedback, for parity with agent0-ts)
+   * @param agentId - Agent ID (number or bigint)
+   * @param clientAddress - Client public key
+   * @param feedbackIndex - Feedback index (number or bigint)
+   * @returns Feedback object or null
+   */
+  async getFeedback(agentId: number | bigint, clientAddress: PublicKey, feedbackIndex: number | bigint) {
+    return this.readFeedback(agentId, clientAddress, feedbackIndex);
+  }
+
+  /**
    * 3. Read all feedbacks for an agent
    * @param agentId - Agent ID (number or bigint)
    * @param includeRevoked - Include revoked feedbacks
@@ -668,6 +679,25 @@ export class SolanaSDK {
     );
   }
 
+  /**
+   * Transfer agent ownership (write operation)
+   * Aligned with agent0-ts SDK interface
+   * @param agentId - Agent ID (number or bigint)
+   * @param newOwner - New owner public key
+   */
+  async transferAgent(agentId: number | bigint, newOwner: PublicKey): Promise<TransactionResult> {
+    if (!this.identityTxBuilder) {
+      throw new Error('No signer configured - SDK is read-only');
+    }
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
+    // Resolve agentId → agentMint
+    await this.initializeMintResolver();
+    const agentMint = await this.mintResolver!.resolve(id);
+
+    return await this.identityTxBuilder.transferAgent(agentMint, newOwner);
+  }
+
   // ==================== Utility Methods ====================
 
   /**
@@ -676,6 +706,14 @@ export class SolanaSDK {
    */
   get isReadOnly(): boolean {
     return this.signer === undefined;
+  }
+
+  /**
+   * Get chain ID (for parity with agent0-ts)
+   * Returns a string identifier for Solana cluster
+   */
+  async chainId(): Promise<string> {
+    return `solana-${this.cluster}`;
   }
 
   /**
