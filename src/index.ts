@@ -32,7 +32,18 @@ export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
+
+// Export Solana client with RPC detection
+export {
+  SolanaClient,
+  UnsupportedRpcError,
+  SOLANA_DEVNET_RPC,
+  RECOMMENDED_RPC_PROVIDERS,
+  createDevnetClient,
+} from './core/client.js';
+export type { Cluster, SolanaClientConfig } from './core/client.js';
+
 // SolanaSDK temporarily disabled pending fixes
-// export { SolanaSDK } from './core/sdk-solana.js';
+// export { SolanaSDK, createDevnetSDK } from './core/sdk-solana.js';
 // export type { SolanaSDKConfig } from './core/sdk-solana.js';
 

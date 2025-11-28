@@ -14,10 +14,38 @@ import {
 
 export type Cluster = 'devnet';
 
+/** Default Solana devnet RPC URL */
+export const SOLANA_DEVNET_RPC = 'https://api.devnet.solana.com';
+
+/** List of RPC providers that support advanced features like getProgramAccounts with memcmp */
+export const RECOMMENDED_RPC_PROVIDERS = [
+  'Helius - https://helius.dev',
+  'Triton - https://triton.one',
+  'QuickNode - https://quicknode.com',
+  'Alchemy - https://alchemy.com',
+];
+
 export interface SolanaClientConfig {
   cluster?: Cluster;
   rpcUrl?: string;
   commitment?: Commitment;
+}
+
+/**
+ * Error thrown when an operation requires RPC features not available on public devnet
+ */
+export class UnsupportedRpcError extends Error {
+  constructor(operation: string) {
+    super(
+      `Operation "${operation}" is not supported by the default Solana devnet RPC.\n` +
+      `This operation requires getProgramAccounts with memcmp filters.\n\n` +
+      `Please initialize the SDK with a compatible RPC provider:\n` +
+      RECOMMENDED_RPC_PROVIDERS.map(p => `  - ${p}`).join('\n') +
+      `\n\nExample:\n` +
+      `  const sdk = new SolanaSDK({ rpcUrl: 'https://your-rpc-provider.com' });`
+    );
+    this.name = 'UnsupportedRpcError';
+  }
 }
 
 /**
@@ -27,11 +55,32 @@ export interface SolanaClientConfig {
 export class SolanaClient {
   private connection: Connection;
   public readonly cluster: Cluster;
+  public readonly rpcUrl: string;
+  /** True if using the default public Solana devnet RPC (limited features) */
+  public readonly isDefaultDevnetRpc: boolean;
 
   constructor(config: SolanaClientConfig) {
     this.cluster = config.cluster || 'devnet';
-    const rpcUrl = config.rpcUrl || 'https://api.devnet.solana.com';
-    this.connection = new Connection(rpcUrl, config.commitment || 'confirmed');
+    this.rpcUrl = config.rpcUrl || SOLANA_DEVNET_RPC;
+    this.isDefaultDevnetRpc = !config.rpcUrl || config.rpcUrl === SOLANA_DEVNET_RPC;
+    this.connection = new Connection(this.rpcUrl, config.commitment || 'confirmed');
+  }
+
+  /**
+   * Check if the current RPC supports advanced features
+   * Returns false for default devnet RPC, true for custom RPC providers
+   */
+  supportsAdvancedQueries(): boolean {
+    return !this.isDefaultDevnetRpc;
+  }
+
+  /**
+   * Assert that advanced queries are supported, throw UnsupportedRpcError if not
+   */
+  requireAdvancedQueries(operation: string): void {
+    if (this.isDefaultDevnetRpc) {
+      throw new UnsupportedRpcError(operation);
+    }
   }
 
   /**
