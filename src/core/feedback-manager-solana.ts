@@ -32,8 +32,8 @@ export interface SolanaFeedback {
   client: PublicKey;
   feedbackIndex: bigint;
   score: number;
-  performanceTags: Uint8Array;
-  functionalityTags: Uint8Array;
+  tag1: string;
+  tag2: string;
   fileUri: string;
   fileHash: Uint8Array;
   revoked: boolean;
@@ -363,11 +363,11 @@ export class SolanaFeedbackManager {
       client: feedback.getClientPublicKey(),
       feedbackIndex: feedback.feedback_index,
       score: feedback.score,
-      performanceTags: feedback.performance_tags,
-      functionalityTags: feedback.functionality_tags,
+      tag1: feedback.tag1,
+      tag2: feedback.tag2,
       fileUri: feedback.file_uri,
       fileHash: feedback.file_hash,
-      revoked: feedback.revoked,
+      revoked: feedback.is_revoked,
       createdAt: feedback.created_at,
     };
   }

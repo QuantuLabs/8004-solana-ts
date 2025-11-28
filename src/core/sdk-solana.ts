@@ -4,19 +4,21 @@
  */
 
 import { PublicKey, Keypair } from '@solana/web3.js';
-import { SolanaClient, Cluster, createDevnetClient } from './client.js';
+import { SolanaClient, Cluster, createDevnetClient, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
-import { AgentAccount } from './borsh-schemas.js';
+import { AgentAccount, MetadataEntry } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
   ReputationTransactionBuilder,
   ValidationTransactionBuilder,
+  TransactionResult,
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { fetchRegistryConfig } from './config-reader.js';
+import type { FeedbackAuth } from '../models/interfaces.js';
 
 export interface SolanaSDKConfig {
   cluster?: Cluster;
@@ -160,7 +162,7 @@ export class SolanaSDK {
   private async loadMetadataExtensions(
     agentId: bigint,
     agentMint: PublicKey
-  ): Promise<Array<{ key: string; value: Uint8Array }>> {
+  ): Promise<MetadataEntry[]> {
     const connection = this.client.getConnection();
     const programId = this.programIds.identityRegistry;
 
@@ -183,7 +185,7 @@ export class SolanaSDK {
       });
 
       // Parse and extract metadata from extensions
-      const extensions: Array<{ key: string; value: Uint8Array }> = [];
+      const extensions: MetadataEntry[] = [];
 
       for (const account of accounts) {
         try {
@@ -212,7 +214,7 @@ export class SolanaSDK {
           offset += 4;
           const value = accountData.slice(offset, offset + valueLen);
 
-          extensions.push({ key, value });
+          extensions.push(new MetadataEntry({ metadata_key: key, metadata_value: value }));
         } catch (parseError) {
           console.warn('Failed to parse metadata extension:', parseError);
         }
@@ -223,7 +225,7 @@ export class SolanaSDK {
       // Fallback: sequential loading (slower but always works)
       console.warn('getProgramAccounts with memcmp failed, using sequential fallback:', error);
 
-      const extensions: Array<{ key: string; value: Uint8Array }> = [];
+      const extensions: MetadataEntry[] = [];
 
       // Try indices 0-255 sequentially
       for (let i = 0; i < 256; i++) {
@@ -249,7 +251,7 @@ export class SolanaSDK {
           offset += 4;
           const value = extData.slice(offset, offset + valueLen);
 
-          extensions.push({ key, value });
+          extensions.push(new MetadataEntry({ metadata_key: key, metadata_value: value }));
         } catch {
           // Stop at first failed extension
           break;
@@ -264,8 +266,12 @@ export class SolanaSDK {
    * Get agent by owner
    * @param owner - Owner public key
    * @returns Array of agent accounts owned by this address
+   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
    */
   async getAgentsByOwner(owner: PublicKey): Promise<AgentAccount[]> {
+    // This operation requires getProgramAccounts which is limited on public devnet
+    this.client.requireAdvancedQueries('getAgentsByOwner');
+
     try {
       const programId = this.programIds.identityRegistry;
 
@@ -283,6 +289,7 @@ export class SolanaSDK {
 
       return agents;
     } catch (error) {
+      if (error instanceof UnsupportedRpcError) throw error;
       console.error(`Error getting agents for owner ${owner.toBase58()}:`, error);
       return [];
     }
@@ -296,6 +303,51 @@ export class SolanaSDK {
   async agentExists(agentId: number | bigint): Promise<boolean> {
     const agent = await this.loadAgent(agentId);
     return agent !== null;
+  }
+
+  /**
+   * Get agent (alias for loadAgent, for parity with agent0-ts)
+   * @param agentId - Agent ID (number or bigint)
+   * @returns Agent account data or null if not found
+   */
+  async getAgent(agentId: number | bigint): Promise<AgentAccount | null> {
+    return this.loadAgent(agentId);
+  }
+
+  /**
+   * Check if address is agent owner
+   * @param agentId - Agent ID (number or bigint)
+   * @param address - Address to check
+   * @returns True if address is the owner
+   */
+  async isAgentOwner(agentId: number | bigint, address: PublicKey): Promise<boolean> {
+    const agent = await this.loadAgent(agentId);
+    if (!agent) return false;
+    return agent.getOwnerPublicKey().equals(address);
+  }
+
+  /**
+   * Get agent owner
+   * @param agentId - Agent ID (number or bigint)
+   * @returns Owner public key or null if agent not found
+   */
+  async getAgentOwner(agentId: number | bigint): Promise<PublicKey | null> {
+    const agent = await this.loadAgent(agentId);
+    if (!agent) return null;
+    return agent.getOwnerPublicKey();
+  }
+
+  /**
+   * Get reputation summary (alias for getSummary, for parity with agent0-ts)
+   * @param agentId - Agent ID (number or bigint)
+   * @returns Reputation summary with count and average score
+   */
+  async getReputationSummary(agentId: number | bigint): Promise<{ count: number; averageScore: number }> {
+    const summary = await this.getSummary(agentId);
+    return {
+      count: summary.totalFeedbacks,
+      averageScore: summary.averageScore,
+    };
   }
 
   // ==================== Reputation Methods (6 ERC-8004 Read Functions) ====================
@@ -330,8 +382,12 @@ export class SolanaSDK {
    * @param agentId - Agent ID (number or bigint)
    * @param includeRevoked - Include revoked feedbacks
    * @returns Array of feedback objects
+   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
    */
   async readAllFeedback(agentId: number | bigint, includeRevoked: boolean = false) {
+    // This operation requires getProgramAccounts with memcmp
+    this.client.requireAdvancedQueries('readAllFeedback');
+
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     return await this.feedbackManager.readAllFeedback(id, includeRevoked);
   }
@@ -351,8 +407,12 @@ export class SolanaSDK {
    * 5. Get all clients who gave feedback
    * @param agentId - Agent ID (number or bigint)
    * @returns Array of client public keys
+   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
    */
   async getClients(agentId: number | bigint) {
+    // This operation requires getProgramAccounts with memcmp
+    this.client.requireAdvancedQueries('getClients');
+
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     return await this.feedbackManager.getClients(id);
   }
@@ -424,12 +484,17 @@ export class SolanaSDK {
    * @param agentId - Agent ID (number or bigint)
    * @param newUri - New URI
    */
-  async setAgentUri(agentId: number | bigint, newUri: string) {
+  async setAgentUri(agentId: number | bigint, newUri: string): Promise<TransactionResult> {
     if (!this.identityTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    return await this.identityTxBuilder.setAgentUri(id, newUri);
+
+    // Resolve agentId → agentMint
+    await this.initializeMintResolver();
+    const agentMint = await this.mintResolver!.resolve(id);
+
+    return await this.identityTxBuilder.setAgentUri(agentMint, newUri);
   }
 
   /**
@@ -438,36 +503,59 @@ export class SolanaSDK {
    * @param key - Metadata key
    * @param value - Metadata value
    */
-  async setMetadata(agentId: number | bigint, key: string, value: string) {
+  async setMetadata(agentId: number | bigint, key: string, value: string): Promise<TransactionResult> {
     if (!this.identityTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    return await this.identityTxBuilder.setMetadata(id, key, value);
+
+    // Resolve agentId → agentMint
+    await this.initializeMintResolver();
+    const agentMint = await this.mintResolver!.resolve(id);
+
+    return await this.identityTxBuilder.setMetadataByMint(agentMint, key, value);
   }
 
   /**
    * Give feedback to an agent (write operation)
+   * Aligned with agent0-ts SDK interface
    * @param agentId - Agent ID (number or bigint)
-   * @param score - Score 0-100
-   * @param fileUri - IPFS/Arweave URI
-   * @param fileHash - File hash
+   * @param feedbackFile - Feedback data object
+   * @param feedbackAuth - Optional feedback authorization (not yet implemented)
    */
   async giveFeedback(
     agentId: number | bigint,
-    score: number,
-    fileUri: string,
-    fileHash: Buffer
-  ) {
+    feedbackFile: {
+      score: number;
+      tag1?: string;
+      tag2?: string;
+      fileUri: string;
+      fileHash: Buffer;
+    },
+    feedbackAuth?: FeedbackAuth
+  ): Promise<TransactionResult & { feedbackIndex?: bigint }> {
     if (!this.reputationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
+    // Resolve agentId → agentMint
+    await this.initializeMintResolver();
+    const agentMint = await this.mintResolver!.resolve(id);
+
+    // TODO: Handle feedbackAuth when signature verification is implemented
+    if (feedbackAuth) {
+      console.warn('feedbackAuth is not yet implemented for Solana - ignoring');
+    }
+
     return await this.reputationTxBuilder.giveFeedback(
+      agentMint,
       id,
-      score,
-      fileUri,
-      fileHash
+      feedbackFile.score,
+      feedbackFile.tag1 || '',
+      feedbackFile.tag2 || '',
+      feedbackFile.fileUri,
+      feedbackFile.fileHash
     );
   }
 
@@ -518,20 +606,32 @@ export class SolanaSDK {
    * Request validation (write operation)
    * @param agentId - Agent ID (number or bigint)
    * @param validator - Validator public key
-   * @param requestHash - Request hash
+   * @param nonce - Request nonce (unique per agent-validator pair)
+   * @param requestUri - Request URI (IPFS/Arweave)
+   * @param requestHash - Request hash (32 bytes)
    */
   async requestValidation(
     agentId: number | bigint,
     validator: PublicKey,
+    nonce: number,
+    requestUri: string,
     requestHash: Buffer
-  ) {
+  ): Promise<TransactionResult> {
     if (!this.validationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
+    // Resolve agentId → agentMint
+    await this.initializeMintResolver();
+    const agentMint = await this.mintResolver!.resolve(id);
+
     return await this.validationTxBuilder.requestValidation(
+      agentMint,
       id,
       validator,
+      nonce,
+      requestUri,
       requestHash
     );
   }
@@ -539,32 +639,44 @@ export class SolanaSDK {
   /**
    * Respond to validation request (write operation)
    * @param agentId - Agent ID (number or bigint)
-   * @param requester - Requester public key
    * @param nonce - Request nonce
-   * @param response - Response (0=rejected, 1=approved)
-   * @param responseHash - Response hash
+   * @param response - Response score (0-100)
+   * @param responseUri - Response URI (IPFS/Arweave)
+   * @param responseHash - Response hash (32 bytes)
+   * @param tag - Response tag (max 32 bytes)
    */
   async respondToValidation(
     agentId: number | bigint,
-    requester: PublicKey,
     nonce: number,
     response: number,
-    responseHash: Buffer
-  ) {
+    responseUri: string,
+    responseHash: Buffer,
+    tag: string = ''
+  ): Promise<TransactionResult> {
     if (!this.validationTxBuilder) {
       throw new Error('No signer configured - SDK is read-only');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
     return await this.validationTxBuilder.respondToValidation(
       id,
-      requester,
       nonce,
       response,
-      responseHash
+      responseUri,
+      responseHash,
+      tag
     );
   }
 
   // ==================== Utility Methods ====================
+
+  /**
+   * Check if SDK is in read-only mode (no signer configured)
+   * Aligned with agent0-ts SDK interface
+   */
+  get isReadOnly(): boolean {
+    return this.signer === undefined;
+  }
 
   /**
    * Get current cluster
@@ -581,6 +693,17 @@ export class SolanaSDK {
   }
 
   /**
+   * Get registry addresses (for parity with agent0-ts)
+   */
+  registries(): Record<string, string> {
+    return {
+      IDENTITY: this.programIds.identityRegistry.toBase58(),
+      REPUTATION: this.programIds.reputationRegistry.toBase58(),
+      VALIDATION: this.programIds.validationRegistry.toBase58(),
+    };
+  }
+
+  /**
    * Get Solana client for advanced usage
    */
   getSolanaClient(): SolanaClient {
@@ -592,6 +715,29 @@ export class SolanaSDK {
    */
   getFeedbackManager(): SolanaFeedbackManager {
     return this.feedbackManager;
+  }
+
+  /**
+   * Check if SDK is using the default public Solana devnet RPC
+   * Some operations are not supported on the public RPC
+   */
+  isUsingDefaultDevnetRpc(): boolean {
+    return this.client.isDefaultDevnetRpc;
+  }
+
+  /**
+   * Check if SDK supports advanced queries (getProgramAccounts with memcmp)
+   * Returns false when using default Solana devnet RPC
+   */
+  supportsAdvancedQueries(): boolean {
+    return this.client.supportsAdvancedQueries();
+  }
+
+  /**
+   * Get the current RPC URL being used
+   */
+  getRpcUrl(): string {
+    return this.client.rpcUrl;
   }
 }
 

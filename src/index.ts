@@ -43,7 +43,7 @@ export {
 } from './core/client.js';
 export type { Cluster, SolanaClientConfig } from './core/client.js';
 
-// SolanaSDK temporarily disabled pending fixes
-// export { SolanaSDK, createDevnetSDK } from './core/sdk-solana.js';
-// export type { SolanaSDKConfig } from './core/sdk-solana.js';
+// Export Solana SDK
+export { SolanaSDK, createDevnetSDK } from './core/sdk-solana.js';
+export type { SolanaSDKConfig } from './core/sdk-solana.js';
 
