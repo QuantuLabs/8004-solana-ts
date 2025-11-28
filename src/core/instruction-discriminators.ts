@@ -19,6 +19,29 @@ export function anchorDiscriminator(instructionName: string): Buffer {
 }
 
 /**
+ * Calculate Anchor account discriminator from account struct name
+ * @param accountName - The account struct name (e.g., "AgentAccount", "RegistryConfig")
+ * @returns 8-byte discriminator buffer
+ */
+export function anchorAccountDiscriminator(accountName: string): Buffer {
+  const hash = createHash('sha256')
+    .update(`account:${accountName}`)
+    .digest();
+  return hash.slice(0, 8);
+}
+
+/**
+ * Check if account data matches expected discriminator
+ * @param data - Account data buffer
+ * @param expected - Expected discriminator buffer
+ * @returns true if first 8 bytes match
+ */
+export function matchesDiscriminator(data: Buffer, expected: Buffer): boolean {
+  if (data.length < 8) return false;
+  return data.slice(0, 8).equals(expected);
+}
+
+/**
  * Identity Registry instruction discriminators
  * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
  */
@@ -59,4 +82,26 @@ export const VALIDATION_DISCRIMINATORS = {
   respondToValidation: anchorDiscriminator('respond_to_validation'),
   updateValidation: anchorDiscriminator('update_validation'),
   closeValidation: anchorDiscriminator('close_validation'),
+} as const;
+
+/**
+ * Account discriminators for identifying account types
+ * Each Anchor account has a unique 8-byte discriminator: SHA256("account:StructName")[0..8]
+ */
+export const ACCOUNT_DISCRIMINATORS = {
+  // Identity Registry accounts
+  RegistryConfig: anchorAccountDiscriminator('RegistryConfig'),
+  AgentAccount: anchorAccountDiscriminator('AgentAccount'),
+  MetadataExtension: anchorAccountDiscriminator('MetadataExtension'),
+
+  // Reputation Registry accounts
+  AgentReputationMetadata: anchorAccountDiscriminator('AgentReputationMetadata'),
+  FeedbackAccount: anchorAccountDiscriminator('FeedbackAccount'),
+  ClientIndexAccount: anchorAccountDiscriminator('ClientIndexAccount'),
+  ResponseIndexAccount: anchorAccountDiscriminator('ResponseIndexAccount'),
+  ResponseAccount: anchorAccountDiscriminator('ResponseAccount'),
+
+  // Validation Registry accounts
+  ValidationConfig: anchorAccountDiscriminator('ValidationConfig'),
+  ValidationRequest: anchorAccountDiscriminator('ValidationRequest'),
 } as const;
