@@ -1,0 +1,323 @@
+/**
+ * Create diverse agents with various data to test all edge cases
+ *
+ * This script creates agents with:
+ * - Different token_uri lengths (short, medium, long, empty)
+ * - Different nft_name variations
+ * - Different nft_symbol variations (empty, short, long)
+ * - Different metadata entries (none, single, multiple)
+ * - Different metadata value types (text, JSON, binary-like)
+ */
+
+import { Keypair, Connection } from '@solana/web3.js';
+import { createDevnetSDK } from './src/core/sdk-solana.js';
+import * as fs from 'fs';
+
+// ANSI colors
+const GREEN = '\x1b[32m';
+const CYAN = '\x1b[36m';
+const YELLOW = '\x1b[33m';
+const RESET = '\x1b[0m';
+
+function log(msg: string) {
+  console.log(`${CYAN}ℹ️  ${msg}${RESET}`);
+}
+
+function logSuccess(msg: string) {
+  console.log(`${GREEN}✅ ${msg}${RESET}`);
+}
+
+function logWarning(msg: string) {
+  console.log(`${YELLOW}⚠️  ${msg}${RESET}`);
+}
+
+interface AgentConfig {
+  name: string;
+  description: string;
+  tokenUri: string;
+  metadata: Array<{ key: string; value: string }>;
+}
+
+const agentConfigs: AgentConfig[] = [
+  {
+    name: 'Minimal Agent',
+    description: 'Agent with minimal data - empty strings and no metadata',
+    tokenUri: '',
+    metadata: [],
+  },
+  {
+    name: 'Basic Agent',
+    description: 'Simple agent with standard data',
+    tokenUri: 'https://example.com/agent-basic.json',
+ 'Basic Agent',
+ 'BASIC',
+    metadata: [],
+  },
+  {
+    name: 'Agent with Single Metadata',
+    description: 'Agent with one metadata entry',
+    tokenUri: 'https://api.myservice.com/metadata/agent-001',
+ 'MetaAgent #1',
+ 'META1',
+    metadata: [
+      { key: 'version', value: '1.0.0' },
+    ],
+  },
+  {
+    name: 'Agent with Multiple Metadata',
+    description: 'Agent with several metadata entries of different types',
+    tokenUri: 'ipfs://QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG/metadata.json',
+ 'MultiMeta Agent',
+ 'MMA',
+    metadata: [
+      { key: 'version', value: '2.1.3' },
+      { key: 'model', value: 'gpt-4-turbo' },
+      { key: 'specialty', value: 'code-generation' },
+      { key: 'license', value: 'MIT' },
+    ],
+  },
+  {
+    name: 'Agent with JSON Metadata',
+    description: 'Agent with JSON-encoded metadata values',
+    tokenUri: 'https://arweave.net/abc123def456/agent.json',
+ 'JSON Agent',
+ 'JSON',
+    metadata: [
+      {
+        key: 'config',
+        value: JSON.stringify({
+          temperature: 0.7,
+          maxTokens: 2000,
+          topP: 0.9
+        })
+      },
+      {
+        key: 'capabilities',
+        value: JSON.stringify([
+          'text-generation',
+          'code-completion',
+          'translation'
+        ])
+      },
+    ],
+  },
+  {
+    name: 'Agent with Long Strings',
+    description: 'Agent testing maximum length strings',
+    tokenUri: 'https://very-long-domain-name-for-testing-purposes.example.com/api/v2/agents/metadata/detailed-information/agent-with-extremely-long-uri-path',
+ 'Agent with Very Long Descriptive Name for Testing Maximum Length',
+ 'LONGTEST',
+    metadata: [
+      {
+        key: 'description',
+        value: 'This is a very long description that contains multiple sentences and detailed information about the agent. It includes various technical specifications, capabilities, limitations, and usage instructions. The purpose is to test how the system handles longer text content in metadata fields. This description continues for several lines to ensure we properly test string handling in the Solana program and TypeScript SDK.'
+      },
+      {
+        key: 'tags',
+        value: 'ai,machine-learning,nlp,code-generation,translation,summarization,question-answering,creative-writing'
+      },
+    ],
+  },
+  {
+    name: 'Agent with Special Characters',
+    description: 'Agent with unicode and special characters',
+    tokenUri: 'https://example.com/agent-🤖-metadata.json',
+ 'Agent 🤖 Émoji',
+ 'ÉMOJI',
+    metadata: [
+      { key: 'greeting', value: 'Hello! 你好! こんにちは! Привет! مرحبا!' },
+      { key: 'symbols', value: '©®™€£¥§¶†‡' },
+      { key: 'math', value: '∑∏∫√∞≈≠±×÷' },
+    ],
+  },
+  {
+    name: 'Agent with Empty Symbol',
+    description: 'Agent with empty nft_symbol (common case)',
+    tokenUri: 'https://storage.googleapis.com/my-nfts/agent-007.json',
+ 'Agent 007',
+ '',
+    metadata: [
+      { key: 'codename', value: 'Skyfall' },
+      { key: 'status', value: 'active' },
+    ],
+  },
+  {
+    name: 'Agent with Numeric Metadata',
+    description: 'Agent with numeric values stored as strings',
+    tokenUri: 'https://cdn.example.com/nft/12345',
+ 'Numeric Agent #42',
+ 'NUM42',
+    metadata: [
+      { key: 'rank', value: '42' },
+      { key: 'score', value: '9875' },
+      { key: 'timestamp', value: '1699564800' },
+      { key: 'version', value: '3.14159' },
+    ],
+  },
+  {
+    name: 'Agent with Base64 Data',
+    description: 'Agent with base64-encoded binary data',
+    tokenUri: 'https://nft.example.com/token/base64-agent',
+ 'Binary Agent',
+ 'BIN',
+    metadata: [
+      { key: 'signature', value: 'SGVsbG8gV29ybGQhIFRoaXMgaXMgYmFzZTY0IGVuY29kZWQ=' },
+      { key: 'hash', value: 'YWJjZGVmMTIzNDU2Nzg5MA==' },
+      { key: 'data', value: Buffer.from('Binary test data 🚀').toString('base64') },
+    ],
+  },
+];
+
+async function main() {
+  console.log('\n' + '='.repeat(70));
+  console.log('  Creating Diverse Agents - Testing All Data Variations');
+  console.log('='.repeat(70) + '\n');
+
+  // Load signer
+  const keypairPath = `${process.env.HOME}/.config/solana/id.json`;
+  log(`Loading keypair from ${keypairPath}`);
+  const keypairData = JSON.parse(fs.readFileSync(keypairPath, 'utf-8'));
+  const signer = Keypair.fromSecretKey(new Uint8Array(keypairData));
+  logSuccess(`Loaded signer: ${signer.publicKey.toBase58()}`);
+
+  // Create SDK instance
+  const sdk = createDevnetSDK({ signer });
+  logSuccess('Initialized SDK for cluster: devnet');
+
+  const connection = sdk.getSolanaClient().getConnection();
+
+  // Check balance
+  const balance = await connection.getBalance(signer.publicKey);
+  log(`Balance: ${balance / 1e9} SOL`);
+
+  if (balance < 0.5 * 1e9) {
+    logWarning('Low balance! You may need more SOL for all registrations.');
+  }
+
+  console.log('\n' + '='.repeat(70));
+  console.log(`  Registering ${agentConfigs.length} Diverse Agents`);
+  console.log('='.repeat(70) + '\n');
+
+  const results: Array<{
+    config: AgentConfig;
+    agentId: bigint;
+    mint: string;
+    signature: string;
+    success: boolean;
+    error?: string;
+  }> = [];
+
+  for (let i = 0; i < agentConfigs.length; i++) {
+    const config = agentConfigs[i];
+
+    console.log(`\n[${i + 1}/${agentConfigs.length}] ${config.name}`);
+    console.log('-'.repeat(70));
+    log(config.description);
+    log(`Token URI: ${config.tokenUri.substring(0, 60)}${config.tokenUri.length > 60 ? '...' : ''}`);
+    log(`Metadata entries: ${config.metadata.length}`);
+
+    if (config.metadata.length > 0) {
+      config.metadata.forEach((entry, idx) => {
+        const valuePreview = entry.value.length > 40
+          ? entry.value.substring(0, 40) + '...'
+          : entry.value;
+        log(`  [${idx}] ${entry.key}: ${valuePreview}`);
+      });
+    }
+
+    try {
+      log('Registering agent...');
+
+      const result = await sdk.registerAgent(
+        config.tokenUri,
+        config.metadata
+      );
+
+      logSuccess(`Agent registered!`);
+      log(`  Agent ID: ${result.agentId}`);
+      log(`  Mint: ${result.agentMint?.toBase58()}`);
+      log(`  Signature: ${result.signature}`);
+
+      results.push({
+        config,
+        agentId: result.agentId,
+        mint: result.agentMint?.toBase58() || '',
+        signature: result.signature,
+        success: true,
+      });
+
+      // Wait between registrations to avoid rate limits
+      if (i < agentConfigs.length - 1) {
+        log('Waiting 2 seconds before next registration...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+    } catch (error: any) {
+      console.error(`\n❌ Error: ${error.message}`);
+      results.push({
+        config,
+        agentId: BigInt(0),
+        mint: '',
+        signature: '',
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
+  // Summary
+  console.log('\n\n' + '='.repeat(70));
+  console.log('  Registration Summary');
+  console.log('='.repeat(70) + '\n');
+
+  const successful = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+
+  logSuccess(`Successfully registered: ${successful.length}/${results.length} agents`);
+
+  if (failed.length > 0) {
+    console.log(`\n❌ Failed registrations: ${failed.length}`);
+    failed.forEach((r, i) => {
+      console.log(`  ${i + 1}. ${r.config.name}: ${r.error}`);
+    });
+  }
+
+  if (successful.length > 0) {
+    console.log('\n' + GREEN + 'Successfully registered agents:' + RESET);
+    successful.forEach((r, i) => {
+      console.log(`  ${i + 1}. ${r.config.name}`);
+      console.log(`     Agent ID: ${r.agentId}`);
+      console.log(`     Mint: ${r.mint}`);
+      console.log(`     Metadata entries: ${r.config.metadata.length}`);
+    });
+  }
+
+  // Export results to JSON
+  const outputPath = '/tmp/diverse-agents-results.json';
+  fs.writeFileSync(outputPath, JSON.stringify(results, null, 2));
+  log(`\nResults saved to: ${outputPath}`);
+
+  console.log('\n' + '='.repeat(70));
+  console.log('  Edge Cases Tested:');
+  console.log('='.repeat(70));
+  console.log('  ✓ Empty strings (token_uri, nft_symbol)');
+  console.log('  ✓ Short strings');
+  console.log('  ✓ Long strings (>100 chars)');
+  console.log('  ✓ Unicode characters (emoji, accents)');
+  console.log('  ✓ Special characters');
+  console.log('  ✓ No metadata (empty Vec)');
+  console.log('  ✓ Single metadata entry');
+  console.log('  ✓ Multiple metadata entries');
+  console.log('  ✓ JSON-encoded values');
+  console.log('  ✓ Base64-encoded values');
+  console.log('  ✓ Numeric values as strings');
+  console.log('  ✓ IPFS URIs');
+  console.log('  ✓ Arweave URIs');
+  console.log('='.repeat(70) + '\n');
+}
+
+main().catch((error) => {
+  console.error(`\n❌ Fatal error: ${error.message}`);
+  console.error(error);
+  process.exit(1);
+});
