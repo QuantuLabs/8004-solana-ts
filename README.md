@@ -87,6 +87,9 @@ await sdk.giveFeedback(13, {
 });
 ```
 
+> **Note**: For advanced queries like `getAgentsByOwner()`, a custom RPC provider is recommended.
+> Free tiers are available - see [RPC Provider Recommendations](#rpc-provider-recommendations).
+
 ---
 
 ## SolanaSDK API Reference
@@ -189,16 +192,34 @@ Programs are deployed on Solana devnet.
 
 ## RPC Provider Recommendations
 
-The default Solana devnet RPC has limitations. For full functionality, use a custom RPC provider:
+The default Solana devnet RPC works for basic operations but has rate limits.
+For **production use** or **advanced queries** (like `getProgramAccounts`), use a custom RPC provider.
 
-- **Helius** - https://helius.dev
-- **Triton** - https://triton.one
-- **QuickNode** - https://quicknode.com
-- **Alchemy** - https://alchemy.com
+**Good news**: Free tiers are sufficient for most use cases!
+
+| Provider | Free Tier | Features | Signup |
+|----------|-----------|----------|--------|
+| **Helius** | 100k req/month | Full devnet support, getProgramAccounts | https://helius.dev |
+| **QuickNode** | 10M credits/month | Multi-chain support | https://quicknode.com |
+| **Alchemy** | 300M CU/month | WebSockets, enhanced APIs | https://alchemy.com |
+| **Triton** | Free tier available | Solana-focused | https://triton.one |
+
+### When do you need a custom RPC?
+
+| Operation | Default RPC | Custom RPC |
+|-----------|-------------|------------|
+| `loadAgent()` | Works | Works |
+| `giveFeedback()` | Works | Works |
+| `getSummary()` | Works | Works |
+| `getAgentsByOwner()` | **Fails** | Works |
+| `readAllFeedback()` | **Fails** | Works |
+| `getClients()` | **Fails** | Works |
+
+**Recommendation**: Start with default RPC. Switch to Helius free tier when you need advanced queries.
 
 ```typescript
 const sdk = new SolanaSDK({
-  rpcUrl: 'https://your-custom-rpc.com',
+  rpcUrl: 'https://your-helius-rpc.helius.dev',
   signer: yourKeypair,
 });
 
@@ -275,6 +296,28 @@ Contributions welcome! This is a **public build** project.
 - Add tests for new features
 - Update documentation
 - Use conventional commits
+
+---
+
+## Examples
+
+See the `examples/` directory for complete usage examples:
+
+| Example | Description |
+|---------|-------------|
+| [`quick-start.ts`](examples/quick-start.ts) | Basic read/write operations |
+| [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
+| [`agent-update.ts`](examples/agent-update.ts) | Update agent metadata |
+| [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
+
+Run examples:
+```bash
+# Set your private key (JSON array format)
+export SOLANA_PRIVATE_KEY='[1,2,3,...]'
+
+# Run example
+npx tsx examples/quick-start.ts
+```
 
 ---
 

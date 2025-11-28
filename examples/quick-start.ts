@@ -1,60 +1,50 @@
 /**
- * Quick Start Example
- * 
- * This example demonstrates how to:
- * 1. Initialize the SDK
- * 2. Create a new agent
- * 3. Configure endpoints and metadata
- * 4. Register the agent on-chain with IPFS
+ * Quick Start Example - Solana SDK
+ *
+ * Demonstrates basic read and write operations
  */
-
-import { SDK } from '../src/index';
+import { Keypair } from '@solana/web3.js';
+import { SolanaSDK, createDevnetSDK } from '../src/index.js';
 
 async function main() {
-  // Initialize SDK
-  const sdk = new SDK({
-    chainId: 11155111, // Ethereum Sepolia
-    rpcUrl: process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_PROJECT_ID',
-    signer: process.env.PRIVATE_KEY, // Optional: private key for signing transactions
-    ipfs: 'pinata', // or 'filecoinPin' or 'node'
-    pinataJwt: process.env.PINATA_JWT, // Required if ipfs='pinata'
+  // === READ-ONLY MODE ===
+  // No signer needed for queries
+  const readOnlySDK = createDevnetSDK();
+
+  // Load an agent
+  const agent = await readOnlySDK.loadAgent(1);
+  if (agent) {
+    console.log(`Agent: ${agent.nft_name}`);
+    console.log(`Owner: ${agent.getOwnerPublicKey().toBase58()}`);
+  }
+
+  // Get reputation summary
+  const summary = await readOnlySDK.getReputationSummary(1);
+  console.log(`Score: ${summary.averageScore}/100 (${summary.count} reviews)`);
+
+  // === WRITE MODE ===
+  // Requires signer for transactions
+  const secretKey = process.env.SOLANA_PRIVATE_KEY;
+  if (!secretKey) {
+    console.log('Set SOLANA_PRIVATE_KEY for write operations');
+    return;
+  }
+
+  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
+  const sdk = new SolanaSDK({ cluster: 'devnet', signer });
+
+  // Register new agent
+  const result = await sdk.registerAgent('ipfs://QmYourAgentMetadata');
+  console.log(`Registered agent #${result.agentId}`);
+
+  // Give feedback
+  await sdk.giveFeedback(1, {
+    score: 85,
+    tag1: 'helpful',
+    tag2: 'accurate',
+    fileUri: 'ipfs://QmFeedbackDetails',
+    fileHash: Buffer.alloc(32),
   });
-
-  // Create a new agent
-  const agent = sdk.createAgent(
-    'My AI Assistant',
-    'An intelligent assistant that helps with various tasks. Skills: data analysis, finance, coding. Pricing: $0.01 per request.',
-    'https://example.com/agent-image.png'
-  );
-
-  // Configure MCP endpoint
-  await agent.setMCP('https://api.example.com/mcp', '2025-06-18');
-
-  // Configure A2A endpoint
-  await agent.setA2A('https://api.example.com/a2a', '0.30');
-
-  // Set agent wallet
-  agent.setAgentWallet('0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb', 11155111);
-
-  // Set trust models
-  agent.setTrust(true, false);
-
-  // Set custom metadata
-  agent.setMetadata({
-    version: '1.0.0',
-    tags: JSON.stringify(['data_analyst', 'finance']),
-    pricing: '0.01',
-  });
-
-  // Set active status
-  agent.setActive(true);
-
-  // Register agent on-chain with IPFS
-  console.log('Registering agent...');
-  const registrationFile = await agent.registerIPFS();
-  console.log(`Agent registered with ID: ${registrationFile.agentId}`);
-  console.log(`Registration file URI: ${registrationFile.agentURI}`);
 }
 
 main().catch(console.error);
-
