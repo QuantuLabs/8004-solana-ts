@@ -35,6 +35,8 @@ export interface SolanaClientConfig {
  * Error thrown when an operation requires RPC features not available on public devnet
  */
 export class UnsupportedRpcError extends Error {
+  public readonly operation: string;
+
   constructor(operation: string) {
     super(
       `Operation "${operation}" is not supported by the default Solana devnet RPC.\n` +
@@ -45,6 +47,7 @@ export class UnsupportedRpcError extends Error {
       `  const sdk = new SolanaSDK({ rpcUrl: 'https://your-rpc-provider.com' });`
     );
     this.name = 'UnsupportedRpcError';
+    this.operation = operation;
   }
 }
 
