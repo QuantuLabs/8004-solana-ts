@@ -25,15 +25,15 @@
     "web3",
     "nft"
   ],
-  "author": "QuantumAgentic",
+  "author": "QuantuLabs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/QuantumAgentic/8004-solana-ts.git"
+    "url": "https://github.com/QuantuLabs/8004-solana-ts.git"
   },
-  "homepage": "https://github.com/QuantumAgentic/8004-solana-ts",
+  "homepage": "https://github.com/QuantuLabs/8004-solana-ts",
   "bugs": {
-    "url": "https://github.com/QuantumAgentic/8004-solana-ts/issues"
+    "url": "https://github.com/QuantuLabs/8004-solana-ts/issues"
   },
   "files": [
     "dist/**/*",

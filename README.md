@@ -4,8 +4,8 @@
 > Agent identity, reputation and discovery standard
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-QuantumAgentic%2F8004--solana--ts-blue)](https://github.com/QuantumAgentic/8004-solana-ts)
-[![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantumAgentic/8004-solana)
+[![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
+[![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantuLabs/8004-solana)
 
 > **Alpha Release** - Not yet published to npm. Install from GitHub.
 
@@ -30,17 +30,17 @@ Built with compatibility in mind - API aligned with the reference [agent0-ts SDK
 ### Install from GitHub
 
 ```bash
-npm install github:QuantumAgentic/8004-solana-ts
+npm install github:QuantuLabs/8004-solana-ts
 # or
-yarn add github:QuantumAgentic/8004-solana-ts
+yarn add github:QuantuLabs/8004-solana-ts
 # or
-pnpm add github:QuantumAgentic/8004-solana-ts
+pnpm add github:QuantuLabs/8004-solana-ts
 ```
 
 ### Or clone and link locally
 
 ```bash
-git clone https://github.com/QuantumAgentic/8004-solana-ts.git
+git clone https://github.com/QuantuLabs/8004-solana-ts.git
 cd 8004-solana-ts
 npm install
 npm run build
@@ -212,7 +212,7 @@ const agents = await sdk.getAgentsByOwner(ownerPublicKey);
 
 ```bash
 # Clone repository
-git clone https://github.com/QuantumAgentic/8004-solana-ts.git
+git clone https://github.com/QuantuLabs/8004-solana-ts.git
 cd 8004-solana-ts
 
 # Install dependencies
@@ -288,7 +288,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - **ERC-8004 Standard**: [eips.ethereum.org/EIPS/eip-8004](https://eips.ethereum.org/EIPS/eip-8004)
 - **agent0-ts Reference SDK**: [github.com/agent0lab/agent0-ts](https://github.com/agent0lab/agent0-ts)
-- **Solana Programs**: [github.com/QuantumAgentic/8004-solana](https://github.com/QuantumAgentic/8004-solana)
+- **Solana Programs**: [github.com/QuantuLabs/8004-solana](https://github.com/QuantuLabs/8004-solana)
 
 ---
 
