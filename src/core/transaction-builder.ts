@@ -33,6 +33,69 @@ export interface TransactionResult {
 }
 
 /**
+ * Options for all write methods
+ * Use skipSend to get the serialized transaction instead of sending it
+ */
+export interface WriteOptions {
+  /** If true, returns serialized transaction instead of sending */
+  skipSend?: boolean;
+  /** Signer public key - defaults to sdk.signer.publicKey if not provided */
+  signer?: PublicKey;
+}
+
+/**
+ * Extended options for registerAgent (requires mintPubkey when skipSend is true)
+ */
+export interface RegisterAgentOptions extends WriteOptions {
+  /** Required when skipSend is true - the client generates the mint keypair locally */
+  mintPubkey?: PublicKey;
+}
+
+/**
+ * Result when skipSend is true - contains serialized transaction data
+ */
+export interface PreparedTransaction {
+  /** Base64 serialized transaction */
+  transaction: string;
+  /** Recent blockhash used */
+  blockhash: string;
+  /** Block height after which transaction expires */
+  lastValidBlockHeight: number;
+  /** Public key (base58) of the account that must sign */
+  signer: string;
+}
+
+/**
+ * Serialize a transaction for later signing and sending
+ * @param transaction - The transaction to serialize
+ * @param signer - The public key that will sign the transaction
+ * @param blockhash - Recent blockhash
+ * @param lastValidBlockHeight - Block height after which transaction expires
+ * @returns PreparedTransaction with base64 serialized transaction
+ */
+export function serializeTransaction(
+  transaction: Transaction,
+  signer: PublicKey,
+  blockhash: string,
+  lastValidBlockHeight: number
+): PreparedTransaction {
+  transaction.feePayer = signer;
+  transaction.recentBlockhash = blockhash;
+
+  const serialized = transaction.serialize({
+    requireAllSignatures: false,
+    verifySignatures: false,
+  });
+
+  return {
+    transaction: serialized.toString('base64'),
+    blockhash,
+    lastValidBlockHeight,
+    signer: signer.toBase58(),
+  };
+}
+
+/**
  * Transaction builder for Identity Registry operations
  */
 export class IdentityTransactionBuilder {
@@ -41,7 +104,7 @@ export class IdentityTransactionBuilder {
   constructor(
     private connection: Connection,
     private cluster: Cluster,
-    private payer: Keypair
+    private payer?: Keypair
   ) {
     this.instructionBuilder = new IdentityInstructionBuilder(cluster);
   }
@@ -50,13 +113,21 @@ export class IdentityTransactionBuilder {
    * Register a new agent
    * @param agentUri - Optional agent URI
    * @param metadata - Optional metadata entries (key-value pairs)
+   * @param options - Write options (skipSend, signer, mintPubkey)
    * @returns Transaction result with agent ID, agentMint, and all signatures
    */
   async registerAgent(
     agentUri?: string,
-    metadata?: Array<{ key: string; value: string }>
-  ): Promise<TransactionResult & { agentId?: bigint; agentMint?: PublicKey; signatures?: string[] }> {
+    metadata?: Array<{ key: string; value: string }>,
+    options?: RegisterAgentOptions
+  ): Promise<(TransactionResult & { agentId?: bigint; agentMint?: PublicKey; signatures?: string[] }) | (PreparedTransaction & { agentId: bigint; agentMint: PublicKey })> {
     try {
+      // Determine the signer pubkey
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       // Fetch registry config from on-chain
       const configData = await fetchRegistryConfig(this.connection);
       if (!configData) {
@@ -66,12 +137,28 @@ export class IdentityTransactionBuilder {
       // Get the real next agent ID from config
       const agentId = BigInt(configData.next_agent_id);
 
-      // Generate new mint for agent NFT
-      const agentMint = Keypair.generate();
+      // Determine the mint pubkey
+      let agentMintPubkey: PublicKey;
+      let agentMintKeypair: Keypair | undefined;
+
+      if (options?.skipSend) {
+        // In skipSend mode, client must provide mintPubkey
+        if (!options.mintPubkey) {
+          throw new Error('mintPubkey required when skipSend is true - client must generate keypair locally');
+        }
+        agentMintPubkey = options.mintPubkey;
+      } else {
+        // Normal mode: generate keypair
+        if (!this.payer) {
+          throw new Error('No signer configured - SDK is read-only');
+        }
+        agentMintKeypair = Keypair.generate();
+        agentMintPubkey = agentMintKeypair.publicKey;
+      }
 
       // Derive PDAs
       const [configPda] = await PDAHelpers.getRegistryConfigPDA();
-      const [agentPda] = await PDAHelpers.getAgentPDA(agentMint.publicKey);
+      const [agentPda] = await PDAHelpers.getAgentPDA(agentMintPubkey);
 
       // Get collection authority PDA - needed for signing collection verification
       const collectionAuthorityPda = getCollectionAuthorityPDA(IDENTITY_PROGRAM_ID);
@@ -80,15 +167,15 @@ export class IdentityTransactionBuilder {
       const collectionMint = configData.getCollectionMintPublicKey();
 
       // Calculate Metaplex PDAs
-      const agentMetadata = getMetadataPDA(agentMint.publicKey);
-      const agentMasterEdition = getMasterEditionPDA(agentMint.publicKey);
+      const agentMetadata = getMetadataPDA(agentMintPubkey);
+      const agentMasterEdition = getMasterEditionPDA(agentMintPubkey);
       const collectionMetadata = getMetadataPDA(collectionMint);
       const collectionMasterEdition = getMasterEditionPDA(collectionMint);
 
       // Calculate Associated Token Account
       const agentTokenAccount = getAssociatedTokenAddressSync(
-        agentMint.publicKey,
-        this.payer.publicKey
+        agentMintPubkey,
+        signerPubkey
       );
 
       // Split metadata: first 1 inline (MAX_METADATA_ENTRIES=1), rest in extensions
@@ -105,14 +192,14 @@ export class IdentityTransactionBuilder {
             configPda,
             collectionAuthorityPda,
             agentPda,
-            agentMint.publicKey,
+            agentMintPubkey,
             agentMetadata,
             agentMasterEdition,
             agentTokenAccount,
             collectionMint,
             collectionMetadata,
             collectionMasterEdition,
-            this.payer.publicKey,
+            signerPubkey,
             agentUri || '',
             inlineMetadata
           )
@@ -120,14 +207,14 @@ export class IdentityTransactionBuilder {
             configPda,
             collectionAuthorityPda,
             agentPda,
-            agentMint.publicKey,
+            agentMintPubkey,
             agentMetadata,
             agentMasterEdition,
             agentTokenAccount,
             collectionMint,
             collectionMetadata,
             collectionMasterEdition,
-            this.payer.publicKey,
+            signerPubkey,
             agentUri || ''
           );
 
@@ -140,10 +227,32 @@ export class IdentityTransactionBuilder {
         .add(computeBudgetIx)
         .add(registerInstruction);
 
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        const prepared = serializeTransaction(registerTransaction, signerPubkey, blockhash, lastValidBlockHeight);
+
+        // Note: Extended metadata transactions would need separate calls
+        if (extendedMetadata.length > 0) {
+          console.warn('Extended metadata with skipSend not yet supported - only first metadata entry included');
+        }
+
+        return {
+          ...prepared,
+          agentId,
+          agentMint: agentMintPubkey,
+        };
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer || !agentMintKeypair) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       // Send register transaction with retry
       const registerSignature = await this.sendWithRetry(
         registerTransaction,
-        [this.payer, agentMint]
+        [this.payer, agentMintKeypair]
       );
 
       const allSignatures = [registerSignature];
@@ -168,14 +277,14 @@ export class IdentityTransactionBuilder {
             const { key, value } = batch[j];
 
             const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(
-              agentMint.publicKey,
+              agentMintPubkey,
               extensionIndex
             );
 
             // First create the extension PDA if needed
             const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(
               metadataExtension,
-              agentMint.publicKey,
+              agentMintPubkey,
               agentPda,
               this.payer.publicKey,
               extensionIndex
@@ -185,7 +294,7 @@ export class IdentityTransactionBuilder {
             // Then set the metadata
             const setExtIx = this.instructionBuilder.buildSetMetadataExtended(
               metadataExtension,
-              agentMint.publicKey,
+              agentMintPubkey,
               agentPda,
               this.payer.publicKey,
               extensionIndex,
@@ -209,7 +318,7 @@ export class IdentityTransactionBuilder {
         signatures: allSignatures,
         success: true,
         agentId,
-        agentMint: agentMint.publicKey,
+        agentMint: agentMintPubkey,
       };
     } catch (error) {
       console.error('registerAgent error:', error);
@@ -225,9 +334,21 @@ export class IdentityTransactionBuilder {
 
   /**
    * Set agent URI by mint
+   * @param agentMint - Agent NFT mint
+   * @param newUri - New URI
+   * @param options - Write options (skipSend, signer)
    */
-  async setAgentUri(agentMint: PublicKey, newUri: string): Promise<TransactionResult> {
+  async setAgentUri(
+    agentMint: PublicKey,
+    newUri: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const agentMetadata = getMetadataPDA(agentMint);
 
@@ -235,11 +356,23 @@ export class IdentityTransactionBuilder {
         agentPda,
         agentMetadata,
         agentMint,
-        this.payer.publicKey,
+        signerPubkey,
         newUri
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -258,23 +391,45 @@ export class IdentityTransactionBuilder {
 
   /**
    * Set metadata for agent by mint (inline storage)
+   * @param agentMint - Agent NFT mint
+   * @param key - Metadata key
+   * @param value - Metadata value
+   * @param options - Write options (skipSend, signer)
    */
   async setMetadataByMint(
     agentMint: PublicKey,
     key: string,
-    value: string
-  ): Promise<TransactionResult> {
+    value: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
 
       const instruction = this.instructionBuilder.buildSetMetadata(
         agentPda,
-        this.payer.publicKey,
+        signerPubkey,
         key,
         value
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -293,14 +448,25 @@ export class IdentityTransactionBuilder {
 
   /**
    * Set metadata extended for agent by mint (extension PDA storage)
+   * @param agentMint - Agent NFT mint
+   * @param extensionIndex - Extension index
+   * @param key - Metadata key
+   * @param value - Metadata value
+   * @param options - Write options (skipSend, signer)
    */
   async setMetadataExtendedByMint(
     agentMint: PublicKey,
     extensionIndex: number,
     key: string,
-    value: string
-  ): Promise<TransactionResult> {
+    value: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(
         agentMint,
@@ -311,13 +477,25 @@ export class IdentityTransactionBuilder {
         metadataExtension,
         agentMint,
         agentPda,
-        this.payer.publicKey,
+        signerPubkey,
         extensionIndex,
         key,
         value
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -336,18 +514,27 @@ export class IdentityTransactionBuilder {
 
   /**
    * Transfer agent to another owner
+   * @param agentMint - Agent NFT mint
+   * @param toOwner - New owner public key
+   * @param options - Write options (skipSend, signer)
    */
   async transferAgent(
     agentMint: PublicKey,
-    toOwner: PublicKey
-  ): Promise<TransactionResult> {
+    toOwner: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const agentMetadata = getMetadataPDA(agentMint);
 
       const fromTokenAccount = getAssociatedTokenAddressSync(
         agentMint,
-        this.payer.publicKey
+        signerPubkey
       );
       const toTokenAccount = getAssociatedTokenAddressSync(
         agentMint,
@@ -360,10 +547,22 @@ export class IdentityTransactionBuilder {
         toTokenAccount,
         agentMint,
         agentMetadata,
-        this.payer.publicKey
+        signerPubkey
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -445,7 +644,7 @@ export class ReputationTransactionBuilder {
   constructor(
     private connection: Connection,
     private cluster: Cluster,
-    private payer: Keypair
+    private payer?: Keypair
   ) {
     this.instructionBuilder = new ReputationInstructionBuilder(cluster);
   }
@@ -459,6 +658,7 @@ export class ReputationTransactionBuilder {
    * @param tag2 - Tag 2 (max 32 bytes)
    * @param fileUri - IPFS/Arweave URI
    * @param fileHash - File hash (32 bytes)
+   * @param options - Write options (skipSend, signer)
    */
   async giveFeedback(
     agentMint: PublicKey,
@@ -467,9 +667,15 @@ export class ReputationTransactionBuilder {
     tag1: string,
     tag2: string,
     fileUri: string,
-    fileHash: Buffer
-  ): Promise<TransactionResult & { feedbackIndex?: bigint }> {
+    fileHash: Buffer,
+    options?: WriteOptions
+  ): Promise<(TransactionResult & { feedbackIndex?: bigint }) | (PreparedTransaction & { feedbackIndex: bigint })> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       // Validate inputs
       if (score < 0 || score > 100) {
         throw new Error('Score must be between 0 and 100');
@@ -489,7 +695,7 @@ export class ReputationTransactionBuilder {
 
       // Derive PDAs
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-      const [clientIndex] = await PDAHelpers.getClientIndexPDA(agentId, this.payer.publicKey);
+      const [clientIndex] = await PDAHelpers.getClientIndexPDA(agentId, signerPubkey);
       const [agentReputation] = await PDAHelpers.getAgentReputationPDA(agentId);
 
       // Fetch current feedback index from client_index account (or 0 if doesn't exist)
@@ -503,13 +709,13 @@ export class ReputationTransactionBuilder {
       // Derive feedback PDA
       const [feedbackPda] = await PDAHelpers.getFeedbackPDA(
         agentId,
-        this.payer.publicKey,
+        signerPubkey,
         feedbackIndex
       );
 
       const instruction = this.instructionBuilder.buildGiveFeedback(
-        this.payer.publicKey,       // client
-        this.payer.publicKey,       // payer
+        signerPubkey,                // client
+        signerPubkey,                // payer
         agentMint,                   // agent_mint
         agentPda,                    // agent_account
         clientIndex,                 // client_index
@@ -526,6 +732,19 @@ export class ReputationTransactionBuilder {
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return { ...prepared, feedbackIndex };
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -544,21 +763,30 @@ export class ReputationTransactionBuilder {
 
   /**
    * Revoke feedback
+   * @param agentId - Agent ID
+   * @param feedbackIndex - Feedback index to revoke
+   * @param options - Write options (skipSend, signer)
    */
   async revokeFeedback(
     agentId: bigint,
-    feedbackIndex: bigint
-  ): Promise<TransactionResult> {
+    feedbackIndex: bigint,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       const [feedbackPda] = await PDAHelpers.getFeedbackPDA(
         agentId,
-        this.payer.publicKey,
+        signerPubkey,
         feedbackIndex
       );
       const [agentReputation] = await PDAHelpers.getAgentReputationPDA(agentId);
 
       const instruction = this.instructionBuilder.buildRevokeFeedback(
-        this.payer.publicKey,
+        signerPubkey,
         feedbackPda,
         agentReputation,
         agentId,
@@ -566,6 +794,18 @@ export class ReputationTransactionBuilder {
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -584,15 +824,27 @@ export class ReputationTransactionBuilder {
 
   /**
    * Append response to feedback
+   * @param agentId - Agent ID
+   * @param clientAddress - Client who gave feedback
+   * @param feedbackIndex - Feedback index
+   * @param responseUri - Response URI
+   * @param responseHash - Response hash
+   * @param options - Write options (skipSend, signer)
    */
   async appendResponse(
     agentId: bigint,
     clientAddress: PublicKey,
     feedbackIndex: bigint,
     responseUri: string,
-    responseHash: Buffer
-  ): Promise<TransactionResult & { responseIndex?: bigint }> {
+    responseHash: Buffer,
+    options?: WriteOptions
+  ): Promise<(TransactionResult & { responseIndex?: bigint }) | (PreparedTransaction & { responseIndex: bigint })> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       if (responseUri.length > 200) {
         throw new Error('responseUri must be <= 200 bytes');
       }
@@ -621,8 +873,8 @@ export class ReputationTransactionBuilder {
       );
 
       const instruction = this.instructionBuilder.buildAppendResponse(
-        this.payer.publicKey,       // responder
-        this.payer.publicKey,       // payer
+        signerPubkey,               // responder
+        signerPubkey,               // payer
         feedbackPda,
         responseIndexPda,
         responsePda,
@@ -634,6 +886,19 @@ export class ReputationTransactionBuilder {
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return { ...prepared, responseIndex: responseIndexValue };
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -660,13 +925,20 @@ export class ValidationTransactionBuilder {
   constructor(
     private connection: Connection,
     private cluster: Cluster,
-    private payer: Keypair
+    private payer?: Keypair
   ) {
     this.instructionBuilder = new ValidationInstructionBuilder(cluster);
   }
 
   /**
    * Request validation for an agent
+   * @param agentMint - Agent NFT mint
+   * @param agentId - Agent ID
+   * @param validatorAddress - Validator public key
+   * @param nonce - Request nonce
+   * @param requestUri - Request URI
+   * @param requestHash - Request hash
+   * @param options - Write options (skipSend, signer)
    */
   async requestValidation(
     agentMint: PublicKey,
@@ -674,9 +946,15 @@ export class ValidationTransactionBuilder {
     validatorAddress: PublicKey,
     nonce: number,
     requestUri: string,
-    requestHash: Buffer
-  ): Promise<TransactionResult> {
+    requestHash: Buffer,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       if (requestUri.length > 200) {
         throw new Error('requestUri must be <= 200 bytes');
       }
@@ -695,8 +973,8 @@ export class ValidationTransactionBuilder {
 
       const instruction = this.instructionBuilder.buildRequestValidation(
         configPda,
-        this.payer.publicKey,       // requester (must be agent owner)
-        this.payer.publicKey,       // payer
+        signerPubkey,               // requester (must be agent owner)
+        signerPubkey,               // payer
         agentMint,
         agentPda,
         validationRequestPda,
@@ -709,6 +987,18 @@ export class ValidationTransactionBuilder {
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -727,6 +1017,13 @@ export class ValidationTransactionBuilder {
 
   /**
    * Respond to validation request
+   * @param agentId - Agent ID
+   * @param nonce - Request nonce
+   * @param response - Response score
+   * @param responseUri - Response URI
+   * @param responseHash - Response hash
+   * @param tag - Response tag
+   * @param options - Write options (skipSend, signer)
    */
   async respondToValidation(
     agentId: bigint,
@@ -734,9 +1031,15 @@ export class ValidationTransactionBuilder {
     response: number,
     responseUri: string,
     responseHash: Buffer,
-    tag: string
-  ): Promise<TransactionResult> {
+    tag: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       if (response < 0 || response > 100) {
         throw new Error('Response must be between 0 and 100');
       }
@@ -753,13 +1056,13 @@ export class ValidationTransactionBuilder {
       const [configPda] = await PDAHelpers.getValidationConfigPDA();
       const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
         agentId,
-        this.payer.publicKey, // validator
+        signerPubkey, // validator
         nonce
       );
 
       const instruction = this.instructionBuilder.buildRespondToValidation(
         configPda,
-        this.payer.publicKey,
+        signerPubkey,
         validationRequestPda,
         response,
         responseUri,
@@ -768,6 +1071,18 @@ export class ValidationTransactionBuilder {
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -786,6 +1101,13 @@ export class ValidationTransactionBuilder {
 
   /**
    * Update validation (same as respond but semantically for updates)
+   * @param agentId - Agent ID
+   * @param nonce - Request nonce
+   * @param response - Response score
+   * @param responseUri - Response URI
+   * @param responseHash - Response hash
+   * @param tag - Response tag
+   * @param options - Write options (skipSend, signer)
    */
   async updateValidation(
     agentId: bigint,
@@ -793,9 +1115,15 @@ export class ValidationTransactionBuilder {
     response: number,
     responseUri: string,
     responseHash: Buffer,
-    tag: string
-  ): Promise<TransactionResult> {
+    tag: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       if (response < 0 || response > 100) {
         throw new Error('Response must be between 0 and 100');
       }
@@ -803,13 +1131,13 @@ export class ValidationTransactionBuilder {
       const [configPda] = await PDAHelpers.getValidationConfigPDA();
       const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
         agentId,
-        this.payer.publicKey,
+        signerPubkey,
         nonce
       );
 
       const instruction = this.instructionBuilder.buildUpdateValidation(
         configPda,
-        this.payer.publicKey,
+        signerPubkey,
         validationRequestPda,
         response,
         responseUri,
@@ -818,6 +1146,18 @@ export class ValidationTransactionBuilder {
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -836,15 +1176,27 @@ export class ValidationTransactionBuilder {
 
   /**
    * Close validation request to recover rent
+   * @param agentMint - Agent NFT mint
+   * @param agentId - Agent ID
+   * @param validatorAddress - Validator public key
+   * @param nonce - Request nonce
+   * @param rentReceiver - Address to receive rent (defaults to signer)
+   * @param options - Write options (skipSend, signer)
    */
   async closeValidation(
     agentMint: PublicKey,
     agentId: bigint,
     validatorAddress: PublicKey,
     nonce: number,
-    rentReceiver?: PublicKey
-  ): Promise<TransactionResult> {
+    rentReceiver?: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
     try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
       const [configPda] = await PDAHelpers.getValidationConfigPDA();
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(
@@ -855,15 +1207,27 @@ export class ValidationTransactionBuilder {
 
       const instruction = this.instructionBuilder.buildCloseValidation(
         configPda,
-        this.payer.publicKey,
+        signerPubkey,
         agentMint,
         agentPda,
         validationRequestPda,
         IDENTITY_PROGRAM_ID,
-        rentReceiver || this.payer.publicKey
+        rentReceiver || signerPubkey
       );
 
       const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,

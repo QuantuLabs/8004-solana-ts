@@ -15,6 +15,9 @@ import {
   ReputationTransactionBuilder,
   ValidationTransactionBuilder,
   TransactionResult,
+  WriteOptions,
+  RegisterAgentOptions,
+  PreparedTransaction,
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { fetchRegistryConfig } from './config-reader.js';
@@ -40,9 +43,9 @@ export class SolanaSDK {
   private readonly cluster: Cluster;
   private readonly programIds: ReturnType<typeof getProgramIds>;
   private readonly signer?: Keypair;
-  private readonly identityTxBuilder?: IdentityTransactionBuilder;
-  private readonly reputationTxBuilder?: ReputationTransactionBuilder;
-  private readonly validationTxBuilder?: ValidationTransactionBuilder;
+  private readonly identityTxBuilder: IdentityTransactionBuilder;
+  private readonly reputationTxBuilder: ReputationTransactionBuilder;
+  private readonly validationTxBuilder: ValidationTransactionBuilder;
   private mintResolver?: AgentMintResolver;
   private collectionMint?: PublicKey;
 
@@ -62,25 +65,25 @@ export class SolanaSDK {
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
 
-    // Initialize transaction builders if signer provided (write operations)
-    if (this.signer) {
-      const connection = this.client.getConnection();
-      this.identityTxBuilder = new IdentityTransactionBuilder(
-        connection,
-        this.cluster,
-        this.signer
-      );
-      this.reputationTxBuilder = new ReputationTransactionBuilder(
-        connection,
-        this.cluster,
-        this.signer
-      );
-      this.validationTxBuilder = new ValidationTransactionBuilder(
-        connection,
-        this.cluster,
-        this.signer
-      );
-    }
+    // Initialize transaction builders
+    // They work with or without signer - skipSend mode allows building transactions
+    // without a signer, the signer pubkey is provided in options instead
+    const connection = this.client.getConnection();
+    this.identityTxBuilder = new IdentityTransactionBuilder(
+      connection,
+      this.cluster,
+      this.signer
+    );
+    this.reputationTxBuilder = new ReputationTransactionBuilder(
+      connection,
+      this.cluster,
+      this.signer
+    );
+    this.validationTxBuilder = new ValidationTransactionBuilder(
+      connection,
+      this.cluster,
+      this.signer
+    );
 
     // Initialize mint resolver (lazy - will be created on first use)
     // This avoids blocking the constructor with async operations
@@ -467,23 +470,26 @@ export class SolanaSDK {
    * Register a new agent (write operation)
    * @param tokenUri - Optional token URI
    * @param metadata - Optional metadata entries (key-value pairs)
-   * @returns Transaction result with agent ID
+   * @param options - Write options (skipSend, signer, mintPubkey)
+   * @returns Transaction result with agent ID, or PreparedTransaction if skipSend
    */
   async registerAgent(
     tokenUri?: string,
-    metadata?: Array<{ key: string; value: string }>
+    metadata?: Array<{ key: string; value: string }>,
+    options?: RegisterAgentOptions
   ) {
-    if (!this.identityTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+    // For non-skipSend operations, require signer
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
 
     // Initialize resolver to cache the mint after registration
     await this.initializeMintResolver();
 
-    const result = await this.identityTxBuilder.registerAgent(tokenUri, metadata);
+    const result = await this.identityTxBuilder.registerAgent(tokenUri, metadata, options);
 
-    // Cache the agentId → mint mapping for instant lookup
-    if (result.success && result.agentId !== undefined && result.agentMint) {
+    // Cache the agentId → mint mapping for instant lookup (only for successful sent transactions)
+    if ('success' in result && result.success && result.agentId !== undefined && result.agentMint) {
       this.mintResolver!.addToCache(result.agentId, result.agentMint);
     }
 
@@ -494,10 +500,15 @@ export class SolanaSDK {
    * Set agent URI (write operation)
    * @param agentId - Agent ID (number or bigint)
    * @param newUri - New URI
+   * @param options - Write options (skipSend, signer)
    */
-  async setAgentUri(agentId: number | bigint, newUri: string): Promise<TransactionResult> {
-    if (!this.identityTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+  async setAgentUri(
+    agentId: number | bigint,
+    newUri: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
@@ -505,7 +516,7 @@ export class SolanaSDK {
     await this.initializeMintResolver();
     const agentMint = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.setAgentUri(agentMint, newUri);
+    return await this.identityTxBuilder.setAgentUri(agentMint, newUri, options);
   }
 
   /**
@@ -513,10 +524,16 @@ export class SolanaSDK {
    * @param agentId - Agent ID (number or bigint)
    * @param key - Metadata key
    * @param value - Metadata value
+   * @param options - Write options (skipSend, signer)
    */
-  async setMetadata(agentId: number | bigint, key: string, value: string): Promise<TransactionResult> {
-    if (!this.identityTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+  async setMetadata(
+    agentId: number | bigint,
+    key: string,
+    value: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
@@ -524,7 +541,7 @@ export class SolanaSDK {
     await this.initializeMintResolver();
     const agentMint = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.setMetadataByMint(agentMint, key, value);
+    return await this.identityTxBuilder.setMetadataByMint(agentMint, key, value, options);
   }
 
   /**
@@ -533,6 +550,7 @@ export class SolanaSDK {
    * @param agentId - Agent ID (number or bigint)
    * @param feedbackFile - Feedback data object
    * @param feedbackAuth - Optional feedback authorization (not yet implemented)
+   * @param options - Write options (skipSend, signer)
    */
   async giveFeedback(
     agentId: number | bigint,
@@ -543,10 +561,11 @@ export class SolanaSDK {
       fileUri: string;
       fileHash: Buffer;
     },
-    feedbackAuth?: FeedbackAuth
-  ): Promise<TransactionResult & { feedbackIndex?: bigint }> {
-    if (!this.reputationTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+    feedbackAuth?: FeedbackAuth,
+    options?: WriteOptions
+  ): Promise<(TransactionResult & { feedbackIndex?: bigint }) | (PreparedTransaction & { feedbackIndex: bigint })> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
@@ -566,7 +585,8 @@ export class SolanaSDK {
       feedbackFile.tag1 || '',
       feedbackFile.tag2 || '',
       feedbackFile.fileUri,
-      feedbackFile.fileHash
+      feedbackFile.fileHash,
+      options
     );
   }
 
@@ -574,14 +594,19 @@ export class SolanaSDK {
    * Revoke feedback (write operation)
    * @param agentId - Agent ID (number or bigint)
    * @param feedbackIndex - Feedback index to revoke (number or bigint)
+   * @param options - Write options (skipSend, signer)
    */
-  async revokeFeedback(agentId: number | bigint, feedbackIndex: number | bigint) {
-    if (!this.reputationTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+  async revokeFeedback(
+    agentId: number | bigint,
+    feedbackIndex: number | bigint,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.reputationTxBuilder.revokeFeedback(id, idx);
+    return await this.reputationTxBuilder.revokeFeedback(id, idx, options);
   }
 
   /**
@@ -591,16 +616,18 @@ export class SolanaSDK {
    * @param feedbackIndex - Feedback index (number or bigint)
    * @param responseUri - Response URI
    * @param responseHash - Response hash
+   * @param options - Write options (skipSend, signer)
    */
   async appendResponse(
     agentId: number | bigint,
     client: PublicKey,
     feedbackIndex: number | bigint,
     responseUri: string,
-    responseHash: Buffer
-  ) {
-    if (!this.reputationTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+    responseHash: Buffer,
+    options?: WriteOptions
+  ): Promise<(TransactionResult & { responseIndex?: bigint }) | (PreparedTransaction & { responseIndex: bigint })> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
@@ -609,7 +636,8 @@ export class SolanaSDK {
       client,
       idx,
       responseUri,
-      responseHash
+      responseHash,
+      options
     );
   }
 
@@ -620,16 +648,18 @@ export class SolanaSDK {
    * @param nonce - Request nonce (unique per agent-validator pair)
    * @param requestUri - Request URI (IPFS/Arweave)
    * @param requestHash - Request hash (32 bytes)
+   * @param options - Write options (skipSend, signer)
    */
   async requestValidation(
     agentId: number | bigint,
     validator: PublicKey,
     nonce: number,
     requestUri: string,
-    requestHash: Buffer
-  ): Promise<TransactionResult> {
-    if (!this.validationTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+    requestHash: Buffer,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
@@ -643,7 +673,8 @@ export class SolanaSDK {
       validator,
       nonce,
       requestUri,
-      requestHash
+      requestHash,
+      options
     );
   }
 
@@ -655,6 +686,7 @@ export class SolanaSDK {
    * @param responseUri - Response URI (IPFS/Arweave)
    * @param responseHash - Response hash (32 bytes)
    * @param tag - Response tag (max 32 bytes)
+   * @param options - Write options (skipSend, signer)
    */
   async respondToValidation(
     agentId: number | bigint,
@@ -662,10 +694,11 @@ export class SolanaSDK {
     response: number,
     responseUri: string,
     responseHash: Buffer,
-    tag: string = ''
-  ): Promise<TransactionResult> {
-    if (!this.validationTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+    tag: string = '',
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
@@ -675,7 +708,8 @@ export class SolanaSDK {
       response,
       responseUri,
       responseHash,
-      tag
+      tag,
+      options
     );
   }
 
@@ -684,10 +718,15 @@ export class SolanaSDK {
    * Aligned with agent0-ts SDK interface
    * @param agentId - Agent ID (number or bigint)
    * @param newOwner - New owner public key
+   * @param options - Write options (skipSend, signer)
    */
-  async transferAgent(agentId: number | bigint, newOwner: PublicKey): Promise<TransactionResult> {
-    if (!this.identityTxBuilder) {
-      throw new Error('No signer configured - SDK is read-only');
+  async transferAgent(
+    agentId: number | bigint,
+    newOwner: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
@@ -695,7 +734,7 @@ export class SolanaSDK {
     await this.initializeMintResolver();
     const agentMint = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.transferAgent(agentMint, newOwner);
+    return await this.identityTxBuilder.transferAgent(agentMint, newOwner, options);
   }
 
   // ==================== Utility Methods ====================

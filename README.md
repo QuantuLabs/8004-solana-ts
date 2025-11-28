@@ -311,6 +311,7 @@ See the `examples/` directory for complete usage examples:
 | [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
 | [`agent-update.ts`](examples/agent-update.ts) | Update agent metadata |
 | [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
+| [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
 
 Run examples:
 ```bash
