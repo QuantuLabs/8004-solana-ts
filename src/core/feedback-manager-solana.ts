@@ -173,7 +173,7 @@ export class SolanaFeedbackManager {
           },
         },
         {
-          dataSize: 526, // FeedbackAccount size
+          dataSize: 375, // FeedbackAccount::MAX_SIZE = 8+8+32+8+1+(4+32)+(4+32)+(4+200)+32+1+8+1
         },
       ]);
 
