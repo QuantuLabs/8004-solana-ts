@@ -19,8 +19,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { createDevnetSDK } from '../../src/core/sdk-solana.js';
-import type { SolanaSDK } from '../../src/core/sdk-solana.js';
+import { SolanaSDK } from '../../src/core/sdk-solana.js';
 
 describe('E2E: Full Agent Lifecycle on Devnet', () => {
   let sdk: SolanaSDK;
@@ -40,7 +39,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       Uint8Array.from(JSON.parse(privateKeyEnv))
     );
 
-    sdk = createDevnetSDK({ signer });
+    sdk = new SolanaSDK({ cluster: 'devnet', signer });
 
     console.log('🔑 Signer:', signer.publicKey.toBase58());
     console.log('🌐 Cluster:', sdk.getCluster());
@@ -129,7 +128,11 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       const fileUri = `ipfs://QmFeedback${Date.now()}`;
       const fileHash = Buffer.alloc(32, 1); // Mock hash
 
-      const result = await sdk.giveFeedback(agentId, score, fileUri, fileHash);
+      const result = await sdk.giveFeedback(agentId, {
+        score,
+        fileUri,
+        fileHash,
+      });
 
       expect(result).toHaveProperty('signature');
       expect(result).toHaveProperty('feedbackIndex');
@@ -254,13 +257,14 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       console.log(`\n🔐 Requesting validation...`);
 
+      const requestUri = `ipfs://QmRequest${Date.now()}`;
       const requestHash = Buffer.alloc(32, 3); // Mock hash
-      const result = await sdk.requestValidation(agentId, validator, requestHash);
+      const nonce = Math.floor(Math.random() * 1000000);
+      const result = await sdk.requestValidation(agentId, validator, nonce, requestUri, requestHash);
 
       expect(result).toHaveProperty('signature');
-      expect(result).toHaveProperty('nonce');
 
-      validationNonce = result.nonce!;
+      validationNonce = nonce;
       console.log(`✅ Validation requested with nonce: ${validationNonce}`);
       console.log(`📋 Transaction: ${result.signature}`);
     }, 60000);
@@ -269,13 +273,14 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       console.log(`\n✅ Responding to validation request...`);
 
       const response = 1; // Approved
+      const responseUri = `ipfs://QmValidationResponse${Date.now()}`;
       const responseHash = Buffer.alloc(32, 4); // Mock hash
 
       const result = await sdk.respondToValidation(
         agentId,
-        signer.publicKey,
         validationNonce,
         response,
+        responseUri,
         responseHash
       );
 

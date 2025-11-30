@@ -10,14 +10,13 @@
 
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import { Keypair } from '@solana/web3.js';
-import { createDevnetSDK } from '../../src/solana/sdk.js';
-import type { SolanaSDK } from '../../src/solana/sdk.js';
+import { SolanaSDK } from '../../src/core/sdk-solana.js';
 
 describe('E2E: Performance Tests', () => {
   let sdk: SolanaSDK;
 
   beforeAll(() => {
-    sdk = createDevnetSDK();
+    sdk = new SolanaSDK({ cluster: 'devnet' });
   });
 
   describe('Response times', () => {

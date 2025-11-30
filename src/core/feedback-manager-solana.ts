@@ -4,6 +4,7 @@
  */
 
 import { PublicKey } from '@solana/web3.js';
+import bs58 from 'bs58';
 import type { SolanaClient } from './client.js';
 import type { IPFSClient } from '../core/ipfs-client.js';
 import { PDAHelpers, REPUTATION_PROGRAM_ID } from './pda-helpers.js';
@@ -168,7 +169,7 @@ export class SolanaFeedbackManager {
         {
           memcmp: {
             offset: 8, // Skip 8-byte discriminator
-            bytes: agentIdBuffer.toString('base64'),
+            bytes: bs58.encode(agentIdBuffer),
           },
         },
         {
@@ -233,7 +234,7 @@ export class SolanaFeedbackManager {
         {
           memcmp: {
             offset: 8, // Skip discriminator
-            bytes: agentIdBuffer.toString('base64'),
+            bytes: bs58.encode(agentIdBuffer),
           },
         },
         {

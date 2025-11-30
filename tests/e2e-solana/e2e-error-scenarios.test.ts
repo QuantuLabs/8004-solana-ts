@@ -10,8 +10,7 @@
 
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import { Keypair, PublicKey } from '@solana/web3.js';
-import { createDevnetSDK } from '../../src/solana/sdk.js';
-import type { SolanaSDK } from '../../src/solana/sdk.js';
+import { SolanaSDK } from '../../src/core/sdk-solana.js';
 
 describe('E2E: Error Scenarios', () => {
   let sdk: SolanaSDK;
@@ -28,8 +27,8 @@ describe('E2E: Error Scenarios', () => {
       Uint8Array.from(JSON.parse(privateKeyEnv))
     );
 
-    sdk = createDevnetSDK({ signer });
-    sdkReadOnly = createDevnetSDK(); // No signer
+    sdk = new SolanaSDK({ cluster: 'devnet', signer });
+    sdkReadOnly = new SolanaSDK({ cluster: 'devnet' }); // No signer
   });
 
   describe('Non-existent entities', () => {
@@ -119,7 +118,7 @@ describe('E2E: Error Scenarios', () => {
 
     it('should throw on giveFeedback without signer', async () => {
       await expect(
-        sdkReadOnly.giveFeedback(1n, 85, 'ipfs://test', Buffer.alloc(32))
+        sdkReadOnly.giveFeedback(1n, { score: 85, fileUri: 'ipfs://test', fileHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
 
@@ -139,14 +138,13 @@ describe('E2E: Error Scenarios', () => {
     it('should throw on requestValidation without signer', async () => {
       const validator = Keypair.generate().publicKey;
       await expect(
-        sdkReadOnly.requestValidation(1n, validator, Buffer.alloc(32))
+        sdkReadOnly.requestValidation(1n, validator, 0, 'ipfs://test', Buffer.alloc(32))
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
 
     it('should throw on respondToValidation without signer', async () => {
-      const requester = Keypair.generate().publicKey;
       await expect(
-        sdkReadOnly.respondToValidation(1n, requester, 0, 1, Buffer.alloc(32))
+        sdkReadOnly.respondToValidation(1n, 0, 1, 'ipfs://test', Buffer.alloc(32))
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
   });
@@ -155,15 +153,14 @@ describe('E2E: Error Scenarios', () => {
     it('should handle invalid score in giveFeedback', async () => {
       // Score must be 0-100
       await expect(
-        sdk.giveFeedback(1n, 150, 'ipfs://test', Buffer.alloc(32))
+        sdk.giveFeedback(1n, { score: 150, fileUri: 'ipfs://test', fileHash: Buffer.alloc(32) })
       ).rejects.toThrow();
     }, 60000);
 
     it('should handle invalid response in respondToValidation', async () => {
       // Response must be 0 or 1
-      const requester = Keypair.generate().publicKey;
       await expect(
-        sdk.respondToValidation(1n, requester, 0, 999, Buffer.alloc(32))
+        sdk.respondToValidation(1n, 0, 999, 'ipfs://test', Buffer.alloc(32))
       ).rejects.toThrow();
     }, 60000);
 
@@ -176,7 +173,7 @@ describe('E2E: Error Scenarios', () => {
     it('should handle invalid hash size', async () => {
       // Hash must be exactly 32 bytes
       await expect(
-        sdk.giveFeedback(1n, 85, 'ipfs://test', Buffer.alloc(16))
+        sdk.giveFeedback(1n, { score: 85, fileUri: 'ipfs://test', fileHash: Buffer.alloc(16) })
       ).rejects.toThrow();
     }, 60000);
   });
@@ -227,7 +224,8 @@ describe('E2E: Error Scenarios', () => {
   describe('Network edge cases', () => {
     it('should handle RPC timeout gracefully', async () => {
       // Create SDK with very short timeout (this is a simulation)
-      const slowSdk = createDevnetSDK({
+      const slowSdk = new SolanaSDK({
+        cluster: 'devnet',
         signer,
         rpcUrl: 'https://api.devnet.solana.com'
       });
@@ -244,7 +242,8 @@ describe('E2E: Error Scenarios', () => {
 
     it('should handle invalid RPC URL gracefully', async () => {
       // This should fail during initialization or first call
-      const invalidSdk = createDevnetSDK({
+      const invalidSdk = new SolanaSDK({
+        cluster: 'devnet',
         rpcUrl: 'https://invalid-rpc-url-that-does-not-exist.com'
       });
 

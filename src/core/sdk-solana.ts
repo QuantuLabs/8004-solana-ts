@@ -4,6 +4,7 @@
  */
 
 import { PublicKey, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { SolanaClient, Cluster, createDevnetClient, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
@@ -181,7 +182,7 @@ export class SolanaSDK {
           {
             memcmp: {
               offset: 8, // Skip discriminator
-              bytes: agentIdBuffer.toString('base64'),
+              bytes: bs58.encode(agentIdBuffer),
             },
           },
         ],

@@ -49,6 +49,7 @@
     "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
     "borsh": "^0.7.0",
+    "bs58": "^6.0.0",
     "dotenv": "^16.3.1",
     "ipfs-http-client": "^60.0.1",
     "tweetnacl": "^1.0.3"
