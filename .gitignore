@@ -1,8 +1,7 @@
 # Dependencies
 node_modules/
 
-# Build outputs
-dist/
+# Build outputs (dist tracked for GitHub dependency usage)
 *.tsbuildinfo
 
 # Generated files
