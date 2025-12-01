@@ -1,46 +1,35 @@
 /**
  * Agent Mint Resolver
- * Resolves agent_id (bigint) to agent_mint (PublicKey) using Agent PDA accounts
+ * Resolves agent_id (bigint) to agent_mint (PublicKey) using Identity Registry accounts
  *
  * Strategy:
- * - Each agent has a PDA account derived from: [b"agent", agent_mint, program_id]
- * - We iterate through possible sequential agent IDs
- * - For each ID, we try to find an agent PDA that matches
- * - Cache results for O(1) subsequent lookups
+ * - Scan the Identity Registry program (not Metaplex!) for AgentAccount PDAs
+ * - Each AgentAccount contains agent_id and agent_mint
+ * - Load all agents once and cache for O(1) subsequent lookups
  *
- * NOTE: This approach requires scanning agent PDAs, not Metaplex metadata,
- * because the collection filter doesn't work (agents don't have collection set).
+ * This is MUCH faster than scanning Metaplex (millions of NFTs) because:
+ * - Identity Registry has only ~27 agents vs millions of Metaplex metadata accounts
+ * - Single getProgramAccounts call fetches all mappings
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';
-import { PDAHelpers } from './pda-helpers.js';
 import { AgentAccount } from './borsh-schemas.js';
-
-// Metaplex Token Metadata Program ID
-const METAPLEX_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-
-/**
- * Simplified Metaplex Metadata structure
- */
-interface MetadataAccount {
-  mint: PublicKey;
-  name: string;
-  symbol: string;
-  uri: string;
-}
+import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
+import { IDENTITY_PROGRAM_ID } from './pda-helpers.js';
+import bs58 from 'bs58';
 
 /**
  * Agent Mint Resolver
- * Maps agent_id → agent_mint using NFT metadata
+ * Maps agent_id → agent_mint using Identity Registry accounts
  */
 export class AgentMintResolver {
   private cache: Map<string, PublicKey> = new Map();
   private connection: Connection;
-  private collectionMint: PublicKey;
+  private cacheLoaded: boolean = false;
 
-  constructor(connection: Connection, collectionMint: PublicKey) {
+  constructor(connection: Connection, _collectionMint?: PublicKey) {
     this.connection = connection;
-    this.collectionMint = collectionMint;
+    // collectionMint is no longer needed (was for Metaplex filtering)
   }
 
   /**
@@ -57,19 +46,63 @@ export class AgentMintResolver {
       return this.cache.get(cacheKey)!;
     }
 
-    // Query Metaplex metadata by NFT name
-    const targetName = `Agent #${agentId}`;
-    const mint = await this.findMintByName(targetName);
+    // If cache not loaded, load all agents from Identity Registry
+    if (!this.cacheLoaded) {
+      await this.loadAllAgents();
+    }
 
+    // Now check cache again
+    const mint = this.cache.get(cacheKey);
     if (!mint) {
       throw new Error(
-        `Agent #${agentId} not found. The agent may not exist or metadata may not be indexed yet.`
+        `Agent #${agentId} not found. The agent may not exist.`
       );
     }
 
-    // Cache for future lookups
-    this.cache.set(cacheKey, mint);
     return mint;
+  }
+
+  /**
+   * Load all agents from Identity Registry and populate cache
+   * This is much faster than scanning Metaplex (one RPC call vs millions of accounts)
+   */
+  private async loadAllAgents(): Promise<void> {
+    try {
+      // Get AgentAccount discriminator bytes for filtering
+      const discriminatorBytes = bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount);
+
+      // Fetch ALL AgentAccount PDAs from Identity Registry (single RPC call)
+      const accounts = await this.connection.getProgramAccounts(IDENTITY_PROGRAM_ID, {
+        filters: [
+          {
+            memcmp: {
+              offset: 0,
+              bytes: discriminatorBytes,
+            },
+          },
+        ],
+      });
+
+      // Parse each account and populate cache
+      for (const { account } of accounts) {
+        try {
+          const agentAccount = AgentAccount.deserialize(Buffer.from(account.data));
+          const agentId = agentAccount.agent_id.toString();
+          const agentMint = agentAccount.getMintPublicKey();
+
+          this.cache.set(agentId, agentMint);
+        } catch {
+          // Skip malformed accounts
+          continue;
+        }
+      }
+
+      this.cacheLoaded = true;
+      console.log(`AgentMintResolver: Loaded ${this.cache.size} agents from Identity Registry`);
+    } catch (error) {
+      console.error(`Error loading agents from Identity Registry: ${error}`);
+      throw new Error(`Failed to load agents: ${error}`);
+    }
   }
 
   /**
@@ -86,112 +119,15 @@ export class AgentMintResolver {
    */
   clearCache(): void {
     this.cache.clear();
+    this.cacheLoaded = false;
   }
 
   /**
-   * Find agent mint by NFT name using Metaplex metadata
-   * @param targetName - NFT name to search for (e.g., "Agent #5")
-   * @returns mint PublicKey or null if not found
+   * Force reload all agents from chain
    */
-  private async findMintByName(targetName: string): Promise<PublicKey | null> {
-    try {
-      // Query all Metaplex metadata accounts in the collection
-      // Note: This uses getProgramAccounts which can be expensive
-      // In production, consider using:
-      // - Helius DAS API
-      // - Metaplex Digital Asset Standard API
-      // - Custom indexer
-      const accounts = await this.connection.getProgramAccounts(METAPLEX_PROGRAM_ID, {
-        filters: [
-          {
-            // Filter by collection mint
-            // Metaplex Metadata v1 structure (variable size based on name/symbol/uri):
-            // - [0-327]: Key, UpdateAuthority, Mint, Name, Symbol, URI, SellerFee, Creators, etc.
-            // - [328]: Has Collection (1 byte, 0 or 1)
-            // - [329]: Collection.verified (1 byte bool)
-            // - [330-361]: Collection.key (32 bytes Pubkey) ← Filter here
-            memcmp: {
-              offset: 330,
-              bytes: this.collectionMint.toBase58(),
-            },
-          },
-        ],
-      });
-
-      // Parse each metadata account and find matching name
-      for (const account of accounts) {
-        try {
-          const metadata = this.parseMetadataAccount(account.account.data);
-
-          // Remove null bytes and whitespace, then compare names
-          // Metaplex pads names with null bytes (\0), not spaces
-          const cleanName = metadata.name.replace(/\0/g, '').trim();
-          if (cleanName === targetName) {
-            return metadata.mint;
-          }
-        } catch (parseError) {
-          // Skip accounts that fail to parse
-          console.warn(`Failed to parse metadata account: ${parseError}`);
-          continue;
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.error(`Error querying Metaplex metadata: ${error}`);
-      throw new Error(`Failed to query agent metadata: ${error}`);
-    }
-  }
-
-  /**
-   * Parse Metaplex metadata account data
-   * Simplified parser for extracting mint and name
-   *
-   * Metadata account layout:
-   * - offset 0: key (1 byte)
-   * - offset 1: update_authority (32 bytes)
-   * - offset 33: mint (32 bytes)
-   * - offset 65: name_length (4 bytes u32 LE)
-   * - offset 69: name (string)
-   * - offset 69 + name_length: symbol_length (4 bytes u32 LE)
-   * - offset 73 + name_length: symbol (string)
-   * - offset 73 + name_length + symbol_length: uri_length (4 bytes u32 LE)
-   * - offset 77 + name_length + symbol_length: uri (string)
-   *
-   * @param data - Raw account data buffer
-   * @returns Parsed metadata
-   */
-  private parseMetadataAccount(data: Buffer): MetadataAccount {
-    try {
-      // Extract mint (offset 33, 32 bytes)
-      const mint = new PublicKey(data.slice(33, 65));
-
-      // Extract name
-      const nameLength = data.readUInt32LE(65);
-      const nameBytes = data.slice(69, 69 + nameLength);
-      const name = nameBytes.toString('utf8');
-
-      // Extract symbol
-      const symbolOffset = 69 + nameLength;
-      const symbolLength = data.readUInt32LE(symbolOffset);
-      const symbolBytes = data.slice(symbolOffset + 4, symbolOffset + 4 + symbolLength);
-      const symbol = symbolBytes.toString('utf8');
-
-      // Extract URI
-      const uriOffset = symbolOffset + 4 + symbolLength;
-      const uriLength = data.readUInt32LE(uriOffset);
-      const uriBytes = data.slice(uriOffset + 4, uriOffset + 4 + uriLength);
-      const uri = uriBytes.toString('utf8');
-
-      return {
-        mint,
-        name,
-        symbol,
-        uri,
-      };
-    } catch (error) {
-      throw new Error(`Failed to parse metadata account: ${error}`);
-    }
+  async refresh(): Promise<void> {
+    this.clearCache();
+    await this.loadAllAgents();
   }
 
   /**
@@ -201,62 +137,26 @@ export class AgentMintResolver {
    * @returns Map of agent_id → agent_mint
    */
   async batchResolve(agentIds: bigint[]): Promise<Map<bigint, PublicKey>> {
+    // Ensure cache is loaded
+    if (!this.cacheLoaded) {
+      await this.loadAllAgents();
+    }
+
     const results = new Map<bigint, PublicKey>();
-
-    // Check cache first
-    const uncachedIds: bigint[] = [];
     for (const agentId of agentIds) {
-      const cached = this.cache.get(agentId.toString());
-      if (cached) {
-        results.set(agentId, cached);
-      } else {
-        uncachedIds.push(agentId);
-      }
-    }
-
-    // If all were cached, return early
-    if (uncachedIds.length === 0) {
-      return results;
-    }
-
-    // Build target names for uncached IDs
-    const targetNames = new Set(uncachedIds.map(id => `Agent #${id}`));
-
-    // Query all metadata accounts once
-    const accounts = await this.connection.getProgramAccounts(METAPLEX_PROGRAM_ID, {
-      filters: [
-        {
-          // Filter by collection mint at offset 330
-          memcmp: {
-            offset: 330,
-            bytes: this.collectionMint.toBase58(),
-          },
-        },
-      ],
-    });
-
-    // Parse and match
-    for (const account of accounts) {
-      try {
-        const metadata = this.parseMetadataAccount(account.account.data);
-        // Remove null bytes and whitespace
-        const cleanName = metadata.name.replace(/\0/g, '').trim();
-
-        if (targetNames.has(cleanName)) {
-          // Extract agent_id from name "Agent #5" → 5
-          const match = cleanName.match(/^Agent #(\d+)$/);
-          if (match) {
-            const agentId = BigInt(match[1]);
-            results.set(agentId, metadata.mint);
-            this.cache.set(agentId.toString(), metadata.mint);
-          }
-        }
-      } catch (error) {
-        // Skip invalid accounts
-        continue;
+      const mint = this.cache.get(agentId.toString());
+      if (mint) {
+        results.set(agentId, mint);
       }
     }
 
     return results;
+  }
+
+  /**
+   * Get cache size (number of loaded agents)
+   */
+  get size(): number {
+    return this.cache.size;
   }
 }
