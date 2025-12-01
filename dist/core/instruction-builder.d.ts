@@ -27,20 +27,20 @@ export declare class IdentityInstructionBuilder {
     /**
      * Build setAgentUri instruction
      */
-    buildSetAgentUri(agentAccount: PublicKey, agentMetadata: PublicKey, agentMint: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
+    buildSetAgentUri(agentAccount: PublicKey, tokenAccount: PublicKey, agentMetadata: PublicKey, agentMint: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
     /**
      * Build setMetadata instruction (inline metadata storage)
-     * Accounts: agent_account (mut), owner (signer)
+     * Accounts: agent_account (mut), token_account, owner (signer)
      */
-    buildSetMetadata(agentAccount: PublicKey, owner: PublicKey, key: string, value: string): TransactionInstruction;
+    buildSetMetadata(agentAccount: PublicKey, tokenAccount: PublicKey, owner: PublicKey, key: string, value: string): TransactionInstruction;
     /**
      * Build createMetadataExtension instruction
      */
-    buildCreateMetadataExtension(metadataExtension: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, owner: PublicKey, extensionIndex: number): TransactionInstruction;
+    buildCreateMetadataExtension(metadataExtension: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, owner: PublicKey, extensionIndex: number): TransactionInstruction;
     /**
      * Build setMetadataExtended instruction (extension PDA metadata storage)
      */
-    buildSetMetadataExtended(metadataExtension: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, owner: PublicKey, extensionIndex: number, key: string, value: string): TransactionInstruction;
+    buildSetMetadataExtended(metadataExtension: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, owner: PublicKey, extensionIndex: number, key: string, value: string): TransactionInstruction;
     /**
      * Build transferAgent instruction
      */
@@ -84,7 +84,7 @@ export declare class ValidationInstructionBuilder {
      * Build requestValidation instruction
      * Matches: request_validation(agent_id, validator_address, nonce, request_uri, request_hash)
      */
-    buildRequestValidation(config: PublicKey, requester: PublicKey, payer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, identityRegistryProgram: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
+    buildRequestValidation(config: PublicKey, requester: PublicKey, payer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, validationRequest: PublicKey, identityRegistryProgram: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
     /**
      * Build respondToValidation instruction
      * Matches: respond_to_validation(response, response_uri, response_hash, tag)
@@ -97,7 +97,7 @@ export declare class ValidationInstructionBuilder {
     /**
      * Build closeValidation instruction
      */
-    buildCloseValidation(config: PublicKey, closer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, identityRegistryProgram: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
+    buildCloseValidation(config: PublicKey, closer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, validationRequest: PublicKey, identityRegistryProgram: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
     private serializeString;
     private serializeU64;
     private serializeU32;

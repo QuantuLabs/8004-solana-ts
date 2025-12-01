@@ -90,7 +90,7 @@ export class IdentityInstructionBuilder {
     /**
      * Build setAgentUri instruction
      */
-    buildSetAgentUri(agentAccount, agentMetadata, agentMint, owner, newUri) {
+    buildSetAgentUri(agentAccount, tokenAccount, agentMetadata, agentMint, owner, newUri) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.setAgentUri,
             this.serializeString(newUri),
@@ -99,6 +99,7 @@ export class IdentityInstructionBuilder {
             programId: this.programId,
             keys: [
                 { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: tokenAccount, isSigner: false, isWritable: false },
                 { pubkey: agentMetadata, isSigner: false, isWritable: true },
                 { pubkey: agentMint, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
@@ -111,9 +112,9 @@ export class IdentityInstructionBuilder {
     }
     /**
      * Build setMetadata instruction (inline metadata storage)
-     * Accounts: agent_account (mut), owner (signer)
+     * Accounts: agent_account (mut), token_account, owner (signer)
      */
-    buildSetMetadata(agentAccount, owner, key, value) {
+    buildSetMetadata(agentAccount, tokenAccount, owner, key, value) {
         const valueBytes = Buffer.from(value, 'utf8');
         const valueLen = Buffer.alloc(4);
         valueLen.writeUInt32LE(valueBytes.length);
@@ -127,6 +128,7 @@ export class IdentityInstructionBuilder {
             programId: this.programId,
             keys: [
                 { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: tokenAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: false },
             ],
             data,
@@ -135,7 +137,7 @@ export class IdentityInstructionBuilder {
     /**
      * Build createMetadataExtension instruction
      */
-    buildCreateMetadataExtension(metadataExtension, agentMint, agentAccount, owner, extensionIndex) {
+    buildCreateMetadataExtension(metadataExtension, agentMint, agentAccount, tokenAccount, owner, extensionIndex) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.createMetadataExtension,
             Buffer.from([extensionIndex]),
@@ -146,6 +148,7 @@ export class IdentityInstructionBuilder {
                 { pubkey: metadataExtension, isSigner: false, isWritable: true },
                 { pubkey: agentMint, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },
+                { pubkey: tokenAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
@@ -155,7 +158,7 @@ export class IdentityInstructionBuilder {
     /**
      * Build setMetadataExtended instruction (extension PDA metadata storage)
      */
-    buildSetMetadataExtended(metadataExtension, agentMint, agentAccount, owner, extensionIndex, key, value) {
+    buildSetMetadataExtended(metadataExtension, agentMint, agentAccount, tokenAccount, owner, extensionIndex, key, value) {
         const valueBytes = Buffer.from(value, 'utf8');
         const valueLen = Buffer.alloc(4);
         valueLen.writeUInt32LE(valueBytes.length);
@@ -172,6 +175,7 @@ export class IdentityInstructionBuilder {
                 { pubkey: metadataExtension, isSigner: false, isWritable: true },
                 { pubkey: agentMint, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },
+                { pubkey: tokenAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
@@ -331,7 +335,7 @@ export class ValidationInstructionBuilder {
      * Build requestValidation instruction
      * Matches: request_validation(agent_id, validator_address, nonce, request_uri, request_hash)
      */
-    buildRequestValidation(config, requester, payer, agentMint, agentAccount, validationRequest, identityRegistryProgram, agentId, validatorAddress, nonce, requestUri, requestHash) {
+    buildRequestValidation(config, requester, payer, agentMint, agentAccount, tokenAccount, validationRequest, identityRegistryProgram, agentId, validatorAddress, nonce, requestUri, requestHash) {
         const data = Buffer.concat([
             VALIDATION_DISCRIMINATORS.requestValidation,
             this.serializeU64(agentId),
@@ -348,6 +352,7 @@ export class ValidationInstructionBuilder {
                 { pubkey: payer, isSigner: true, isWritable: true },
                 { pubkey: agentMint, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },
+                { pubkey: tokenAccount, isSigner: false, isWritable: false },
                 { pubkey: validationRequest, isSigner: false, isWritable: true },
                 { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
@@ -401,7 +406,7 @@ export class ValidationInstructionBuilder {
     /**
      * Build closeValidation instruction
      */
-    buildCloseValidation(config, closer, agentMint, agentAccount, validationRequest, identityRegistryProgram, rentReceiver) {
+    buildCloseValidation(config, closer, agentMint, agentAccount, tokenAccount, validationRequest, identityRegistryProgram, rentReceiver) {
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
@@ -409,6 +414,7 @@ export class ValidationInstructionBuilder {
                 { pubkey: closer, isSigner: true, isWritable: false },
                 { pubkey: agentMint, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },
+                { pubkey: tokenAccount, isSigner: false, isWritable: false },
                 { pubkey: validationRequest, isSigner: false, isWritable: true },
                 { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
                 { pubkey: rentReceiver, isSigner: false, isWritable: true },

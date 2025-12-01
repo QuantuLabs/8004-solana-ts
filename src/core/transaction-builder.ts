@@ -14,7 +14,7 @@ import {
   Signer,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { PDAHelpers, IDENTITY_PROGRAM_ID } from './pda-helpers.js';
 import {
   IdentityInstructionBuilder,
@@ -287,6 +287,7 @@ export class IdentityTransactionBuilder {
               metadataExtension,
               agentMintPubkey,
               agentPda,
+              agentTokenAccount,
               this.payer.publicKey,
               extensionIndex
             );
@@ -297,6 +298,7 @@ export class IdentityTransactionBuilder {
               metadataExtension,
               agentMintPubkey,
               agentPda,
+              agentTokenAccount,
               this.payer.publicKey,
               extensionIndex,
               key,
@@ -352,9 +354,11 @@ export class IdentityTransactionBuilder {
 
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
       const agentMetadata = getMetadataPDA(agentMint);
+      const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
 
       const instruction = this.instructionBuilder.buildSetAgentUri(
         agentPda,
+        tokenAccount,
         agentMetadata,
         agentMint,
         signerPubkey,
@@ -410,9 +414,11 @@ export class IdentityTransactionBuilder {
       }
 
       const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
+      const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
 
       const instruction = this.instructionBuilder.buildSetMetadata(
         agentPda,
+        tokenAccount,
         signerPubkey,
         key,
         value
@@ -473,11 +479,13 @@ export class IdentityTransactionBuilder {
         agentMint,
         extensionIndex
       );
+      const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
 
       const instruction = this.instructionBuilder.buildSetMetadataExtended(
         metadataExtension,
         agentMint,
         agentPda,
+        tokenAccount,
         signerPubkey,
         extensionIndex,
         key,
@@ -542,6 +550,15 @@ export class IdentityTransactionBuilder {
         toOwner
       );
 
+      // Create ATA for recipient if it doesn't exist (idempotent)
+      const createAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+        signerPubkey,    // payer
+        toTokenAccount,  // ata
+        toOwner,         // owner
+        agentMint,       // mint
+        TOKEN_PROGRAM_ID
+      );
+
       const instruction = this.instructionBuilder.buildTransferAgent(
         agentPda,
         fromTokenAccount,
@@ -551,7 +568,7 @@ export class IdentityTransactionBuilder {
         signerPubkey
       );
 
-      const transaction = new Transaction().add(instruction);
+      const transaction = new Transaction().add(createAtaIx).add(instruction);
 
       // If skipSend, return serialized transaction
       if (options?.skipSend) {
@@ -972,6 +989,7 @@ export class ValidationTransactionBuilder {
         validatorAddress,
         nonce
       );
+      const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
 
       const instruction = this.instructionBuilder.buildRequestValidation(
         configPda,
@@ -979,6 +997,7 @@ export class ValidationTransactionBuilder {
         signerPubkey,               // payer
         agentMint,
         agentPda,
+        tokenAccount,
         validationRequestPda,
         IDENTITY_PROGRAM_ID,
         agentId,
@@ -1206,12 +1225,14 @@ export class ValidationTransactionBuilder {
         validatorAddress,
         nonce
       );
+      const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
 
       const instruction = this.instructionBuilder.buildCloseValidation(
         configPda,
         signerPubkey,
         agentMint,
         agentPda,
+        tokenAccount,
         validationRequestPda,
         IDENTITY_PROGRAM_ID,
         rentReceiver || signerPubkey

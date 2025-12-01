@@ -143,6 +143,7 @@ export class IdentityInstructionBuilder {
    */
   buildSetAgentUri(
     agentAccount: PublicKey,
+    tokenAccount: PublicKey,
     agentMetadata: PublicKey,
     agentMint: PublicKey,
     owner: PublicKey,
@@ -157,6 +158,7 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: agentMetadata, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
@@ -170,10 +172,11 @@ export class IdentityInstructionBuilder {
 
   /**
    * Build setMetadata instruction (inline metadata storage)
-   * Accounts: agent_account (mut), owner (signer)
+   * Accounts: agent_account (mut), token_account, owner (signer)
    */
   buildSetMetadata(
     agentAccount: PublicKey,
+    tokenAccount: PublicKey,
     owner: PublicKey,
     key: string,
     value: string,
@@ -193,6 +196,7 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: false },
       ],
       data,
@@ -206,6 +210,7 @@ export class IdentityInstructionBuilder {
     metadataExtension: PublicKey,
     agentMint: PublicKey,
     agentAccount: PublicKey,
+    tokenAccount: PublicKey,
     owner: PublicKey,
     extensionIndex: number,
   ): TransactionInstruction {
@@ -220,6 +225,7 @@ export class IdentityInstructionBuilder {
         { pubkey: metadataExtension, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
@@ -234,6 +240,7 @@ export class IdentityInstructionBuilder {
     metadataExtension: PublicKey,
     agentMint: PublicKey,
     agentAccount: PublicKey,
+    tokenAccount: PublicKey,
     owner: PublicKey,
     extensionIndex: number,
     key: string,
@@ -257,6 +264,7 @@ export class IdentityInstructionBuilder {
         { pubkey: metadataExtension, isSigner: false, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
@@ -483,6 +491,7 @@ export class ValidationInstructionBuilder {
     payer: PublicKey,
     agentMint: PublicKey,
     agentAccount: PublicKey,
+    tokenAccount: PublicKey,
     validationRequest: PublicKey,
     identityRegistryProgram: PublicKey,
     agentId: bigint,
@@ -508,6 +517,7 @@ export class ValidationInstructionBuilder {
         { pubkey: payer, isSigner: true, isWritable: true },
         { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
         { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
@@ -587,6 +597,7 @@ export class ValidationInstructionBuilder {
     closer: PublicKey,
     agentMint: PublicKey,
     agentAccount: PublicKey,
+    tokenAccount: PublicKey,
     validationRequest: PublicKey,
     identityRegistryProgram: PublicKey,
     rentReceiver: PublicKey,
@@ -598,6 +609,7 @@ export class ValidationInstructionBuilder {
         { pubkey: closer, isSigner: true, isWritable: false },
         { pubkey: agentMint, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
         { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: rentReceiver, isSigner: false, isWritable: true },

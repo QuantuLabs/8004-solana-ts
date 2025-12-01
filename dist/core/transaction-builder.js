@@ -4,7 +4,7 @@
  * Updated to match 8004-solana program interfaces
  */
 import { Transaction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { PDAHelpers, IDENTITY_PROGRAM_ID } from './pda-helpers.js';
 import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, } from './instruction-builder.js';
 import { fetchRegistryConfig } from './config-reader.js';
@@ -150,10 +150,10 @@ export class IdentityTransactionBuilder {
                         const { key, value } = batch[j];
                         const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(agentMintPubkey, extensionIndex);
                         // First create the extension PDA if needed
-                        const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(metadataExtension, agentMintPubkey, agentPda, this.payer.publicKey, extensionIndex);
+                        const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(metadataExtension, agentMintPubkey, agentPda, agentTokenAccount, this.payer.publicKey, extensionIndex);
                         extTx.add(createExtIx);
                         // Then set the metadata
-                        const setExtIx = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, agentMintPubkey, agentPda, this.payer.publicKey, extensionIndex, key, value);
+                        const setExtIx = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, agentMintPubkey, agentPda, agentTokenAccount, this.payer.publicKey, extensionIndex, key, value);
                         extTx.add(setExtIx);
                     }
                     const batchSignature = await this.sendWithRetry(extTx, [this.payer]);
@@ -195,7 +195,8 @@ export class IdentityTransactionBuilder {
             }
             const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
             const agentMetadata = getMetadataPDA(agentMint);
-            const instruction = this.instructionBuilder.buildSetAgentUri(agentPda, agentMetadata, agentMint, signerPubkey, newUri);
+            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
+            const instruction = this.instructionBuilder.buildSetAgentUri(agentPda, tokenAccount, agentMetadata, agentMint, signerPubkey, newUri);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -231,7 +232,8 @@ export class IdentityTransactionBuilder {
                 throw new Error('signer required when SDK has no signer configured');
             }
             const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const instruction = this.instructionBuilder.buildSetMetadata(agentPda, signerPubkey, key, value);
+            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
+            const instruction = this.instructionBuilder.buildSetMetadata(agentPda, tokenAccount, signerPubkey, key, value);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -269,7 +271,8 @@ export class IdentityTransactionBuilder {
             }
             const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
             const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(agentMint, extensionIndex);
-            const instruction = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, agentMint, agentPda, signerPubkey, extensionIndex, key, value);
+            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
+            const instruction = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, agentMint, agentPda, tokenAccount, signerPubkey, extensionIndex, key, value);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -307,8 +310,14 @@ export class IdentityTransactionBuilder {
             const agentMetadata = getMetadataPDA(agentMint);
             const fromTokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
             const toTokenAccount = getAssociatedTokenAddressSync(agentMint, toOwner);
+            // Create ATA for recipient if it doesn't exist (idempotent)
+            const createAtaIx = createAssociatedTokenAccountIdempotentInstruction(signerPubkey, // payer
+            toTokenAccount, // ata
+            toOwner, // owner
+            agentMint, // mint
+            TOKEN_PROGRAM_ID);
             const instruction = this.instructionBuilder.buildTransferAgent(agentPda, fromTokenAccount, toTokenAccount, agentMint, agentMetadata, signerPubkey);
-            const transaction = new Transaction().add(instruction);
+            const transaction = new Transaction().add(createAtaIx).add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
@@ -586,9 +595,10 @@ export class ValidationTransactionBuilder {
             const [configPda] = await PDAHelpers.getValidationConfigPDA();
             const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
             const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
+            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
             const instruction = this.instructionBuilder.buildRequestValidation(configPda, signerPubkey, // requester (must be agent owner)
             signerPubkey, // payer
-            agentMint, agentPda, validationRequestPda, IDENTITY_PROGRAM_ID, agentId, validatorAddress, nonce, requestUri, requestHash);
+            agentMint, agentPda, tokenAccount, validationRequestPda, IDENTITY_PROGRAM_ID, agentId, validatorAddress, nonce, requestUri, requestHash);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -724,7 +734,8 @@ export class ValidationTransactionBuilder {
             const [configPda] = await PDAHelpers.getValidationConfigPDA();
             const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
             const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
-            const instruction = this.instructionBuilder.buildCloseValidation(configPda, signerPubkey, agentMint, agentPda, validationRequestPda, IDENTITY_PROGRAM_ID, rentReceiver || signerPubkey);
+            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
+            const instruction = this.instructionBuilder.buildCloseValidation(configPda, signerPubkey, agentMint, agentPda, tokenAccount, validationRequestPda, IDENTITY_PROGRAM_ID, rentReceiver || signerPubkey);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
