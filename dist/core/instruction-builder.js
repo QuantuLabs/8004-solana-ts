@@ -8,6 +8,7 @@ import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token
 import { TOKEN_METADATA_PROGRAM_ID } from './metaplex-helpers.js';
 import { IDENTITY_DISCRIMINATORS, REPUTATION_DISCRIMINATORS, VALIDATION_DISCRIMINATORS, } from './instruction-discriminators.js';
 import { IDENTITY_PROGRAM_ID, REPUTATION_PROGRAM_ID, VALIDATION_PROGRAM_ID } from './pda-helpers.js';
+import { toBigInt } from './utils.js';
 /**
  * Instruction builder for Identity Registry
  * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
@@ -314,7 +315,7 @@ export class ReputationInstructionBuilder {
     }
     serializeU64(value) {
         const buf = Buffer.alloc(8);
-        buf.writeBigUInt64LE(value);
+        buf.writeBigUInt64LE(toBigInt(value));
         return buf;
     }
 }

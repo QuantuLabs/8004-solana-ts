@@ -25,6 +25,7 @@ import { fetchRegistryConfig } from './config-reader.js';
 import { getMetadataPDA, getMasterEditionPDA, getCollectionAuthorityPDA } from './metaplex-helpers.js';
 import type { Cluster } from './client.js';
 import { ClientIndexAccount, AgentAccount } from './borsh-schemas.js';
+import { toBigInt } from './utils.js';
 
 export interface TransactionResult {
   signature: TransactionSignature;
@@ -703,7 +704,8 @@ export class ReputationTransactionBuilder {
       const clientIndexInfo = await this.connection.getAccountInfo(clientIndex);
       if (clientIndexInfo) {
         const clientIndexData = ClientIndexAccount.deserialize(clientIndexInfo.data);
-        feedbackIndex = clientIndexData.last_index;
+        // borsh v0.7 returns BN objects, not native bigint - convert to native bigint
+        feedbackIndex = toBigInt(clientIndexData.last_index);
       }
 
       // Derive feedback PDA

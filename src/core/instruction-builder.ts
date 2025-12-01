@@ -21,6 +21,7 @@ import {
   VALIDATION_DISCRIMINATORS,
 } from './instruction-discriminators.js';
 import { IDENTITY_PROGRAM_ID, REPUTATION_PROGRAM_ID, VALIDATION_PROGRAM_ID } from './pda-helpers.js';
+import { toBigInt } from './utils.js';
 
 /**
  * Instruction builder for Identity Registry
@@ -454,9 +455,9 @@ export class ReputationInstructionBuilder {
     return Buffer.concat([len, strBytes]);
   }
 
-  private serializeU64(value: bigint): Buffer {
+  private serializeU64(value: bigint | number | string | { toString(): string }): Buffer {
     const buf = Buffer.alloc(8);
-    buf.writeBigUInt64LE(value);
+    buf.writeBigUInt64LE(toBigInt(value));
     return buf;
   }
 }

@@ -10,6 +10,7 @@ import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationIns
 import { fetchRegistryConfig } from './config-reader.js';
 import { getMetadataPDA, getMasterEditionPDA, getCollectionAuthorityPDA } from './metaplex-helpers.js';
 import { ClientIndexAccount } from './borsh-schemas.js';
+import { toBigInt } from './utils.js';
 /**
  * Serialize a transaction for later signing and sending
  * @param transaction - The transaction to serialize
@@ -418,7 +419,8 @@ export class ReputationTransactionBuilder {
             const clientIndexInfo = await this.connection.getAccountInfo(clientIndex);
             if (clientIndexInfo) {
                 const clientIndexData = ClientIndexAccount.deserialize(clientIndexInfo.data);
-                feedbackIndex = clientIndexData.last_index;
+                // borsh v0.7 returns BN objects, not native bigint - convert to native bigint
+                feedbackIndex = toBigInt(clientIndexData.last_index);
             }
             // Derive feedback PDA
             const [feedbackPda] = await PDAHelpers.getFeedbackPDA(agentId, signerPubkey, feedbackIndex);
