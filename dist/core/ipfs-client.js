@@ -5,6 +5,7 @@
  * - Filecoin Pin service
  */
 import { IPFS_GATEWAYS, TIMEOUTS } from '../utils/constants.js';
+import { buildRegistrationFileJson } from '../utils/registration-file-builder.js';
 /**
  * Client for IPFS operations supporting multiple providers
  */
@@ -306,53 +307,7 @@ export class IPFSClient {
      * Add registration file to IPFS and return CID
      */
     async addRegistrationFile(registrationFile, chainId, identityRegistryAddress) {
-        // Convert from internal format { type, value, meta } to ERC-8004 format { name, endpoint, version }
-        const endpoints = [];
-        for (const ep of registrationFile.endpoints) {
-            const endpointDict = {
-                name: ep.type, // EndpointType enum value (e.g., "MCP", "A2A")
-                endpoint: ep.value,
-            };
-            // Spread meta fields (version, mcpTools, mcpPrompts, etc.) into the endpoint dict
-            if (ep.meta) {
-                Object.assign(endpointDict, ep.meta);
-            }
-            endpoints.push(endpointDict);
-        }
-        // Add walletAddress as an endpoint if present
-        if (registrationFile.walletAddress) {
-            const walletChainId = registrationFile.walletChainId || chainId || 1;
-            endpoints.push({
-                name: 'agentWallet',
-                endpoint: `eip155:${walletChainId}:${registrationFile.walletAddress}`,
-            });
-        }
-        // Build registrations array
-        const registrations = [];
-        if (registrationFile.agentId) {
-            const [, , tokenId] = registrationFile.agentId.split(':');
-            const agentRegistry = chainId && identityRegistryAddress
-                ? `eip155:${chainId}:${identityRegistryAddress}`
-                : `eip155:1:{identityRegistry}`;
-            registrations.push({
-                agentId: parseInt(tokenId, 10),
-                agentRegistry,
-            });
-        }
-        // Build ERC-8004 compliant registration file
-        const data = {
-            type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
-            name: registrationFile.name,
-            description: registrationFile.description,
-            ...(registrationFile.image && { image: registrationFile.image }),
-            endpoints,
-            ...(registrations.length > 0 && { registrations }),
-            ...(registrationFile.trustModels.length > 0 && {
-                supportedTrusts: registrationFile.trustModels,
-            }),
-            active: registrationFile.active,
-            x402support: registrationFile.x402support,
-        };
+        const data = buildRegistrationFileJson(registrationFile, { chainId, identityRegistryAddress });
         return this.addJson(data);
     }
     /**
