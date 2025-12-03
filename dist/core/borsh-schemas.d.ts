@@ -55,26 +55,27 @@ export declare class AgentAccount {
 /**
  * Registry Config Account (Identity Registry)
  * Seeds: ["config"]
+ * v0.2.0: Removed collection_authority_bump, collection_mint renamed to collection
  */
 export declare class RegistryConfig {
     authority: Uint8Array;
     next_agent_id: bigint;
     total_agents: bigint;
-    collection_mint: Uint8Array;
-    collection_authority_bump: number;
+    collection: Uint8Array;
     bump: number;
     constructor(fields: {
         authority: Uint8Array;
         next_agent_id: bigint;
         total_agents: bigint;
-        collection_mint: Uint8Array;
-        collection_authority_bump: number;
+        collection: Uint8Array;
         bump: number;
     });
     static schema: Schema;
     static deserialize(data: Buffer): RegistryConfig;
     getAuthorityPublicKey(): PublicKey;
+    getCollectionPublicKey(): PublicKey;
     getCollectionMintPublicKey(): PublicKey;
+    get collection_mint(): Uint8Array;
 }
 /**
  * Metadata Extension Account (Identity Registry)

@@ -90,14 +90,14 @@ AgentAccount.schema = new Map([
 /**
  * Registry Config Account (Identity Registry)
  * Seeds: ["config"]
+ * v0.2.0: Removed collection_authority_bump, collection_mint renamed to collection
  */
 export class RegistryConfig {
     constructor(fields) {
         this.authority = fields.authority;
         this.next_agent_id = fields.next_agent_id;
         this.total_agents = fields.total_agents;
-        this.collection_mint = fields.collection_mint;
-        this.collection_authority_bump = fields.collection_authority_bump;
+        this.collection = fields.collection;
         this.bump = fields.bump;
     }
     static deserialize(data) {
@@ -108,8 +108,16 @@ export class RegistryConfig {
     getAuthorityPublicKey() {
         return new PublicKey(this.authority);
     }
+    getCollectionPublicKey() {
+        return new PublicKey(this.collection);
+    }
+    // Alias for backwards compatibility
     getCollectionMintPublicKey() {
-        return new PublicKey(this.collection_mint);
+        return this.getCollectionPublicKey();
+    }
+    // Alias for backwards compatibility
+    get collection_mint() {
+        return this.collection;
     }
 }
 RegistryConfig.schema = new Map([
@@ -121,8 +129,7 @@ RegistryConfig.schema = new Map([
                 ['authority', [32]],
                 ['next_agent_id', 'u64'],
                 ['total_agents', 'u64'],
-                ['collection_mint', [32]],
-                ['collection_authority_bump', 'u8'], // Added
+                ['collection', [32]],
                 ['bump', 'u8'],
             ],
         },
