@@ -1,7 +1,7 @@
 {
   "name": "8004-solana-ts",
-  "version": "0.1.0",
-  "description": "TypeScript SDK for ERC-8004 on Solana - Agent identity, reputation and discovery",
+  "version": "0.2.0",
+  "description": "TypeScript SDK for ERC-8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
