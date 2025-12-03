@@ -1,13 +1,14 @@
 # 8004-solana-ts
 
 > TypeScript SDK for ERC-8004 on Solana
-> Agent identity, reputation and discovery standard
+> Agent identity, reputation and validation standard
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
 [![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantuLabs/8004-solana)
+[![Version](https://img.shields.io/badge/version-0.2.0-green)](https://github.com/QuantuLabs/8004-solana-ts)
 
-> **Alpha Release** - Not yet published to npm. Install from GitHub.
+> **v0.2.0** - Consolidated program architecture with Metaplex Core
 
 ---
 
@@ -180,15 +181,17 @@ These methods require a custom RPC provider (Helius, Triton, etc.) that supports
 
 ## Architecture
 
-Built on Solana programs implementing ERC-8004:
+Built on a consolidated Solana program implementing ERC-8004:
 
 | Program | Program ID | Description |
 |---------|------------|-------------|
-| **Identity Registry** | `CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss` | Agent registration, metadata, NFT management |
-| **Reputation Registry** | `Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr` | Feedback submission, reputation tracking |
-| **Validation Registry** | `2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw` | Trust validation mechanisms |
+| **AgentRegistry8004** | `3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi` | Identity, Reputation & Validation (consolidated) |
 
-Programs are deployed on Solana devnet.
+**v0.2.0 Changes:**
+- Single consolidated program (was 3 separate programs)
+- Uses **Metaplex Core** for NFTs (was Token Metadata)
+- Global feedback index (was per-client)
+- 89 tests passing on devnet
 
 ---
 
@@ -258,25 +261,33 @@ npm run format
 
 ## Current Status
 
-### v0.1.0 - Initial Public Build
+### v0.2.0 - Consolidated Program Architecture
+
+**What's New:**
+- Single consolidated program (Identity + Reputation + Validation)
+- **Metaplex Core** NFTs (lighter, faster than Token Metadata)
+- Global feedback index for simpler PDA derivation
+- 89 comprehensive tests on devnet
+
+**Breaking Changes from v0.1.0:**
+- Program IDs changed (now single program)
+- Agent PDA uses Core asset address, not mint
+- Feedback PDA uses global index (no client address in seeds)
+- Response PDA removed client from seeds
 
 **Implemented:**
-- Agent registration (IPFS + HTTP)
-- Metadata management
+- Agent registration with Metaplex Core
+- Metadata management + extensions
 - Permissionless feedback system
-- Reputation tracking
-- OASF taxonomies support
+- Reputation tracking with cached aggregates
+- Validation requests and responses
 - NFT-based agent identity
-- Metaplex integration
 - Interface parity with agent0-ts
 
 **Requires Custom RPC:**
 - `getAgentsByOwner()` - Requires getProgramAccounts
 - `readAllFeedback()` - Requires getProgramAccounts
 - `getClients()` - Requires getProgramAccounts
-
-**Not Yet Implemented:**
-- Search functionality (requires external indexer)
 
 ---
 
@@ -342,8 +353,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Built with inspiration from the [agent0](https://github.com/agent0lab/agent0-ts) ecosystem
 - Implements [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) standard on Solana
-- Powered by Solana blockchain and Metaplex NFT standard
+- Powered by Solana blockchain and Metaplex Core
 
 ---
 
-**Built for the Solana ecosystem**
+**Built for the Solana ecosystem** | v0.2.0
