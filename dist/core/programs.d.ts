@@ -1,24 +1,40 @@
 /**
  * Solana program IDs and configuration for ERC-8004
- * Equivalent to contracts.ts for Ethereum
+ * v0.2.0 - Consolidated single program architecture
  */
 import { PublicKey } from '@solana/web3.js';
 /**
- * Program IDs for devnet deployment
- * These are the deployed program addresses on Solana devnet
+ * Consolidated AgentRegistry8004 Program ID
+ * Single program containing Identity, Reputation, and Validation modules
+ */
+export declare const PROGRAM_ID: PublicKey;
+/**
+ * Metaplex Core Program ID
+ * Used for NFT asset creation and management
+ */
+export declare const MPL_CORE_PROGRAM_ID: PublicKey;
+/**
+ * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
+ * Program IDs for devnet deployment (legacy 3-program architecture)
  */
 export declare const PROGRAM_IDS: {
     readonly identityRegistry: PublicKey;
     readonly reputationRegistry: PublicKey;
     readonly validationRegistry: PublicKey;
+    readonly agentRegistry: PublicKey;
 };
 /**
- * Get program IDs (devnet only)
+ * Get program ID
+ */
+export declare function getProgramId(): PublicKey;
+/**
+ * @deprecated Use getProgramId() instead
  */
 export declare function getProgramIds(): {
     readonly identityRegistry: PublicKey;
     readonly reputationRegistry: PublicKey;
     readonly validationRegistry: PublicKey;
+    readonly agentRegistry: PublicKey;
 };
 /**
  * Account discriminators (first 8 bytes of account data)
@@ -59,17 +75,18 @@ export declare const LAMPORTS_PER_BYTE_YEAR = 6965;
 export declare function calculateRentExempt(accountSize: number): number;
 /**
  * PDA seeds for deterministic address derivation
+ * v0.2.0 - Consolidated program seeds
  */
 export declare const PDA_SEEDS: {
-    readonly agent: "agent";
-    readonly metadata: "metadata";
     readonly config: "config";
+    readonly agent: "agent";
+    readonly metadataExt: "metadata_ext";
     readonly feedback: "feedback";
     readonly agentReputation: "agent_reputation";
-    readonly clientIndex: "client_index";
     readonly response: "response";
     readonly responseIndex: "response_index";
-    readonly validationRequest: "validation_request";
+    readonly validationConfig: "validation_config";
+    readonly validation: "validation";
 };
 /**
  * Default configuration values

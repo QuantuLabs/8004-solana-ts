@@ -1,145 +1,152 @@
 /**
  * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
- * Provides deterministic address derivation for all account types
+ * v0.2.0 - Consolidated single program architecture
+ *
+ * BREAKING CHANGES from v0.1.0:
+ * - Single PROGRAM_ID instead of 3 separate program IDs
+ * - Agent PDA uses Core asset address, not mint
+ * - Feedback PDA uses global index (no client address in seeds)
+ * - Response PDA uses global feedback index (no client address in seeds)
  */
 import { PublicKey } from '@solana/web3.js';
-// Program IDs for Devnet - Must match 8004-solana Anchor.toml values
-export const IDENTITY_PROGRAM_ID = new PublicKey('CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss');
-export const REPUTATION_PROGRAM_ID = new PublicKey('Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr');
-export const VALIDATION_PROGRAM_ID = new PublicKey('2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw');
+import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
+// Re-export for convenience
+export { PROGRAM_ID, MPL_CORE_PROGRAM_ID };
+/**
+ * @deprecated Use PROGRAM_ID instead
+ */
+export const IDENTITY_PROGRAM_ID = PROGRAM_ID;
+export const REPUTATION_PROGRAM_ID = PROGRAM_ID;
+export const VALIDATION_PROGRAM_ID = PROGRAM_ID;
 /**
  * PDA derivation helpers
+ * v0.2.0 - All PDAs now use single PROGRAM_ID
  * All methods return [PublicKey, bump] tuple
  */
 export class PDAHelpers {
+    // ============================================================================
+    // Identity Module PDAs
+    // ============================================================================
     /**
-     * Get Agent Account PDA (Identity Registry)
-     * Seeds: ["agent", agent_mint]
-     */
-    static async getAgentPDA(agentMint) {
-        return await PublicKey.findProgramAddress([Buffer.from('agent'), agentMint.toBuffer()], IDENTITY_PROGRAM_ID);
-    }
-    /**
-     * Get Metadata Entry PDA (Identity Registry)
-     * Seeds: ["metadata", agent_id, key]
-     */
-    static async getMetadataPDA(agentId, key) {
-        const agentIdBuffer = Buffer.alloc(8);
-        agentIdBuffer.writeBigUInt64LE(agentId);
-        return await PublicKey.findProgramAddress([Buffer.from('metadata'), agentIdBuffer, key], IDENTITY_PROGRAM_ID);
-    }
-    /**
-     * Get Metadata Extension PDA (Identity Registry)
-     * Seeds: ["metadata_ext", agent_mint, extension_index]
-     * Used for storing additional metadata beyond the 10 inline entries
-     */
-    static async getMetadataExtensionPDA(agentMint, extensionIndex) {
-        const indexBuffer = Buffer.alloc(1);
-        indexBuffer.writeUInt8(extensionIndex);
-        return await PublicKey.findProgramAddress([Buffer.from('metadata_ext'), agentMint.toBuffer(), indexBuffer], IDENTITY_PROGRAM_ID);
-    }
-    /**
-     * Get Registry Config PDA (Identity Registry)
+     * Get Registry Config PDA
      * Seeds: ["config"]
      */
-    static async getRegistryConfigPDA() {
-        return await PublicKey.findProgramAddress([Buffer.from('config')], IDENTITY_PROGRAM_ID);
+    static getConfigPDA(programId = PROGRAM_ID) {
+        return PublicKey.findProgramAddressSync([Buffer.from('config')], programId);
     }
     /**
-     * Get Feedback Account PDA (Reputation Registry)
-     * Seeds: ["feedback", agent_id, client, feedback_index]
+     * Get Agent Account PDA
+     * Seeds: ["agent", asset]
+     * BREAKING: v0.2.0 uses Core asset address, not mint
      */
-    static async getFeedbackPDA(agentId, client, feedbackIndex) {
+    static getAgentPDA(asset, programId = PROGRAM_ID) {
+        return PublicKey.findProgramAddressSync([Buffer.from('agent'), asset.toBuffer()], programId);
+    }
+    /**
+     * @deprecated Use getAgentPDA with asset parameter
+     */
+    static async getAgentPDALegacy(agentMint) {
+        return PDAHelpers.getAgentPDA(agentMint);
+    }
+    /**
+     * Get Metadata Extension PDA
+     * Seeds: ["metadata_ext", asset, extension_index]
+     */
+    static getMetadataExtensionPDA(asset, extensionIndex, programId = PROGRAM_ID) {
+        return PublicKey.findProgramAddressSync([Buffer.from('metadata_ext'), asset.toBuffer(), Buffer.from([extensionIndex])], programId);
+    }
+    // ============================================================================
+    // Reputation Module PDAs
+    // ============================================================================
+    /**
+     * Get Feedback Account PDA
+     * Seeds: ["feedback", agent_id, feedback_index]
+     * BREAKING: v0.2.0 uses global feedback index (no client address)
+     */
+    static getFeedbackPDA(agentId, feedbackIndex, programId = PROGRAM_ID) {
         const agentIdBuffer = Buffer.alloc(8);
         agentIdBuffer.writeBigUInt64LE(agentId);
         const feedbackIndexBuffer = Buffer.alloc(8);
         feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
-        return await PublicKey.findProgramAddress([
-            Buffer.from('feedback'),
-            agentIdBuffer,
-            client.toBuffer(),
-            feedbackIndexBuffer,
-        ], REPUTATION_PROGRAM_ID);
+        return PublicKey.findProgramAddressSync([Buffer.from('feedback'), agentIdBuffer, feedbackIndexBuffer], programId);
     }
     /**
-     * Get Agent Reputation PDA (Reputation Registry)
+     * @deprecated Use getFeedbackPDA without client parameter
+     */
+    static async getFeedbackPDALegacy(agentId, _client, feedbackIndex) {
+        return PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
+    }
+    /**
+     * Get Agent Reputation PDA
      * Seeds: ["agent_reputation", agent_id]
-     * Stores cached aggregates for O(1) queries
      */
-    static async getAgentReputationPDA(agentId) {
+    static getAgentReputationPDA(agentId, programId = PROGRAM_ID) {
         const agentIdBuffer = Buffer.alloc(8);
         agentIdBuffer.writeBigUInt64LE(agentId);
-        return await PublicKey.findProgramAddress([Buffer.from('agent_reputation'), agentIdBuffer], REPUTATION_PROGRAM_ID);
+        return PublicKey.findProgramAddressSync([Buffer.from('agent_reputation'), agentIdBuffer], programId);
     }
     /**
-     * Get Client Index PDA (Reputation Registry)
-     * Seeds: ["client_index", agent_id, client]
-     * Tracks last feedback index for a client
+     * Get Response PDA
+     * Seeds: ["response", agent_id, feedback_index, response_index]
+     * BREAKING: v0.2.0 removed client from seeds
      */
-    static async getClientIndexPDA(agentId, client) {
-        const agentIdBuffer = Buffer.alloc(8);
-        agentIdBuffer.writeBigUInt64LE(agentId);
-        return await PublicKey.findProgramAddress([Buffer.from('client_index'), agentIdBuffer, client.toBuffer()], REPUTATION_PROGRAM_ID);
-    }
-    /**
-     * Get Response PDA (Reputation Registry)
-     * Seeds: ["response", agent_id, client, feedback_index, response_index]
-     */
-    static async getResponsePDA(agentId, client, feedbackIndex, responseIndex) {
+    static getResponsePDA(agentId, feedbackIndex, responseIndex, programId = PROGRAM_ID) {
         const agentIdBuffer = Buffer.alloc(8);
         agentIdBuffer.writeBigUInt64LE(agentId);
         const feedbackIndexBuffer = Buffer.alloc(8);
         feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
         const responseIndexBuffer = Buffer.alloc(8);
         responseIndexBuffer.writeBigUInt64LE(responseIndex);
-        return await PublicKey.findProgramAddress([
-            Buffer.from('response'),
-            agentIdBuffer,
-            client.toBuffer(),
-            feedbackIndexBuffer,
-            responseIndexBuffer,
-        ], REPUTATION_PROGRAM_ID);
+        return PublicKey.findProgramAddressSync([Buffer.from('response'), agentIdBuffer, feedbackIndexBuffer, responseIndexBuffer], programId);
     }
     /**
-     * Get Response Index PDA (Reputation Registry)
-     * Seeds: ["response_index", agent_id, client, feedback_index]
-     * Tracks number of responses for a feedback
+     * Get Response Index PDA
+     * Seeds: ["response_index", agent_id, feedback_index]
+     * BREAKING: v0.2.0 removed client from seeds
      */
-    static async getResponseIndexPDA(agentId, client, feedbackIndex) {
+    static getResponseIndexPDA(agentId, feedbackIndex, programId = PROGRAM_ID) {
         const agentIdBuffer = Buffer.alloc(8);
         agentIdBuffer.writeBigUInt64LE(agentId);
         const feedbackIndexBuffer = Buffer.alloc(8);
         feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
-        return await PublicKey.findProgramAddress([
-            Buffer.from('response_index'),
-            agentIdBuffer,
-            client.toBuffer(),
-            feedbackIndexBuffer,
-        ], REPUTATION_PROGRAM_ID);
+        return PublicKey.findProgramAddressSync([Buffer.from('response_index'), agentIdBuffer, feedbackIndexBuffer], programId);
+    }
+    // ============================================================================
+    // Validation Module PDAs
+    // ============================================================================
+    /**
+     * Get Validation Stats PDA
+     * Seeds: ["validation_config"]
+     */
+    static getValidationStatsPDA(programId = PROGRAM_ID) {
+        return PublicKey.findProgramAddressSync([Buffer.from('validation_config')], programId);
     }
     /**
-     * Get Validation Request PDA (Validation Registry)
-     * Seeds: ["validation", agent_id, validator_address, nonce]
-     * Note: Seed is "validation", not "validation_request"
+     * Get Validation Request PDA
+     * Seeds: ["validation", agent_id, validator, nonce]
      */
-    static async getValidationRequestPDA(agentId, validator, nonce) {
+    static getValidationRequestPDA(agentId, validator, nonce, programId = PROGRAM_ID) {
         const agentIdBuffer = Buffer.alloc(8);
         agentIdBuffer.writeBigUInt64LE(agentId);
         const nonceBuffer = Buffer.alloc(4);
         nonceBuffer.writeUInt32LE(nonce);
-        return await PublicKey.findProgramAddress([
-            Buffer.from('validation'),
-            agentIdBuffer,
-            validator.toBuffer(),
-            nonceBuffer,
-        ], VALIDATION_PROGRAM_ID);
+        return PublicKey.findProgramAddressSync([Buffer.from('validation'), agentIdBuffer, validator.toBuffer(), nonceBuffer], programId);
     }
-    /**
-     * Get Validation Config PDA (Validation Registry)
-     * Seeds: ["config"]
-     */
+    // ============================================================================
+    // Deprecated Legacy Methods (for backwards compatibility)
+    // ============================================================================
+    /** @deprecated Use getConfigPDA */
+    static async getRegistryConfigPDA() {
+        return PDAHelpers.getConfigPDA();
+    }
+    /** @deprecated Use getValidationStatsPDA */
     static async getValidationConfigPDA() {
-        return await PublicKey.findProgramAddress([Buffer.from('config')], VALIDATION_PROGRAM_ID);
+        return PDAHelpers.getValidationStatsPDA();
+    }
+    /** @deprecated Client index no longer used in v0.2.0 */
+    static async getClientIndexPDA(agentId, _client) {
+        // Return agent reputation PDA as fallback
+        return PDAHelpers.getAgentReputationPDA(agentId);
     }
 }
 /**

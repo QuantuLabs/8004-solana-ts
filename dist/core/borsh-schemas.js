@@ -247,6 +247,7 @@ FeedbackAccount.schema = new Map([
  * Agent Reputation Metadata Account (Reputation Registry)
  * Cached aggregated stats for O(1) queries
  * Seeds: ["agent_reputation", agent_id (LE)]
+ * v0.2.0: Added next_feedback_index for global feedback tracking
  */
 export class AgentReputationAccount {
     constructor(fields) {
@@ -254,6 +255,7 @@ export class AgentReputationAccount {
         this.total_feedbacks = fields.total_feedbacks;
         this.total_score_sum = fields.total_score_sum;
         this.average_score = fields.average_score;
+        this.next_feedback_index = fields.next_feedback_index;
         this.last_updated = fields.last_updated;
         this.bump = fields.bump;
     }
@@ -275,9 +277,10 @@ AgentReputationAccount.schema = new Map([
             fields: [
                 ['agent_id', 'u64'],
                 ['total_feedbacks', 'u64'],
-                ['total_score_sum', 'u64'], // Renamed from sum_scores
+                ['total_score_sum', 'u64'],
                 ['average_score', 'u8'],
-                ['last_updated', 'u64'], // borsh 0.7 doesn't support i64
+                ['next_feedback_index', 'u64'], // v0.2.0
+                ['last_updated', 'u64'],
                 ['bump', 'u8'],
             ],
         },

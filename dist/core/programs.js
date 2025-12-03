@@ -1,19 +1,37 @@
 /**
  * Solana program IDs and configuration for ERC-8004
- * Equivalent to contracts.ts for Ethereum
+ * v0.2.0 - Consolidated single program architecture
  */
 import { PublicKey } from '@solana/web3.js';
 /**
- * Program IDs for devnet deployment
- * These are the deployed program addresses on Solana devnet
+ * Consolidated AgentRegistry8004 Program ID
+ * Single program containing Identity, Reputation, and Validation modules
+ */
+export const PROGRAM_ID = new PublicKey('3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi');
+/**
+ * Metaplex Core Program ID
+ * Used for NFT asset creation and management
+ */
+export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+/**
+ * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
+ * Program IDs for devnet deployment (legacy 3-program architecture)
  */
 export const PROGRAM_IDS = {
-    identityRegistry: new PublicKey('CAHKQ2amAyKGzPhSE1mJx5qgxn1nJoNToDaiU6Kmacss'),
-    reputationRegistry: new PublicKey('Ejb8DaxZCb9Yh4ZYHLFKG5dj46YFyRm4kZpGz2rz6Ajr'),
-    validationRegistry: new PublicKey('2y87PVXuBoCTi9b6p44BJREVz14Te2pukQPSwqfPwhhw'),
+    identityRegistry: PROGRAM_ID,
+    reputationRegistry: PROGRAM_ID,
+    validationRegistry: PROGRAM_ID,
+    // Consolidated program
+    agentRegistry: PROGRAM_ID,
 };
 /**
- * Get program IDs (devnet only)
+ * Get program ID
+ */
+export function getProgramId() {
+    return PROGRAM_ID;
+}
+/**
+ * @deprecated Use getProgramId() instead
  */
 export function getProgramIds() {
     return PROGRAM_IDS;
@@ -62,20 +80,21 @@ export function calculateRentExempt(accountSize) {
 }
 /**
  * PDA seeds for deterministic address derivation
+ * v0.2.0 - Consolidated program seeds
  */
 export const PDA_SEEDS = {
-    // Identity Registry
-    agent: 'agent',
-    metadata: 'metadata',
+    // Identity Module
     config: 'config',
-    // Reputation Registry
-    feedback: 'feedback',
+    agent: 'agent', // ["agent", asset] - Core asset, not mint
+    metadataExt: 'metadata_ext', // ["metadata_ext", asset, index]
+    // Reputation Module
+    feedback: 'feedback', // ["feedback", agent_id, feedback_index] - Global index
     agentReputation: 'agent_reputation',
-    clientIndex: 'client_index',
-    response: 'response',
-    responseIndex: 'response_index',
-    // Validation Registry
-    validationRequest: 'validation_request',
+    response: 'response', // ["response", agent_id, feedback_index, response_index]
+    responseIndex: 'response_index', // ["response_index", agent_id, feedback_index]
+    // Validation Module
+    validationConfig: 'validation_config',
+    validation: 'validation', // ["validation", agent_id, validator, nonce]
 };
 /**
  * Default configuration values

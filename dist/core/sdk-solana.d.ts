@@ -277,6 +277,7 @@ export declare class SolanaSDK {
         readonly identityRegistry: PublicKey;
         readonly reputationRegistry: PublicKey;
         readonly validationRegistry: PublicKey;
+        readonly agentRegistry: PublicKey;
     };
     /**
      * Get registry addresses (for parity with agent0-ts)
