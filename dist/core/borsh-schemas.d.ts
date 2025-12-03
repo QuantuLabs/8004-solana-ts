@@ -136,12 +136,14 @@ export declare class FeedbackAccount {
  * Agent Reputation Metadata Account (Reputation Registry)
  * Cached aggregated stats for O(1) queries
  * Seeds: ["agent_reputation", agent_id (LE)]
+ * v0.2.0: Added next_feedback_index for global feedback tracking
  */
 export declare class AgentReputationAccount {
     agent_id: bigint;
     total_feedbacks: bigint;
     total_score_sum: bigint;
     average_score: number;
+    next_feedback_index: bigint;
     last_updated: bigint;
     bump: number;
     constructor(fields: {
@@ -149,6 +151,7 @@ export declare class AgentReputationAccount {
         total_feedbacks: bigint;
         total_score_sum: bigint;
         average_score: number;
+        next_feedback_index: bigint;
         last_updated: bigint;
         bump: number;
     });

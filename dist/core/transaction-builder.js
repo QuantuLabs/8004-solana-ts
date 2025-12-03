@@ -5,11 +5,11 @@
  */
 import { Transaction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { PDAHelpers, IDENTITY_PROGRAM_ID } from './pda-helpers.js';
+import { PDAHelpers, IDENTITY_PROGRAM_ID, PROGRAM_ID } from './pda-helpers.js';
 import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, } from './instruction-builder.js';
 import { fetchRegistryConfig } from './config-reader.js';
 import { getMetadataPDA, getMasterEditionPDA, getCollectionAuthorityPDA } from './metaplex-helpers.js';
-import { ClientIndexAccount } from './borsh-schemas.js';
+import { AgentReputationAccount } from './borsh-schemas.js';
 import { toBigInt } from './utils.js';
 /**
  * Serialize a transaction for later signing and sending
@@ -420,27 +420,28 @@ export class ReputationTransactionBuilder {
                 throw new Error('fileHash must be 32 bytes');
             }
             // Derive PDAs
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const [clientIndex] = await PDAHelpers.getClientIndexPDA(agentId, signerPubkey);
-            const [agentReputation] = await PDAHelpers.getAgentReputationPDA(agentId);
-            // Fetch current feedback index from client_index account (or 0 if doesn't exist)
+            // v0.2.0: agentMint is now Core asset address
+            const [agentPda] = PDAHelpers.getAgentPDA(agentMint);
+            const [agentReputation] = PDAHelpers.getAgentReputationPDA(agentId);
+            // v0.2.0: Get feedback index from AgentReputationAccount (global index)
             let feedbackIndex = BigInt(0);
-            const clientIndexInfo = await this.connection.getAccountInfo(clientIndex);
-            if (clientIndexInfo) {
-                const clientIndexData = ClientIndexAccount.deserialize(clientIndexInfo.data);
-                // borsh v0.7 returns BN objects, not native bigint - convert to native bigint
-                feedbackIndex = toBigInt(clientIndexData.last_index);
+            const agentReputationInfo = await this.connection.getAccountInfo(agentReputation);
+            if (agentReputationInfo) {
+                const reputationData = AgentReputationAccount.deserialize(agentReputationInfo.data);
+                feedbackIndex = toBigInt(reputationData.next_feedback_index);
             }
-            // Derive feedback PDA
-            const [feedbackPda] = await PDAHelpers.getFeedbackPDA(agentId, signerPubkey, feedbackIndex);
+            // v0.2.0: Feedback PDA without client in seeds
+            const [feedbackPda] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
+            // v0.2.0: clientIndex no longer exists, pass agentReputation as placeholder
+            // TODO: Update instruction builder for v0.2.0 single program architecture
             const instruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, // client
             signerPubkey, // payer
-            agentMint, // agent_mint
+            agentMint, // agent_mint (now Core asset)
             agentPda, // agent_account
-            clientIndex, // client_index
+            agentReputation, // v0.2.0: was clientIndex
             feedbackPda, // feedback_account
             agentReputation, // agent_reputation
-            IDENTITY_PROGRAM_ID, // identity_registry_program
+            PROGRAM_ID, // v0.2.0: single program
             agentId, score, tag1, tag2, fileUri, fileHash, feedbackIndex);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -476,8 +477,9 @@ export class ReputationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [feedbackPda] = await PDAHelpers.getFeedbackPDA(agentId, signerPubkey, feedbackIndex);
-            const [agentReputation] = await PDAHelpers.getAgentReputationPDA(agentId);
+            // v0.2.0: Feedback PDA without client in seeds
+            const [feedbackPda] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
+            const [agentReputation] = PDAHelpers.getAgentReputationPDA(agentId);
             const instruction = this.instructionBuilder.buildRevokeFeedback(signerPubkey, feedbackPda, agentReputation, agentId, feedbackIndex);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -521,18 +523,18 @@ export class ReputationTransactionBuilder {
             if (responseHash.length !== 32) {
                 throw new Error('responseHash must be 32 bytes');
             }
-            // Derive PDAs
-            const [feedbackPda] = await PDAHelpers.getFeedbackPDA(agentId, clientAddress, feedbackIndex);
-            const [responseIndexPda] = await PDAHelpers.getResponseIndexPDA(agentId, clientAddress, feedbackIndex);
+            // v0.2.0: Derive PDAs without client in seeds
+            const [feedbackPda] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
+            const [responseIndexPda] = PDAHelpers.getResponseIndexPDA(agentId, feedbackIndex);
             // Fetch current response index
             let responseIndexValue = BigInt(0);
             const responseIndexInfo = await this.connection.getAccountInfo(responseIndexPda);
             if (responseIndexInfo) {
-                // Parse the account - simplified, assumes next_index is at offset 8+8+32+8 = 56
+                // v0.2.0: simplified layout without client
                 const data = responseIndexInfo.data.slice(8); // Skip discriminator
-                responseIndexValue = data.readBigUInt64LE(8 + 32 + 8); // After agent_id + client + feedback_index
+                responseIndexValue = data.readBigUInt64LE(8 + 8); // After agent_id + feedback_index
             }
-            const [responsePda] = await PDAHelpers.getResponsePDA(agentId, clientAddress, feedbackIndex, responseIndexValue);
+            const [responsePda] = PDAHelpers.getResponsePDA(agentId, feedbackIndex, responseIndexValue);
             const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, // responder
             signerPubkey, // payer
             feedbackPda, responseIndexPda, responsePda, agentId, clientAddress, feedbackIndex, responseUri, responseHash);

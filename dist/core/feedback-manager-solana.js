@@ -65,7 +65,8 @@ export class SolanaFeedbackManager {
      */
     async readFeedback(agentId, client, feedbackIndex) {
         try {
-            const [feedbackPDA] = await PDAHelpers.getFeedbackPDA(agentId, client, feedbackIndex);
+            // v0.2.0: client no longer in PDA seeds (global feedback index)
+            const [feedbackPDA] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
             const data = await this.client.getAccount(feedbackPDA);
             if (!data) {
                 return null;
@@ -182,7 +183,8 @@ export class SolanaFeedbackManager {
      */
     async getResponseCount(agentId, client, feedbackIndex) {
         try {
-            const [responseIndexPDA] = await PDAHelpers.getResponseIndexPDA(agentId, client, feedbackIndex);
+            // v0.2.0: client no longer in PDA seeds
+            const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(agentId, feedbackIndex);
             const data = await this.client.getAccount(responseIndexPDA);
             if (!data) {
                 return 0;
@@ -201,16 +203,16 @@ export class SolanaFeedbackManager {
      */
     async readResponses(agentId, client, feedbackIndex) {
         try {
-            const programId = REPUTATION_PROGRAM_ID;
             // Get response count first
             const responseCount = await this.getResponseCount(agentId, client, feedbackIndex);
             if (responseCount === 0) {
                 return [];
             }
             // Fetch all responses by deriving PDAs
+            // v0.2.0: client no longer in PDA seeds
             const responsePDAs = [];
             for (let i = 0; i < responseCount; i++) {
-                const [responsePDA] = await PDAHelpers.getResponsePDA(agentId, client, feedbackIndex, BigInt(i));
+                const [responsePDA] = PDAHelpers.getResponsePDA(agentId, feedbackIndex, BigInt(i));
                 responsePDAs.push(responsePDA);
             }
             // Batch fetch all response accounts

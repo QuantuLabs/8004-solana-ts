@@ -1,76 +1,91 @@
 /**
  * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
- * Provides deterministic address derivation for all account types
+ * v0.2.0 - Consolidated single program architecture
+ *
+ * BREAKING CHANGES from v0.1.0:
+ * - Single PROGRAM_ID instead of 3 separate program IDs
+ * - Agent PDA uses Core asset address, not mint
+ * - Feedback PDA uses global index (no client address in seeds)
+ * - Response PDA uses global feedback index (no client address in seeds)
  */
 import { PublicKey } from '@solana/web3.js';
+import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
+export { PROGRAM_ID, MPL_CORE_PROGRAM_ID };
+/**
+ * @deprecated Use PROGRAM_ID instead
+ */
 export declare const IDENTITY_PROGRAM_ID: PublicKey;
 export declare const REPUTATION_PROGRAM_ID: PublicKey;
 export declare const VALIDATION_PROGRAM_ID: PublicKey;
 /**
  * PDA derivation helpers
+ * v0.2.0 - All PDAs now use single PROGRAM_ID
  * All methods return [PublicKey, bump] tuple
  */
 export declare class PDAHelpers {
     /**
-     * Get Agent Account PDA (Identity Registry)
-     * Seeds: ["agent", agent_mint]
-     */
-    static getAgentPDA(agentMint: PublicKey): Promise<[PublicKey, number]>;
-    /**
-     * Get Metadata Entry PDA (Identity Registry)
-     * Seeds: ["metadata", agent_id, key]
-     */
-    static getMetadataPDA(agentId: bigint, key: Buffer): Promise<[PublicKey, number]>;
-    /**
-     * Get Metadata Extension PDA (Identity Registry)
-     * Seeds: ["metadata_ext", agent_mint, extension_index]
-     * Used for storing additional metadata beyond the 10 inline entries
-     */
-    static getMetadataExtensionPDA(agentMint: PublicKey, extensionIndex: number): Promise<[PublicKey, number]>;
-    /**
-     * Get Registry Config PDA (Identity Registry)
+     * Get Registry Config PDA
      * Seeds: ["config"]
      */
-    static getRegistryConfigPDA(): Promise<[PublicKey, number]>;
+    static getConfigPDA(programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Feedback Account PDA (Reputation Registry)
-     * Seeds: ["feedback", agent_id, client, feedback_index]
+     * Get Agent Account PDA
+     * Seeds: ["agent", asset]
+     * BREAKING: v0.2.0 uses Core asset address, not mint
      */
-    static getFeedbackPDA(agentId: bigint, client: PublicKey, feedbackIndex: bigint): Promise<[PublicKey, number]>;
+    static getAgentPDA(asset: PublicKey, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Agent Reputation PDA (Reputation Registry)
+     * @deprecated Use getAgentPDA with asset parameter
+     */
+    static getAgentPDALegacy(agentMint: PublicKey): Promise<[PublicKey, number]>;
+    /**
+     * Get Metadata Extension PDA
+     * Seeds: ["metadata_ext", asset, extension_index]
+     */
+    static getMetadataExtensionPDA(asset: PublicKey, extensionIndex: number, programId?: PublicKey): [PublicKey, number];
+    /**
+     * Get Feedback Account PDA
+     * Seeds: ["feedback", agent_id, feedback_index]
+     * BREAKING: v0.2.0 uses global feedback index (no client address)
+     */
+    static getFeedbackPDA(agentId: bigint, feedbackIndex: bigint, programId?: PublicKey): [PublicKey, number];
+    /**
+     * @deprecated Use getFeedbackPDA without client parameter
+     */
+    static getFeedbackPDALegacy(agentId: bigint, _client: PublicKey, feedbackIndex: bigint): Promise<[PublicKey, number]>;
+    /**
+     * Get Agent Reputation PDA
      * Seeds: ["agent_reputation", agent_id]
-     * Stores cached aggregates for O(1) queries
      */
-    static getAgentReputationPDA(agentId: bigint): Promise<[PublicKey, number]>;
+    static getAgentReputationPDA(agentId: bigint, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Client Index PDA (Reputation Registry)
-     * Seeds: ["client_index", agent_id, client]
-     * Tracks last feedback index for a client
+     * Get Response PDA
+     * Seeds: ["response", agent_id, feedback_index, response_index]
+     * BREAKING: v0.2.0 removed client from seeds
      */
-    static getClientIndexPDA(agentId: bigint, client: PublicKey): Promise<[PublicKey, number]>;
+    static getResponsePDA(agentId: bigint, feedbackIndex: bigint, responseIndex: bigint, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Response PDA (Reputation Registry)
-     * Seeds: ["response", agent_id, client, feedback_index, response_index]
+     * Get Response Index PDA
+     * Seeds: ["response_index", agent_id, feedback_index]
+     * BREAKING: v0.2.0 removed client from seeds
      */
-    static getResponsePDA(agentId: bigint, client: PublicKey, feedbackIndex: bigint, responseIndex: bigint): Promise<[PublicKey, number]>;
+    static getResponseIndexPDA(agentId: bigint, feedbackIndex: bigint, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Response Index PDA (Reputation Registry)
-     * Seeds: ["response_index", agent_id, client, feedback_index]
-     * Tracks number of responses for a feedback
+     * Get Validation Stats PDA
+     * Seeds: ["validation_config"]
      */
-    static getResponseIndexPDA(agentId: bigint, client: PublicKey, feedbackIndex: bigint): Promise<[PublicKey, number]>;
+    static getValidationStatsPDA(programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Validation Request PDA (Validation Registry)
-     * Seeds: ["validation", agent_id, validator_address, nonce]
-     * Note: Seed is "validation", not "validation_request"
+     * Get Validation Request PDA
+     * Seeds: ["validation", agent_id, validator, nonce]
      */
-    static getValidationRequestPDA(agentId: bigint, validator: PublicKey, nonce: number): Promise<[PublicKey, number]>;
-    /**
-     * Get Validation Config PDA (Validation Registry)
-     * Seeds: ["config"]
-     */
+    static getValidationRequestPDA(agentId: bigint, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
+    /** @deprecated Use getConfigPDA */
+    static getRegistryConfigPDA(): Promise<[PublicKey, number]>;
+    /** @deprecated Use getValidationStatsPDA */
     static getValidationConfigPDA(): Promise<[PublicKey, number]>;
+    /** @deprecated Client index no longer used in v0.2.0 */
+    static getClientIndexPDA(agentId: bigint, _client: PublicKey): Promise<[PublicKey, number]>;
 }
 /**
  * Helper to convert bytes32 to string

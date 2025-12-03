@@ -131,7 +131,8 @@ export class SolanaFeedbackManager {
     feedbackIndex: bigint
   ): Promise<SolanaFeedback | null> {
     try {
-      const [feedbackPDA] = await PDAHelpers.getFeedbackPDA(agentId, client, feedbackIndex);
+      // v0.2.0: client no longer in PDA seeds (global feedback index)
+      const [feedbackPDA] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
       const data = await this.client.getAccount(feedbackPDA);
 
       if (!data) {
@@ -273,9 +274,9 @@ export class SolanaFeedbackManager {
     feedbackIndex: bigint
   ): Promise<number> {
     try {
-      const [responseIndexPDA] = await PDAHelpers.getResponseIndexPDA(
+      // v0.2.0: client no longer in PDA seeds
+      const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(
         agentId,
-        client,
         feedbackIndex
       );
       const data = await this.client.getAccount(responseIndexPDA);
@@ -305,8 +306,6 @@ export class SolanaFeedbackManager {
     feedbackIndex: bigint
   ): Promise<SolanaResponse[]> {
     try {
-      const programId = REPUTATION_PROGRAM_ID;
-
       // Get response count first
       const responseCount = await this.getResponseCount(agentId, client, feedbackIndex);
 
@@ -315,11 +314,11 @@ export class SolanaFeedbackManager {
       }
 
       // Fetch all responses by deriving PDAs
+      // v0.2.0: client no longer in PDA seeds
       const responsePDAs: PublicKey[] = [];
       for (let i = 0; i < responseCount; i++) {
-        const [responsePDA] = await PDAHelpers.getResponsePDA(
+        const [responsePDA] = PDAHelpers.getResponsePDA(
           agentId,
-          client,
           feedbackIndex,
           BigInt(i)
         );
