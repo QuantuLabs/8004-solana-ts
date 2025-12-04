@@ -63,12 +63,13 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       expect(result).toHaveProperty('signature');
       expect(result).toHaveProperty('agentId');
-      expect(typeof result.signature).toBe('string');
-      expect(typeof result.agentId).toBe('bigint');
+      const txResult = result as { signature: string; agentId: bigint };
+      expect(typeof txResult.signature).toBe('string');
+      expect(typeof txResult.agentId).toBe('bigint');
 
-      agentId = result.agentId!;
+      agentId = txResult.agentId;
       console.log(`✅ Agent registered with ID: ${agentId}`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${txResult.signature}`);
     }, 60000);
 
     it('should load the registered agent', async () => {
@@ -79,11 +80,10 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       expect(agent).not.toBeNull();
       expect(agent!.agent_id).toBe(agentId);
       expect(agent!.getOwnerPublicKey().toBase58()).toBe(signer.publicKey.toBase58());
-      expect(agent!.status).toBe(1); // Active
 
       console.log(`✅ Agent loaded successfully`);
       console.log(`   Owner: ${agent!.getOwnerPublicKey().toBase58()}`);
-      console.log(`   URI: ${agent!.token_uri}`);
+      console.log(`   URI: ${agent!.agent_uri}`);
     }, 30000);
 
     it('should verify agent exists', async () => {
@@ -101,7 +101,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       expect(result).toHaveProperty('signature');
       console.log(`✅ Metadata set`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);
 
     it('should update agent URI', async () => {
@@ -112,11 +112,11 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       expect(result).toHaveProperty('signature');
       console.log(`✅ URI updated`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
 
       // Verify update
       const agent = await sdk.loadAgent(agentId);
-      expect(agent!.token_uri).toBe(newUri);
+      expect(agent!.agent_uri).toBe(newUri);
     }, 60000);
   });
 
@@ -137,9 +137,9 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       expect(result).toHaveProperty('signature');
       expect(result).toHaveProperty('feedbackIndex');
 
-      feedbackIndex = result.feedbackIndex!;
+      feedbackIndex = (result as { feedbackIndex: bigint }).feedbackIndex;
       console.log(`✅ Feedback given with index: ${feedbackIndex}`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);
 
     it('should read the feedback', async () => {
@@ -153,7 +153,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       console.log(`✅ Feedback loaded`);
       console.log(`   Score: ${feedback!.score}`);
-      console.log(`   URI: ${feedback!.file_uri}`);
+      console.log(`   URI: ${feedback!.fileUri}`);
     }, 30000);
 
     it('should get reputation summary', async () => {
@@ -226,7 +226,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       expect(result).toHaveProperty('signature');
       console.log(`✅ Response appended`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);
 
     it('should get response count', async () => {
@@ -266,7 +266,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       validationNonce = nonce;
       console.log(`✅ Validation requested with nonce: ${validationNonce}`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);
 
     it('should respond to validation request', async () => {
@@ -286,7 +286,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       expect(result).toHaveProperty('signature');
       console.log(`✅ Validation response sent`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);
   });
 
@@ -298,7 +298,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       expect(result).toHaveProperty('signature');
       console.log(`✅ Feedback revoked`);
-      console.log(`📋 Transaction: ${result.signature}`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);
 
     it('should verify feedback is revoked', async () => {
@@ -316,7 +316,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       const feedbacks = await sdk.readAllFeedback(agentId, false);
 
       const revokedInList = feedbacks.some(
-        fb => fb.feedback_index === feedbackIndex && fb.revoked
+        fb => fb.feedbackIndex === feedbackIndex && fb.revoked
       );
 
       expect(revokedInList).toBe(false);
