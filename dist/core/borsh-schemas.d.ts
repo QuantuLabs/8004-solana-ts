@@ -185,34 +185,32 @@ export declare class ClientIndexAccount {
 /**
  * Response Index Account (Reputation Registry)
  * Tracks the next response index for a specific feedback
- * Seeds: ["response_index", agent_id (LE), client_address, feedback_index (LE)]
+ * Seeds: ["response_index", agent_id (LE), feedback_index (LE)]
+ * v0.2.0: Removed client_address from struct (global feedback index)
  */
 export declare class ResponseIndexAccount {
     agent_id: bigint;
-    client_address: Uint8Array;
     feedback_index: bigint;
     next_index: bigint;
     bump: number;
     constructor(fields: {
         agent_id: bigint;
-        client_address: Uint8Array;
         feedback_index: bigint;
         next_index: bigint;
         bump: number;
     });
     static schema: Schema;
     static deserialize(data: Buffer): ResponseIndexAccount;
-    get client(): Uint8Array;
     get response_count(): bigint;
 }
 /**
  * Response Account (Reputation Registry)
  * Represents a response to feedback (from agent, aggregator, or community)
- * Seeds: ["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]
+ * Seeds: ["response", agent_id (LE), feedback_index (LE), response_index (LE)]
+ * v0.2.0: Removed client_address from struct (global feedback index)
  */
 export declare class ResponseAccount {
     agent_id: bigint;
-    client_address: Uint8Array;
     feedback_index: bigint;
     response_index: bigint;
     responder: Uint8Array;
@@ -222,7 +220,6 @@ export declare class ResponseAccount {
     bump: number;
     constructor(fields: {
         agent_id: bigint;
-        client_address: Uint8Array;
         feedback_index: bigint;
         response_index: bigint;
         responder: Uint8Array;
@@ -234,7 +231,6 @@ export declare class ResponseAccount {
     static schema: Schema;
     static deserialize(data: Buffer): ResponseAccount;
     getResponderPublicKey(): PublicKey;
-    get client(): Uint8Array;
 }
 /**
  * Validation Config Account (Validation Registry)

@@ -339,12 +339,12 @@ ClientIndexAccount.schema = new Map([
 /**
  * Response Index Account (Reputation Registry)
  * Tracks the next response index for a specific feedback
- * Seeds: ["response_index", agent_id (LE), client_address, feedback_index (LE)]
+ * Seeds: ["response_index", agent_id (LE), feedback_index (LE)]
+ * v0.2.0: Removed client_address from struct (global feedback index)
  */
 export class ResponseIndexAccount {
     constructor(fields) {
         this.agent_id = fields.agent_id;
-        this.client_address = fields.client_address;
         this.feedback_index = fields.feedback_index;
         this.next_index = fields.next_index;
         this.bump = fields.bump;
@@ -353,10 +353,6 @@ export class ResponseIndexAccount {
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, ResponseIndexAccount, accountData);
-    }
-    // Alias for backwards compatibility
-    get client() {
-        return this.client_address;
     }
     get response_count() {
         return this.next_index;
@@ -367,11 +363,11 @@ ResponseIndexAccount.schema = new Map([
         ResponseIndexAccount,
         {
             kind: 'struct',
+            // v0.2.0: No client_address - global feedback index
             fields: [
                 ['agent_id', 'u64'],
-                ['client_address', [32]],
                 ['feedback_index', 'u64'],
-                ['next_index', 'u64'], // Renamed from response_count
+                ['next_index', 'u64'],
                 ['bump', 'u8'],
             ],
         },
@@ -380,12 +376,12 @@ ResponseIndexAccount.schema = new Map([
 /**
  * Response Account (Reputation Registry)
  * Represents a response to feedback (from agent, aggregator, or community)
- * Seeds: ["response", agent_id (LE), client_address, feedback_index (LE), response_index (LE)]
+ * Seeds: ["response", agent_id (LE), feedback_index (LE), response_index (LE)]
+ * v0.2.0: Removed client_address from struct (global feedback index)
  */
 export class ResponseAccount {
     constructor(fields) {
         this.agent_id = fields.agent_id;
-        this.client_address = fields.client_address;
         this.feedback_index = fields.feedback_index;
         this.response_index = fields.response_index;
         this.responder = fields.responder;
@@ -402,25 +398,21 @@ export class ResponseAccount {
     getResponderPublicKey() {
         return new PublicKey(this.responder);
     }
-    // Alias for backwards compatibility
-    get client() {
-        return this.client_address;
-    }
 }
 ResponseAccount.schema = new Map([
     [
         ResponseAccount,
         {
             kind: 'struct',
+            // v0.2.0: No client_address - global feedback index
             fields: [
                 ['agent_id', 'u64'],
-                ['client_address', [32]],
                 ['feedback_index', 'u64'],
                 ['response_index', 'u64'],
                 ['responder', [32]],
                 ['response_uri', 'string'],
                 ['response_hash', [32]],
-                ['created_at', 'u64'], // borsh 0.7 doesn't support i64
+                ['created_at', 'u64'],
                 ['bump', 'u8'],
             ],
         },
