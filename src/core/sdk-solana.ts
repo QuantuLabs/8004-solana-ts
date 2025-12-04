@@ -509,12 +509,14 @@ export class SolanaSDK {
    * @param agentId - Agent ID (number or bigint)
    * @param key - Metadata key
    * @param value - Metadata value
+   * @param immutable - If true, metadata cannot be modified or deleted (default: false)
    * @param options - Write options (skipSend, signer)
    */
   async setMetadata(
     agentId: number | bigint,
     key: string,
     value: string,
+    immutable: boolean = false,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
@@ -526,7 +528,7 @@ export class SolanaSDK {
     await this.initializeMintResolver();
     const asset = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.setMetadata(asset, key, value, options);
+    return await this.identityTxBuilder.setMetadata(asset, key, value, immutable, options);
   }
 
   /**

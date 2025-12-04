@@ -15,6 +15,7 @@ import {
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import { PDAHelpers, PROGRAM_ID } from './pda-helpers.js';
+import { createHash } from 'crypto';
 import {
   IdentityInstructionBuilder,
   ReputationInstructionBuilder,
@@ -368,16 +369,18 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Set metadata for agent by asset (inline storage)
+   * Set metadata for agent by asset (v0.2.0 - uses MetadataEntryPda)
    * @param asset - Agent Core asset
    * @param key - Metadata key
    * @param value - Metadata value
+   * @param immutable - If true, metadata cannot be modified or deleted (default: false)
    * @param options - Write options (skipSend, signer)
    */
   async setMetadata(
     asset: PublicKey,
     key: string,
     value: string,
+    immutable: boolean = false,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     try {
@@ -388,12 +391,34 @@ export class IdentityTransactionBuilder {
 
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
 
+      // Fetch agent account to get agent_id
+      const agentData = await this.connection.getAccountInfo(agentPda);
+      if (!agentData) {
+        throw new Error('Agent account not found');
+      }
+      // Read agent_id (u64 at offset 8 after discriminator)
+      const agentId = agentData.data.readBigUInt64LE(8);
+
+      // Compute key hash (SHA256(key)[0..8])
+      const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
+
+      // Derive metadata entry PDA
+      const agentIdBuffer = Buffer.alloc(8);
+      agentIdBuffer.writeBigUInt64LE(agentId);
+      const [metadataEntry] = PublicKey.findProgramAddressSync(
+        [Buffer.from('agent_meta'), agentIdBuffer, keyHash],
+        PROGRAM_ID
+      );
+
       const instruction = this.instructionBuilder.buildSetMetadata(
+        metadataEntry,
         agentPda,
         asset,
         signerPubkey,
+        keyHash,
         key,
-        value
+        value,
+        immutable
       );
 
       const transaction = new Transaction().add(instruction);

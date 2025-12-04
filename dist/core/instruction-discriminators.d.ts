@@ -40,6 +40,7 @@ export declare const IDENTITY_DISCRIMINATORS: {
     readonly setMetadataExtended: Buffer<ArrayBufferLike>;
     readonly getMetadataExtended: Buffer<ArrayBufferLike>;
     readonly transferAgent: Buffer<ArrayBufferLike>;
+    readonly deleteMetadata: Buffer<ArrayBufferLike>;
 };
 /**
  * Reputation Registry instruction discriminators

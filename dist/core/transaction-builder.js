@@ -3,8 +3,9 @@
  * v0.2.0 - Metaplex Core architecture
  * Handles transaction creation, signing, and sending without Anchor
  */
-import { Transaction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
-import { PDAHelpers } from './pda-helpers.js';
+import { PublicKey, Transaction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
+import { PDAHelpers, PROGRAM_ID } from './pda-helpers.js';
+import { createHash } from 'crypto';
 import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, } from './instruction-builder.js';
 import { fetchRegistryConfig } from './config-reader.js';
 import { AgentReputationAccount } from './borsh-schemas.js';
@@ -212,20 +213,34 @@ export class IdentityTransactionBuilder {
         }
     }
     /**
-     * Set metadata for agent by asset (inline storage)
+     * Set metadata for agent by asset (v0.2.0 - uses MetadataEntryPda)
      * @param asset - Agent Core asset
      * @param key - Metadata key
      * @param value - Metadata value
+     * @param immutable - If true, metadata cannot be modified or deleted (default: false)
      * @param options - Write options (skipSend, signer)
      */
-    async setMetadata(asset, key, value, options) {
+    async setMetadata(asset, key, value, immutable = false, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
-            const instruction = this.instructionBuilder.buildSetMetadata(agentPda, asset, signerPubkey, key, value);
+            // Fetch agent account to get agent_id
+            const agentData = await this.connection.getAccountInfo(agentPda);
+            if (!agentData) {
+                throw new Error('Agent account not found');
+            }
+            // Read agent_id (u64 at offset 8 after discriminator)
+            const agentId = agentData.data.readBigUInt64LE(8);
+            // Compute key hash (SHA256(key)[0..8])
+            const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
+            // Derive metadata entry PDA
+            const agentIdBuffer = Buffer.alloc(8);
+            agentIdBuffer.writeBigUInt64LE(agentId);
+            const [metadataEntry] = PublicKey.findProgramAddressSync([Buffer.from('agent_meta'), agentIdBuffer, keyHash], PROGRAM_ID);
+            const instruction = this.instructionBuilder.buildSetMetadata(metadataEntry, agentPda, asset, signerPubkey, keyHash, key, value, immutable);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {

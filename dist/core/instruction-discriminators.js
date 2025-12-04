@@ -47,7 +47,7 @@ export const IDENTITY_DISCRIMINATORS = {
     register: anchorDiscriminator('register'),
     registerWithMetadata: anchorDiscriminator('register_with_metadata'),
     getMetadata: anchorDiscriminator('get_metadata'),
-    setMetadata: anchorDiscriminator('set_metadata'),
+    setMetadata: anchorDiscriminator('set_metadata_pda'), // v0.2.0: now uses PDA
     setAgentUri: anchorDiscriminator('set_agent_uri'),
     syncOwner: anchorDiscriminator('sync_owner'),
     ownerOf: anchorDiscriminator('owner_of'),
@@ -55,6 +55,7 @@ export const IDENTITY_DISCRIMINATORS = {
     setMetadataExtended: anchorDiscriminator('set_metadata_extended'),
     getMetadataExtended: anchorDiscriminator('get_metadata_extended'),
     transferAgent: anchorDiscriminator('transfer_agent'),
+    deleteMetadata: anchorDiscriminator('delete_metadata_pda'), // v0.2.0
 };
 /**
  * Reputation Registry instruction discriminators

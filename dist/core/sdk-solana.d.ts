@@ -184,9 +184,10 @@ export declare class SolanaSDK {
      * @param agentId - Agent ID (number or bigint)
      * @param key - Metadata key
      * @param value - Metadata value
+     * @param immutable - If true, metadata cannot be modified or deleted (default: false)
      * @param options - Write options (skipSend, signer)
      */
-    setMetadata(agentId: number | bigint, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setMetadata(agentId: number | bigint, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Give feedback to an agent (write operation)
      * Aligned with agent0-ts SDK interface

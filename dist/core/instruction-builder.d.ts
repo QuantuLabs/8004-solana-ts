@@ -31,10 +31,10 @@ export declare class IdentityInstructionBuilder {
      */
     buildSetAgentUri(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
     /**
-     * Build setMetadata instruction (Metaplex Core)
-     * Accounts: agent_account (mut), asset, owner (signer)
+     * Build setMetadata instruction (v0.2.0 - uses MetadataEntryPda)
+     * Accounts: metadata_entry, agent_account, asset, owner (signer), system_program
      */
-    buildSetMetadata(agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, key: string, value: string): TransactionInstruction;
+    buildSetMetadata(metadataEntry: PublicKey, agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, keyHash: Buffer, key: string, value: string, immutable?: boolean): TransactionInstruction;
     /**
      * Build createMetadataExtension instruction (Metaplex Core)
      * Accounts: metadata_extension, asset, agent_account, owner (signer), system_program

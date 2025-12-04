@@ -128,15 +128,18 @@ export class IdentityInstructionBuilder {
   }
 
   /**
-   * Build setMetadata instruction (Metaplex Core)
-   * Accounts: agent_account (mut), asset, owner (signer)
+   * Build setMetadata instruction (v0.2.0 - uses MetadataEntryPda)
+   * Accounts: metadata_entry, agent_account, asset, owner (signer), system_program
    */
   buildSetMetadata(
+    metadataEntry: PublicKey,
     agentAccount: PublicKey,
     asset: PublicKey,
     owner: PublicKey,
+    keyHash: Buffer,
     key: string,
     value: string,
+    immutable: boolean = false,
   ): TransactionInstruction {
     const valueBytes = Buffer.from(value, 'utf8');
     const valueLen = Buffer.alloc(4);
@@ -145,16 +148,20 @@ export class IdentityInstructionBuilder {
 
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.setMetadata,
+      keyHash.slice(0, 8),  // [u8; 8] key_hash
       this.serializeString(key),
       serializedValue,
+      Buffer.from([immutable ? 1 : 0]),  // bool
     ]);
 
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: metadataEntry, isSigner: false, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: asset, isSigner: false, isWritable: false },
-        { pubkey: owner, isSigner: true, isWritable: false },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
