@@ -291,6 +291,43 @@ npm run format
 
 ---
 
+## Operation Costs (Devnet Measured)
+
+Costs measured via SDK E2E tests on Solana devnet:
+
+| Operation | Total Cost | Lamports | Notes |
+|-----------|------------|----------|-------|
+| Register Agent | **0.00859 SOL** | 8,588,320 | Core asset + AgentAccount |
+| Set Metadata | 0.000005 SOL | 5,000 | TX fee only |
+| Give Feedback (1st) | 0.00474 SOL | 4,744,760 | Feedback + AgentReputation init |
+| Give Feedback (2nd+) | 0.00351 SOL | 3,505,880 | FeedbackAccount only |
+| Append Response (1st) | 0.00417 SOL | 4,167,080 | Response + ResponseIndex init |
+| Append Response (2nd+) | 0.00305 SOL | 3,046,520 | ResponseAccount only |
+| Revoke Feedback | 0.000005 SOL | 5,000 | TX fee only |
+| Request Validation | 0.00183 SOL | 1,828,520 | ValidationRequest |
+| Respond to Validation | 0.000005 SOL | 5,000 | TX fee only |
+| **Full Lifecycle** | **0.0259 SOL** | 25,896,080 | Complete test cycle |
+
+### First vs Subsequent Cost Savings
+
+| Operation | 1st Call | 2nd+ Calls | Savings |
+|-----------|----------|------------|---------|
+| Give Feedback | 0.00474 SOL | 0.00351 SOL | **-26%** |
+| Append Response | 0.00417 SOL | 0.00305 SOL | **-27%** |
+
+First operation creates init_if_needed accounts (AgentReputation, ResponseIndex). Subsequent calls skip initialization.
+
+### v0.2.0 Cost Savings
+
+| Metric | v0.1.0 (Token Metadata) | v0.2.0 (Metaplex Core) | Savings |
+|--------|-------------------------|------------------------|---------|
+| Register Agent | ~0.025 SOL | 0.00859 SOL | **-66%** |
+| Full Lifecycle | ~0.031 SOL | 0.0259 SOL | **-16%** |
+
+Metaplex Core eliminates the need for Mint + Metadata + MasterEdition + ATA accounts, resulting in significant cost reduction.
+
+---
+
 ## Contributing
 
 Contributions welcome! This is a **public build** project.

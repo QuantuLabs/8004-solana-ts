@@ -1,65 +1,76 @@
 /**
  * Manual instruction builder for ERC-8004 Solana programs
+ * v0.2.0 - Metaplex Core architecture
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
  */
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
-import type { Cluster } from './client.js';
 /**
- * Instruction builder for Identity Registry
- * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
+ * Instruction builder for Identity Registry (Metaplex Core)
+ * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
  */
 export declare class IdentityInstructionBuilder {
     private programId;
-    constructor(cluster?: Cluster);
+    constructor();
     /**
-     * Build register instruction (with optional URI)
+     * Build register instruction (Metaplex Core)
+     * Accounts: config, agent_account, asset (signer), collection, owner (signer), system_program, mpl_core_program
      */
-    buildRegister(config: PublicKey, collectionAuthorityPda: PublicKey, agentAccount: PublicKey, agentMint: PublicKey, agentMetadata: PublicKey, agentMasterEdition: PublicKey, agentTokenAccount: PublicKey, collectionMint: PublicKey, collectionMetadata: PublicKey, collectionMasterEdition: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
+    buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
     /**
-     * Build registerWithMetadata instruction
-     * @param metadata - Array of metadata entries (max 10)
+     * Build registerWithMetadata instruction (Metaplex Core)
+     * @param metadata - Array of metadata entries (max per config)
      */
-    buildRegisterWithMetadata(config: PublicKey, collectionAuthorityPda: PublicKey, agentAccount: PublicKey, agentMint: PublicKey, agentMetadata: PublicKey, agentMasterEdition: PublicKey, agentTokenAccount: PublicKey, collectionMint: PublicKey, collectionMetadata: PublicKey, collectionMasterEdition: PublicKey, owner: PublicKey, agentUri?: string, metadata?: Array<{
+    buildRegisterWithMetadata(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string, metadata?: Array<{
         key: string;
         value: string;
     }>): TransactionInstruction;
     /**
-     * Build setAgentUri instruction
+     * Build setAgentUri instruction (Metaplex Core)
+     * Accounts: config, agent_account, asset, collection, owner (signer), system_program, mpl_core_program
      */
-    buildSetAgentUri(agentAccount: PublicKey, tokenAccount: PublicKey, agentMetadata: PublicKey, agentMint: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
+    buildSetAgentUri(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
     /**
-     * Build setMetadata instruction (inline metadata storage)
-     * Accounts: agent_account (mut), token_account, owner (signer)
+     * Build setMetadata instruction (Metaplex Core)
+     * Accounts: agent_account (mut), asset, owner (signer)
      */
-    buildSetMetadata(agentAccount: PublicKey, tokenAccount: PublicKey, owner: PublicKey, key: string, value: string): TransactionInstruction;
+    buildSetMetadata(agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, key: string, value: string): TransactionInstruction;
     /**
-     * Build createMetadataExtension instruction
+     * Build createMetadataExtension instruction (Metaplex Core)
+     * Accounts: metadata_extension, asset, agent_account, owner (signer), system_program
      */
-    buildCreateMetadataExtension(metadataExtension: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, owner: PublicKey, extensionIndex: number): TransactionInstruction;
+    buildCreateMetadataExtension(metadataExtension: PublicKey, asset: PublicKey, agentAccount: PublicKey, owner: PublicKey, extensionIndex: number): TransactionInstruction;
     /**
-     * Build setMetadataExtended instruction (extension PDA metadata storage)
+     * Build setMetadataExtended instruction (Metaplex Core)
+     * Accounts: metadata_extension, asset, agent_account, owner (signer)
      */
-    buildSetMetadataExtended(metadataExtension: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, owner: PublicKey, extensionIndex: number, key: string, value: string): TransactionInstruction;
+    buildSetMetadataExtended(metadataExtension: PublicKey, asset: PublicKey, agentAccount: PublicKey, owner: PublicKey, extensionIndex: number, key: string, value: string): TransactionInstruction;
     /**
-     * Build transferAgent instruction
+     * Build transferAgent instruction (Metaplex Core)
+     * Accounts: agent_account, asset, collection, owner (signer), new_owner, mpl_core_program
      */
-    buildTransferAgent(agentAccount: PublicKey, fromTokenAccount: PublicKey, toTokenAccount: PublicKey, agentMint: PublicKey, agentMetadata: PublicKey, owner: PublicKey): TransactionInstruction;
+    buildTransferAgent(agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newOwner: PublicKey): TransactionInstruction;
+    /**
+     * Build syncOwner instruction
+     * Accounts: agent_account, asset
+     */
+    buildSyncOwner(agentAccount: PublicKey, asset: PublicKey): TransactionInstruction;
     private serializeString;
     private serializeMetadata;
 }
 /**
  * Instruction builder for Reputation Registry
- * Program: 9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa
+ * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
  */
 export declare class ReputationInstructionBuilder {
     private programId;
-    constructor(cluster?: Cluster);
+    constructor();
     /**
      * Build giveFeedback instruction
      * Matches: give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)
+     * Accounts: client, payer, asset, agent_account, feedback_account, agent_reputation, system_program
      */
-    buildGiveFeedback(client: PublicKey, payer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, clientIndex: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, identityRegistryProgram: PublicKey, agentId: bigint, score: number, tag1: string, tag2: string, fileUri: string, fileHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, agentId: bigint, score: number, tag1: string, tag2: string, fileUri: string, fileHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
     /**
      * Build revokeFeedback instruction
      * Matches: revoke_feedback(agent_id, feedback_index)
@@ -67,24 +78,24 @@ export declare class ReputationInstructionBuilder {
     buildRevokeFeedback(client: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, agentId: bigint, feedbackIndex: bigint): TransactionInstruction;
     /**
      * Build appendResponse instruction
-     * Matches: append_response(agent_id, client_address, feedback_index, response_uri, response_hash)
+     * Matches: append_response(agent_id, feedback_index, response_uri, response_hash)
      */
-    buildAppendResponse(responder: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, responseIndex: PublicKey, responseAccount: PublicKey, agentId: bigint, clientAddress: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
+    buildAppendResponse(responder: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, responseIndex: PublicKey, responseAccount: PublicKey, agentId: bigint, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
     private serializeString;
     private serializeU64;
 }
 /**
  * Instruction builder for Validation Registry
- * Program: CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW
+ * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
  */
 export declare class ValidationInstructionBuilder {
     private programId;
-    constructor(cluster?: Cluster);
+    constructor();
     /**
      * Build requestValidation instruction
      * Matches: request_validation(agent_id, validator_address, nonce, request_uri, request_hash)
      */
-    buildRequestValidation(config: PublicKey, requester: PublicKey, payer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, validationRequest: PublicKey, identityRegistryProgram: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
+    buildRequestValidation(config: PublicKey, requester: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
     /**
      * Build respondToValidation instruction
      * Matches: respond_to_validation(response, response_uri, response_hash, tag)
@@ -97,7 +108,7 @@ export declare class ValidationInstructionBuilder {
     /**
      * Build closeValidation instruction
      */
-    buildCloseValidation(config: PublicKey, closer: PublicKey, agentMint: PublicKey, agentAccount: PublicKey, tokenAccount: PublicKey, validationRequest: PublicKey, identityRegistryProgram: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
+    buildCloseValidation(config: PublicKey, closer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
     private serializeString;
     private serializeU64;
     private serializeU32;

@@ -11,7 +11,7 @@ import { PDAHelpers } from './pda-helpers.js';
  */
 export async function fetchRegistryConfig(connection) {
     try {
-        const [configPda] = await PDAHelpers.getRegistryConfigPDA();
+        const [configPda] = PDAHelpers.getRegistryConfigPDA();
         const accountInfo = await connection.getAccountInfo(configPda);
         if (!accountInfo || accountInfo.data.length === 0) {
             return null;

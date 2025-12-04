@@ -29,13 +29,13 @@ export class SolanaSDK {
             : createDevnetClient();
         // Initialize feedback manager
         this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
-        // Initialize transaction builders
+        // Initialize transaction builders (v0.2.0 - no cluster argument)
         // They work with or without signer - skipSend mode allows building transactions
         // without a signer, the signer pubkey is provided in options instead
         const connection = this.client.getConnection();
-        this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.cluster, this.signer);
-        this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.cluster, this.signer);
-        this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.cluster, this.signer);
+        this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
+        this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer);
+        this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
         // Initialize mint resolver (lazy - will be created on first use)
         // This avoids blocking the constructor with async operations
     }
@@ -74,8 +74,8 @@ export class SolanaSDK {
             await this.initializeMintResolver();
             // Resolve agentId → mint via NFT metadata
             const agentMint = await this.mintResolver.resolve(id);
-            // Derive PDA from mint
-            const [agentPDA] = await PDAHelpers.getAgentPDA(agentMint);
+            // Derive PDA from asset
+            const [agentPDA] = PDAHelpers.getAgentPDA(agentMint);
             // Fetch account data
             const data = await this.client.getAccount(agentPDA);
             if (!data) {
@@ -157,7 +157,7 @@ export class SolanaSDK {
             // Try indices 0-255 sequentially
             for (let i = 0; i < 256; i++) {
                 try {
-                    const [extPDA] = await PDAHelpers.getMetadataExtensionPDA(agentMint, i);
+                    const [extPDA] = PDAHelpers.getMetadataExtensionPDA(agentMint, i);
                     const extData = await this.client.getAccount(extPDA);
                     if (!extData) {
                         // Assume extensions are sequential, stop at first gap
@@ -380,9 +380,10 @@ export class SolanaSDK {
         // Initialize resolver to cache the mint after registration
         await this.initializeMintResolver();
         const result = await this.identityTxBuilder.registerAgent(tokenUri, metadata, options);
-        // Cache the agentId → mint mapping for instant lookup (only for successful sent transactions)
-        if ('success' in result && result.success && result.agentId !== undefined && result.agentMint) {
-            this.mintResolver.addToCache(result.agentId, result.agentMint);
+        // Cache the agentId → asset mapping for instant lookup (only for successful sent transactions)
+        // v0.2.0: Core asset replaces mint
+        if ('success' in result && result.success && result.agentId !== undefined && result.asset) {
+            this.mintResolver.addToCache(result.agentId, result.asset);
         }
         return result;
     }
@@ -397,10 +398,10 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        // Resolve agentId → agentMint
+        // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
-        const agentMint = await this.mintResolver.resolve(id);
-        return await this.identityTxBuilder.setAgentUri(agentMint, newUri, options);
+        const asset = await this.mintResolver.resolve(id);
+        return await this.identityTxBuilder.setAgentUri(asset, newUri, options);
     }
     /**
      * Set agent metadata (write operation)
@@ -414,10 +415,10 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        // Resolve agentId → agentMint
+        // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
-        const agentMint = await this.mintResolver.resolve(id);
-        return await this.identityTxBuilder.setMetadataByMint(agentMint, key, value, options);
+        const asset = await this.mintResolver.resolve(id);
+        return await this.identityTxBuilder.setMetadata(asset, key, value, options);
     }
     /**
      * Give feedback to an agent (write operation)
@@ -432,14 +433,14 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        // Resolve agentId → agentMint
+        // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
-        const agentMint = await this.mintResolver.resolve(id);
+        const asset = await this.mintResolver.resolve(id);
         // TODO: Handle feedbackAuth when signature verification is implemented
         if (feedbackAuth) {
             console.warn('feedbackAuth is not yet implemented for Solana - ignoring');
         }
-        return await this.reputationTxBuilder.giveFeedback(agentMint, id, feedbackFile.score, feedbackFile.tag1 || '', feedbackFile.tag2 || '', feedbackFile.fileUri, feedbackFile.fileHash, options);
+        return await this.reputationTxBuilder.giveFeedback(asset, id, feedbackFile.score, feedbackFile.tag1 || '', feedbackFile.tag2 || '', feedbackFile.fileUri, feedbackFile.fileHash, options);
     }
     /**
      * Revoke feedback (write operation)
@@ -457,20 +458,21 @@ export class SolanaSDK {
     }
     /**
      * Append response to feedback (write operation)
+     * v0.2.0: client parameter removed (not needed for global feedback index)
      * @param agentId - Agent ID (number or bigint)
-     * @param client - Client who gave feedback
+     * @param client - Client who gave feedback (kept for API compatibility, not used)
      * @param feedbackIndex - Feedback index (number or bigint)
      * @param responseUri - Response URI
      * @param responseHash - Response hash
      * @param options - Write options (skipSend, signer)
      */
-    async appendResponse(agentId, client, feedbackIndex, responseUri, responseHash, options) {
+    async appendResponse(agentId, _client, feedbackIndex, responseUri, responseHash, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.reputationTxBuilder.appendResponse(id, client, idx, responseUri, responseHash, options);
+        return await this.reputationTxBuilder.appendResponse(id, idx, responseUri, responseHash, options);
     }
     /**
      * Request validation (write operation)
@@ -486,10 +488,10 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        // Resolve agentId → agentMint
+        // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
-        const agentMint = await this.mintResolver.resolve(id);
-        return await this.validationTxBuilder.requestValidation(agentMint, id, validator, nonce, requestUri, requestHash, options);
+        const asset = await this.mintResolver.resolve(id);
+        return await this.validationTxBuilder.requestValidation(asset, id, validator, nonce, requestUri, requestHash, options);
     }
     /**
      * Respond to validation request (write operation)
@@ -520,10 +522,10 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        // Resolve agentId → agentMint
+        // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
-        const agentMint = await this.mintResolver.resolve(id);
-        return await this.identityTxBuilder.transferAgent(agentMint, newOwner, options);
+        const asset = await this.mintResolver.resolve(id);
+        return await this.identityTxBuilder.transferAgent(asset, newOwner, options);
     }
     // ==================== Utility Methods ====================
     /**

@@ -1,10 +1,9 @@
 /**
  * Transaction builder for ERC-8004 Solana programs
+ * v0.2.0 - Metaplex Core architecture
  * Handles transaction creation, signing, and sending without Anchor
- * Updated to match 8004-solana program interfaces
  */
 import { PublicKey, Transaction, Connection, Keypair, TransactionSignature } from '@solana/web3.js';
-import type { Cluster } from './client.js';
 export interface TransactionResult {
     signature: TransactionSignature;
     success: boolean;
@@ -21,11 +20,11 @@ export interface WriteOptions {
     signer?: PublicKey;
 }
 /**
- * Extended options for registerAgent (requires mintPubkey when skipSend is true)
+ * Extended options for registerAgent (requires assetPubkey when skipSend is true)
  */
 export interface RegisterAgentOptions extends WriteOptions {
-    /** Required when skipSend is true - the client generates the mint keypair locally */
-    mintPubkey?: PublicKey;
+    /** Required when skipSend is true - the client generates the asset keypair locally */
+    assetPubkey?: PublicKey;
 }
 /**
  * Result when skipSend is true - contains serialized transaction data
@@ -50,63 +49,62 @@ export interface PreparedTransaction {
  */
 export declare function serializeTransaction(transaction: Transaction, signer: PublicKey, blockhash: string, lastValidBlockHeight: number): PreparedTransaction;
 /**
- * Transaction builder for Identity Registry operations
+ * Transaction builder for Identity Registry operations (Metaplex Core)
  */
 export declare class IdentityTransactionBuilder {
     private connection;
-    private cluster;
     private payer?;
     private instructionBuilder;
-    constructor(connection: Connection, cluster: Cluster, payer?: Keypair | undefined);
+    constructor(connection: Connection, payer?: Keypair | undefined);
     /**
-     * Register a new agent
+     * Register a new agent (Metaplex Core)
      * @param agentUri - Optional agent URI
      * @param metadata - Optional metadata entries (key-value pairs)
-     * @param options - Write options (skipSend, signer, mintPubkey)
-     * @returns Transaction result with agent ID, agentMint, and all signatures
+     * @param options - Write options (skipSend, signer, assetPubkey)
+     * @returns Transaction result with agent ID, asset, and all signatures
      */
     registerAgent(agentUri?: string, metadata?: Array<{
         key: string;
         value: string;
     }>, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         agentId?: bigint;
-        agentMint?: PublicKey;
+        asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {
         agentId: bigint;
-        agentMint: PublicKey;
+        asset: PublicKey;
     })>;
     /**
-     * Set agent URI by mint
-     * @param agentMint - Agent NFT mint
+     * Set agent URI by asset (Metaplex Core)
+     * @param asset - Agent Core asset
      * @param newUri - New URI
      * @param options - Write options (skipSend, signer)
      */
-    setAgentUri(agentMint: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setAgentUri(asset: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set metadata for agent by mint (inline storage)
-     * @param agentMint - Agent NFT mint
+     * Set metadata for agent by asset (inline storage)
+     * @param asset - Agent Core asset
      * @param key - Metadata key
      * @param value - Metadata value
      * @param options - Write options (skipSend, signer)
      */
-    setMetadataByMint(agentMint: PublicKey, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setMetadata(asset: PublicKey, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set metadata extended for agent by mint (extension PDA storage)
-     * @param agentMint - Agent NFT mint
+     * Set metadata extended for agent by asset (extension PDA storage)
+     * @param asset - Agent Core asset
      * @param extensionIndex - Extension index
      * @param key - Metadata key
      * @param value - Metadata value
      * @param options - Write options (skipSend, signer)
      */
-    setMetadataExtendedByMint(agentMint: PublicKey, extensionIndex: number, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setMetadataExtended(asset: PublicKey, extensionIndex: number, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Transfer agent to another owner
-     * @param agentMint - Agent NFT mint
+     * Transfer agent to another owner (Metaplex Core)
+     * @param asset - Agent Core asset
      * @param toOwner - New owner public key
      * @param options - Write options (skipSend, signer)
      */
-    transferAgent(agentMint: PublicKey, toOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    transferAgent(asset: PublicKey, toOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     private estimateInstructionSize;
     private calculateOptimalBatch;
     private sendWithRetry;
@@ -116,13 +114,12 @@ export declare class IdentityTransactionBuilder {
  */
 export declare class ReputationTransactionBuilder {
     private connection;
-    private cluster;
     private payer?;
     private instructionBuilder;
-    constructor(connection: Connection, cluster: Cluster, payer?: Keypair | undefined);
+    constructor(connection: Connection, payer?: Keypair | undefined);
     /**
      * Give feedback to an agent
-     * @param agentMint - Agent NFT mint
+     * @param asset - Agent Core asset
      * @param agentId - Agent ID
      * @param score - Score 0-100
      * @param tag1 - Tag 1 (max 32 bytes)
@@ -131,7 +128,7 @@ export declare class ReputationTransactionBuilder {
      * @param fileHash - File hash (32 bytes)
      * @param options - Write options (skipSend, signer)
      */
-    giveFeedback(agentMint: PublicKey, agentId: bigint, score: number, tag1: string, tag2: string, fileUri: string, fileHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
+    giveFeedback(asset: PublicKey, agentId: bigint, score: number, tag1: string, tag2: string, fileUri: string, fileHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;
@@ -146,13 +143,12 @@ export declare class ReputationTransactionBuilder {
     /**
      * Append response to feedback
      * @param agentId - Agent ID
-     * @param clientAddress - Client who gave feedback
      * @param feedbackIndex - Feedback index
      * @param responseUri - Response URI
      * @param responseHash - Response hash
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(agentId: bigint, clientAddress: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
+    appendResponse(agentId: bigint, feedbackIndex: bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
         responseIndex?: bigint;
     }) | (PreparedTransaction & {
         responseIndex: bigint;
@@ -163,13 +159,12 @@ export declare class ReputationTransactionBuilder {
  */
 export declare class ValidationTransactionBuilder {
     private connection;
-    private cluster;
     private payer?;
     private instructionBuilder;
-    constructor(connection: Connection, cluster: Cluster, payer?: Keypair | undefined);
+    constructor(connection: Connection, payer?: Keypair | undefined);
     /**
      * Request validation for an agent
-     * @param agentMint - Agent NFT mint
+     * @param asset - Agent Core asset
      * @param agentId - Agent ID
      * @param validatorAddress - Validator public key
      * @param nonce - Request nonce
@@ -177,7 +172,7 @@ export declare class ValidationTransactionBuilder {
      * @param requestHash - Request hash
      * @param options - Write options (skipSend, signer)
      */
-    requestValidation(agentMint: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    requestValidation(asset: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Respond to validation request
      * @param agentId - Agent ID
@@ -202,13 +197,13 @@ export declare class ValidationTransactionBuilder {
     updateValidation(agentId: bigint, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Close validation request to recover rent
-     * @param agentMint - Agent NFT mint
+     * @param asset - Agent Core asset
      * @param agentId - Agent ID
      * @param validatorAddress - Validator public key
      * @param nonce - Request nonce
      * @param rentReceiver - Address to receive rent (defaults to signer)
      * @param options - Write options (skipSend, signer)
      */
-    closeValidation(agentMint: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, rentReceiver?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    closeValidation(asset: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, rentReceiver?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 //# sourceMappingURL=transaction-builder.d.ts.map

@@ -1,14 +1,12 @@
 /**
  * Transaction builder for ERC-8004 Solana programs
+ * v0.2.0 - Metaplex Core architecture
  * Handles transaction creation, signing, and sending without Anchor
- * Updated to match 8004-solana program interfaces
  */
 import { Transaction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { PDAHelpers, IDENTITY_PROGRAM_ID, PROGRAM_ID } from './pda-helpers.js';
+import { PDAHelpers } from './pda-helpers.js';
 import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, } from './instruction-builder.js';
 import { fetchRegistryConfig } from './config-reader.js';
-import { getMetadataPDA, getMasterEditionPDA, getCollectionAuthorityPDA } from './metaplex-helpers.js';
 import { AgentReputationAccount } from './borsh-schemas.js';
 import { toBigInt } from './utils.js';
 /**
@@ -34,21 +32,20 @@ export function serializeTransaction(transaction, signer, blockhash, lastValidBl
     };
 }
 /**
- * Transaction builder for Identity Registry operations
+ * Transaction builder for Identity Registry operations (Metaplex Core)
  */
 export class IdentityTransactionBuilder {
-    constructor(connection, cluster, payer) {
+    constructor(connection, payer) {
         this.connection = connection;
-        this.cluster = cluster;
         this.payer = payer;
-        this.instructionBuilder = new IdentityInstructionBuilder(cluster);
+        this.instructionBuilder = new IdentityInstructionBuilder();
     }
     /**
-     * Register a new agent
+     * Register a new agent (Metaplex Core)
      * @param agentUri - Optional agent URI
      * @param metadata - Optional metadata entries (key-value pairs)
-     * @param options - Write options (skipSend, signer, mintPubkey)
-     * @returns Transaction result with agent ID, agentMint, and all signatures
+     * @param options - Write options (skipSend, signer, assetPubkey)
+     * @returns Transaction result with agent ID, asset, and all signatures
      */
     async registerAgent(agentUri, metadata, options) {
         try {
@@ -64,38 +61,29 @@ export class IdentityTransactionBuilder {
             }
             // Get the real next agent ID from config
             const agentId = BigInt(configData.next_agent_id);
-            // Determine the mint pubkey
-            let agentMintPubkey;
-            let agentMintKeypair;
+            // Determine the asset pubkey (Metaplex Core asset)
+            let assetPubkey;
+            let assetKeypair;
             if (options?.skipSend) {
-                // In skipSend mode, client must provide mintPubkey
-                if (!options.mintPubkey) {
-                    throw new Error('mintPubkey required when skipSend is true - client must generate keypair locally');
+                // In skipSend mode, client must provide assetPubkey
+                if (!options.assetPubkey) {
+                    throw new Error('assetPubkey required when skipSend is true - client must generate keypair locally');
                 }
-                agentMintPubkey = options.mintPubkey;
+                assetPubkey = options.assetPubkey;
             }
             else {
                 // Normal mode: generate keypair
                 if (!this.payer) {
                     throw new Error('No signer configured - SDK is read-only');
                 }
-                agentMintKeypair = Keypair.generate();
-                agentMintPubkey = agentMintKeypair.publicKey;
+                assetKeypair = Keypair.generate();
+                assetPubkey = assetKeypair.publicKey;
             }
             // Derive PDAs
-            const [configPda] = await PDAHelpers.getRegistryConfigPDA();
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMintPubkey);
-            // Get collection authority PDA - needed for signing collection verification
-            const collectionAuthorityPda = getCollectionAuthorityPDA(IDENTITY_PROGRAM_ID);
-            // Get collection mint from config
-            const collectionMint = configData.getCollectionMintPublicKey();
-            // Calculate Metaplex PDAs
-            const agentMetadata = getMetadataPDA(agentMintPubkey);
-            const agentMasterEdition = getMasterEditionPDA(agentMintPubkey);
-            const collectionMetadata = getMetadataPDA(collectionMint);
-            const collectionMasterEdition = getMasterEditionPDA(collectionMint);
-            // Calculate Associated Token Account
-            const agentTokenAccount = getAssociatedTokenAddressSync(agentMintPubkey, signerPubkey);
+            const [configPda] = PDAHelpers.getRegistryConfigPDA();
+            const [agentPda] = PDAHelpers.getAgentPDA(assetPubkey);
+            // Get collection from config
+            const collection = configData.getCollectionPublicKey();
             // Split metadata: first 1 inline (MAX_METADATA_ENTRIES=1), rest in extensions
             const inlineMetadata = metadata && metadata.length > 1
                 ? metadata.slice(0, 1)
@@ -105,8 +93,8 @@ export class IdentityTransactionBuilder {
                 : [];
             // Build register instruction - choose based on metadata presence
             const registerInstruction = inlineMetadata && inlineMetadata.length > 0
-                ? this.instructionBuilder.buildRegisterWithMetadata(configPda, collectionAuthorityPda, agentPda, agentMintPubkey, agentMetadata, agentMasterEdition, agentTokenAccount, collectionMint, collectionMetadata, collectionMasterEdition, signerPubkey, agentUri || '', inlineMetadata)
-                : this.instructionBuilder.buildRegister(configPda, collectionAuthorityPda, agentPda, agentMintPubkey, agentMetadata, agentMasterEdition, agentTokenAccount, collectionMint, collectionMetadata, collectionMasterEdition, signerPubkey, agentUri || '');
+                ? this.instructionBuilder.buildRegisterWithMetadata(configPda, agentPda, assetPubkey, collection, signerPubkey, agentUri || '', inlineMetadata)
+                : this.instructionBuilder.buildRegister(configPda, agentPda, assetPubkey, collection, signerPubkey, agentUri || '');
             // Create transaction with increased compute budget
             const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
                 units: 400000,
@@ -125,15 +113,15 @@ export class IdentityTransactionBuilder {
                 return {
                     ...prepared,
                     agentId,
-                    agentMint: agentMintPubkey,
+                    asset: assetPubkey,
                 };
             }
             // Normal mode: send transaction
-            if (!this.payer || !agentMintKeypair) {
+            if (!this.payer || !assetKeypair) {
                 throw new Error('No signer configured - SDK is read-only');
             }
             // Send register transaction with retry
-            const registerSignature = await this.sendWithRetry(registerTransaction, [this.payer, agentMintKeypair]);
+            const registerSignature = await this.sendWithRetry(registerTransaction, [this.payer, assetKeypair]);
             const allSignatures = [registerSignature];
             // If we have extended metadata, create additional transactions
             if (extendedMetadata.length > 0) {
@@ -148,12 +136,12 @@ export class IdentityTransactionBuilder {
                     for (let j = 0; j < batch.length; j++) {
                         const extensionIndex = i + j;
                         const { key, value } = batch[j];
-                        const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(agentMintPubkey, extensionIndex);
+                        const [metadataExtension] = PDAHelpers.getMetadataExtensionPDA(assetPubkey, extensionIndex);
                         // First create the extension PDA if needed
-                        const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(metadataExtension, agentMintPubkey, agentPda, agentTokenAccount, this.payer.publicKey, extensionIndex);
+                        const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(metadataExtension, assetPubkey, agentPda, this.payer.publicKey, extensionIndex);
                         extTx.add(createExtIx);
                         // Then set the metadata
-                        const setExtIx = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, agentMintPubkey, agentPda, agentTokenAccount, this.payer.publicKey, extensionIndex, key, value);
+                        const setExtIx = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, assetPubkey, agentPda, this.payer.publicKey, extensionIndex, key, value);
                         extTx.add(setExtIx);
                     }
                     const batchSignature = await this.sendWithRetry(extTx, [this.payer]);
@@ -167,7 +155,7 @@ export class IdentityTransactionBuilder {
                 signatures: allSignatures,
                 success: true,
                 agentId,
-                agentMint: agentMintPubkey,
+                asset: assetPubkey,
             };
         }
         catch (error) {
@@ -177,26 +165,31 @@ export class IdentityTransactionBuilder {
                 success: false,
                 error: error instanceof Error ? error.message : String(error),
                 agentId: undefined,
-                agentMint: undefined,
+                asset: undefined,
             };
         }
     }
     /**
-     * Set agent URI by mint
-     * @param agentMint - Agent NFT mint
+     * Set agent URI by asset (Metaplex Core)
+     * @param asset - Agent Core asset
      * @param newUri - New URI
      * @param options - Write options (skipSend, signer)
      */
-    async setAgentUri(agentMint, newUri, options) {
+    async setAgentUri(asset, newUri, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const agentMetadata = getMetadataPDA(agentMint);
-            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
-            const instruction = this.instructionBuilder.buildSetAgentUri(agentPda, tokenAccount, agentMetadata, agentMint, signerPubkey, newUri);
+            // Fetch registry config for collection
+            const configData = await fetchRegistryConfig(this.connection);
+            if (!configData) {
+                throw new Error('Registry not initialized.');
+            }
+            const [configPda] = PDAHelpers.getRegistryConfigPDA();
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const collection = configData.getCollectionPublicKey();
+            const instruction = this.instructionBuilder.buildSetAgentUri(configPda, agentPda, asset, collection, signerPubkey, newUri);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -219,21 +212,20 @@ export class IdentityTransactionBuilder {
         }
     }
     /**
-     * Set metadata for agent by mint (inline storage)
-     * @param agentMint - Agent NFT mint
+     * Set metadata for agent by asset (inline storage)
+     * @param asset - Agent Core asset
      * @param key - Metadata key
      * @param value - Metadata value
      * @param options - Write options (skipSend, signer)
      */
-    async setMetadataByMint(agentMint, key, value, options) {
+    async setMetadata(asset, key, value, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
-            const instruction = this.instructionBuilder.buildSetMetadata(agentPda, tokenAccount, signerPubkey, key, value);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const instruction = this.instructionBuilder.buildSetMetadata(agentPda, asset, signerPubkey, key, value);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -256,23 +248,22 @@ export class IdentityTransactionBuilder {
         }
     }
     /**
-     * Set metadata extended for agent by mint (extension PDA storage)
-     * @param agentMint - Agent NFT mint
+     * Set metadata extended for agent by asset (extension PDA storage)
+     * @param asset - Agent Core asset
      * @param extensionIndex - Extension index
      * @param key - Metadata key
      * @param value - Metadata value
      * @param options - Write options (skipSend, signer)
      */
-    async setMetadataExtendedByMint(agentMint, extensionIndex, key, value, options) {
+    async setMetadataExtended(asset, extensionIndex, key, value, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const [metadataExtension] = await PDAHelpers.getMetadataExtensionPDA(agentMint, extensionIndex);
-            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
-            const instruction = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, agentMint, agentPda, tokenAccount, signerPubkey, extensionIndex, key, value);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [metadataExtension] = PDAHelpers.getMetadataExtensionPDA(asset, extensionIndex);
+            const instruction = this.instructionBuilder.buildSetMetadataExtended(metadataExtension, asset, agentPda, signerPubkey, extensionIndex, key, value);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -295,29 +286,26 @@ export class IdentityTransactionBuilder {
         }
     }
     /**
-     * Transfer agent to another owner
-     * @param agentMint - Agent NFT mint
+     * Transfer agent to another owner (Metaplex Core)
+     * @param asset - Agent Core asset
      * @param toOwner - New owner public key
      * @param options - Write options (skipSend, signer)
      */
-    async transferAgent(agentMint, toOwner, options) {
+    async transferAgent(asset, toOwner, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const agentMetadata = getMetadataPDA(agentMint);
-            const fromTokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
-            const toTokenAccount = getAssociatedTokenAddressSync(agentMint, toOwner);
-            // Create ATA for recipient if it doesn't exist (idempotent)
-            const createAtaIx = createAssociatedTokenAccountIdempotentInstruction(signerPubkey, // payer
-            toTokenAccount, // ata
-            toOwner, // owner
-            agentMint, // mint
-            TOKEN_PROGRAM_ID);
-            const instruction = this.instructionBuilder.buildTransferAgent(agentPda, fromTokenAccount, toTokenAccount, agentMint, agentMetadata, signerPubkey);
-            const transaction = new Transaction().add(createAtaIx).add(instruction);
+            // Fetch registry config for collection
+            const configData = await fetchRegistryConfig(this.connection);
+            if (!configData) {
+                throw new Error('Registry not initialized.');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const collection = configData.getCollectionPublicKey();
+            const instruction = this.instructionBuilder.buildTransferAgent(agentPda, asset, collection, signerPubkey, toOwner);
+            const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
@@ -380,15 +368,14 @@ export class IdentityTransactionBuilder {
  * Transaction builder for Reputation Registry operations
  */
 export class ReputationTransactionBuilder {
-    constructor(connection, cluster, payer) {
+    constructor(connection, payer) {
         this.connection = connection;
-        this.cluster = cluster;
         this.payer = payer;
-        this.instructionBuilder = new ReputationInstructionBuilder(cluster);
+        this.instructionBuilder = new ReputationInstructionBuilder();
     }
     /**
      * Give feedback to an agent
-     * @param agentMint - Agent NFT mint
+     * @param asset - Agent Core asset
      * @param agentId - Agent ID
      * @param score - Score 0-100
      * @param tag1 - Tag 1 (max 32 bytes)
@@ -397,7 +384,7 @@ export class ReputationTransactionBuilder {
      * @param fileHash - File hash (32 bytes)
      * @param options - Write options (skipSend, signer)
      */
-    async giveFeedback(agentMint, agentId, score, tag1, tag2, fileUri, fileHash, options) {
+    async giveFeedback(asset, agentId, score, tag1, tag2, fileUri, fileHash, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
@@ -420,28 +407,23 @@ export class ReputationTransactionBuilder {
                 throw new Error('fileHash must be 32 bytes');
             }
             // Derive PDAs
-            // v0.2.0: agentMint is now Core asset address
-            const [agentPda] = PDAHelpers.getAgentPDA(agentMint);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const [agentReputation] = PDAHelpers.getAgentReputationPDA(agentId);
-            // v0.2.0: Get feedback index from AgentReputationAccount (global index)
+            // Get feedback index from AgentReputationAccount (global index)
             let feedbackIndex = BigInt(0);
             const agentReputationInfo = await this.connection.getAccountInfo(agentReputation);
             if (agentReputationInfo) {
                 const reputationData = AgentReputationAccount.deserialize(agentReputationInfo.data);
                 feedbackIndex = toBigInt(reputationData.next_feedback_index);
             }
-            // v0.2.0: Feedback PDA without client in seeds
+            // Feedback PDA (without client in seeds for v0.2.0)
             const [feedbackPda] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
-            // v0.2.0: clientIndex no longer exists, pass agentReputation as placeholder
-            // TODO: Update instruction builder for v0.2.0 single program architecture
             const instruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, // client
             signerPubkey, // payer
-            agentMint, // agent_mint (now Core asset)
+            asset, // Core asset
             agentPda, // agent_account
-            agentReputation, // v0.2.0: was clientIndex
             feedbackPda, // feedback_account
             agentReputation, // agent_reputation
-            PROGRAM_ID, // v0.2.0: single program
             agentId, score, tag1, tag2, fileUri, fileHash, feedbackIndex);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -505,13 +487,12 @@ export class ReputationTransactionBuilder {
     /**
      * Append response to feedback
      * @param agentId - Agent ID
-     * @param clientAddress - Client who gave feedback
      * @param feedbackIndex - Feedback index
      * @param responseUri - Response URI
      * @param responseHash - Response hash
      * @param options - Write options (skipSend, signer)
      */
-    async appendResponse(agentId, clientAddress, feedbackIndex, responseUri, responseHash, options) {
+    async appendResponse(agentId, feedbackIndex, responseUri, responseHash, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
@@ -530,14 +511,14 @@ export class ReputationTransactionBuilder {
             let responseIndexValue = BigInt(0);
             const responseIndexInfo = await this.connection.getAccountInfo(responseIndexPda);
             if (responseIndexInfo) {
-                // v0.2.0: simplified layout without client
-                const data = responseIndexInfo.data.slice(8); // Skip discriminator
-                responseIndexValue = data.readBigUInt64LE(8 + 8); // After agent_id + feedback_index
+                // Skip discriminator (8 bytes), then read response_count after agent_id (8) + feedback_index (8)
+                const data = responseIndexInfo.data.slice(8);
+                responseIndexValue = data.readBigUInt64LE(16); // After agent_id + feedback_index
             }
             const [responsePda] = PDAHelpers.getResponsePDA(agentId, feedbackIndex, responseIndexValue);
             const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, // responder
             signerPubkey, // payer
-            feedbackPda, responseIndexPda, responsePda, agentId, clientAddress, feedbackIndex, responseUri, responseHash);
+            feedbackPda, responseIndexPda, responsePda, agentId, feedbackIndex, responseUri, responseHash);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -565,15 +546,14 @@ export class ReputationTransactionBuilder {
  * Transaction builder for Validation Registry operations
  */
 export class ValidationTransactionBuilder {
-    constructor(connection, cluster, payer) {
+    constructor(connection, payer) {
         this.connection = connection;
-        this.cluster = cluster;
         this.payer = payer;
-        this.instructionBuilder = new ValidationInstructionBuilder(cluster);
+        this.instructionBuilder = new ValidationInstructionBuilder();
     }
     /**
      * Request validation for an agent
-     * @param agentMint - Agent NFT mint
+     * @param asset - Agent Core asset
      * @param agentId - Agent ID
      * @param validatorAddress - Validator public key
      * @param nonce - Request nonce
@@ -581,7 +561,7 @@ export class ValidationTransactionBuilder {
      * @param requestHash - Request hash
      * @param options - Write options (skipSend, signer)
      */
-    async requestValidation(agentMint, agentId, validatorAddress, nonce, requestUri, requestHash, options) {
+    async requestValidation(asset, agentId, validatorAddress, nonce, requestUri, requestHash, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
@@ -594,13 +574,13 @@ export class ValidationTransactionBuilder {
                 throw new Error('requestHash must be 32 bytes');
             }
             // Derive PDAs
-            const [configPda] = await PDAHelpers.getValidationConfigPDA();
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
-            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
+            const [configPda] = PDAHelpers.getValidationConfigPDA();
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
             const instruction = this.instructionBuilder.buildRequestValidation(configPda, signerPubkey, // requester (must be agent owner)
             signerPubkey, // payer
-            agentMint, agentPda, tokenAccount, validationRequestPda, IDENTITY_PROGRAM_ID, agentId, validatorAddress, nonce, requestUri, requestHash);
+            asset, // Core asset
+            agentPda, validationRequestPda, agentId, validatorAddress, nonce, requestUri, requestHash);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -650,8 +630,8 @@ export class ValidationTransactionBuilder {
             if (tag.length > 32) {
                 throw new Error('tag must be <= 32 bytes');
             }
-            const [configPda] = await PDAHelpers.getValidationConfigPDA();
-            const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(agentId, signerPubkey, // validator
+            const [configPda] = PDAHelpers.getValidationConfigPDA();
+            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, signerPubkey, // validator
             nonce);
             const instruction = this.instructionBuilder.buildRespondToValidation(configPda, signerPubkey, validationRequestPda, response, responseUri, responseHash, tag);
             const transaction = new Transaction().add(instruction);
@@ -694,8 +674,8 @@ export class ValidationTransactionBuilder {
             if (response < 0 || response > 100) {
                 throw new Error('Response must be between 0 and 100');
             }
-            const [configPda] = await PDAHelpers.getValidationConfigPDA();
-            const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(agentId, signerPubkey, nonce);
+            const [configPda] = PDAHelpers.getValidationConfigPDA();
+            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, signerPubkey, nonce);
             const instruction = this.instructionBuilder.buildUpdateValidation(configPda, signerPubkey, validationRequestPda, response, responseUri, responseHash, tag);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -720,24 +700,23 @@ export class ValidationTransactionBuilder {
     }
     /**
      * Close validation request to recover rent
-     * @param agentMint - Agent NFT mint
+     * @param asset - Agent Core asset
      * @param agentId - Agent ID
      * @param validatorAddress - Validator public key
      * @param nonce - Request nonce
      * @param rentReceiver - Address to receive rent (defaults to signer)
      * @param options - Write options (skipSend, signer)
      */
-    async closeValidation(agentMint, agentId, validatorAddress, nonce, rentReceiver, options) {
+    async closeValidation(asset, agentId, validatorAddress, nonce, rentReceiver, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [configPda] = await PDAHelpers.getValidationConfigPDA();
-            const [agentPda] = await PDAHelpers.getAgentPDA(agentMint);
-            const [validationRequestPda] = await PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
-            const tokenAccount = getAssociatedTokenAddressSync(agentMint, signerPubkey);
-            const instruction = this.instructionBuilder.buildCloseValidation(configPda, signerPubkey, agentMint, agentPda, tokenAccount, validationRequestPda, IDENTITY_PROGRAM_ID, rentReceiver || signerPubkey);
+            const [configPda] = PDAHelpers.getValidationConfigPDA();
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
+            const instruction = this.instructionBuilder.buildCloseValidation(configPda, signerPubkey, asset, agentPda, validationRequestPda, rentReceiver || signerPubkey);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {

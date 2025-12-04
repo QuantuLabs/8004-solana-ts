@@ -166,11 +166,11 @@ export declare class SolanaSDK {
         value: string;
     }>, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         agentId?: bigint;
-        agentMint?: PublicKey;
+        asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {
         agentId: bigint;
-        agentMint: PublicKey;
+        asset: PublicKey;
     })>;
     /**
      * Set agent URI (write operation)
@@ -215,14 +215,15 @@ export declare class SolanaSDK {
     revokeFeedback(agentId: number | bigint, feedbackIndex: number | bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback (write operation)
+     * v0.2.0: client parameter removed (not needed for global feedback index)
      * @param agentId - Agent ID (number or bigint)
-     * @param client - Client who gave feedback
+     * @param client - Client who gave feedback (kept for API compatibility, not used)
      * @param feedbackIndex - Feedback index (number or bigint)
      * @param responseUri - Response URI
      * @param responseHash - Response hash
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
+    appendResponse(agentId: number | bigint, _client: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
         responseIndex?: bigint;
     }) | (PreparedTransaction & {
         responseIndex: bigint;
