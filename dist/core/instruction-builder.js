@@ -299,6 +299,31 @@ export class ReputationInstructionBuilder {
             data,
         });
     }
+    /**
+     * Build setFeedbackTags instruction
+     * Matches: set_feedback_tags(agent_id, feedback_index, tag1, tag2)
+     * Accounts: client, payer, feedback_account, feedback_tags, system_program
+     */
+    buildSetFeedbackTags(client, payer, feedbackAccount, feedbackTags, agentId, feedbackIndex, tag1, tag2) {
+        const data = Buffer.concat([
+            REPUTATION_DISCRIMINATORS.setFeedbackTags,
+            this.serializeU64(agentId),
+            this.serializeU64(feedbackIndex),
+            this.serializeString(tag1),
+            this.serializeString(tag2),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: client, isSigner: true, isWritable: false },
+                { pubkey: payer, isSigner: true, isWritable: true },
+                { pubkey: feedbackAccount, isSigner: false, isWritable: false },
+                { pubkey: feedbackTags, isSigner: false, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
     serializeString(str) {
         const strBytes = Buffer.from(str, 'utf8');
         const len = Buffer.alloc(4);

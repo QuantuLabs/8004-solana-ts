@@ -899,6 +899,83 @@ export class ReputationTransactionBuilder {
       };
     }
   }
+
+  /**
+   * Set feedback tags (optional, creates FeedbackTagsPda)
+   * Creates a separate PDA for tags to save -42% cost when tags not needed
+   * @param agentId - Agent ID
+   * @param feedbackIndex - Feedback index
+   * @param tag1 - First tag (max 32 bytes)
+   * @param tag2 - Second tag (max 32 bytes)
+   * @param options - Write options (skipSend, signer)
+   */
+  async setFeedbackTags(
+    agentId: bigint,
+    feedbackIndex: bigint,
+    tag1: string,
+    tag2: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
+      // Validate inputs
+      if (tag1.length > 32) {
+        throw new Error('tag1 must be <= 32 bytes');
+      }
+      if (tag2.length > 32) {
+        throw new Error('tag2 must be <= 32 bytes');
+      }
+      if (!tag1 && !tag2) {
+        throw new Error('At least one tag must be provided');
+      }
+
+      // Derive PDAs
+      const [feedbackPda] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
+      const [feedbackTagsPda] = PDAHelpers.getFeedbackTagsPDA(agentId, feedbackIndex);
+
+      const instruction = this.instructionBuilder.buildSetFeedbackTags(
+        signerPubkey,       // client
+        signerPubkey,       // payer
+        feedbackPda,        // feedback_account
+        feedbackTagsPda,    // feedback_tags
+        agentId,
+        feedbackIndex,
+        tag1,
+        tag2
+      );
+
+      const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
 }
 
 /**

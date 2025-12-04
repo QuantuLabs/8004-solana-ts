@@ -81,6 +81,12 @@ export declare class ReputationInstructionBuilder {
      * Matches: append_response(agent_id, feedback_index, response_uri, response_hash)
      */
     buildAppendResponse(responder: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, responseIndex: PublicKey, responseAccount: PublicKey, agentId: bigint, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
+    /**
+     * Build setFeedbackTags instruction
+     * Matches: set_feedback_tags(agent_id, feedback_index, tag1, tag2)
+     * Accounts: client, payer, feedback_account, feedback_tags, system_program
+     */
+    buildSetFeedbackTags(client: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, feedbackTags: PublicKey, agentId: bigint, feedbackIndex: bigint, tag1: string, tag2: string): TransactionInstruction;
     private serializeString;
     private serializeU64;
 }

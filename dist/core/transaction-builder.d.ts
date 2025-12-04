@@ -154,6 +154,16 @@ export declare class ReputationTransactionBuilder {
     }) | (PreparedTransaction & {
         responseIndex: bigint;
     })>;
+    /**
+     * Set feedback tags (optional, creates FeedbackTagsPda)
+     * Creates a separate PDA for tags to save -42% cost when tags not needed
+     * @param agentId - Agent ID
+     * @param feedbackIndex - Feedback index
+     * @param tag1 - First tag (max 32 bytes)
+     * @param tag2 - Second tag (max 32 bytes)
+     * @param options - Write options (skipSend, signer)
+     */
+    setFeedbackTags(agentId: bigint, feedbackIndex: bigint, tag1: string, tag2: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 /**
  * Transaction builder for Validation Registry operations
