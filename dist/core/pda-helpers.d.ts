@@ -35,10 +35,6 @@ export declare class PDAHelpers {
      */
     static getAgentPDA(asset: PublicKey, programId?: PublicKey): [PublicKey, number];
     /**
-     * @deprecated Use getAgentPDA with asset parameter
-     */
-    static getAgentPDALegacy(agentMint: PublicKey): Promise<[PublicKey, number]>;
-    /**
      * Get Metadata Extension PDA
      * Seeds: ["metadata_ext", asset, extension_index]
      */
@@ -49,10 +45,6 @@ export declare class PDAHelpers {
      * BREAKING: v0.2.0 uses global feedback index (no client address)
      */
     static getFeedbackPDA(agentId: bigint, feedbackIndex: bigint, programId?: PublicKey): [PublicKey, number];
-    /**
-     * @deprecated Use getFeedbackPDA without client parameter
-     */
-    static getFeedbackPDALegacy(agentId: bigint, _client: PublicKey, feedbackIndex: bigint): Promise<[PublicKey, number]>;
     /**
      * Get Agent Reputation PDA
      * Seeds: ["agent_reputation", agent_id]
@@ -80,12 +72,16 @@ export declare class PDAHelpers {
      * Seeds: ["validation", agent_id, validator, nonce]
      */
     static getValidationRequestPDA(agentId: bigint, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
-    /** @deprecated Use getConfigPDA */
-    static getRegistryConfigPDA(): Promise<[PublicKey, number]>;
-    /** @deprecated Use getValidationStatsPDA */
-    static getValidationConfigPDA(): Promise<[PublicKey, number]>;
-    /** @deprecated Client index no longer used in v0.2.0 */
-    static getClientIndexPDA(agentId: bigint, _client: PublicKey): Promise<[PublicKey, number]>;
+    /** Alias for getConfigPDA */
+    static getRegistryConfigPDA(): [PublicKey, number];
+    /** Alias for getValidationStatsPDA */
+    static getValidationConfigPDA(): [PublicKey, number];
+    /**
+     * Get Client Index PDA
+     * Seeds: ["client_index", agent_id, client]
+     * Used to track per-client feedback count
+     */
+    static getClientIndexPDA(agentId: bigint, client: PublicKey, programId?: PublicKey): [PublicKey, number];
 }
 /**
  * Helper to convert bytes32 to string

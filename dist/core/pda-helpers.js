@@ -43,12 +43,6 @@ export class PDAHelpers {
         return PublicKey.findProgramAddressSync([Buffer.from('agent'), asset.toBuffer()], programId);
     }
     /**
-     * @deprecated Use getAgentPDA with asset parameter
-     */
-    static async getAgentPDALegacy(agentMint) {
-        return PDAHelpers.getAgentPDA(agentMint);
-    }
-    /**
      * Get Metadata Extension PDA
      * Seeds: ["metadata_ext", asset, extension_index]
      */
@@ -69,12 +63,6 @@ export class PDAHelpers {
         const feedbackIndexBuffer = Buffer.alloc(8);
         feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
         return PublicKey.findProgramAddressSync([Buffer.from('feedback'), agentIdBuffer, feedbackIndexBuffer], programId);
-    }
-    /**
-     * @deprecated Use getFeedbackPDA without client parameter
-     */
-    static async getFeedbackPDALegacy(agentId, _client, feedbackIndex) {
-        return PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
     }
     /**
      * Get Agent Reputation PDA
@@ -133,20 +121,25 @@ export class PDAHelpers {
         return PublicKey.findProgramAddressSync([Buffer.from('validation'), agentIdBuffer, validator.toBuffer(), nonceBuffer], programId);
     }
     // ============================================================================
-    // Deprecated Legacy Methods (for backwards compatibility)
+    // Convenience Methods (sync wrappers)
     // ============================================================================
-    /** @deprecated Use getConfigPDA */
-    static async getRegistryConfigPDA() {
+    /** Alias for getConfigPDA */
+    static getRegistryConfigPDA() {
         return PDAHelpers.getConfigPDA();
     }
-    /** @deprecated Use getValidationStatsPDA */
-    static async getValidationConfigPDA() {
+    /** Alias for getValidationStatsPDA */
+    static getValidationConfigPDA() {
         return PDAHelpers.getValidationStatsPDA();
     }
-    /** @deprecated Client index no longer used in v0.2.0 */
-    static async getClientIndexPDA(agentId, _client) {
-        // Return agent reputation PDA as fallback
-        return PDAHelpers.getAgentReputationPDA(agentId);
+    /**
+     * Get Client Index PDA
+     * Seeds: ["client_index", agent_id, client]
+     * Used to track per-client feedback count
+     */
+    static getClientIndexPDA(agentId, client, programId = PROGRAM_ID) {
+        const agentIdBuffer = Buffer.alloc(8);
+        agentIdBuffer.writeBigUInt64LE(agentId);
+        return PublicKey.findProgramAddressSync([Buffer.from('client_index'), agentIdBuffer, client.toBuffer()], programId);
     }
 }
 /**

@@ -16,7 +16,7 @@ export async function fetchRegistryConfig(
   connection: Connection
 ): Promise<RegistryConfig | null> {
   try {
-    const [configPda] = await PDAHelpers.getRegistryConfigPDA();
+    const [configPda] = PDAHelpers.getRegistryConfigPDA();
     const accountInfo = await connection.getAccountInfo(configPda);
 
     if (!accountInfo || accountInfo.data.length === 0) {

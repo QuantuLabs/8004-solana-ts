@@ -56,13 +56,6 @@ export class PDAHelpers {
   }
 
   /**
-   * @deprecated Use getAgentPDA with asset parameter
-   */
-  static async getAgentPDALegacy(agentMint: PublicKey): Promise<[PublicKey, number]> {
-    return PDAHelpers.getAgentPDA(agentMint);
-  }
-
-  /**
    * Get Metadata Extension PDA
    * Seeds: ["metadata_ext", asset, extension_index]
    */
@@ -101,17 +94,6 @@ export class PDAHelpers {
       [Buffer.from('feedback'), agentIdBuffer, feedbackIndexBuffer],
       programId
     );
-  }
-
-  /**
-   * @deprecated Use getFeedbackPDA without client parameter
-   */
-  static async getFeedbackPDALegacy(
-    agentId: bigint,
-    _client: PublicKey,
-    feedbackIndex: bigint
-  ): Promise<[PublicKey, number]> {
-    return PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
   }
 
   /**
@@ -217,26 +199,36 @@ export class PDAHelpers {
   }
 
   // ============================================================================
-  // Deprecated Legacy Methods (for backwards compatibility)
+  // Convenience Methods (sync wrappers)
   // ============================================================================
 
-  /** @deprecated Use getConfigPDA */
-  static async getRegistryConfigPDA(): Promise<[PublicKey, number]> {
+  /** Alias for getConfigPDA */
+  static getRegistryConfigPDA(): [PublicKey, number] {
     return PDAHelpers.getConfigPDA();
   }
 
-  /** @deprecated Use getValidationStatsPDA */
-  static async getValidationConfigPDA(): Promise<[PublicKey, number]> {
+  /** Alias for getValidationStatsPDA */
+  static getValidationConfigPDA(): [PublicKey, number] {
     return PDAHelpers.getValidationStatsPDA();
   }
 
-  /** @deprecated Client index no longer used in v0.2.0 */
-  static async getClientIndexPDA(
+  /**
+   * Get Client Index PDA
+   * Seeds: ["client_index", agent_id, client]
+   * Used to track per-client feedback count
+   */
+  static getClientIndexPDA(
     agentId: bigint,
-    _client: PublicKey
-  ): Promise<[PublicKey, number]> {
-    // Return agent reputation PDA as fallback
-    return PDAHelpers.getAgentReputationPDA(agentId);
+    client: PublicKey,
+    programId: PublicKey = PROGRAM_ID
+  ): [PublicKey, number] {
+    const agentIdBuffer = Buffer.alloc(8);
+    agentIdBuffer.writeBigUInt64LE(agentId);
+
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('client_index'), agentIdBuffer, client.toBuffer()],
+      programId
+    );
   }
 }
 

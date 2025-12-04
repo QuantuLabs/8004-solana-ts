@@ -387,12 +387,13 @@ export class AgentReputationAccount {
       AgentReputationAccount,
       {
         kind: 'struct',
+        // Field order MUST match Rust struct: AgentReputationMetadata
         fields: [
           ['agent_id', 'u64'],
+          ['next_feedback_index', 'u64'],  // v0.2.0 - SECOND field in Rust
           ['total_feedbacks', 'u64'],
           ['total_score_sum', 'u64'],
           ['average_score', 'u8'],
-          ['next_feedback_index', 'u64'],  // v0.2.0
           ['last_updated', 'u64'],
           ['bump', 'u8'],
         ],

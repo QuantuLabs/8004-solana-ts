@@ -1,5 +1,6 @@
 /**
  * Manual instruction builder for ERC-8004 Solana programs
+ * v0.2.0 - Metaplex Core architecture
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
  */
@@ -8,46 +9,35 @@ import {
   PublicKey,
   TransactionInstruction,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
-  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { getProgramIds, PROGRAM_IDS } from './programs.js';
-import type { Cluster } from './client.js';
-import { TOKEN_METADATA_PROGRAM_ID } from './metaplex-helpers.js';
+import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
 import {
   IDENTITY_DISCRIMINATORS,
   REPUTATION_DISCRIMINATORS,
   VALIDATION_DISCRIMINATORS,
 } from './instruction-discriminators.js';
-import { IDENTITY_PROGRAM_ID, REPUTATION_PROGRAM_ID, VALIDATION_PROGRAM_ID } from './pda-helpers.js';
 import { toBigInt } from './utils.js';
 
 /**
- * Instruction builder for Identity Registry
- * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
+ * Instruction builder for Identity Registry (Metaplex Core)
+ * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
  */
 export class IdentityInstructionBuilder {
   private programId: PublicKey;
 
-  constructor(cluster: Cluster = 'devnet') {
-    this.programId = IDENTITY_PROGRAM_ID;
+  constructor() {
+    this.programId = PROGRAM_ID;
   }
 
   /**
-   * Build register instruction (with optional URI)
+   * Build register instruction (Metaplex Core)
+   * Accounts: config, agent_account, asset (signer), collection, owner (signer), system_program, mpl_core_program
    */
   buildRegister(
     config: PublicKey,
-    collectionAuthorityPda: PublicKey,
     agentAccount: PublicKey,
-    agentMint: PublicKey,
-    agentMetadata: PublicKey,
-    agentMasterEdition: PublicKey,
-    agentTokenAccount: PublicKey,
-    collectionMint: PublicKey,
-    collectionMetadata: PublicKey,
-    collectionMasterEdition: PublicKey,
+    asset: PublicKey,
+    collection: PublicKey,
     owner: PublicKey,
     agentUri: string = '',
   ): TransactionInstruction {
@@ -60,53 +50,30 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: config, isSigner: false, isWritable: true },
-        { pubkey: collectionAuthorityPda, isSigner: false, isWritable: true },
         { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: true, isWritable: true },
-        { pubkey: agentMetadata, isSigner: false, isWritable: true },
-        { pubkey: agentMasterEdition, isSigner: false, isWritable: true },
-        { pubkey: agentTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: collectionMint, isSigner: false, isWritable: false },
-        { pubkey: collectionMetadata, isSigner: false, isWritable: true },
-        { pubkey: collectionMasterEdition, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: true, isWritable: true },
+        { pubkey: collection, isSigner: false, isWritable: true },
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   /**
-   * Build registerWithMetadata instruction
-   * @param metadata - Array of metadata entries (max 10)
+   * Build registerWithMetadata instruction (Metaplex Core)
+   * @param metadata - Array of metadata entries (max per config)
    */
   buildRegisterWithMetadata(
     config: PublicKey,
-    collectionAuthorityPda: PublicKey,
     agentAccount: PublicKey,
-    agentMint: PublicKey,
-    agentMetadata: PublicKey,
-    agentMasterEdition: PublicKey,
-    agentTokenAccount: PublicKey,
-    collectionMint: PublicKey,
-    collectionMetadata: PublicKey,
-    collectionMasterEdition: PublicKey,
+    asset: PublicKey,
+    collection: PublicKey,
     owner: PublicKey,
     agentUri: string = '',
     metadata: Array<{ key: string; value: string }> = [],
   ): TransactionInstruction {
-    if (metadata.length > 10) {
-      throw new Error(
-        `buildRegisterWithMetadata() accepts max 10 inline metadata. Got ${metadata.length}. ` +
-        `Use transaction-builder to auto-split into inline + MetadataExtension PDAs.`
-      );
-    }
-
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.registerWithMetadata,
       this.serializeString(agentUri),
@@ -117,35 +84,26 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: config, isSigner: false, isWritable: true },
-        { pubkey: collectionAuthorityPda, isSigner: false, isWritable: true },
         { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: true, isWritable: true },
-        { pubkey: agentMetadata, isSigner: false, isWritable: true },
-        { pubkey: agentMasterEdition, isSigner: false, isWritable: true },
-        { pubkey: agentTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: collectionMint, isSigner: false, isWritable: false },
-        { pubkey: collectionMetadata, isSigner: false, isWritable: true },
-        { pubkey: collectionMasterEdition, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: true, isWritable: true },
+        { pubkey: collection, isSigner: false, isWritable: true },
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   /**
-   * Build setAgentUri instruction
+   * Build setAgentUri instruction (Metaplex Core)
+   * Accounts: config, agent_account, asset, collection, owner (signer), system_program, mpl_core_program
    */
   buildSetAgentUri(
+    config: PublicKey,
     agentAccount: PublicKey,
-    tokenAccount: PublicKey,
-    agentMetadata: PublicKey,
-    agentMint: PublicKey,
+    asset: PublicKey,
+    collection: PublicKey,
     owner: PublicKey,
     newUri: string,
   ): TransactionInstruction {
@@ -157,26 +115,25 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
+        { pubkey: config, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: tokenAccount, isSigner: false, isWritable: false },
-        { pubkey: agentMetadata, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: true },
+        { pubkey: collection, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
-        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   /**
-   * Build setMetadata instruction (inline metadata storage)
-   * Accounts: agent_account (mut), token_account, owner (signer)
+   * Build setMetadata instruction (Metaplex Core)
+   * Accounts: agent_account (mut), asset, owner (signer)
    */
   buildSetMetadata(
     agentAccount: PublicKey,
-    tokenAccount: PublicKey,
+    asset: PublicKey,
     owner: PublicKey,
     key: string,
     value: string,
@@ -196,7 +153,7 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: tokenAccount, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: false },
       ],
       data,
@@ -204,13 +161,13 @@ export class IdentityInstructionBuilder {
   }
 
   /**
-   * Build createMetadataExtension instruction
+   * Build createMetadataExtension instruction (Metaplex Core)
+   * Accounts: metadata_extension, asset, agent_account, owner (signer), system_program
    */
   buildCreateMetadataExtension(
     metadataExtension: PublicKey,
-    agentMint: PublicKey,
+    asset: PublicKey,
     agentAccount: PublicKey,
-    tokenAccount: PublicKey,
     owner: PublicKey,
     extensionIndex: number,
   ): TransactionInstruction {
@@ -223,9 +180,8 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: metadataExtension, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
@@ -234,13 +190,13 @@ export class IdentityInstructionBuilder {
   }
 
   /**
-   * Build setMetadataExtended instruction (extension PDA metadata storage)
+   * Build setMetadataExtended instruction (Metaplex Core)
+   * Accounts: metadata_extension, asset, agent_account, owner (signer)
    */
   buildSetMetadataExtended(
     metadataExtension: PublicKey,
-    agentMint: PublicKey,
+    asset: PublicKey,
     agentAccount: PublicKey,
-    tokenAccount: PublicKey,
     owner: PublicKey,
     extensionIndex: number,
     key: string,
@@ -262,42 +218,54 @@ export class IdentityInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: metadataExtension, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: owner, isSigner: true, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   /**
-   * Build transferAgent instruction
+   * Build transferAgent instruction (Metaplex Core)
+   * Accounts: agent_account, asset, collection, owner (signer), new_owner, mpl_core_program
    */
   buildTransferAgent(
     agentAccount: PublicKey,
-    fromTokenAccount: PublicKey,
-    toTokenAccount: PublicKey,
-    agentMint: PublicKey,
-    agentMetadata: PublicKey,
+    asset: PublicKey,
+    collection: PublicKey,
     owner: PublicKey,
+    newOwner: PublicKey,
   ): TransactionInstruction {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: fromTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: toTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
-        { pubkey: agentMetadata, isSigner: false, isWritable: true },
-        { pubkey: owner, isSigner: true, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: true },
+        { pubkey: collection, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: newOwner, isSigner: false, isWritable: false },
+        { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
       ],
       data: IDENTITY_DISCRIMINATORS.transferAgent,
+    });
+  }
+
+  /**
+   * Build syncOwner instruction
+   * Accounts: agent_account, asset
+   */
+  buildSyncOwner(
+    agentAccount: PublicKey,
+    asset: PublicKey,
+  ): TransactionInstruction {
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: asset, isSigner: false, isWritable: false },
+      ],
+      data: IDENTITY_DISCRIMINATORS.syncOwner,
     });
   }
 
@@ -331,28 +299,27 @@ export class IdentityInstructionBuilder {
 
 /**
  * Instruction builder for Reputation Registry
- * Program: 9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa
+ * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
  */
 export class ReputationInstructionBuilder {
   private programId: PublicKey;
 
-  constructor(cluster: Cluster = 'devnet') {
-    this.programId = REPUTATION_PROGRAM_ID;
+  constructor() {
+    this.programId = PROGRAM_ID;
   }
 
   /**
    * Build giveFeedback instruction
    * Matches: give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)
+   * Accounts: client, payer, asset, agent_account, feedback_account, agent_reputation, system_program
    */
   buildGiveFeedback(
     client: PublicKey,
     payer: PublicKey,
-    agentMint: PublicKey,
+    asset: PublicKey,
     agentAccount: PublicKey,
-    clientIndex: PublicKey,
     feedbackAccount: PublicKey,
     agentReputation: PublicKey,
-    identityRegistryProgram: PublicKey,
     agentId: bigint,
     score: number,
     tag1: string,
@@ -377,12 +344,10 @@ export class ReputationInstructionBuilder {
       keys: [
         { pubkey: client, isSigner: true, isWritable: true },
         { pubkey: payer, isSigner: true, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: clientIndex, isSigner: false, isWritable: true },
         { pubkey: feedbackAccount, isSigner: false, isWritable: true },
         { pubkey: agentReputation, isSigner: false, isWritable: true },
-        { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -419,7 +384,7 @@ export class ReputationInstructionBuilder {
 
   /**
    * Build appendResponse instruction
-   * Matches: append_response(agent_id, client_address, feedback_index, response_uri, response_hash)
+   * Matches: append_response(agent_id, feedback_index, response_uri, response_hash)
    */
   buildAppendResponse(
     responder: PublicKey,
@@ -428,7 +393,6 @@ export class ReputationInstructionBuilder {
     responseIndex: PublicKey,
     responseAccount: PublicKey,
     agentId: bigint,
-    clientAddress: PublicKey,
     feedbackIndex: bigint,
     responseUri: string,
     responseHash: Buffer,
@@ -436,7 +400,6 @@ export class ReputationInstructionBuilder {
     const data = Buffer.concat([
       REPUTATION_DISCRIMINATORS.appendResponse,
       this.serializeU64(agentId),
-      clientAddress.toBuffer(),
       this.serializeU64(feedbackIndex),
       this.serializeString(responseUri),
       responseHash,
@@ -472,13 +435,13 @@ export class ReputationInstructionBuilder {
 
 /**
  * Instruction builder for Validation Registry
- * Program: CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW
+ * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
  */
 export class ValidationInstructionBuilder {
   private programId: PublicKey;
 
-  constructor(cluster: Cluster = 'devnet') {
-    this.programId = VALIDATION_PROGRAM_ID;
+  constructor() {
+    this.programId = PROGRAM_ID;
   }
 
   /**
@@ -489,11 +452,9 @@ export class ValidationInstructionBuilder {
     config: PublicKey,
     requester: PublicKey,
     payer: PublicKey,
-    agentMint: PublicKey,
+    asset: PublicKey,
     agentAccount: PublicKey,
-    tokenAccount: PublicKey,
     validationRequest: PublicKey,
-    identityRegistryProgram: PublicKey,
     agentId: bigint,
     validatorAddress: PublicKey,
     nonce: number,
@@ -515,11 +476,9 @@ export class ValidationInstructionBuilder {
         { pubkey: config, isSigner: false, isWritable: true },
         { pubkey: requester, isSigner: true, isWritable: false },
         { pubkey: payer, isSigner: true, isWritable: true },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
-        { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -595,11 +554,9 @@ export class ValidationInstructionBuilder {
   buildCloseValidation(
     config: PublicKey,
     closer: PublicKey,
-    agentMint: PublicKey,
+    asset: PublicKey,
     agentAccount: PublicKey,
-    tokenAccount: PublicKey,
     validationRequest: PublicKey,
-    identityRegistryProgram: PublicKey,
     rentReceiver: PublicKey,
   ): TransactionInstruction {
     return new TransactionInstruction({
@@ -607,11 +564,9 @@ export class ValidationInstructionBuilder {
       keys: [
         { pubkey: config, isSigner: false, isWritable: false },
         { pubkey: closer, isSigner: true, isWritable: false },
-        { pubkey: agentMint, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: tokenAccount, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
-        { pubkey: identityRegistryProgram, isSigner: false, isWritable: false },
         { pubkey: rentReceiver, isSigner: false, isWritable: true },
       ],
       data: VALIDATION_DISCRIMINATORS.closeValidation,

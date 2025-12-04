@@ -66,25 +66,13 @@ export class SolanaSDK {
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
 
-    // Initialize transaction builders
+    // Initialize transaction builders (v0.2.0 - no cluster argument)
     // They work with or without signer - skipSend mode allows building transactions
     // without a signer, the signer pubkey is provided in options instead
     const connection = this.client.getConnection();
-    this.identityTxBuilder = new IdentityTransactionBuilder(
-      connection,
-      this.cluster,
-      this.signer
-    );
-    this.reputationTxBuilder = new ReputationTransactionBuilder(
-      connection,
-      this.cluster,
-      this.signer
-    );
-    this.validationTxBuilder = new ValidationTransactionBuilder(
-      connection,
-      this.cluster,
-      this.signer
-    );
+    this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
+    this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer);
+    this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
 
     // Initialize mint resolver (lazy - will be created on first use)
     // This avoids blocking the constructor with async operations
@@ -132,8 +120,8 @@ export class SolanaSDK {
       // Resolve agentId → mint via NFT metadata
       const agentMint = await this.mintResolver!.resolve(id);
 
-      // Derive PDA from mint
-      const [agentPDA] = await PDAHelpers.getAgentPDA(agentMint);
+      // Derive PDA from asset
+      const [agentPDA] = PDAHelpers.getAgentPDA(agentMint);
 
       // Fetch account data
       const data = await this.client.getAccount(agentPDA);
@@ -234,7 +222,7 @@ export class SolanaSDK {
       // Try indices 0-255 sequentially
       for (let i = 0; i < 256; i++) {
         try {
-          const [extPDA] = await PDAHelpers.getMetadataExtensionPDA(agentMint, i);
+          const [extPDA] = PDAHelpers.getMetadataExtensionPDA(agentMint, i);
           const extData = await this.client.getAccount(extPDA);
 
           if (!extData) {
@@ -489,9 +477,10 @@ export class SolanaSDK {
 
     const result = await this.identityTxBuilder.registerAgent(tokenUri, metadata, options);
 
-    // Cache the agentId → mint mapping for instant lookup (only for successful sent transactions)
-    if ('success' in result && result.success && result.agentId !== undefined && result.agentMint) {
-      this.mintResolver!.addToCache(result.agentId, result.agentMint);
+    // Cache the agentId → asset mapping for instant lookup (only for successful sent transactions)
+    // v0.2.0: Core asset replaces mint
+    if ('success' in result && result.success && result.agentId !== undefined && result.asset) {
+      this.mintResolver!.addToCache(result.agentId, result.asset);
     }
 
     return result;
@@ -513,11 +502,11 @@ export class SolanaSDK {
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → agentMint
+    // Resolve agentId → asset (v0.2.0: Core asset)
     await this.initializeMintResolver();
-    const agentMint = await this.mintResolver!.resolve(id);
+    const asset = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.setAgentUri(agentMint, newUri, options);
+    return await this.identityTxBuilder.setAgentUri(asset, newUri, options);
   }
 
   /**
@@ -538,11 +527,11 @@ export class SolanaSDK {
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → agentMint
+    // Resolve agentId → asset (v0.2.0: Core asset)
     await this.initializeMintResolver();
-    const agentMint = await this.mintResolver!.resolve(id);
+    const asset = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.setMetadataByMint(agentMint, key, value, options);
+    return await this.identityTxBuilder.setMetadata(asset, key, value, options);
   }
 
   /**
@@ -570,9 +559,9 @@ export class SolanaSDK {
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → agentMint
+    // Resolve agentId → asset (v0.2.0: Core asset)
     await this.initializeMintResolver();
-    const agentMint = await this.mintResolver!.resolve(id);
+    const asset = await this.mintResolver!.resolve(id);
 
     // TODO: Handle feedbackAuth when signature verification is implemented
     if (feedbackAuth) {
@@ -580,7 +569,7 @@ export class SolanaSDK {
     }
 
     return await this.reputationTxBuilder.giveFeedback(
-      agentMint,
+      asset,
       id,
       feedbackFile.score,
       feedbackFile.tag1 || '',
@@ -612,8 +601,9 @@ export class SolanaSDK {
 
   /**
    * Append response to feedback (write operation)
+   * v0.2.0: client parameter removed (not needed for global feedback index)
    * @param agentId - Agent ID (number or bigint)
-   * @param client - Client who gave feedback
+   * @param client - Client who gave feedback (kept for API compatibility, not used)
    * @param feedbackIndex - Feedback index (number or bigint)
    * @param responseUri - Response URI
    * @param responseHash - Response hash
@@ -621,7 +611,7 @@ export class SolanaSDK {
    */
   async appendResponse(
     agentId: number | bigint,
-    client: PublicKey,
+    _client: PublicKey,
     feedbackIndex: number | bigint,
     responseUri: string,
     responseHash: Buffer,
@@ -634,7 +624,6 @@ export class SolanaSDK {
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
     return await this.reputationTxBuilder.appendResponse(
       id,
-      client,
       idx,
       responseUri,
       responseHash,
@@ -664,12 +653,12 @@ export class SolanaSDK {
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → agentMint
+    // Resolve agentId → asset (v0.2.0: Core asset)
     await this.initializeMintResolver();
-    const agentMint = await this.mintResolver!.resolve(id);
+    const asset = await this.mintResolver!.resolve(id);
 
     return await this.validationTxBuilder.requestValidation(
-      agentMint,
+      asset,
       id,
       validator,
       nonce,
@@ -731,11 +720,11 @@ export class SolanaSDK {
     }
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → agentMint
+    // Resolve agentId → asset (v0.2.0: Core asset)
     await this.initializeMintResolver();
-    const agentMint = await this.mintResolver!.resolve(id);
+    const asset = await this.mintResolver!.resolve(id);
 
-    return await this.identityTxBuilder.transferAgent(agentMint, newOwner, options);
+    return await this.identityTxBuilder.transferAgent(asset, newOwner, options);
   }
 
   // ==================== Utility Methods ====================
