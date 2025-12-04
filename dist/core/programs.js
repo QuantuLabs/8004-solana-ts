@@ -7,7 +7,7 @@ import { PublicKey } from '@solana/web3.js';
  * Consolidated AgentRegistry8004 Program ID
  * Single program containing Identity, Reputation, and Validation modules
  */
-export const PROGRAM_ID = new PublicKey('3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi');
+export const PROGRAM_ID = new PublicKey('HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp');
 /**
  * Metaplex Core Program ID
  * Used for NFT asset creation and management
