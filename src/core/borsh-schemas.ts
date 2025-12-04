@@ -35,9 +35,9 @@ export class MetadataEntry {
 }
 
 /**
- * Agent Account (Identity Registry) - Variable size (dynamic metadata)
- * Represents an agent NFT with metadata
- * Seeds: ["agent", mint.key()]
+ * Agent Account (Identity Registry) - v0.2.0 (no inline metadata)
+ * Represents an agent NFT - metadata is now stored in separate MetadataEntryPda accounts
+ * Seeds: ["agent", asset.key()]
  */
 export class AgentAccount {
   agent_id: bigint;
@@ -46,7 +46,7 @@ export class AgentAccount {
   agent_uri: string;         // Note: field name is agent_uri, not token_uri
   nft_name: string;
   nft_symbol: string;
-  metadata: MetadataEntry[];
+  // v0.2.0: metadata Vec removed - use MetadataEntryPda instead
   created_at: bigint;
   bump: number;
 
@@ -57,7 +57,6 @@ export class AgentAccount {
     agent_uri: string;
     nft_name: string;
     nft_symbol: string;
-    metadata: MetadataEntry[];
     created_at: bigint;
     bump: number;
   }) {
@@ -67,26 +66,16 @@ export class AgentAccount {
     this.agent_uri = fields.agent_uri;
     this.nft_name = fields.nft_name;
     this.nft_symbol = fields.nft_symbol;
-    this.metadata = fields.metadata;
     this.created_at = fields.created_at;
     this.bump = fields.bump;
   }
 
   static schema: Schema = new Map<any, any>([
     [
-      MetadataEntry,
-      {
-        kind: 'struct',
-        fields: [
-          ['metadata_key', 'string'],      // String in Rust
-          ['metadata_value', ['u8']],      // Vec<u8> in Rust
-        ],
-      },
-    ],
-    [
       AgentAccount,
       {
         kind: 'struct',
+        // v0.2.0: No metadata Vec - stored in separate PDAs
         fields: [
           ['agent_id', 'u64'],
           ['owner', [32]],
@@ -94,7 +83,6 @@ export class AgentAccount {
           ['agent_uri', 'string'],         // agent_uri not token_uri
           ['nft_name', 'string'],
           ['nft_symbol', 'string'],
-          ['metadata', [MetadataEntry]],   // Vec<MetadataEntry>
           ['created_at', 'u64'],           // Note: borsh 0.7 doesn't support i64, using u64
           ['bump', 'u8'],
         ],
@@ -119,6 +107,11 @@ export class AgentAccount {
   // Alias for backwards compatibility
   get token_uri(): string {
     return this.agent_uri;
+  }
+
+  // v0.2.0: metadata is now empty - use MetadataEntryPda for metadata
+  get metadata(): MetadataEntry[] {
+    return [];
   }
 }
 
@@ -251,16 +244,17 @@ export class MetadataExtensionAccount {
 /**
  * Feedback Account (Reputation Registry)
  * Represents feedback given by a client to an agent
- * Seeds: ["feedback", agent_id (LE), client_address, feedback_index (LE)]
+ * Seeds: ["feedback", agent_id (LE), feedback_index (LE)]
+ * v0.2.0: Removed file_uri (stored in events only), removed client from PDA seeds
  */
 export class FeedbackAccount {
   agent_id: bigint;
   client_address: Uint8Array;     // Renamed from client
   feedback_index: bigint;
   score: number;
-  tag1: string;                   // Changed from bytes32 to String
-  tag2: string;                   // Changed from bytes32 to String
-  file_uri: string;
+  tag1: string;                   // Kept on-chain for getProgramAccounts filtering
+  tag2: string;                   // Kept on-chain for getProgramAccounts filtering
+  // v0.2.0: file_uri removed - stored in NewFeedback event only
   file_hash: Uint8Array;
   is_revoked: boolean;            // Renamed from revoked
   created_at: bigint;
@@ -273,7 +267,6 @@ export class FeedbackAccount {
     score: number;
     tag1: string;
     tag2: string;
-    file_uri: string;
     file_hash: Uint8Array;
     is_revoked: boolean;
     created_at: bigint;
@@ -285,7 +278,6 @@ export class FeedbackAccount {
     this.score = fields.score;
     this.tag1 = fields.tag1;
     this.tag2 = fields.tag2;
-    this.file_uri = fields.file_uri;
     this.file_hash = fields.file_hash;
     this.is_revoked = fields.is_revoked;
     this.created_at = fields.created_at;
@@ -297,14 +289,14 @@ export class FeedbackAccount {
       FeedbackAccount,
       {
         kind: 'struct',
+        // v0.2.0: file_uri removed - hash-only storage
         fields: [
           ['agent_id', 'u64'],
           ['client_address', [32]],
           ['feedback_index', 'u64'],
           ['score', 'u8'],
-          ['tag1', 'string'],           // String, not bytes32
-          ['tag2', 'string'],           // String, not bytes32
-          ['file_uri', 'string'],
+          ['tag1', 'string'],           // String, kept for filtering
+          ['tag2', 'string'],           // String, kept for filtering
           ['file_hash', [32]],
           ['is_revoked', 'u8'],         // bool serialized as u8
           ['created_at', 'u64'],          // borsh 0.7 doesn't support i64
@@ -327,7 +319,6 @@ export class FeedbackAccount {
       score: raw.score,
       tag1: raw.tag1,
       tag2: raw.tag2,
-      file_uri: raw.file_uri,
       file_hash: raw.file_hash,
       is_revoked: raw.is_revoked === 1,
       created_at: raw.created_at,
@@ -346,6 +337,11 @@ export class FeedbackAccount {
 
   get revoked(): boolean {
     return this.is_revoked;
+  }
+
+  // v0.2.0: file_uri is now empty - stored in event only
+  get file_uri(): string {
+    return '';
   }
 }
 
@@ -526,14 +522,14 @@ export class ResponseIndexAccount {
  * Response Account (Reputation Registry)
  * Represents a response to feedback (from agent, aggregator, or community)
  * Seeds: ["response", agent_id (LE), feedback_index (LE), response_index (LE)]
- * v0.2.0: Removed client_address from struct (global feedback index)
+ * v0.2.0: Removed client_address and response_uri (URI in events only)
  */
 export class ResponseAccount {
   agent_id: bigint;
   feedback_index: bigint;
   response_index: bigint;
   responder: Uint8Array;
-  response_uri: string;
+  // v0.2.0: response_uri removed - stored in ResponseAppended event only
   response_hash: Uint8Array;
   created_at: bigint;
   bump: number;
@@ -543,7 +539,6 @@ export class ResponseAccount {
     feedback_index: bigint;
     response_index: bigint;
     responder: Uint8Array;
-    response_uri: string;
     response_hash: Uint8Array;
     created_at: bigint;
     bump: number;
@@ -552,7 +547,6 @@ export class ResponseAccount {
     this.feedback_index = fields.feedback_index;
     this.response_index = fields.response_index;
     this.responder = fields.responder;
-    this.response_uri = fields.response_uri;
     this.response_hash = fields.response_hash;
     this.created_at = fields.created_at;
     this.bump = fields.bump;
@@ -563,13 +557,12 @@ export class ResponseAccount {
       ResponseAccount,
       {
         kind: 'struct',
-        // v0.2.0: No client_address - global feedback index
+        // v0.2.0: response_uri removed - hash-only storage
         fields: [
           ['agent_id', 'u64'],
           ['feedback_index', 'u64'],
           ['response_index', 'u64'],
           ['responder', [32]],
-          ['response_uri', 'string'],
           ['response_hash', [32]],
           ['created_at', 'u64'],
           ['bump', 'u8'],
@@ -586,6 +579,11 @@ export class ResponseAccount {
 
   getResponderPublicKey(): PublicKey {
     return new PublicKey(this.responder);
+  }
+
+  // v0.2.0: response_uri is now empty - stored in event only
+  get response_uri(): string {
+    return '';
   }
 }
 

@@ -82,12 +82,8 @@ export class SolanaSDK {
                 return null;
             }
             const agentAccount = AgentAccount.deserialize(data);
-            // Load MetadataExtension PDAs (try getProgramAccounts first, fallback to sequential)
-            const extendedMetadata = await this.loadMetadataExtensions(id, agentMint);
-            // Merge inline + extended metadata
-            if (extendedMetadata.length > 0) {
-                agentAccount.metadata = [...agentAccount.metadata, ...extendedMetadata];
-            }
+            // v0.2.0: Metadata is now stored in separate MetadataEntryPda accounts
+            // Use getMetadata(agentId, key) to read individual entries
             return agentAccount;
         }
         catch (error) {
