@@ -245,16 +245,14 @@ export class MetadataExtensionAccount {
  * Feedback Account (Reputation Registry)
  * Represents feedback given by a client to an agent
  * Seeds: ["feedback", agent_id (LE), feedback_index (LE)]
- * v0.2.0: Removed file_uri (stored in events only), removed client from PDA seeds
+ * Tags moved to optional FeedbackTagsPda for cost optimization (-42%)
  */
 export class FeedbackAccount {
   agent_id: bigint;
   client_address: Uint8Array;     // Renamed from client
   feedback_index: bigint;
   score: number;
-  tag1: string;                   // Kept on-chain for getProgramAccounts filtering
-  tag2: string;                   // Kept on-chain for getProgramAccounts filtering
-  // v0.2.0: file_uri removed - stored in NewFeedback event only
+  // Tags moved to FeedbackTagsPda - use setFeedbackTags if needed
   file_hash: Uint8Array;
   is_revoked: boolean;            // Renamed from revoked
   created_at: bigint;
@@ -265,8 +263,6 @@ export class FeedbackAccount {
     client_address: Uint8Array;
     feedback_index: bigint;
     score: number;
-    tag1: string;
-    tag2: string;
     file_hash: Uint8Array;
     is_revoked: boolean;
     created_at: bigint;
@@ -276,8 +272,6 @@ export class FeedbackAccount {
     this.client_address = fields.client_address;
     this.feedback_index = fields.feedback_index;
     this.score = fields.score;
-    this.tag1 = fields.tag1;
-    this.tag2 = fields.tag2;
     this.file_hash = fields.file_hash;
     this.is_revoked = fields.is_revoked;
     this.created_at = fields.created_at;
@@ -289,17 +283,15 @@ export class FeedbackAccount {
       FeedbackAccount,
       {
         kind: 'struct',
-        // v0.2.0: file_uri removed - hash-only storage
+        // Tags moved to FeedbackTagsPda for cost optimization
         fields: [
           ['agent_id', 'u64'],
           ['client_address', [32]],
           ['feedback_index', 'u64'],
           ['score', 'u8'],
-          ['tag1', 'string'],           // String, kept for filtering
-          ['tag2', 'string'],           // String, kept for filtering
           ['file_hash', [32]],
           ['is_revoked', 'u8'],         // bool serialized as u8
-          ['created_at', 'u64'],          // borsh 0.7 doesn't support i64
+          ['created_at', 'u64'],        // borsh 0.7 doesn't support i64
           ['bump', 'u8'],
         ],
       },
@@ -317,8 +309,6 @@ export class FeedbackAccount {
       client_address: raw.client_address,
       feedback_index: raw.feedback_index,
       score: raw.score,
-      tag1: raw.tag1,
-      tag2: raw.tag2,
       file_hash: raw.file_hash,
       is_revoked: raw.is_revoked === 1,
       created_at: raw.created_at,
@@ -339,9 +329,68 @@ export class FeedbackAccount {
     return this.is_revoked;
   }
 
-  // v0.2.0: file_uri is now empty - stored in event only
+  // file_uri is stored in event only
   get file_uri(): string {
     return '';
+  }
+
+  // Tags moved to FeedbackTagsPda
+  get tag1(): string {
+    return '';
+  }
+
+  get tag2(): string {
+    return '';
+  }
+}
+
+/**
+ * Feedback Tags PDA (Reputation Registry)
+ * Optional tags for feedback, created only when needed
+ * Seeds: ["feedback_tags", agent_id (LE), feedback_index (LE)]
+ * Separated from FeedbackAccount for -42% cost savings when tags not used
+ */
+export class FeedbackTagsPda {
+  agent_id: bigint;
+  feedback_index: bigint;
+  tag1: string;
+  tag2: string;
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    feedback_index: bigint;
+    tag1: string;
+    tag2: string;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.feedback_index = fields.feedback_index;
+    this.tag1 = fields.tag1;
+    this.tag2 = fields.tag2;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map<any, any>([
+    [
+      FeedbackTagsPda,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['feedback_index', 'u64'],
+          ['tag1', 'string'],
+          ['tag2', 'string'],
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): FeedbackTagsPda {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
   }
 }
 

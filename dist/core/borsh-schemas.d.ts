@@ -100,15 +100,13 @@ export declare class MetadataExtensionAccount {
  * Feedback Account (Reputation Registry)
  * Represents feedback given by a client to an agent
  * Seeds: ["feedback", agent_id (LE), feedback_index (LE)]
- * v0.2.0: Removed file_uri (stored in events only), removed client from PDA seeds
+ * Tags moved to optional FeedbackTagsPda for cost optimization (-42%)
  */
 export declare class FeedbackAccount {
     agent_id: bigint;
     client_address: Uint8Array;
     feedback_index: bigint;
     score: number;
-    tag1: string;
-    tag2: string;
     file_hash: Uint8Array;
     is_revoked: boolean;
     created_at: bigint;
@@ -118,8 +116,6 @@ export declare class FeedbackAccount {
         client_address: Uint8Array;
         feedback_index: bigint;
         score: number;
-        tag1: string;
-        tag2: string;
         file_hash: Uint8Array;
         is_revoked: boolean;
         created_at: bigint;
@@ -131,6 +127,30 @@ export declare class FeedbackAccount {
     get client(): Uint8Array;
     get revoked(): boolean;
     get file_uri(): string;
+    get tag1(): string;
+    get tag2(): string;
+}
+/**
+ * Feedback Tags PDA (Reputation Registry)
+ * Optional tags for feedback, created only when needed
+ * Seeds: ["feedback_tags", agent_id (LE), feedback_index (LE)]
+ * Separated from FeedbackAccount for -42% cost savings when tags not used
+ */
+export declare class FeedbackTagsPda {
+    agent_id: bigint;
+    feedback_index: bigint;
+    tag1: string;
+    tag2: string;
+    bump: number;
+    constructor(fields: {
+        agent_id: bigint;
+        feedback_index: bigint;
+        tag1: string;
+        tag2: string;
+        bump: number;
+    });
+    static schema: Schema;
+    static deserialize(data: Buffer): FeedbackTagsPda;
 }
 /**
  * Agent Reputation Metadata Account (Reputation Registry)

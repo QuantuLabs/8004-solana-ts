@@ -71,6 +71,7 @@ export const REPUTATION_DISCRIMINATORS = {
   giveFeedback: anchorDiscriminator('give_feedback'),
   revokeFeedback: anchorDiscriminator('revoke_feedback'),
   appendResponse: anchorDiscriminator('append_response'),
+  setFeedbackTags: anchorDiscriminator('set_feedback_tags'),
 } as const;
 
 /**
@@ -98,6 +99,7 @@ export const ACCOUNT_DISCRIMINATORS = {
   // Reputation Registry accounts
   AgentReputationMetadata: anchorAccountDiscriminator('AgentReputationMetadata'),
   FeedbackAccount: anchorAccountDiscriminator('FeedbackAccount'),
+  FeedbackTagsPda: anchorAccountDiscriminator('FeedbackTagsPda'),
   ClientIndexAccount: anchorAccountDiscriminator('ClientIndexAccount'),
   ResponseIndexAccount: anchorAccountDiscriminator('ResponseIndexAccount'),
   ResponseAccount: anchorAccountDiscriminator('ResponseAccount'),

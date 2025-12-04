@@ -51,6 +51,7 @@ export declare const REPUTATION_DISCRIMINATORS: {
     readonly giveFeedback: Buffer<ArrayBufferLike>;
     readonly revokeFeedback: Buffer<ArrayBufferLike>;
     readonly appendResponse: Buffer<ArrayBufferLike>;
+    readonly setFeedbackTags: Buffer<ArrayBufferLike>;
 };
 /**
  * Validation Registry instruction discriminators
@@ -73,6 +74,7 @@ export declare const ACCOUNT_DISCRIMINATORS: {
     readonly MetadataExtension: Buffer<ArrayBufferLike>;
     readonly AgentReputationMetadata: Buffer<ArrayBufferLike>;
     readonly FeedbackAccount: Buffer<ArrayBufferLike>;
+    readonly FeedbackTagsPda: Buffer<ArrayBufferLike>;
     readonly ClientIndexAccount: Buffer<ArrayBufferLike>;
     readonly ResponseIndexAccount: Buffer<ArrayBufferLike>;
     readonly ResponseAccount: Buffer<ArrayBufferLike>;

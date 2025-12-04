@@ -97,6 +97,28 @@ export class PDAHelpers {
   }
 
   /**
+   * Get Feedback Tags PDA (optional tags for feedback)
+   * Seeds: ["feedback_tags", agent_id, feedback_index]
+   * Created only when tags are provided via set_feedback_tags
+   */
+  static getFeedbackTagsPDA(
+    agentId: bigint,
+    feedbackIndex: bigint,
+    programId: PublicKey = PROGRAM_ID
+  ): [PublicKey, number] {
+    const agentIdBuffer = Buffer.alloc(8);
+    agentIdBuffer.writeBigUInt64LE(agentId);
+
+    const feedbackIndexBuffer = Buffer.alloc(8);
+    feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
+
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('feedback_tags'), agentIdBuffer, feedbackIndexBuffer],
+      programId
+    );
+  }
+
+  /**
    * Get Agent Reputation PDA
    * Seeds: ["agent_reputation", agent_id]
    */
