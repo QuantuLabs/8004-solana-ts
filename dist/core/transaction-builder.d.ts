@@ -82,13 +82,14 @@ export declare class IdentityTransactionBuilder {
      */
     setAgentUri(asset: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set metadata for agent by asset (inline storage)
+     * Set metadata for agent by asset (v0.2.0 - uses MetadataEntryPda)
      * @param asset - Agent Core asset
      * @param key - Metadata key
      * @param value - Metadata value
+     * @param immutable - If true, metadata cannot be modified or deleted (default: false)
      * @param options - Write options (skipSend, signer)
      */
-    setMetadata(asset: PublicKey, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setMetadata(asset: PublicKey, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set metadata extended for agent by asset (extension PDA storage)
      * @param asset - Agent Core asset

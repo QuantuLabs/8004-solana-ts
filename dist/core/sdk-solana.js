@@ -404,9 +404,10 @@ export class SolanaSDK {
      * @param agentId - Agent ID (number or bigint)
      * @param key - Metadata key
      * @param value - Metadata value
+     * @param immutable - If true, metadata cannot be modified or deleted (default: false)
      * @param options - Write options (skipSend, signer)
      */
-    async setMetadata(agentId, key, value, options) {
+    async setMetadata(agentId, key, value, immutable = false, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
@@ -414,7 +415,7 @@ export class SolanaSDK {
         // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
         const asset = await this.mintResolver.resolve(id);
-        return await this.identityTxBuilder.setMetadata(asset, key, value, options);
+        return await this.identityTxBuilder.setMetadata(asset, key, value, immutable, options);
     }
     /**
      * Give feedback to an agent (write operation)
