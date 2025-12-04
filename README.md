@@ -145,7 +145,16 @@ const sdk = new SolanaSDK({
 | `registerAgent` | `(tokenUri?, metadata?) => Promise<TransactionResult>` | Register new agent |
 | `transferAgent` | `(agentId, newOwner) => Promise<TransactionResult>` | Transfer agent ownership |
 | `setAgentUri` | `(agentId, newUri) => Promise<TransactionResult>` | Update agent URI |
-| `setMetadata` | `(agentId, key, value) => Promise<TransactionResult>` | Set metadata extension |
+| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set metadata (v0.2.0: PDA-based) |
+
+**Immutable Metadata (v0.2.0):**
+```typescript
+// Set mutable metadata (default)
+await sdk.setMetadata(agentId, 'version', '1.0.0');
+
+// Set immutable metadata (cannot be modified or deleted)
+await sdk.setMetadata(agentId, 'certification', 'verified', true);
+```
 
 ### Reputation Methods
 
@@ -291,40 +300,46 @@ npm run format
 
 ---
 
-## Operation Costs (Devnet Measured)
+## Operation Costs (Devnet Measured v0.2.0)
 
 Costs measured via SDK E2E tests on Solana devnet:
 
 | Operation | Total Cost | Lamports | Notes |
 |-----------|------------|----------|-------|
-| Register Agent | **0.00859 SOL** | 8,588,320 | Core asset + AgentAccount |
-| Set Metadata | 0.000005 SOL | 5,000 | TX fee only |
-| Give Feedback (1st) | 0.00474 SOL | 4,744,760 | Feedback + AgentReputation init |
-| Give Feedback (2nd+) | 0.00351 SOL | 3,505,880 | FeedbackAccount only |
-| Append Response (1st) | 0.00417 SOL | 4,167,080 | Response + ResponseIndex init |
-| Append Response (2nd+) | 0.00305 SOL | 3,046,520 | ResponseAccount only |
+| Register Agent | **0.00651 SOL** | 6,507,280 | Core asset + AgentAccount |
+| Set Metadata (1st) | **0.00319 SOL** | 3,192,680 | +MetadataEntryPda |
+| Set Metadata (update) | 0.000005 SOL | 5,000 | TX fee only |
+| Give Feedback (1st) | 0.00332 SOL | 3,324,920 | Feedback + AgentReputation init |
+| Give Feedback (2nd+) | 0.00209 SOL | 2,086,040 | FeedbackAccount only |
+| Append Response (1st) | 0.00275 SOL | 2,747,240 | Response + ResponseIndex init |
+| Append Response (2nd+) | 0.00163 SOL | 1,626,680 | ResponseAccount only |
 | Revoke Feedback | 0.000005 SOL | 5,000 | TX fee only |
 | Request Validation | 0.00183 SOL | 1,828,520 | ValidationRequest |
 | Respond to Validation | 0.000005 SOL | 5,000 | TX fee only |
-| **Full Lifecycle** | **0.0259 SOL** | 25,896,080 | Complete test cycle |
+| **Full Lifecycle** | **0.0245 SOL** | 24,521,040 | Complete test cycle |
 
 ### First vs Subsequent Cost Savings
 
 | Operation | 1st Call | 2nd+ Calls | Savings |
 |-----------|----------|------------|---------|
-| Give Feedback | 0.00474 SOL | 0.00351 SOL | **-26%** |
-| Append Response | 0.00417 SOL | 0.00305 SOL | **-27%** |
+| Set Metadata | 0.00319 SOL | 0.000005 SOL | **-99%** |
+| Give Feedback | 0.00332 SOL | 0.00209 SOL | **-37%** |
+| Append Response | 0.00275 SOL | 0.00163 SOL | **-41%** |
 
-First operation creates init_if_needed accounts (AgentReputation, ResponseIndex). Subsequent calls skip initialization.
+First operation creates init_if_needed accounts. Subsequent calls skip initialization.
 
-### v0.2.0 Cost Savings
+### v0.2.0 Optimizations
 
-| Metric | v0.1.0 (Token Metadata) | v0.2.0 (Metaplex Core) | Savings |
-|--------|-------------------------|------------------------|---------|
-| Register Agent | ~0.025 SOL | 0.00859 SOL | **-66%** |
-| Full Lifecycle | ~0.031 SOL | 0.0259 SOL | **-16%** |
+| Optimization | Before | After | Savings |
+|--------------|--------|-------|---------|
+| FeedbackAccount | 375 bytes | 171 bytes | **-54%** |
+| ResponseAccount | 309 bytes | 105 bytes | **-66%** |
+| MetadataEntryPda | Vec (fixed) | Individual PDAs | Unlimited entries |
 
-Metaplex Core eliminates the need for Mint + Metadata + MasterEdition + ATA accounts, resulting in significant cost reduction.
+**v0.2.0 Changes:**
+- **Hash-only storage**: URIs stored in events, only hashes on-chain
+- **Individual Metadata PDAs**: Unlimited entries, deletable for rent recovery
+- **Immutable metadata option**: Lock metadata permanently
 
 ---
 
