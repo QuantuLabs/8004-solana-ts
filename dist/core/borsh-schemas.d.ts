@@ -21,9 +21,9 @@ export declare class MetadataEntry {
     get value(): Uint8Array;
 }
 /**
- * Agent Account (Identity Registry) - Variable size (dynamic metadata)
- * Represents an agent NFT with metadata
- * Seeds: ["agent", mint.key()]
+ * Agent Account (Identity Registry) - v0.2.0 (no inline metadata)
+ * Represents an agent NFT - metadata is now stored in separate MetadataEntryPda accounts
+ * Seeds: ["agent", asset.key()]
  */
 export declare class AgentAccount {
     agent_id: bigint;
@@ -32,7 +32,6 @@ export declare class AgentAccount {
     agent_uri: string;
     nft_name: string;
     nft_symbol: string;
-    metadata: MetadataEntry[];
     created_at: bigint;
     bump: number;
     constructor(fields: {
@@ -42,7 +41,6 @@ export declare class AgentAccount {
         agent_uri: string;
         nft_name: string;
         nft_symbol: string;
-        metadata: MetadataEntry[];
         created_at: bigint;
         bump: number;
     });
@@ -51,6 +49,7 @@ export declare class AgentAccount {
     getOwnerPublicKey(): PublicKey;
     getMintPublicKey(): PublicKey;
     get token_uri(): string;
+    get metadata(): MetadataEntry[];
 }
 /**
  * Registry Config Account (Identity Registry)
@@ -100,7 +99,8 @@ export declare class MetadataExtensionAccount {
 /**
  * Feedback Account (Reputation Registry)
  * Represents feedback given by a client to an agent
- * Seeds: ["feedback", agent_id (LE), client_address, feedback_index (LE)]
+ * Seeds: ["feedback", agent_id (LE), feedback_index (LE)]
+ * v0.2.0: Removed file_uri (stored in events only), removed client from PDA seeds
  */
 export declare class FeedbackAccount {
     agent_id: bigint;
@@ -109,7 +109,6 @@ export declare class FeedbackAccount {
     score: number;
     tag1: string;
     tag2: string;
-    file_uri: string;
     file_hash: Uint8Array;
     is_revoked: boolean;
     created_at: bigint;
@@ -121,7 +120,6 @@ export declare class FeedbackAccount {
         score: number;
         tag1: string;
         tag2: string;
-        file_uri: string;
         file_hash: Uint8Array;
         is_revoked: boolean;
         created_at: bigint;
@@ -132,6 +130,7 @@ export declare class FeedbackAccount {
     getClientPublicKey(): PublicKey;
     get client(): Uint8Array;
     get revoked(): boolean;
+    get file_uri(): string;
 }
 /**
  * Agent Reputation Metadata Account (Reputation Registry)
@@ -207,14 +206,13 @@ export declare class ResponseIndexAccount {
  * Response Account (Reputation Registry)
  * Represents a response to feedback (from agent, aggregator, or community)
  * Seeds: ["response", agent_id (LE), feedback_index (LE), response_index (LE)]
- * v0.2.0: Removed client_address from struct (global feedback index)
+ * v0.2.0: Removed client_address and response_uri (URI in events only)
  */
 export declare class ResponseAccount {
     agent_id: bigint;
     feedback_index: bigint;
     response_index: bigint;
     responder: Uint8Array;
-    response_uri: string;
     response_hash: Uint8Array;
     created_at: bigint;
     bump: number;
@@ -223,7 +221,6 @@ export declare class ResponseAccount {
         feedback_index: bigint;
         response_index: bigint;
         responder: Uint8Array;
-        response_uri: string;
         response_hash: Uint8Array;
         created_at: bigint;
         bump: number;
@@ -231,6 +228,7 @@ export declare class ResponseAccount {
     static schema: Schema;
     static deserialize(data: Buffer): ResponseAccount;
     getResponderPublicKey(): PublicKey;
+    get response_uri(): string;
 }
 /**
  * Validation Config Account (Validation Registry)
