@@ -33,7 +33,6 @@ export interface SolanaFeedback {
  */
 export interface SolanaResponse {
     agentId: bigint;
-    client: PublicKey;
     feedbackIndex: bigint;
     responseIndex: bigint;
     responder: PublicKey;

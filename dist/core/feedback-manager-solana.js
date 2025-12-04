@@ -223,7 +223,6 @@ export class SolanaFeedbackManager {
                 const response = ResponseAccount.deserialize(data);
                 return {
                     agentId: response.agent_id,
-                    client: new PublicKey(response.client),
                     feedbackIndex: response.feedback_index,
                     responseIndex: response.response_index,
                     responder: response.getResponderPublicKey(),
