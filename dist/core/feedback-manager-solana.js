@@ -31,7 +31,7 @@ export class SolanaFeedbackManager {
             const [reputationPDA] = await PDAHelpers.getAgentReputationPDA(agentId);
             const data = await this.client.getAccount(reputationPDA);
             if (!data) {
-                return { averageScore: 0, totalFeedbacks: 0, totalClients: 0 };
+                return { averageScore: 0, totalFeedbacks: 0, nextFeedbackIndex: 0, totalClients: 0 };
             }
             const reputation = AgentReputationAccount.deserialize(data);
             // If no filters, return cached data (O(1))
@@ -39,6 +39,7 @@ export class SolanaFeedbackManager {
                 return {
                     averageScore: reputation.average_score,
                     totalFeedbacks: Number(reputation.total_feedbacks),
+                    nextFeedbackIndex: Number(reputation.next_feedback_index),
                 };
             }
             // If filters provided, fetch all feedbacks and filter client-side
@@ -49,11 +50,12 @@ export class SolanaFeedbackManager {
             return {
                 averageScore: filtered.length > 0 ? sum / filtered.length : 0,
                 totalFeedbacks: filtered.length,
+                nextFeedbackIndex: Number(reputation.next_feedback_index),
             };
         }
         catch (error) {
             console.error(`Error getting summary for agent ${agentId}:`, error);
-            return { averageScore: 0, totalFeedbacks: 0, totalClients: 0 };
+            return { averageScore: 0, totalFeedbacks: 0, nextFeedbackIndex: 0, totalClients: 0 };
         }
     }
     /**
