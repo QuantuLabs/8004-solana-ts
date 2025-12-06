@@ -9,7 +9,7 @@ import { PublicKey } from '@solana/web3.js';
  * Consolidated AgentRegistry8004 Program ID
  * Single program containing Identity, Reputation, and Validation modules
  */
-export const PROGRAM_ID = new PublicKey('HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp');
+export const PROGRAM_ID = new PublicKey('GkC3LyywEPy3LaMr2XUHHKb7XMdd9T2aZ8iohtNGPXJg');
 
 /**
  * Metaplex Core Program ID
