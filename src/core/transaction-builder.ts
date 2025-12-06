@@ -707,7 +707,7 @@ export class ReputationTransactionBuilder {
       // Feedback PDA (without client in seeds for v0.2.0)
       const [feedbackPda] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
 
-      const instruction = this.instructionBuilder.buildGiveFeedback(
+      const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(
         signerPubkey,       // client
         signerPubkey,       // payer
         asset,              // Core asset
@@ -723,7 +723,26 @@ export class ReputationTransactionBuilder {
         feedbackIndex
       );
 
-      const transaction = new Transaction().add(instruction);
+      const transaction = new Transaction().add(giveFeedbackInstruction);
+
+      // If tags are provided, also add setFeedbackTags instruction in the same transaction
+      // This creates the FeedbackTagsPda on-chain (tags are otherwise only in the event)
+      if (tag1 || tag2) {
+        const [feedbackTagsPda] = PDAHelpers.getFeedbackTagsPDA(agentId, feedbackIndex);
+
+        const setTagsInstruction = this.instructionBuilder.buildSetFeedbackTags(
+          signerPubkey,       // client
+          signerPubkey,       // payer
+          feedbackPda,        // feedback_account
+          feedbackTagsPda,    // feedback_tags
+          agentId,
+          feedbackIndex,
+          tag1,
+          tag2
+        );
+
+        transaction.add(setTagsInstruction);
+      }
 
       // If skipSend, return serialized transaction
       if (options?.skipSend) {
