@@ -135,7 +135,7 @@ export class IPFSClient {
      * Note: This requires the Filecoin Pin API or CLI to be available
      * For now, we'll throw an error directing users to use the CLI
      */
-    async _pinToFilecoin(data) {
+    async _pinToFilecoin(_data) {
         // Filecoin Pin typically requires CLI or API access
         // This is a placeholder - in production, you'd call the Filecoin Pin API
         throw new Error('Filecoin Pin via TypeScript SDK not yet fully implemented. ' +
@@ -156,19 +156,14 @@ export class IPFSClient {
      * Add data to IPFS and return CID
      */
     async add(data) {
-        try {
-            if (this.provider === 'pinata') {
-                return await this._pinToPinata(data);
-            }
-            else if (this.provider === 'filecoinPin') {
-                return await this._pinToFilecoin(data);
-            }
-            else {
-                return await this._pinToLocalIpfs(data);
-            }
+        if (this.provider === 'pinata') {
+            return await this._pinToPinata(data);
         }
-        catch (error) {
-            throw error;
+        else if (this.provider === 'filecoinPin') {
+            return await this._pinToFilecoin(data);
+        }
+        else {
+            return await this._pinToLocalIpfs(data);
         }
     }
     /**
@@ -213,18 +208,13 @@ export class IPFSClient {
             const gateways = IPFS_GATEWAYS.map(gateway => `${gateway}${cid}`);
             // Try all gateways in parallel - use the first successful response
             const promises = gateways.map(async (gateway) => {
-                try {
-                    const response = await fetch(gateway, {
-                        signal: AbortSignal.timeout(TIMEOUTS.IPFS_GATEWAY),
-                    });
-                    if (response.ok) {
-                        return await response.text();
-                    }
-                    throw new Error(`HTTP ${response.status}`);
+                const response = await fetch(gateway, {
+                    signal: AbortSignal.timeout(TIMEOUTS.IPFS_GATEWAY),
+                });
+                if (response.ok) {
+                    return await response.text();
                 }
-                catch (error) {
-                    throw error;
-                }
+                throw new Error(`HTTP ${response.status}`);
             });
             // Use Promise.allSettled to get the first successful result
             const results = await Promise.allSettled(promises);

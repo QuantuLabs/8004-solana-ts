@@ -167,7 +167,7 @@ export class IPFSClient {
    * Note: This requires the Filecoin Pin API or CLI to be available
    * For now, we'll throw an error directing users to use the CLI
    */
-  private async _pinToFilecoin(data: string): Promise<string> {
+  private async _pinToFilecoin(_data: string): Promise<string> {
     // Filecoin Pin typically requires CLI or API access
     // This is a placeholder - in production, you'd call the Filecoin Pin API
     throw new Error(
@@ -193,16 +193,12 @@ export class IPFSClient {
    * Add data to IPFS and return CID
    */
   async add(data: string): Promise<string> {
-    try {
-      if (this.provider === 'pinata') {
-        return await this._pinToPinata(data);
-      } else if (this.provider === 'filecoinPin') {
-        return await this._pinToFilecoin(data);
-      } else {
-        return await this._pinToLocalIpfs(data);
-      }
-    } catch (error) {
-      throw error;
+    if (this.provider === 'pinata') {
+      return await this._pinToPinata(data);
+    } else if (this.provider === 'filecoinPin') {
+      return await this._pinToFilecoin(data);
+    } else {
+      return await this._pinToLocalIpfs(data);
     }
   }
 
@@ -253,17 +249,13 @@ export class IPFSClient {
 
       // Try all gateways in parallel - use the first successful response
       const promises = gateways.map(async (gateway) => {
-        try {
-          const response = await fetch(gateway, {
-            signal: AbortSignal.timeout(TIMEOUTS.IPFS_GATEWAY),
-          });
-          if (response.ok) {
-            return await response.text();
-          }
-          throw new Error(`HTTP ${response.status}`);
-        } catch (error) {
-          throw error;
+        const response = await fetch(gateway, {
+          signal: AbortSignal.timeout(TIMEOUTS.IPFS_GATEWAY),
+        });
+        if (response.ok) {
+          return await response.text();
         }
+        throw new Error(`HTTP ${response.status}`);
       });
 
       // Use Promise.allSettled to get the first successful result

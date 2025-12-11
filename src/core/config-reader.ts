@@ -3,7 +3,7 @@
  * Fetches and deserializes the RegistryConfig account from on-chain
  */
 
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection } from '@solana/web3.js';
 import { RegistryConfig } from './borsh-schemas.js';
 import { PDAHelpers } from './pda-helpers.js';
 
