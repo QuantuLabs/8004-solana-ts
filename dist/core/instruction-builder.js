@@ -40,30 +40,6 @@ export class IdentityInstructionBuilder {
         });
     }
     /**
-     * Build registerWithMetadata instruction (Metaplex Core)
-     * @param metadata - Array of metadata entries (max per config)
-     */
-    buildRegisterWithMetadata(config, agentAccount, asset, collection, owner, agentUri = '', metadata = []) {
-        const data = Buffer.concat([
-            IDENTITY_DISCRIMINATORS.registerWithMetadata,
-            this.serializeString(agentUri),
-            this.serializeMetadata(metadata),
-        ]);
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: config, isSigner: false, isWritable: true },
-                { pubkey: agentAccount, isSigner: false, isWritable: true },
-                { pubkey: asset, isSigner: true, isWritable: true },
-                { pubkey: collection, isSigner: false, isWritable: true },
-                { pubkey: owner, isSigner: true, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
-            ],
-            data,
-        });
-    }
-    /**
      * Build setAgentUri instruction (Metaplex Core)
      * Accounts: config, agent_account, asset, collection, owner (signer), system_program, mpl_core_program
      */
@@ -115,47 +91,20 @@ export class IdentityInstructionBuilder {
         });
     }
     /**
-     * Build createMetadataExtension instruction (Metaplex Core)
-     * Accounts: metadata_extension, asset, agent_account, owner (signer), system_program
+     * Build deleteMetadata instruction (v0.2.0 - deletes MetadataEntryPda)
+     * Accounts: metadata_entry, agent_account, asset, owner (signer)
      */
-    buildCreateMetadataExtension(metadataExtension, asset, agentAccount, owner, extensionIndex) {
+    buildDeleteMetadata(metadataEntry, agentAccount, asset, owner, keyHash) {
         const data = Buffer.concat([
-            IDENTITY_DISCRIMINATORS.createMetadataExtension,
-            Buffer.from([extensionIndex]),
+            IDENTITY_DISCRIMINATORS.deleteMetadata,
+            keyHash.slice(0, 8), // [u8; 8] key_hash
         ]);
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: metadataExtension, isSigner: false, isWritable: true },
-                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: metadataEntry, isSigner: false, isWritable: true },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },
-                { pubkey: owner, isSigner: true, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            ],
-            data,
-        });
-    }
-    /**
-     * Build setMetadataExtended instruction (Metaplex Core)
-     * Accounts: metadata_extension, asset, agent_account, owner (signer)
-     */
-    buildSetMetadataExtended(metadataExtension, asset, agentAccount, owner, extensionIndex, key, value) {
-        const valueBytes = Buffer.from(value, 'utf8');
-        const valueLen = Buffer.alloc(4);
-        valueLen.writeUInt32LE(valueBytes.length);
-        const serializedValue = Buffer.concat([valueLen, valueBytes]);
-        const data = Buffer.concat([
-            IDENTITY_DISCRIMINATORS.setMetadataExtended,
-            Buffer.from([extensionIndex]),
-            this.serializeString(key),
-            serializedValue,
-        ]);
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: metadataExtension, isSigner: false, isWritable: true },
                 { pubkey: asset, isSigner: false, isWritable: false },
-                { pubkey: agentAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
             ],
             data,
@@ -198,22 +147,6 @@ export class IdentityInstructionBuilder {
         const len = Buffer.alloc(4);
         len.writeUInt32LE(strBytes.length);
         return Buffer.concat([len, strBytes]);
-    }
-    serializeMetadata(metadata) {
-        const vecLen = Buffer.alloc(4);
-        vecLen.writeUInt32LE(metadata.length);
-        if (metadata.length === 0) {
-            return vecLen;
-        }
-        const entries = metadata.map(entry => {
-            const key = this.serializeString(entry.key);
-            const valueBytes = Buffer.from(entry.value, 'utf8');
-            const valueLen = Buffer.alloc(4);
-            valueLen.writeUInt32LE(valueBytes.length);
-            const value = Buffer.concat([valueLen, valueBytes]);
-            return Buffer.concat([key, value]);
-        });
-        return Buffer.concat([vecLen, ...entries]);
     }
 }
 /**

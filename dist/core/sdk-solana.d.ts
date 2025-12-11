@@ -43,11 +43,6 @@ export declare class SolanaSDK {
      */
     loadAgent(agentId: number | bigint): Promise<AgentAccount | null>;
     /**
-     * Private helper: Load metadata extensions for an agent
-     * Uses getProgramAccounts with memcmp filter, falls back to sequential if not supported
-     */
-    private loadMetadataExtensions;
-    /**
      * Get agent by owner
      * @param owner - Owner public key
      * @returns Array of agent accounts owned by this address

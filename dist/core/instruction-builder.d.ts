@@ -18,14 +18,6 @@ export declare class IdentityInstructionBuilder {
      */
     buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
     /**
-     * Build registerWithMetadata instruction (Metaplex Core)
-     * @param metadata - Array of metadata entries (max per config)
-     */
-    buildRegisterWithMetadata(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string, metadata?: Array<{
-        key: string;
-        value: string;
-    }>): TransactionInstruction;
-    /**
      * Build setAgentUri instruction (Metaplex Core)
      * Accounts: config, agent_account, asset, collection, owner (signer), system_program, mpl_core_program
      */
@@ -36,15 +28,10 @@ export declare class IdentityInstructionBuilder {
      */
     buildSetMetadata(metadataEntry: PublicKey, agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, keyHash: Buffer, key: string, value: string, immutable?: boolean): TransactionInstruction;
     /**
-     * Build createMetadataExtension instruction (Metaplex Core)
-     * Accounts: metadata_extension, asset, agent_account, owner (signer), system_program
+     * Build deleteMetadata instruction (v0.2.0 - deletes MetadataEntryPda)
+     * Accounts: metadata_entry, agent_account, asset, owner (signer)
      */
-    buildCreateMetadataExtension(metadataExtension: PublicKey, asset: PublicKey, agentAccount: PublicKey, owner: PublicKey, extensionIndex: number): TransactionInstruction;
-    /**
-     * Build setMetadataExtended instruction (Metaplex Core)
-     * Accounts: metadata_extension, asset, agent_account, owner (signer)
-     */
-    buildSetMetadataExtended(metadataExtension: PublicKey, asset: PublicKey, agentAccount: PublicKey, owner: PublicKey, extensionIndex: number, key: string, value: string): TransactionInstruction;
+    buildDeleteMetadata(metadataEntry: PublicKey, agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, keyHash: Buffer): TransactionInstruction;
     /**
      * Build transferAgent instruction (Metaplex Core)
      * Accounts: agent_account, asset, collection, owner (signer), new_owner, mpl_core_program
@@ -56,7 +43,6 @@ export declare class IdentityInstructionBuilder {
      */
     buildSyncOwner(agentAccount: PublicKey, asset: PublicKey): TransactionInstruction;
     private serializeString;
-    private serializeMetadata;
 }
 /**
  * Instruction builder for Reputation Registry

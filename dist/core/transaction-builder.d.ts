@@ -91,23 +91,12 @@ export declare class IdentityTransactionBuilder {
      */
     setMetadata(asset: PublicKey, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set metadata extended for agent by asset (extension PDA storage)
-     * @param asset - Agent Core asset
-     * @param extensionIndex - Extension index
-     * @param key - Metadata key
-     * @param value - Metadata value
-     * @param options - Write options (skipSend, signer)
-     */
-    setMetadataExtended(asset: PublicKey, extensionIndex: number, key: string, value: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
-    /**
      * Transfer agent to another owner (Metaplex Core)
      * @param asset - Agent Core asset
      * @param toOwner - New owner public key
      * @param options - Write options (skipSend, signer)
      */
     transferAgent(asset: PublicKey, toOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
-    private estimateInstructionSize;
-    private calculateOptimalBatch;
     private sendWithRetry;
 }
 /**

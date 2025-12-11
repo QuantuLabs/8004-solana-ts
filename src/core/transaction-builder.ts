@@ -161,33 +161,15 @@ export class IdentityTransactionBuilder {
       // Get collection from config
       const collection = configData.getCollectionPublicKey();
 
-      // Split metadata: first 1 inline (MAX_METADATA_ENTRIES=1), rest in extensions
-      const inlineMetadata = metadata && metadata.length > 1
-        ? metadata.slice(0, 1)
-        : metadata;
-      const extendedMetadata = metadata && metadata.length > 1
-        ? metadata.slice(1)
-        : [];
-
-      // Build register instruction - choose based on metadata presence
-      const registerInstruction = inlineMetadata && inlineMetadata.length > 0
-        ? this.instructionBuilder.buildRegisterWithMetadata(
-            configPda,
-            agentPda,
-            assetPubkey,
-            collection,
-            signerPubkey,
-            agentUri || '',
-            inlineMetadata
-          )
-        : this.instructionBuilder.buildRegister(
-            configPda,
-            agentPda,
-            assetPubkey,
-            collection,
-            signerPubkey,
-            agentUri || ''
-          );
+      // Build register instruction (v0.2.0: always use register, metadata via separate PDAs)
+      const registerInstruction = this.instructionBuilder.buildRegister(
+        configPda,
+        agentPda,
+        assetPubkey,
+        collection,
+        signerPubkey,
+        agentUri || ''
+      );
 
       // Create transaction with increased compute budget
       const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
@@ -203,9 +185,9 @@ export class IdentityTransactionBuilder {
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
         const prepared = serializeTransaction(registerTransaction, signerPubkey, blockhash, lastValidBlockHeight);
 
-        // Note: Extended metadata transactions would need separate calls
-        if (extendedMetadata.length > 0) {
-          console.warn('Extended metadata with skipSend not yet supported - only first metadata entry included');
+        // Note: Metadata should be set via separate setMetadata calls after registration
+        if (metadata && metadata.length > 0) {
+          console.warn('Metadata with skipSend: call setMetadata separately after registration');
         }
 
         return {
@@ -228,60 +210,41 @@ export class IdentityTransactionBuilder {
 
       const allSignatures = [registerSignature];
 
-      // If we have extended metadata, create additional transactions
-      if (extendedMetadata.length > 0) {
-        console.log(`Creating ${extendedMetadata.length} metadata extensions...`);
+      // If we have metadata, create MetadataEntryPda accounts (v0.2.0 pattern)
+      if (metadata && metadata.length > 0) {
+        console.log(`Setting ${metadata.length} metadata entries...`);
 
-        const batchSize = this.calculateOptimalBatch(extendedMetadata);
-        console.log(`Batch size: ${batchSize} instructions per transaction`);
+        for (const { key, value } of metadata) {
+          // Compute key hash for PDA derivation
+          const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
 
-        for (let i = 0; i < extendedMetadata.length; i += batchSize) {
-          const batch = extendedMetadata.slice(i, Math.min(i + batchSize, extendedMetadata.length));
-          const batchIndex = Math.floor(i / batchSize);
+          // Derive metadata entry PDA
+          const agentIdBuffer = Buffer.alloc(8);
+          agentIdBuffer.writeBigUInt64LE(agentId);
+          const [metadataEntry] = PublicKey.findProgramAddressSync(
+            [Buffer.from('agent_meta'), agentIdBuffer, keyHash],
+            PROGRAM_ID
+          );
 
-          console.log(`Processing batch ${batchIndex + 1} with ${batch.length} metadata entries...`);
+          const setMetadataIx = this.instructionBuilder.buildSetMetadata(
+            metadataEntry,
+            agentPda,
+            assetPubkey,
+            this.payer.publicKey,
+            keyHash,
+            key,
+            value,
+            false  // not immutable by default
+          );
 
-          const extTx = new Transaction().add(computeBudgetIx);
+          const metadataTx = new Transaction().add(computeBudgetIx).add(setMetadataIx);
+          const metadataSignature = await this.sendWithRetry(metadataTx, [this.payer]);
+          allSignatures.push(metadataSignature);
 
-          for (let j = 0; j < batch.length; j++) {
-            const extensionIndex = i + j;
-            const { key, value } = batch[j];
-
-            const [metadataExtension] = PDAHelpers.getMetadataExtensionPDA(
-              assetPubkey,
-              extensionIndex
-            );
-
-            // First create the extension PDA if needed
-            const createExtIx = this.instructionBuilder.buildCreateMetadataExtension(
-              metadataExtension,
-              assetPubkey,
-              agentPda,
-              this.payer.publicKey,
-              extensionIndex
-            );
-            extTx.add(createExtIx);
-
-            // Then set the metadata
-            const setExtIx = this.instructionBuilder.buildSetMetadataExtended(
-              metadataExtension,
-              assetPubkey,
-              agentPda,
-              this.payer.publicKey,
-              extensionIndex,
-              key,
-              value
-            );
-            extTx.add(setExtIx);
-          }
-
-          const batchSignature = await this.sendWithRetry(extTx, [this.payer]);
-          allSignatures.push(batchSignature);
-
-          console.log(`Batch ${batchIndex + 1} completed: ${batchSignature}`);
+          console.log(`Metadata '${key}' set: ${metadataSignature}`);
         }
 
-        console.log(`All metadata extensions created successfully.`);
+        console.log(`All metadata entries created successfully.`);
       }
 
       return {
@@ -451,72 +414,6 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Set metadata extended for agent by asset (extension PDA storage)
-   * @param asset - Agent Core asset
-   * @param extensionIndex - Extension index
-   * @param key - Metadata key
-   * @param value - Metadata value
-   * @param options - Write options (skipSend, signer)
-   */
-  async setMetadataExtended(
-    asset: PublicKey,
-    extensionIndex: number,
-    key: string,
-    value: string,
-    options?: WriteOptions
-  ): Promise<TransactionResult | PreparedTransaction> {
-    try {
-      const signerPubkey = options?.signer || this.payer?.publicKey;
-      if (!signerPubkey) {
-        throw new Error('signer required when SDK has no signer configured');
-      }
-
-      const [agentPda] = PDAHelpers.getAgentPDA(asset);
-      const [metadataExtension] = PDAHelpers.getMetadataExtensionPDA(
-        asset,
-        extensionIndex
-      );
-
-      const instruction = this.instructionBuilder.buildSetMetadataExtended(
-        metadataExtension,
-        asset,
-        agentPda,
-        signerPubkey,
-        extensionIndex,
-        key,
-        value
-      );
-
-      const transaction = new Transaction().add(instruction);
-
-      // If skipSend, return serialized transaction
-      if (options?.skipSend) {
-        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-      }
-
-      // Normal mode: send transaction
-      if (!this.payer) {
-        throw new Error('No signer configured - SDK is read-only');
-      }
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.payer]
-      );
-
-      return { signature, success: true };
-    } catch (error) {
-      return {
-        signature: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /**
    * Transfer agent to another owner (Metaplex Core)
    * @param asset - Agent Core asset
    * @param toOwner - New owner public key
@@ -577,31 +474,6 @@ export class IdentityTransactionBuilder {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }
-
-  private estimateInstructionSize(key: string, value: string): number {
-    return 8 + 1 + 4 + key.length + 4 + value.length + 60;
-  }
-
-  private calculateOptimalBatch(
-    metadataEntries: Array<{ key: string; value: string }>
-  ): number {
-    const MAX_TX_SIZE = 1232;
-    const TX_OVERHEAD = 200;
-
-    let batchSize = 0;
-    let currentSize = TX_OVERHEAD;
-
-    for (const entry of metadataEntries) {
-      const ixSize = this.estimateInstructionSize(entry.key, entry.value) * 2; // x2 for create + set
-      if (currentSize + ixSize > MAX_TX_SIZE) {
-        break;
-      }
-      currentSize += ixSize;
-      batchSize++;
-    }
-
-    return Math.max(1, batchSize);
   }
 
   private async sendWithRetry(
