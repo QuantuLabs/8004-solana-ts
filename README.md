@@ -59,10 +59,10 @@ const registration = await sdk.registerAgent('ipfs://QmAgentMetadata');
 const agentId = registration.agentId!;
 console.log(`✓ Agent #${agentId} registered`);
 
-// 3. Set metadata
+// 3. Set on-chain metadata (optional)
 await sdk.setMetadata(agentId, 'version', '1.0.0');
 await sdk.setMetadata(agentId, 'certification', 'verified', true); // immutable
-console.log('✓ Metadata set');
+console.log('✓ On-chain metadata set');
 
 // 4. Load agent data
 const agent = await sdk.loadAgent(agentId);
@@ -148,14 +148,17 @@ const sdk = new SolanaSDK({
 | `registerAgent` | `(tokenUri?, metadata?) => Promise<TransactionResult>` | Register new agent |
 | `transferAgent` | `(agentId, newOwner) => Promise<TransactionResult>` | Transfer agent ownership |
 | `setAgentUri` | `(agentId, newUri) => Promise<TransactionResult>` | Update agent URI |
-| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set metadata (v0.2.0: PDA-based) |
+| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set on-chain metadata (optional, PDA-based) |
 
-**Immutable Metadata (v0.2.0):**
+**On-chain Metadata (v0.2.0, optional):**
+
+Store arbitrary key-value pairs directly on-chain. This is optional - most agent data should be in the IPFS registration file.
+
 ```typescript
-// Set mutable metadata (default)
+// Set mutable on-chain metadata (default)
 await sdk.setMetadata(agentId, 'version', '1.0.0');
 
-// Set immutable metadata (cannot be modified or deleted)
+// Set immutable on-chain metadata (cannot be modified or deleted)
 await sdk.setMetadata(agentId, 'certification', 'verified', true);
 ```
 
@@ -310,8 +313,8 @@ Costs measured via SDK E2E tests on Solana devnet:
 | Operation | Total Cost | Lamports | Notes |
 |-----------|------------|----------|-------|
 | Register Agent | **0.00651 SOL** | 6,507,280 | Core asset + AgentAccount |
-| Set Metadata (1st) | **0.00319 SOL** | 3,192,680 | +MetadataEntryPda |
-| Set Metadata (update) | 0.000005 SOL | 5,000 | TX fee only |
+| Set On-chain Metadata (1st) | **0.00319 SOL** | 3,192,680 | +MetadataEntryPda |
+| Set On-chain Metadata (update) | 0.000005 SOL | 5,000 | TX fee only |
 | Give Feedback (1st) | 0.00332 SOL | 3,324,920 | Feedback + AgentReputation init |
 | Give Feedback (2nd+) | 0.00209 SOL | 2,086,040 | FeedbackAccount only |
 | Append Response (1st) | 0.00275 SOL | 2,747,240 | Response + ResponseIndex init |
@@ -325,7 +328,7 @@ Costs measured via SDK E2E tests on Solana devnet:
 
 | Operation | 1st Call | 2nd+ Calls | Savings |
 |-----------|----------|------------|---------|
-| Set Metadata | 0.00319 SOL | 0.000005 SOL | **-99%** |
+| Set On-chain Metadata | 0.00319 SOL | 0.000005 SOL | **-99%** |
 | Give Feedback | 0.00332 SOL | 0.00209 SOL | **-37%** |
 | Append Response | 0.00275 SOL | 0.00163 SOL | **-41%** |
 
@@ -342,7 +345,7 @@ First operation creates init_if_needed accounts. Subsequent calls skip initializ
 **v0.2.0 Changes:**
 - **Hash-only storage**: URIs stored in events, only hashes on-chain
 - **Individual Metadata PDAs**: Unlimited entries, deletable for rent recovery
-- **Immutable metadata option**: Lock metadata permanently
+- **Immutable on-chain metadata option**: Lock metadata permanently
 
 ---
 
