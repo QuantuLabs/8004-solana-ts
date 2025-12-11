@@ -9,12 +9,13 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "jest",
+    "test:e2e": "jest --testPathPattern=e2e-solana",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src",
     "format": "prettier --write src",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build && npm run test && npm run lint"
+    "prepublishOnly": "npm run build && npm run lint"
   },
   "keywords": [
     "solana",

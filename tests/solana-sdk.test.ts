@@ -73,6 +73,29 @@ describe('SolanaSDK', () => {
     it('should have getResponseCount method', () => {
       expect(typeof sdk.getResponseCount).toBe('function');
     });
+
+    it('should have getAgentOwner method', () => {
+      expect(typeof sdk.getAgentOwner).toBe('function');
+    });
+
+    it('should have isAgentOwner method', () => {
+      expect(typeof sdk.isAgentOwner).toBe('function');
+    });
+
+    it('should have getAgent method (alias for loadAgent)', () => {
+      expect(typeof sdk.getAgent).toBe('function');
+    });
+
+    it('getAgent should be an alias for loadAgent', async () => {
+      // Both methods should exist and be functions
+      expect(sdk.getAgent).toBeDefined();
+      expect(sdk.loadAgent).toBeDefined();
+      // They should be the same method or return same results
+      // Testing with non-existent agent (should return null for both)
+      const result1 = await sdk.getAgent(999999n);
+      const result2 = await sdk.loadAgent(999999n);
+      expect(result1).toEqual(result2);
+    });
   });
 
   describe('Write operations (require signer)', () => {
