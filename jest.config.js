@@ -4,6 +4,7 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/tests/e2e-solana/'],
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
