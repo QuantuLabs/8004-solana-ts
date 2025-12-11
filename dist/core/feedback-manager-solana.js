@@ -5,7 +5,8 @@
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { PDAHelpers, REPUTATION_PROGRAM_ID } from './pda-helpers.js';
-import { FeedbackAccount, AgentReputationAccount, ClientIndexAccount, ResponseIndexAccount, ResponseAccount, } from './borsh-schemas.js';
+import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
+import { FeedbackAccount, AgentReputationAccount, ResponseIndexAccount, ResponseAccount, } from './borsh-schemas.js';
 /**
  * Manages feedback operations for Solana
  * Implements all 6 ERC-8004 read functions
@@ -97,13 +98,18 @@ export class SolanaFeedbackManager {
             agentIdBuffer.writeBigUInt64LE(agentId);
             const accounts = await this.client.getProgramAccounts(programId, [
                 {
+                    // Filter by FeedbackAccount discriminator at offset 0
                     memcmp: {
-                        offset: 8, // Skip 8-byte discriminator
-                        bytes: bs58.encode(agentIdBuffer),
+                        offset: 0,
+                        bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.FeedbackAccount),
                     },
                 },
                 {
-                    dataSize: 375, // FeedbackAccount::MAX_SIZE = 8+8+32+8+1+(4+32)+(4+32)+(4+200)+32+1+8+1
+                    // Filter by agent_id at offset 8 (after discriminator)
+                    memcmp: {
+                        offset: 8,
+                        bytes: bs58.encode(agentIdBuffer),
+                    },
                 },
             ]);
             const feedbacks = accounts
@@ -118,20 +124,18 @@ export class SolanaFeedbackManager {
         }
     }
     /**
-     * 4. getLastIndex - Get last feedback index for a client
+     * 4. getLastIndex - Get feedback count for a client
+     * v0.2.0: ClientIndexAccount removed - counts feedbacks by scanning
      * @param agentId - Agent ID
      * @param client - Client public key
-     * @returns Last feedback index (0 if no feedback given)
+     * @returns Count of feedbacks given by this client
      */
     async getLastIndex(agentId, client) {
         try {
-            const [clientIndexPDA] = await PDAHelpers.getClientIndexPDA(agentId, client);
-            const data = await this.client.getAccount(clientIndexPDA);
-            if (!data) {
-                return BigInt(0);
-            }
-            const clientIndex = ClientIndexAccount.deserialize(data);
-            return clientIndex.last_feedback_index;
+            // v0.2.0: Count feedbacks from this client by scanning
+            const allFeedbacks = await this.readAllFeedback(agentId, true);
+            const clientFeedbacks = allFeedbacks.filter((f) => f.client.equals(client));
+            return BigInt(clientFeedbacks.length);
         }
         catch (error) {
             console.error(`Error getting last index for agent ${agentId}, client ${client.toBase58()}:`, error);
@@ -140,35 +144,16 @@ export class SolanaFeedbackManager {
     }
     /**
      * 5. getClients - Get all clients who gave feedback to an agent
+     * v0.2.0: ClientIndexAccount removed - extracts unique clients from FeedbackAccounts
      * @param agentId - Agent ID
      * @returns Array of unique client public keys
-     *
-     * Implementation: Uses getProgramAccounts to fetch all ClientIndexAccounts for agent
      */
     async getClients(agentId) {
         try {
-            const programId = REPUTATION_PROGRAM_ID;
-            // Create memcmp filter for agent_id
-            const agentIdBuffer = Buffer.alloc(8);
-            agentIdBuffer.writeBigUInt64LE(agentId);
-            const accounts = await this.client.getProgramAccounts(programId, [
-                {
-                    memcmp: {
-                        offset: 8, // Skip discriminator
-                        bytes: bs58.encode(agentIdBuffer),
-                    },
-                },
-                {
-                    dataSize: 64, // ClientIndexAccount size (estimated)
-                },
-            ]);
-            // Extract unique client pubkeys from ClientIndexAccount
-            const clients = accounts.map((acc) => {
-                const clientIndex = ClientIndexAccount.deserialize(acc.data);
-                return clientIndex.getClientPublicKey();
-            });
-            // Remove duplicates
-            const uniqueClients = Array.from(new Set(clients.map((c) => c.toBase58()))).map((base58) => new PublicKey(base58));
+            // v0.2.0: Extract unique clients from feedbacks
+            const allFeedbacks = await this.readAllFeedback(agentId, true);
+            // Extract unique client pubkeys
+            const uniqueClients = Array.from(new Set(allFeedbacks.map((f) => f.client.toBase58()))).map((base58) => new PublicKey(base58));
             return uniqueClients;
         }
         catch (error) {

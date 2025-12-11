@@ -10,6 +10,7 @@ import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
+import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntry } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
@@ -155,17 +156,26 @@ export class SolanaSDK {
     try {
       const programId = this.programIds.identityRegistry;
 
-      // Fetch all agent accounts
+      // Fetch all agent accounts using discriminator filter
       const accounts = await this.client.getProgramAccounts(programId, [
         {
-          dataSize: 297, // AgentAccount size
+          // Filter by AgentAccount discriminator at offset 0
+          memcmp: {
+            offset: 0,
+            bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount),
+          },
+        },
+        {
+          // Filter by owner at offset 16 (8 discriminator + 8 agent_id)
+          memcmp: {
+            offset: 16,
+            bytes: owner.toBase58(),
+          },
         },
       ]);
 
-      // Filter by owner and deserialize
-      const agents = accounts
-        .map((acc) => AgentAccount.deserialize(acc.data))
-        .filter((agent) => agent.getOwnerPublicKey().equals(owner));
+      // Deserialize accounts
+      const agents = accounts.map((acc) => AgentAccount.deserialize(acc.data));
 
       return agents;
     } catch (error) {

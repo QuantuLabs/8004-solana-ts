@@ -78,18 +78,18 @@ export declare class SolanaFeedbackManager {
      */
     readAllFeedback(agentId: bigint, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
     /**
-     * 4. getLastIndex - Get last feedback index for a client
+     * 4. getLastIndex - Get feedback count for a client
+     * v0.2.0: ClientIndexAccount removed - counts feedbacks by scanning
      * @param agentId - Agent ID
      * @param client - Client public key
-     * @returns Last feedback index (0 if no feedback given)
+     * @returns Count of feedbacks given by this client
      */
     getLastIndex(agentId: bigint, client: PublicKey): Promise<bigint>;
     /**
      * 5. getClients - Get all clients who gave feedback to an agent
+     * v0.2.0: ClientIndexAccount removed - extracts unique clients from FeedbackAccounts
      * @param agentId - Agent ID
      * @returns Array of unique client public keys
-     *
-     * Implementation: Uses getProgramAccounts to fetch all ClientIndexAccounts for agent
      */
     getClients(agentId: bigint): Promise<PublicKey[]>;
     /**

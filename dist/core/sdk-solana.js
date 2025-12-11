@@ -2,10 +2,12 @@
  * Solana SDK for Agent0 - ERC-8004 implementation
  * Provides read and write access to Solana-based agent registries
  */
+import bs58 from 'bs58';
 import { SolanaClient, createDevnetClient, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
+import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
@@ -101,16 +103,25 @@ export class SolanaSDK {
         this.client.requireAdvancedQueries('getAgentsByOwner');
         try {
             const programId = this.programIds.identityRegistry;
-            // Fetch all agent accounts
+            // Fetch all agent accounts using discriminator filter
             const accounts = await this.client.getProgramAccounts(programId, [
                 {
-                    dataSize: 297, // AgentAccount size
+                    // Filter by AgentAccount discriminator at offset 0
+                    memcmp: {
+                        offset: 0,
+                        bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount),
+                    },
+                },
+                {
+                    // Filter by owner at offset 16 (8 discriminator + 8 agent_id)
+                    memcmp: {
+                        offset: 16,
+                        bytes: owner.toBase58(),
+                    },
                 },
             ]);
-            // Filter by owner and deserialize
-            const agents = accounts
-                .map((acc) => AgentAccount.deserialize(acc.data))
-                .filter((agent) => agent.getOwnerPublicKey().equals(owner));
+            // Deserialize accounts
+            const agents = accounts.map((acc) => AgentAccount.deserialize(acc.data));
             return agents;
         }
         catch (error) {
