@@ -7,7 +7,7 @@
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 /**
  * Instruction builder for Identity Registry (Metaplex Core)
- * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
+ * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export declare class IdentityInstructionBuilder {
     private programId;
@@ -60,7 +60,7 @@ export declare class IdentityInstructionBuilder {
 }
 /**
  * Instruction builder for Reputation Registry
- * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
+ * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export declare class ReputationInstructionBuilder {
     private programId;
@@ -92,7 +92,7 @@ export declare class ReputationInstructionBuilder {
 }
 /**
  * Instruction builder for Validation Registry
- * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
+ * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export declare class ValidationInstructionBuilder {
     private programId;

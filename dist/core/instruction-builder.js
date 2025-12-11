@@ -10,7 +10,7 @@ import { IDENTITY_DISCRIMINATORS, REPUTATION_DISCRIMINATORS, VALIDATION_DISCRIMI
 import { toBigInt } from './utils.js';
 /**
  * Instruction builder for Identity Registry (Metaplex Core)
- * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
+ * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class IdentityInstructionBuilder {
     constructor() {
@@ -218,7 +218,7 @@ export class IdentityInstructionBuilder {
 }
 /**
  * Instruction builder for Reputation Registry
- * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
+ * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class ReputationInstructionBuilder {
     constructor() {
@@ -338,7 +338,7 @@ export class ReputationInstructionBuilder {
 }
 /**
  * Instruction builder for Validation Registry
- * Program: 3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi
+ * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class ValidationInstructionBuilder {
     constructor() {

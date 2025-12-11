@@ -197,7 +197,7 @@ Built on a consolidated Solana program implementing ERC-8004:
 
 | Program | Program ID | Description |
 |---------|------------|-------------|
-| **AgentRegistry8004** | `3ah8M3viTAGHRkAqGshRF4b48Ey1ZwrMViQ6bkUNamTi` | Identity, Reputation & Validation (consolidated) |
+| **AgentRegistry8004** | `HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp` | Identity, Reputation & Validation (consolidated) |
 
 **v0.2.0 Changes:**
 - Single consolidated program (was 3 separate programs)
