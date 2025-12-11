@@ -266,20 +266,30 @@ export class SolanaFeedbackManager {
   /**
    * 6. getResponseCount - Get number of responses for a feedback
    * @param agentId - Agent ID
-   * @param client - Client public key
    * @param feedbackIndex - Feedback index
    * @returns Number of responses
+   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
   async getResponseCount(
     agentId: bigint,
-    client: PublicKey,
     feedbackIndex: bigint
+  ): Promise<number>;
+  async getResponseCount(
+    agentId: bigint,
+    clientOrFeedbackIndex: PublicKey | bigint,
+    feedbackIndex?: bigint
   ): Promise<number> {
+    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+    const actualFeedbackIndex =
+      feedbackIndex !== undefined
+        ? feedbackIndex
+        : (clientOrFeedbackIndex as bigint);
+
     try {
       // v0.2.0: client no longer in PDA seeds
       const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(
         agentId,
-        feedbackIndex
+        actualFeedbackIndex
       );
       const data = await this.client.getAccount(responseIndexPDA);
 
@@ -291,7 +301,7 @@ export class SolanaFeedbackManager {
       return Number(responseIndex.response_count);
     } catch (error) {
       console.error(
-        `Error getting response count for agent ${agentId}, client ${client.toBase58()}, index ${feedbackIndex}:`,
+        `Error getting response count for agent ${agentId}, index ${actualFeedbackIndex}:`,
         error
       );
       return 0;
@@ -301,15 +311,26 @@ export class SolanaFeedbackManager {
   /**
    * Bonus: Read all responses for a feedback
    * Not required by ERC-8004 but useful for SDK completeness
+   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
   async readResponses(
     agentId: bigint,
-    client: PublicKey,
     feedbackIndex: bigint
+  ): Promise<SolanaResponse[]>;
+  async readResponses(
+    agentId: bigint,
+    clientOrFeedbackIndex: PublicKey | bigint,
+    feedbackIndex?: bigint
   ): Promise<SolanaResponse[]> {
+    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+    const actualFeedbackIndex =
+      feedbackIndex !== undefined
+        ? feedbackIndex
+        : (clientOrFeedbackIndex as bigint);
+
     try {
       // Get response count first
-      const responseCount = await this.getResponseCount(agentId, client, feedbackIndex);
+      const responseCount = await this.getResponseCount(agentId, actualFeedbackIndex);
 
       if (responseCount === 0) {
         return [];
@@ -321,7 +342,7 @@ export class SolanaFeedbackManager {
       for (let i = 0; i < responseCount; i++) {
         const [responsePDA] = PDAHelpers.getResponsePDA(
           agentId,
-          feedbackIndex,
+          actualFeedbackIndex,
           BigInt(i)
         );
         responsePDAs.push(responsePDA);
@@ -348,7 +369,7 @@ export class SolanaFeedbackManager {
       return responses;
     } catch (error) {
       console.error(
-        `Error reading responses for agent ${agentId}, client ${client.toBase58()}, index ${feedbackIndex}:`,
+        `Error reading responses for agent ${agentId}, index ${actualFeedbackIndex}:`,
         error
       );
       return [];

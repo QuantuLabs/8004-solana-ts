@@ -95,16 +95,17 @@ export declare class SolanaFeedbackManager {
     /**
      * 6. getResponseCount - Get number of responses for a feedback
      * @param agentId - Agent ID
-     * @param client - Client public key
      * @param feedbackIndex - Feedback index
      * @returns Number of responses
+     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    getResponseCount(agentId: bigint, client: PublicKey, feedbackIndex: bigint): Promise<number>;
+    getResponseCount(agentId: bigint, feedbackIndex: bigint): Promise<number>;
     /**
      * Bonus: Read all responses for a feedback
      * Not required by ERC-8004 but useful for SDK completeness
+     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    readResponses(agentId: bigint, client: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]>;
+    readResponses(agentId: bigint, feedbackIndex: bigint): Promise<SolanaResponse[]>;
     /**
      * Helper to map FeedbackAccount to SolanaFeedback interface
      */

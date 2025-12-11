@@ -418,27 +418,68 @@ export class SolanaSDK {
   /**
    * 6. Get response count for a feedback
    * @param agentId - Agent ID (number or bigint)
-   * @param client - Client public key
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Number of responses
+   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
-  async getResponseCount(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint) {
+  async getResponseCount(agentId: number | bigint, feedbackIndex: number | bigint): Promise<number>;
+  async getResponseCount(
+    agentId: number | bigint,
+    clientOrFeedbackIndex: PublicKey | number | bigint,
+    feedbackIndex?: number | bigint
+  ): Promise<number> {
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.feedbackManager.getResponseCount(id, client, idx);
+
+    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+    let actualFeedbackIndex: bigint;
+    if (feedbackIndex !== undefined) {
+      // Old signature: (agentId, client, feedbackIndex)
+      actualFeedbackIndex =
+        typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    } else {
+      // New signature: (agentId, feedbackIndex)
+      actualFeedbackIndex =
+        typeof clientOrFeedbackIndex === 'number'
+          ? BigInt(clientOrFeedbackIndex)
+          : (clientOrFeedbackIndex as bigint);
+    }
+
+    return await this.feedbackManager.getResponseCount(id, actualFeedbackIndex);
   }
 
   /**
    * Bonus: Read all responses for a feedback
    * @param agentId - Agent ID (number or bigint)
-   * @param client - Client public key
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Array of response objects
+   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
-  async readResponses(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint) {
+  async readResponses(
+    agentId: number | bigint,
+    feedbackIndex: number | bigint
+  ): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
+  async readResponses(
+    agentId: number | bigint,
+    clientOrFeedbackIndex: PublicKey | number | bigint,
+    feedbackIndex?: number | bigint
+  ): Promise<import('./feedback-manager-solana.js').SolanaResponse[]> {
     const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.feedbackManager.readResponses(id, client, idx);
+
+    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+    let actualFeedbackIndex: bigint;
+    if (feedbackIndex !== undefined) {
+      // Old signature: (agentId, client, feedbackIndex)
+      actualFeedbackIndex =
+        typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    } else {
+      // New signature: (agentId, feedbackIndex)
+      actualFeedbackIndex =
+        typeof clientOrFeedbackIndex === 'number'
+          ? BigInt(clientOrFeedbackIndex)
+          : (clientOrFeedbackIndex as bigint);
+    }
+
+    return await this.feedbackManager.readResponses(id, actualFeedbackIndex);
   }
 
   // ==================== Write Methods (require signer) ====================

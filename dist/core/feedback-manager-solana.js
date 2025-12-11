@@ -176,17 +176,14 @@ export class SolanaFeedbackManager {
             return [];
         }
     }
-    /**
-     * 6. getResponseCount - Get number of responses for a feedback
-     * @param agentId - Agent ID
-     * @param client - Client public key
-     * @param feedbackIndex - Feedback index
-     * @returns Number of responses
-     */
-    async getResponseCount(agentId, client, feedbackIndex) {
+    async getResponseCount(agentId, clientOrFeedbackIndex, feedbackIndex) {
+        // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+        const actualFeedbackIndex = feedbackIndex !== undefined
+            ? feedbackIndex
+            : clientOrFeedbackIndex;
         try {
             // v0.2.0: client no longer in PDA seeds
-            const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(agentId, feedbackIndex);
+            const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(agentId, actualFeedbackIndex);
             const data = await this.client.getAccount(responseIndexPDA);
             if (!data) {
                 return 0;
@@ -195,18 +192,18 @@ export class SolanaFeedbackManager {
             return Number(responseIndex.response_count);
         }
         catch (error) {
-            console.error(`Error getting response count for agent ${agentId}, client ${client.toBase58()}, index ${feedbackIndex}:`, error);
+            console.error(`Error getting response count for agent ${agentId}, index ${actualFeedbackIndex}:`, error);
             return 0;
         }
     }
-    /**
-     * Bonus: Read all responses for a feedback
-     * Not required by ERC-8004 but useful for SDK completeness
-     */
-    async readResponses(agentId, client, feedbackIndex) {
+    async readResponses(agentId, clientOrFeedbackIndex, feedbackIndex) {
+        // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+        const actualFeedbackIndex = feedbackIndex !== undefined
+            ? feedbackIndex
+            : clientOrFeedbackIndex;
         try {
             // Get response count first
-            const responseCount = await this.getResponseCount(agentId, client, feedbackIndex);
+            const responseCount = await this.getResponseCount(agentId, actualFeedbackIndex);
             if (responseCount === 0) {
                 return [];
             }
@@ -214,7 +211,7 @@ export class SolanaFeedbackManager {
             // v0.2.0: client no longer in PDA seeds
             const responsePDAs = [];
             for (let i = 0; i < responseCount; i++) {
-                const [responsePDA] = PDAHelpers.getResponsePDA(agentId, feedbackIndex, BigInt(i));
+                const [responsePDA] = PDAHelpers.getResponsePDA(agentId, actualFeedbackIndex, BigInt(i));
                 responsePDAs.push(responsePDA);
             }
             // Batch fetch all response accounts
@@ -236,7 +233,7 @@ export class SolanaFeedbackManager {
             return responses;
         }
         catch (error) {
-            console.error(`Error reading responses for agent ${agentId}, client ${client.toBase58()}, index ${feedbackIndex}:`, error);
+            console.error(`Error reading responses for agent ${agentId}, index ${actualFeedbackIndex}:`, error);
             return [];
         }
     }
