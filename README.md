@@ -1,12 +1,12 @@
-# 8004-solana-ts
+# 8004-solana
 
 > TypeScript SDK for ERC-8004 on Solana
 > Agent identity, reputation and validation standard
 
+[![npm](https://img.shields.io/npm/v/8004-solana)](https://www.npmjs.com/package/8004-solana)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
 [![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantuLabs/8004-solana)
-[![Version](https://img.shields.io/badge/version-0.2.0-green)](https://github.com/QuantuLabs/8004-solana-ts)
 
 > **v0.2.0** - Consolidated program architecture with Metaplex Core
 
@@ -28,27 +28,18 @@ Built with compatibility in mind - API aligned with the reference [agent0-ts SDK
 
 ## Installation
 
-### Install from GitHub
+```bash
+npm install 8004-solana
+# or
+yarn add 8004-solana
+# or
+pnpm add 8004-solana
+```
+
+### Or install from GitHub
 
 ```bash
 npm install github:QuantuLabs/8004-solana-ts
-# or
-yarn add github:QuantuLabs/8004-solana-ts
-# or
-pnpm add github:QuantuLabs/8004-solana-ts
-```
-
-### Or clone and link locally
-
-```bash
-git clone https://github.com/QuantuLabs/8004-solana-ts.git
-cd 8004-solana-ts
-npm install
-npm run build
-npm link
-
-# In your project
-npm link 8004-solana-ts
 ```
 
 ---
@@ -56,37 +47,49 @@ npm link 8004-solana-ts
 ## Quick Start
 
 ```typescript
-import { SolanaSDK } from '8004-solana-ts';
+import { SolanaSDK } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
 
-// Create SDK (devnet by default, no signer = read-only)
-const sdk = new SolanaSDK();
+// 1. Setup SDK with signer
+const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.SOLANA_PRIVATE_KEY!)));
+const sdk = new SolanaSDK({ signer });
 
-// Load an existing agent
-const agent = await sdk.loadAgent(13);
-console.log('Agent:', agent?.name);
+// 2. Register a new agent
+const registration = await sdk.registerAgent('ipfs://QmAgentMetadata');
+const agentId = registration.agentId!;
+console.log(`✓ Agent #${agentId} registered`);
 
-// Get reputation summary
-const summary = await sdk.getReputationSummary(13);
-console.log(`Average score: ${summary.averageScore}`);
-console.log(`Total feedbacks: ${summary.count}`);
+// 3. Set metadata
+await sdk.setMetadata(agentId, 'version', '1.0.0');
+await sdk.setMetadata(agentId, 'certification', 'verified', true); // immutable
+console.log('✓ Metadata set');
 
-// For write operations, provide a signer
-const signer = Keypair.fromSecretKey(/* your keypair */);
-const writeSdk = new SolanaSDK({ signer });
+// 4. Load agent data
+const agent = await sdk.loadAgent(agentId);
+console.log(`Agent: ${agent?.nft_name}, Owner: ${agent?.getOwnerPublicKey().toBase58()}`);
 
-// Submit feedback (requires signer)
-await writeSdk.giveFeedback(13, {
+// 5. Give feedback (from another user)
+await sdk.giveFeedback(agentId, {
   score: 85,
   tag1: 'helpful',
   tag2: 'accurate',
-  fileUri: 'ipfs://QmFeedbackHash',
+  fileUri: 'ipfs://QmFeedbackDetails',
   fileHash: Buffer.alloc(32),
 });
+console.log('✓ Feedback submitted');
+
+// 6. Get reputation summary
+const summary = await sdk.getReputationSummary(agentId);
+console.log(`Score: ${summary.averageScore}/100 (${summary.count} reviews)`);
+
+// 7. Transfer agent (optional)
+// await sdk.transferAgent(agentId, newOwnerPublicKey);
 ```
 
 > **Note**: For advanced queries like `getAgentsByOwner()`, a custom RPC provider is recommended.
 > Free tiers are available - see [RPC Provider Recommendations](#rpc-provider-recommendations).
+
+📁 **More examples**: See the [`examples/`](#examples) directory for complete usage patterns.
 
 ---
 
@@ -95,7 +98,7 @@ await writeSdk.giveFeedback(13, {
 ### Constructor
 
 ```typescript
-import { SolanaSDK } from '8004-solana-ts';
+import { SolanaSDK } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
 
 // Default: devnet, read-only
