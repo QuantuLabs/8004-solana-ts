@@ -1,31 +1,8 @@
 /**
- * Anchor instruction discriminators
- * These are the first 8 bytes of SHA256("global:instruction_name")
- * Generated to match the deployed 8004-solana programs
+ * Anchor instruction and account discriminators
+ * Hardcoded from IDL: target/idl/agent_registry_8004.json
+ * These are the first 8 bytes of SHA256("global:instruction_name") or SHA256("account:StructName")
  */
-import { createHash } from 'crypto';
-/**
- * Calculate Anchor discriminator from instruction name
- * @param instructionName - The instruction name (e.g., "initialize", "give_feedback")
- * @returns 8-byte discriminator buffer
- */
-export function anchorDiscriminator(instructionName) {
-    const hash = createHash('sha256')
-        .update(`global:${instructionName}`)
-        .digest();
-    return hash.slice(0, 8);
-}
-/**
- * Calculate Anchor account discriminator from account struct name
- * @param accountName - The account struct name (e.g., "AgentAccount", "RegistryConfig")
- * @returns 8-byte discriminator buffer
- */
-export function anchorAccountDiscriminator(accountName) {
-    const hash = createHash('sha256')
-        .update(`account:${accountName}`)
-        .digest();
-    return hash.slice(0, 8);
-}
 /**
  * Check if account data matches expected discriminator
  * @param data - Account data buffer
@@ -39,64 +16,56 @@ export function matchesDiscriminator(data, expected) {
 }
 /**
  * Identity Registry instruction discriminators
- * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
+ * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export const IDENTITY_DISCRIMINATORS = {
-    initialize: anchorDiscriminator('initialize'),
-    registerEmpty: anchorDiscriminator('register_empty'),
-    register: anchorDiscriminator('register'),
-    registerWithMetadata: anchorDiscriminator('register_with_metadata'),
-    getMetadata: anchorDiscriminator('get_metadata'),
-    setMetadata: anchorDiscriminator('set_metadata_pda'), // v0.2.0: now uses PDA
-    setAgentUri: anchorDiscriminator('set_agent_uri'),
-    syncOwner: anchorDiscriminator('sync_owner'),
-    ownerOf: anchorDiscriminator('owner_of'),
-    createMetadataExtension: anchorDiscriminator('create_metadata_extension'),
-    setMetadataExtended: anchorDiscriminator('set_metadata_extended'),
-    getMetadataExtended: anchorDiscriminator('get_metadata_extended'),
-    transferAgent: anchorDiscriminator('transfer_agent'),
-    deleteMetadata: anchorDiscriminator('delete_metadata_pda'), // v0.2.0
+    initialize: Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]),
+    register: Buffer.from([211, 124, 67, 15, 211, 194, 178, 240]),
+    registerEmpty: Buffer.from([89, 129, 72, 185, 119, 80, 140, 126]),
+    setMetadata: Buffer.from([236, 60, 23, 48, 138, 69, 196, 153]),
+    deleteMetadata: Buffer.from([228, 190, 195, 255, 61, 221, 26, 152]),
+    setAgentUri: Buffer.from([43, 254, 168, 104, 192, 51, 39, 46]),
+    syncOwner: Buffer.from([46, 5, 232, 198, 59, 158, 160, 119]),
+    transferAgent: Buffer.from([137, 80, 56, 147, 107, 99, 39, 192]),
+    ownerOf: Buffer.from([165, 85, 46, 249, 100, 61, 249, 112]),
 };
 /**
  * Reputation Registry instruction discriminators
- * Program: 9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa
+ * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export const REPUTATION_DISCRIMINATORS = {
-    initialize: anchorDiscriminator('initialize'),
-    giveFeedback: anchorDiscriminator('give_feedback'),
-    revokeFeedback: anchorDiscriminator('revoke_feedback'),
-    appendResponse: anchorDiscriminator('append_response'),
-    setFeedbackTags: anchorDiscriminator('set_feedback_tags'),
+    giveFeedback: Buffer.from([145, 136, 123, 3, 215, 165, 98, 41]),
+    revokeFeedback: Buffer.from([211, 37, 230, 82, 118, 216, 137, 206]),
+    appendResponse: Buffer.from([162, 210, 186, 50, 180, 4, 47, 104]),
+    setFeedbackTags: Buffer.from([154, 15, 246, 207, 174, 114, 255, 7]),
 };
 /**
  * Validation Registry instruction discriminators
- * Program: CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW
+ * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export const VALIDATION_DISCRIMINATORS = {
-    initialize: anchorDiscriminator('initialize'),
-    requestValidation: anchorDiscriminator('request_validation'),
-    respondToValidation: anchorDiscriminator('respond_to_validation'),
-    updateValidation: anchorDiscriminator('update_validation'),
-    closeValidation: anchorDiscriminator('close_validation'),
+    requestValidation: Buffer.from([72, 26, 53, 67, 228, 30, 144, 53]),
+    respondToValidation: Buffer.from([64, 212, 244, 6, 65, 134, 212, 122]),
+    updateValidation: Buffer.from([226, 29, 107, 7, 213, 48, 146, 149]),
+    closeValidation: Buffer.from([107, 119, 249, 35, 5, 54, 9, 15]),
 };
 /**
  * Account discriminators for identifying account types
- * Each Anchor account has a unique 8-byte discriminator: SHA256("account:StructName")[0..8]
+ * Hardcoded from IDL - SHA256("account:StructName")[0..8]
  */
 export const ACCOUNT_DISCRIMINATORS = {
     // Identity Registry accounts
-    RegistryConfig: anchorAccountDiscriminator('RegistryConfig'),
-    AgentAccount: anchorAccountDiscriminator('AgentAccount'),
-    MetadataExtension: anchorAccountDiscriminator('MetadataExtension'),
+    RegistryConfig: Buffer.from([23, 118, 10, 246, 173, 231, 243, 156]),
+    AgentAccount: Buffer.from([241, 119, 69, 140, 233, 9, 112, 50]),
+    MetadataEntryPda: Buffer.from([48, 145, 12, 249, 176, 141, 197, 187]),
     // Reputation Registry accounts
-    AgentReputationMetadata: anchorAccountDiscriminator('AgentReputationMetadata'),
-    FeedbackAccount: anchorAccountDiscriminator('FeedbackAccount'),
-    FeedbackTagsPda: anchorAccountDiscriminator('FeedbackTagsPda'),
-    ClientIndexAccount: anchorAccountDiscriminator('ClientIndexAccount'),
-    ResponseIndexAccount: anchorAccountDiscriminator('ResponseIndexAccount'),
-    ResponseAccount: anchorAccountDiscriminator('ResponseAccount'),
+    AgentReputationMetadata: Buffer.from([36, 5, 84, 173, 138, 224, 67, 147]),
+    FeedbackAccount: Buffer.from([152, 72, 187, 86, 92, 83, 63, 83]),
+    FeedbackTagsPda: Buffer.from([146, 71, 130, 126, 94, 143, 108, 190]),
+    ResponseIndexAccount: Buffer.from([140, 144, 220, 22, 67, 28, 170, 200]),
+    ResponseAccount: Buffer.from([136, 150, 125, 240, 7, 27, 61, 60]),
     // Validation Registry accounts
-    ValidationConfig: anchorAccountDiscriminator('ValidationConfig'),
-    ValidationRequest: anchorAccountDiscriminator('ValidationRequest'),
+    ValidationStats: Buffer.from([121, 215, 78, 88, 54, 243, 224, 187]),
+    ValidationRequest: Buffer.from([130, 174, 153, 111, 74, 241, 40, 140]),
 };
 //# sourceMappingURL=instruction-discriminators.js.map

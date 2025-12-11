@@ -1,20 +1,8 @@
 /**
- * Anchor instruction discriminators
- * These are the first 8 bytes of SHA256("global:instruction_name")
- * Generated to match the deployed 8004-solana programs
+ * Anchor instruction and account discriminators
+ * Hardcoded from IDL: target/idl/agent_registry_8004.json
+ * These are the first 8 bytes of SHA256("global:instruction_name") or SHA256("account:StructName")
  */
-/**
- * Calculate Anchor discriminator from instruction name
- * @param instructionName - The instruction name (e.g., "initialize", "give_feedback")
- * @returns 8-byte discriminator buffer
- */
-export declare function anchorDiscriminator(instructionName: string): Buffer;
-/**
- * Calculate Anchor account discriminator from account struct name
- * @param accountName - The account struct name (e.g., "AgentAccount", "RegistryConfig")
- * @returns 8-byte discriminator buffer
- */
-export declare function anchorAccountDiscriminator(accountName: string): Buffer;
 /**
  * Check if account data matches expected discriminator
  * @param data - Account data buffer
@@ -24,61 +12,53 @@ export declare function anchorAccountDiscriminator(accountName: string): Buffer;
 export declare function matchesDiscriminator(data: Buffer, expected: Buffer): boolean;
 /**
  * Identity Registry instruction discriminators
- * Program: 2dtvC4hyb7M6fKwNx1C6h4SrahYvor3xW11eH6uLNvSZ
+ * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export declare const IDENTITY_DISCRIMINATORS: {
-    readonly initialize: Buffer<ArrayBufferLike>;
-    readonly registerEmpty: Buffer<ArrayBufferLike>;
-    readonly register: Buffer<ArrayBufferLike>;
-    readonly registerWithMetadata: Buffer<ArrayBufferLike>;
-    readonly getMetadata: Buffer<ArrayBufferLike>;
-    readonly setMetadata: Buffer<ArrayBufferLike>;
-    readonly setAgentUri: Buffer<ArrayBufferLike>;
-    readonly syncOwner: Buffer<ArrayBufferLike>;
-    readonly ownerOf: Buffer<ArrayBufferLike>;
-    readonly createMetadataExtension: Buffer<ArrayBufferLike>;
-    readonly setMetadataExtended: Buffer<ArrayBufferLike>;
-    readonly getMetadataExtended: Buffer<ArrayBufferLike>;
-    readonly transferAgent: Buffer<ArrayBufferLike>;
-    readonly deleteMetadata: Buffer<ArrayBufferLike>;
+    readonly initialize: Buffer<ArrayBuffer>;
+    readonly register: Buffer<ArrayBuffer>;
+    readonly registerEmpty: Buffer<ArrayBuffer>;
+    readonly setMetadata: Buffer<ArrayBuffer>;
+    readonly deleteMetadata: Buffer<ArrayBuffer>;
+    readonly setAgentUri: Buffer<ArrayBuffer>;
+    readonly syncOwner: Buffer<ArrayBuffer>;
+    readonly transferAgent: Buffer<ArrayBuffer>;
+    readonly ownerOf: Buffer<ArrayBuffer>;
 };
 /**
  * Reputation Registry instruction discriminators
- * Program: 9WcFLL3Fsqs96JxuewEt9iqRwULtCZEsPT717hPbsQAa
+ * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export declare const REPUTATION_DISCRIMINATORS: {
-    readonly initialize: Buffer<ArrayBufferLike>;
-    readonly giveFeedback: Buffer<ArrayBufferLike>;
-    readonly revokeFeedback: Buffer<ArrayBufferLike>;
-    readonly appendResponse: Buffer<ArrayBufferLike>;
-    readonly setFeedbackTags: Buffer<ArrayBufferLike>;
+    readonly giveFeedback: Buffer<ArrayBuffer>;
+    readonly revokeFeedback: Buffer<ArrayBuffer>;
+    readonly appendResponse: Buffer<ArrayBuffer>;
+    readonly setFeedbackTags: Buffer<ArrayBuffer>;
 };
 /**
  * Validation Registry instruction discriminators
- * Program: CXvuHNGWTHNqXmWr95wSpNGKR3kpcJUhzKofTF3zsoxW
+ * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export declare const VALIDATION_DISCRIMINATORS: {
-    readonly initialize: Buffer<ArrayBufferLike>;
-    readonly requestValidation: Buffer<ArrayBufferLike>;
-    readonly respondToValidation: Buffer<ArrayBufferLike>;
-    readonly updateValidation: Buffer<ArrayBufferLike>;
-    readonly closeValidation: Buffer<ArrayBufferLike>;
+    readonly requestValidation: Buffer<ArrayBuffer>;
+    readonly respondToValidation: Buffer<ArrayBuffer>;
+    readonly updateValidation: Buffer<ArrayBuffer>;
+    readonly closeValidation: Buffer<ArrayBuffer>;
 };
 /**
  * Account discriminators for identifying account types
- * Each Anchor account has a unique 8-byte discriminator: SHA256("account:StructName")[0..8]
+ * Hardcoded from IDL - SHA256("account:StructName")[0..8]
  */
 export declare const ACCOUNT_DISCRIMINATORS: {
-    readonly RegistryConfig: Buffer<ArrayBufferLike>;
-    readonly AgentAccount: Buffer<ArrayBufferLike>;
-    readonly MetadataExtension: Buffer<ArrayBufferLike>;
-    readonly AgentReputationMetadata: Buffer<ArrayBufferLike>;
-    readonly FeedbackAccount: Buffer<ArrayBufferLike>;
-    readonly FeedbackTagsPda: Buffer<ArrayBufferLike>;
-    readonly ClientIndexAccount: Buffer<ArrayBufferLike>;
-    readonly ResponseIndexAccount: Buffer<ArrayBufferLike>;
-    readonly ResponseAccount: Buffer<ArrayBufferLike>;
-    readonly ValidationConfig: Buffer<ArrayBufferLike>;
-    readonly ValidationRequest: Buffer<ArrayBufferLike>;
+    readonly RegistryConfig: Buffer<ArrayBuffer>;
+    readonly AgentAccount: Buffer<ArrayBuffer>;
+    readonly MetadataEntryPda: Buffer<ArrayBuffer>;
+    readonly AgentReputationMetadata: Buffer<ArrayBuffer>;
+    readonly FeedbackAccount: Buffer<ArrayBuffer>;
+    readonly FeedbackTagsPda: Buffer<ArrayBuffer>;
+    readonly ResponseIndexAccount: Buffer<ArrayBuffer>;
+    readonly ResponseAccount: Buffer<ArrayBuffer>;
+    readonly ValidationStats: Buffer<ArrayBuffer>;
+    readonly ValidationRequest: Buffer<ArrayBuffer>;
 };
 //# sourceMappingURL=instruction-discriminators.d.ts.map
