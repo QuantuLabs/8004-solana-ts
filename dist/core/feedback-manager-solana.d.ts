@@ -11,6 +11,7 @@ import type { IPFSClient } from '../core/ipfs-client.js';
 export interface SolanaAgentSummary {
     averageScore: number;
     totalFeedbacks: number;
+    nextFeedbackIndex: number;
     totalClients?: number;
 }
 /**

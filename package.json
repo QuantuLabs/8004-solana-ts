@@ -1,5 +1,5 @@
 {
-  "name": "8004-solana-ts",
+  "name": "8004-solana",
   "version": "0.2.0",
   "description": "TypeScript SDK for ERC-8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
@@ -13,7 +13,8 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src",
     "format": "prettier --write src",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build && npm run test && npm run lint"
   },
   "keywords": [
     "solana",
