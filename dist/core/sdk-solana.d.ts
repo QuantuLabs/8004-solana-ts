@@ -137,19 +137,19 @@ export declare class SolanaSDK {
     /**
      * 6. Get response count for a feedback
      * @param agentId - Agent ID (number or bigint)
-     * @param client - Client public key
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Number of responses
+     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    getResponseCount(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint): Promise<number>;
+    getResponseCount(agentId: number | bigint, feedbackIndex: number | bigint): Promise<number>;
     /**
      * Bonus: Read all responses for a feedback
      * @param agentId - Agent ID (number or bigint)
-     * @param client - Client public key
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Array of response objects
+     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    readResponses(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint): Promise<import("./feedback-manager-solana.js").SolanaResponse[]>;
+    readResponses(agentId: number | bigint, feedbackIndex: number | bigint): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
     /**
      * Check if SDK has write permissions
      */

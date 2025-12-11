@@ -330,29 +330,41 @@ export class SolanaSDK {
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
         return await this.feedbackManager.getClients(id);
     }
-    /**
-     * 6. Get response count for a feedback
-     * @param agentId - Agent ID (number or bigint)
-     * @param client - Client public key
-     * @param feedbackIndex - Feedback index (number or bigint)
-     * @returns Number of responses
-     */
-    async getResponseCount(agentId, client, feedbackIndex) {
+    async getResponseCount(agentId, clientOrFeedbackIndex, feedbackIndex) {
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.feedbackManager.getResponseCount(id, client, idx);
+        // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+        let actualFeedbackIndex;
+        if (feedbackIndex !== undefined) {
+            // Old signature: (agentId, client, feedbackIndex)
+            actualFeedbackIndex =
+                typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+        }
+        else {
+            // New signature: (agentId, feedbackIndex)
+            actualFeedbackIndex =
+                typeof clientOrFeedbackIndex === 'number'
+                    ? BigInt(clientOrFeedbackIndex)
+                    : clientOrFeedbackIndex;
+        }
+        return await this.feedbackManager.getResponseCount(id, actualFeedbackIndex);
     }
-    /**
-     * Bonus: Read all responses for a feedback
-     * @param agentId - Agent ID (number or bigint)
-     * @param client - Client public key
-     * @param feedbackIndex - Feedback index (number or bigint)
-     * @returns Array of response objects
-     */
-    async readResponses(agentId, client, feedbackIndex) {
+    async readResponses(agentId, clientOrFeedbackIndex, feedbackIndex) {
         const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-        const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.feedbackManager.readResponses(id, client, idx);
+        // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
+        let actualFeedbackIndex;
+        if (feedbackIndex !== undefined) {
+            // Old signature: (agentId, client, feedbackIndex)
+            actualFeedbackIndex =
+                typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+        }
+        else {
+            // New signature: (agentId, feedbackIndex)
+            actualFeedbackIndex =
+                typeof clientOrFeedbackIndex === 'number'
+                    ? BigInt(clientOrFeedbackIndex)
+                    : clientOrFeedbackIndex;
+        }
+        return await this.feedbackManager.readResponses(id, actualFeedbackIndex);
     }
     // ==================== Write Methods (require signer) ====================
     /**
