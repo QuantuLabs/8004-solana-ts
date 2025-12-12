@@ -3,7 +3,7 @@
  *
  * Demonstrates how to:
  * 1. Fetch all agents with feedbacks using getAllAgents({ includeFeedbacks: true })
- * 2. Fetch IPFS metadata in parallel batches
+ * 2. Fetch off-chain metadata in parallel batches (supports IPFS and HTTP URLs)
  * 3. Export complete data to JSON file
  *
  * Requirements:
@@ -15,8 +15,9 @@
 import { writeFileSync } from 'fs';
 import { SolanaSDK } from '../src/index.js';
 
+// Gateway for converting ipfs:// URIs to HTTP (HTTP URLs are used directly)
 const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
-const IPFS_BATCH_SIZE = 10;
+const METADATA_BATCH_SIZE = 10;
 
 interface IndexedFeedback {
   client: string;
@@ -61,8 +62,12 @@ async function processBatches<T, R>(
   return results;
 }
 
+/**
+ * Fetch metadata from URI (supports both IPFS and HTTP URLs)
+ */
 async function fetchMetadata(uri: string): Promise<Record<string, unknown> | null> {
   if (!uri) return null;
+  // Convert ipfs:// to HTTP gateway URL, or use HTTP URL directly
   const url = uri.startsWith('ipfs://')
     ? `${IPFS_GATEWAY}${uri.replace('ipfs://', '')}`
     : uri;
@@ -103,36 +108,35 @@ async function main() {
   const agentsWithMeta = await sdk.getAllAgents({ includeFeedbacks: true });
   console.log(`Found ${agentsWithMeta.length} agents\n`);
 
-  // 2. Parallel batch: Fetch IPFS metadata
-  console.log('Fetching IPFS metadata...');
-  const ipfsResults = await processBatches(
+  // 2. Parallel batch: Fetch off-chain metadata (IPFS or HTTP)
+  console.log('Fetching metadata...');
+  const metadataResults = await processBatches(
     agentsWithMeta,
     ({ account }) => fetchMetadata(account.agent_uri),
-    IPFS_BATCH_SIZE,
-    'IPFS'
+    METADATA_BATCH_SIZE,
+    'Metadata'
   );
 
   // 3. Combine results - feedbacks already included!
   console.log('\nBuilding index...');
   const indexed: IndexedAgent[] = agentsWithMeta.map(({ account, metadata, feedbacks }, i) => {
-    const fbs = feedbacks || [];
-    const avgScore = fbs.length > 0
-      ? fbs.reduce((sum, f) => sum + f.score, 0) / fbs.length
+    const avgScore = feedbacks.length > 0
+      ? feedbacks.reduce((sum, f) => sum + f.score, 0) / feedbacks.length
       : 0;
 
     return {
       agentId: Number(account.agent_id),
-      name: (ipfsResults[i]?.name as string) || account.nft_name,
-      description: (ipfsResults[i]?.description as string) || '',
+      name: (metadataResults[i]?.name as string) || account.nft_name,
+      description: (metadataResults[i]?.description as string) || '',
       owner: account.getOwnerPublicKey().toBase58(),
       uri: account.agent_uri,
       endpoints:
-        (ipfsResults[i]?.endpoints as Array<{ name: string; endpoint: string }>) || [],
-      skills: (ipfsResults[i]?.skills as string[]) || [],
-      domains: (ipfsResults[i]?.domains as string[]) || [],
+        (metadataResults[i]?.endpoints as Array<{ name: string; endpoint: string }>) || [],
+      skills: (metadataResults[i]?.skills as string[]) || [],
+      domains: (metadataResults[i]?.domains as string[]) || [],
       averageScore: Math.round(avgScore),
-      feedbackCount: fbs.length,
-      feedbacks: fbs.map((f) => {
+      feedbackCount: feedbacks.length,
+      feedbacks: feedbacks.map((f) => {
         const ts = Number(f.createdAt) * 1000;
         const date = new Date(ts);
         return {
