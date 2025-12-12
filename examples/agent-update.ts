@@ -2,14 +2,19 @@
  * Agent Update Example - Solana SDK
  *
  * Demonstrates:
- * 1. Updating agent URI (off-chain metadata pointer)
+ * 1. Updating agent URI via IPFS upload
  * 2. Setting on-chain metadata extensions
  * 3. Making metadata immutable (permanent, cannot be changed)
  * 4. Reading on-chain metadata
  * 5. Deleting metadata (if not immutable)
  */
 import { Keypair } from '@solana/web3.js';
-import { SolanaSDK } from '../src/index.js';
+import {
+  SolanaSDK,
+  IPFSClient,
+  buildRegistrationFileJson,
+  EndpointType,
+} from '../src/index.js';
 
 async function main() {
   const secretKey = process.env.SOLANA_PRIVATE_KEY;
@@ -31,10 +36,35 @@ async function main() {
   }
   console.log(`Current URI: ${agent.agent_uri}`);
 
-  // === UPDATE AGENT URI ===
-  // Points to off-chain metadata (IPFS, Arweave, etc.)
-  await sdk.setAgentUri(agentId, 'ipfs://QmUpdatedMetadata');
-  console.log('Agent URI updated!');
+  // === UPDATE AGENT URI VIA IPFS ===
+  if (process.env.PINATA_JWT) {
+    const ipfs = new IPFSClient({
+      pinataEnabled: true,
+      pinataJwt: process.env.PINATA_JWT,
+    });
+
+    // Build updated metadata
+    const updatedMetadata = buildRegistrationFileJson({
+      name: 'My Updated Agent',
+      description: 'Agent with updated metadata',
+      image: 'https://example.com/new-avatar.png',
+      endpoints: [
+        { type: EndpointType.MCP, value: 'https://api.example.com/mcp/v2' },
+      ],
+    });
+
+    // Upload to IPFS
+    const newCid = await ipfs.addJson(updatedMetadata);
+    const newUri = `ipfs://${newCid}`;
+
+    // Update on-chain URI
+    await sdk.setAgentUri(agentId, newUri);
+    console.log(`Agent URI updated to: ${newUri}`);
+  } else {
+    // Without IPFS, use direct URL
+    await sdk.setAgentUri(agentId, 'https://my-server.com/metadata.json');
+    console.log('Agent URI updated (web URL)');
+  }
 
   // === ON-CHAIN METADATA EXTENSIONS ===
   // Store key-value pairs directly on Solana blockchain
