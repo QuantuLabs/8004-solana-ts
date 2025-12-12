@@ -16,6 +16,7 @@ export interface Endpoint {
 
 /**
  * Agent registration file structure
+ * Used to build ERC-8004 compliant metadata JSON
  */
 export interface RegistrationFile {
   agentId?: AgentId; // None until minted
@@ -26,13 +27,16 @@ export interface RegistrationFile {
   walletAddress?: Address;
   walletChainId?: number; // Chain ID for the wallet address
   endpoints: Endpoint[];
-  trustModels: (TrustModel | string)[];
-  owners: Address[]; // from chain (read-only, hydrated)
-  operators: Address[]; // from chain (read-only, hydrated)
-  active: boolean; // SDK extension flag
-  x402support: boolean; // Binary flag for x402 payment support
-  metadata: Record<string, any>; // arbitrary, SDK-managed
-  updatedAt: Timestamp;
+  trustModels?: (TrustModel | string)[]; // optional trust models
+  owners?: Address[]; // from chain (read-only, hydrated)
+  operators?: Address[]; // from chain (read-only, hydrated)
+  active?: boolean; // SDK extension flag (default: true)
+  x402support?: boolean; // Binary flag for x402 payment support (default: false)
+  metadata?: Record<string, any>; // arbitrary, SDK-managed
+  updatedAt?: Timestamp;
+  // OASF taxonomies - validated against taxonomy files
+  skills?: string[]; // e.g. ["natural_language_processing/summarization"]
+  domains?: string[]; // e.g. ["finance_and_business/investment_services"]
 }
 
 /**
