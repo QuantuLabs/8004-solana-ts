@@ -1,7 +1,12 @@
 /**
  * Agent Update Example - Solana SDK
  *
- * Demonstrates updating agent metadata
+ * Demonstrates:
+ * 1. Updating agent URI (off-chain metadata pointer)
+ * 2. Setting on-chain metadata extensions
+ * 3. Making metadata immutable (permanent, cannot be changed)
+ * 4. Reading on-chain metadata
+ * 5. Deleting metadata (if not immutable)
  */
 import { Keypair } from '@solana/web3.js';
 import { SolanaSDK } from '../src/index.js';
@@ -26,13 +31,47 @@ async function main() {
   }
   console.log(`Current URI: ${agent.agent_uri}`);
 
-  // Update agent URI
+  // === UPDATE AGENT URI ===
+  // Points to off-chain metadata (IPFS, Arweave, etc.)
   await sdk.setAgentUri(agentId, 'ipfs://QmUpdatedMetadata');
   console.log('Agent URI updated!');
 
-  // Set metadata extension
+  // === ON-CHAIN METADATA EXTENSIONS ===
+  // Store key-value pairs directly on Solana blockchain
+  // Useful for: version info, capabilities, certifications, etc.
+
+  // Set mutable metadata (can be updated/deleted later)
   await sdk.setMetadata(agentId, 'version', '2.0.0');
-  console.log('Metadata updated!');
+  console.log('Version metadata set (mutable)');
+
+  // Set another metadata entry
+  await sdk.setMetadata(agentId, 'api_version', 'v1');
+  console.log('API version metadata set (mutable)');
+
+  // === IMMUTABLE METADATA ===
+  // Once set as immutable, CANNOT be modified or deleted
+  // Use for: permanent certifications, audit trails, compliance records
+
+  // Set immutable metadata (4th parameter = true)
+  await sdk.setMetadata(agentId, 'certified_by', 'TrustAuthority', true);
+  console.log('Certification metadata set (IMMUTABLE - permanent!)');
+
+  // === READ ON-CHAIN METADATA ===
+  const version = await sdk.getMetadata(agentId, 'version');
+  console.log(`Read version: ${version}`);
+
+  const certification = await sdk.getMetadata(agentId, 'certified_by');
+  console.log(`Read certification: ${certification}`);
+
+  // === DELETE METADATA ===
+  // Only works for mutable metadata (will fail for immutable)
+  await sdk.deleteMetadata(agentId, 'api_version');
+  console.log('API version metadata deleted');
+
+  // This would FAIL because certified_by is immutable:
+  // await sdk.deleteMetadata(agentId, 'certified_by'); // Error!
+
+  console.log('\nDone! On-chain metadata updated.');
 }
 
 main().catch(console.error);
