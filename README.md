@@ -1,28 +1,24 @@
 # 8004-solana
 
-> TypeScript SDK for ERC-8004 on Solana
+> TypeScript SDK for 8004 on Solana
 > Agent identity, reputation and validation standard
 
 [![npm](https://img.shields.io/npm/v/8004-solana)](https://www.npmjs.com/package/8004-solana)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
+[![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana-blue)](https://github.com/QuantuLabs/8004-solana)
 [![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantuLabs/8004-solana)
-
-> **v0.2.0** - Consolidated program architecture with Metaplex Core
 
 ---
 
 ## About
 
-**8004-solana-ts** is a TypeScript SDK implementing the [ERC-8004 standard](https://eips.ethereum.org/EIPS/eip-8004) on Solana. It provides a seamless way to:
+**8004-solana** is a TypeScript SDK implementing the [8004 standard](https://eips.ethereum.org/EIPS/eip-8004) on Solana. It provides a seamless way to:
 
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
 - **Submit and query reputation feedback**
 - **Track agent ownership** and transfers
 - **OASF taxonomies** support (skills & domains)
-
-Built with compatibility in mind - API aligned with the reference [agent0-ts SDK](https://github.com/agent0lab/agent0-ts).
 
 ---
 
@@ -36,83 +32,114 @@ yarn add 8004-solana
 pnpm add 8004-solana
 ```
 
-### Or install from GitHub
-
-```bash
-npm install github:QuantuLabs/8004-solana-ts
-```
-
 ---
 
 ## Quick Start
+
+### 1. Setup SDK
 
 ```typescript
 import { SolanaSDK } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
 
-// 1. Setup SDK with signer
-const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.SOLANA_PRIVATE_KEY!)));
+// Load your wallet keypair from environment variable
+// The private key should be a JSON array of bytes: [1,2,3,...]
+const privateKey = JSON.parse(process.env.SOLANA_PRIVATE_KEY!);
+const signer = Keypair.fromSecretKey(Uint8Array.from(privateKey));
+
+// Initialize the SDK with your signer
+// Default cluster is 'devnet', use { cluster: 'mainnet-beta' } for production
 const sdk = new SolanaSDK({ signer });
-
-// 2. Register a new agent
-const registration = await sdk.registerAgent('ipfs://QmAgentMetadata');
-const agentId = registration.agentId!;
-console.log(`✓ Agent #${agentId} registered`);
-
-// 3. Set on-chain metadata (optional)
-await sdk.setMetadata(agentId, 'version', '1.0.0');
-await sdk.setMetadata(agentId, 'certification', 'verified', true); // immutable
-console.log('✓ On-chain metadata set');
-
-// 4. Load agent data
-const agent = await sdk.loadAgent(agentId);
-console.log(`Agent: ${agent?.nft_name}, Owner: ${agent?.getOwnerPublicKey().toBase58()}`);
-
-// 5. Give feedback (from another user)
-await sdk.giveFeedback(agentId, {
-  score: 85,
-  tag1: 'helpful',
-  tag2: 'accurate',
-  fileUri: 'ipfs://QmFeedbackDetails',
-  fileHash: Buffer.alloc(32),
-});
-console.log('✓ Feedback submitted');
-
-// 6. Get reputation summary
-const summary = await sdk.getReputationSummary(agentId);
-console.log(`Score: ${summary.averageScore}/100 (${summary.count} reviews)`);
-
-// 7. Transfer agent (optional)
-// await sdk.transferAgent(agentId, newOwnerPublicKey);
 ```
 
-> **Note**: For advanced queries like `getAgentsByOwner()`, a custom RPC provider is recommended.
-> Free tiers are available - see [RPC Provider Recommendations](#rpc-provider-recommendations).
+### 2. Register an Agent
 
-📁 **More examples**: See the [`examples/`](#examples) directory for complete usage patterns.
+```typescript
+import { buildRegistrationFileJson, EndpointType } from '8004-solana';
+import type { RegistrationFile } from '8004-solana';
+
+// Build 8004 agent metadata
+const agent: RegistrationFile = {
+  name: 'My AI Assistant',
+  description: 'A helpful AI agent for task automation',
+  image: 'ipfs://QmYourImageHash',
+  endpoints: [
+    { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
+    { type: EndpointType.A2A, value: 'https://api.example.com/a2a' },
+  ],
+  // OASF taxonomies (optional) - see docs/OASF.md for valid slugs
+  skills: ['natural_language_processing/summarization', 'analytical_skills/coding_skills/text_to_code'],
+  domains: ['technology/software_engineering'],
+};
+
+// Convert to 8004 JSON (validates skills/domains)
+const metadata = buildRegistrationFileJson(agent);
+
+// Upload to IPFS (using your preferred provider)
+const metadataUri = await uploadToIPFS(metadata); // "ipfs://Qm..."
+
+// Register the agent on-chain
+const result = await sdk.registerAgent(metadataUri);
+console.log(`Agent #${result.agentId} registered: ${result.signature}`);
+```
+
+### 3. Load Agent Data
+
+```typescript
+// Fetch agent data from the blockchain
+const agent = await sdk.loadAgent(agentId);
+
+if (agent) {
+  console.log(`Name: ${agent.nft_name}`);
+  console.log(`Owner: ${agent.getOwnerPublicKey().toBase58()}`);
+  console.log(`URI: ${agent.agent_uri}`);
+  console.log(`Asset: ${agent.getAssetPublicKey().toBase58()}`);
+}
+```
+
+### 4. Give Feedback
+
+```typescript
+// Submit feedback for an agent (as a client/user)
+// Score is 0-100, tags are optional keywords
+await sdk.giveFeedback(agentId, {
+  score: 85,                              // Rating out of 100
+  tag1: 'helpful',                        // Optional: first tag
+  tag2: 'accurate',                       // Optional: second tag
+  fileUri: 'ipfs://QmFeedbackDetails',    // Optional: detailed feedback file
+  fileHash: Buffer.alloc(32),             // Optional: SHA256 hash of file
+});
+```
+
+### 5. Get Reputation
+
+```typescript
+// Get aggregated reputation stats
+const summary = await sdk.getSummary(agentId);
+console.log(`Average Score: ${summary.averageScore}/100`);
+console.log(`Total Feedbacks: ${summary.totalFeedbacks}`);
+console.log(`Next Index: ${summary.nextFeedbackIndex}`);
+
+// Read all individual feedbacks (requires custom RPC)
+const feedbacks = await sdk.readAllFeedback(agentId);
+for (const fb of feedbacks) {
+  console.log(`Score: ${fb.score}, Client: ${fb.client.toBase58()}`);
+}
+```
+
+> **Note**: For advanced queries like `getAgentsByOwner()` or `readAllFeedback()`, a custom RPC provider is recommended.
+> Free tiers are available - see [RPC Provider Recommendations](#rpc-provider-recommendations).
 
 ---
 
 ## Documentation
 
 - **[API Methods](docs/METHODS.md)** - Full SDK API reference
-- **[Operation Costs](docs/COSTS.md)** - Transaction costs measured on Solana devnet
+- **[Operation Costs](docs/COSTS.md)** - Transaction costs on Solana
+- **[OASF Taxonomies](docs/OASF.md)** - Skills and domains reference
+- **[Changelog](docs/CHANGELOG.md)** - Version history and breaking changes
 
----
-
-## Architecture
-
-Built on a consolidated Solana program implementing ERC-8004:
-
-| Program | Program ID | Description |
-|---------|------------|-------------|
-| **AgentRegistry8004** | `HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp` | Identity, Reputation & Validation (consolidated) |
-
-**v0.2.0 Changes:**
-- Single consolidated program (was 3 separate programs)
-- Uses **Metaplex Core** for NFTs (was Token Metadata)
-- Global feedback index (was per-client)
-- 89 tests passing on devnet
+**Program ID:** `HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp`
 
 ---
 
@@ -159,8 +186,8 @@ const agents = await sdk.getAgentsByOwner(ownerPublicKey);
 
 ```bash
 # Clone repository
-git clone https://github.com/QuantuLabs/8004-solana-ts.git
-cd 8004-solana-ts
+git clone https://github.com/QuantuLabs/8004-solana.git
+cd 8004-solana
 
 # Install dependencies
 npm install
@@ -177,38 +204,6 @@ npm run lint
 # Format
 npm run format
 ```
-
----
-
-## Current Status
-
-### v0.2.0 - Consolidated Program Architecture
-
-**What's New:**
-- Single consolidated program (Identity + Reputation + Validation)
-- **Metaplex Core** NFTs (lighter, faster than Token Metadata)
-- Global feedback index for simpler PDA derivation
-- 89 comprehensive tests on devnet
-
-**Breaking Changes from v0.1.0:**
-- Program IDs changed (now single program)
-- Agent PDA uses Core asset address, not mint
-- Feedback PDA uses global index (no client address in seeds)
-- Response PDA removed client from seeds
-
-**Implemented:**
-- Agent registration with Metaplex Core
-- Metadata management + extensions
-- Permissionless feedback system
-- Reputation tracking with cached aggregates
-- Validation requests and responses
-- NFT-based agent identity
-- Interface parity with agent0-ts
-
-**Requires Custom RPC:**
-- `getAgentsByOwner()` - Requires getProgramAccounts
-- `readAllFeedback()` - Requires getProgramAccounts
-- `getClients()` - Requires getProgramAccounts
 
 ---
 
@@ -241,9 +236,10 @@ See the `examples/` directory for complete usage examples:
 |---------|-------------|
 | [`quick-start.ts`](examples/quick-start.ts) | Basic read/write operations |
 | [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
-| [`agent-update.ts`](examples/agent-update.ts) | Update agent metadata |
+| [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & immutable entries |
 | [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
 | [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
+| [`basic-indexer.ts`](examples/basic-indexer.ts) | Index all agents to JSON file |
 
 Run examples:
 ```bash
@@ -264,16 +260,14 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Links
 
-- **ERC-8004 Standard**: [eips.ethereum.org/EIPS/eip-8004](https://eips.ethereum.org/EIPS/eip-8004)
-- **agent0-ts Reference SDK**: [github.com/agent0lab/agent0-ts](https://github.com/agent0lab/agent0-ts)
+- **8004 Standard**: [eips.ethereum.org/EIPS/eip-8004](https://eips.ethereum.org/EIPS/eip-8004)
 - **Solana Programs**: [github.com/QuantuLabs/8004-solana](https://github.com/QuantuLabs/8004-solana)
 
 ---
 
 ## Acknowledgments
 
-- Built with inspiration from the [agent0](https://github.com/agent0lab/agent0-ts) ecosystem
-- Implements [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) standard on Solana
+- Implements [8004](https://eips.ethereum.org/EIPS/eip-8004) standard on Solana
 - Powered by Solana blockchain and Metaplex Core
 
 ---
