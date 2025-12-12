@@ -10,8 +10,9 @@ import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
+import { createHash } from 'crypto';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
-import { AgentAccount } from './borsh-schemas.js';
+import { AgentAccount, MetadataExtensionAccount, MetadataEntryPda } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
   ReputationTransactionBuilder,
@@ -32,7 +33,15 @@ export interface SolanaSDKConfig {
   signer?: Keypair;
   // Storage configuration
   ipfsClient?: IPFSClient;
+}
 
+/**
+ * Agent with on-chain metadata extensions
+ * Returned by getAllAgents() for efficient bulk fetching
+ */
+export interface AgentWithMetadata {
+  account: AgentAccount;
+  metadata: Array<{ key: string; value: string }>;
 }
 
 /**
@@ -51,7 +60,7 @@ export class SolanaSDK {
   private mintResolver?: AgentMintResolver;
   private collectionMint?: PublicKey;
 
-  constructor(config: SolanaSDKConfig) {
+  constructor(config: SolanaSDKConfig = {}) {
     this.cluster = config.cluster || 'devnet';
     this.programIds = getProgramIds();
     this.signer = config.signer;
@@ -144,6 +153,52 @@ export class SolanaSDK {
   }
 
   /**
+   * Get a specific metadata entry for an agent
+   * @param agentId - Agent ID (number or bigint)
+   * @param key - Metadata key
+   * @returns Metadata value as string, or null if not found
+   */
+  async getMetadata(agentId: number | bigint, key: string): Promise<string | null> {
+    try {
+      const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
+      // Initialize resolver if needed
+      await this.initializeMintResolver();
+
+      // Resolve agentId → asset
+      const asset = await this.mintResolver!.resolve(id);
+
+      // Get the agent account to retrieve the on-chain agent_id
+      const [agentPDA] = PDAHelpers.getAgentPDA(asset);
+      const agentData = await this.client.getAccount(agentPDA);
+      if (!agentData) {
+        return null;
+      }
+      // Read agent_id (u64 at offset 8 after discriminator)
+      const onChainAgentId = agentData.readBigUInt64LE(8);
+
+      // Compute key hash (SHA256(key)[0..8])
+      const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
+
+      // Derive metadata entry PDA
+      const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(onChainAgentId, keyHash);
+
+      // Fetch metadata account
+      const metadataData = await this.client.getAccount(metadataEntry);
+      if (!metadataData) {
+        return null; // Metadata entry does not exist
+      }
+
+      // Deserialize and return value
+      const entry = MetadataEntryPda.deserialize(metadataData);
+      return entry.getValueString();
+    } catch (error) {
+      console.error(`Error getting metadata for agent ${agentId}, key "${key}":`, error);
+      return null;
+    }
+  }
+
+  /**
    * Get agent by owner
    * @param owner - Owner public key
    * @returns Array of agent accounts owned by this address
@@ -181,6 +236,78 @@ export class SolanaSDK {
     } catch (error) {
       if (error instanceof UnsupportedRpcError) throw error;
       console.error(`Error getting agents for owner ${owner.toBase58()}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all registered agents with their on-chain metadata
+   * @returns Array of agents with metadata extensions
+   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+   */
+  async getAllAgents(): Promise<AgentWithMetadata[]> {
+    // This operation requires getProgramAccounts which is limited on public devnet
+    this.client.requireAdvancedQueries('getAllAgents');
+
+    try {
+      const programId = this.programIds.identityRegistry;
+
+      // Fetch AgentAccounts and MetadataExtensions in parallel
+      const [agentAccounts, metadataAccounts] = await Promise.all([
+        this.client.getProgramAccounts(programId, [
+          {
+            memcmp: {
+              offset: 0,
+              bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount),
+            },
+          },
+        ]),
+        this.client.getProgramAccounts(programId, [
+          {
+            memcmp: {
+              offset: 0,
+              bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.MetadataEntryPda),
+            },
+          },
+        ]),
+      ]);
+
+      // Build metadata map by agent_mint
+      const metadataMap = new Map<string, Array<{ key: string; value: string }>>();
+      for (const acc of metadataAccounts) {
+        try {
+          const extension = MetadataExtensionAccount.deserialize(acc.data);
+          const mintKey = extension.getMintPublicKey().toBase58();
+          const entries = extension.metadata.map((e) => ({
+            key: e.metadata_key,
+            value: Buffer.from(e.metadata_value).toString('utf8'),
+          }));
+          const existing = metadataMap.get(mintKey) || [];
+          metadataMap.set(mintKey, [...existing, ...entries]);
+        } catch {
+          // Skip malformed accounts
+        }
+      }
+
+      // Combine agents with their metadata
+      const agents: AgentWithMetadata[] = [];
+      for (const acc of agentAccounts) {
+        try {
+          const agent = AgentAccount.deserialize(acc.data);
+          const mintKey = agent.getMintPublicKey().toBase58();
+          agents.push({
+            account: agent,
+            metadata: metadataMap.get(mintKey) || [],
+          });
+        } catch {
+          // Skip malformed accounts
+        }
+      }
+
+      return agents;
+    } catch (error) {
+      if (error instanceof UnsupportedRpcError) throw error;
+      console.error('Error getting all agents:', error);
       return [];
     }
   }
@@ -473,6 +600,30 @@ export class SolanaSDK {
     const asset = await this.mintResolver!.resolve(id);
 
     return await this.identityTxBuilder.setMetadata(asset, key, value, immutable, options);
+  }
+
+  /**
+   * Delete a metadata entry for an agent (write operation)
+   * Only works if metadata is not immutable
+   * @param agentId - Agent ID (number or bigint)
+   * @param key - Metadata key to delete
+   * @param options - Write options (skipSend, signer)
+   */
+  async deleteMetadata(
+    agentId: number | bigint,
+    key: string,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+
+    // Resolve agentId → asset (v0.2.0: Core asset)
+    await this.initializeMintResolver();
+    const asset = await this.mintResolver!.resolve(id);
+
+    return await this.identityTxBuilder.deleteMetadata(asset, key, options);
   }
 
   /**
