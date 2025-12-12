@@ -93,104 +93,10 @@ console.log(`Score: ${summary.averageScore}/100 (${summary.count} reviews)`);
 
 ---
 
-## SolanaSDK API Reference
+## Documentation
 
-### Constructor
-
-```typescript
-import { SolanaSDK } from '8004-solana';
-import { Keypair } from '@solana/web3.js';
-
-// Default: devnet, read-only
-const sdk = new SolanaSDK();
-
-// With signer (for write operations)
-const sdk = new SolanaSDK({ signer: Keypair.generate() });
-
-// Custom RPC (for advanced queries)
-const sdk = new SolanaSDK({ rpcUrl: 'https://your-rpc.helius.dev' });
-
-// Full config
-const sdk = new SolanaSDK({
-  cluster: 'devnet',      // 'devnet' | 'mainnet-beta' (default: 'devnet')
-  rpcUrl: 'https://...',  // Optional custom RPC
-  signer: keypair,        // Optional signer for write operations
-});
-```
-
-### Utility Methods
-
-| Method | Return Type | Description |
-|--------|-------------|-------------|
-| `isReadOnly` | `boolean` | True if SDK has no signer |
-| `canWrite` | `boolean` | True if SDK can perform write operations |
-| `chainId()` | `Promise<string>` | Returns `solana-{cluster}` (e.g., `solana-devnet`) |
-| `getCluster()` | `Cluster` | Returns current cluster name |
-| `registries()` | `Record<string, string>` | Returns program IDs (`IDENTITY`, `REPUTATION`, `VALIDATION`) |
-| `getProgramIds()` | `object` | Returns program IDs as PublicKey objects |
-| `getRpcUrl()` | `string` | Returns current RPC URL |
-| `supportsAdvancedQueries()` | `boolean` | True if RPC supports getProgramAccounts with memcmp |
-
-### Agent Read Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `loadAgent` | `(agentId: number \| bigint) => Promise<AgentAccount \| null>` | Load agent data from chain |
-| `getAgent` | `(agentId: number \| bigint) => Promise<AgentAccount \| null>` | Alias for loadAgent |
-| `agentExists` | `(agentId: number \| bigint) => Promise<boolean>` | Check if agent exists |
-| `getAgentOwner` | `(agentId: number \| bigint) => Promise<PublicKey \| null>` | Get agent owner |
-| `isAgentOwner` | `(agentId, address) => Promise<boolean>` | Check if address owns agent |
-
-### Agent Write Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `registerAgent` | `(tokenUri?, metadata?) => Promise<TransactionResult>` | Register new agent |
-| `transferAgent` | `(agentId, newOwner) => Promise<TransactionResult>` | Transfer agent ownership |
-| `setAgentUri` | `(agentId, newUri) => Promise<TransactionResult>` | Update agent URI |
-| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set on-chain metadata (optional, PDA-based) |
-
-**On-chain Metadata (v0.2.0, optional):**
-
-Store arbitrary key-value pairs directly on-chain. This is optional - most agent data should be in the IPFS registration file.
-
-```typescript
-// Set mutable on-chain metadata (default)
-await sdk.setMetadata(agentId, 'version', '1.0.0');
-
-// Set immutable on-chain metadata (cannot be modified or deleted)
-await sdk.setMetadata(agentId, 'certification', 'verified', true);
-```
-
-### Reputation Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `getSummary` | `(agentId, minScore?, clientFilter?) => Promise<ReputationSummary>` | Get full reputation summary |
-| `getReputationSummary` | `(agentId) => Promise<{count, averageScore}>` | Get simplified reputation stats |
-| `giveFeedback` | `(agentId, feedbackFile) => Promise<TransactionResult>` | Submit feedback |
-| `getFeedback` | `(agentId, client, index) => Promise<Feedback \| null>` | Read specific feedback |
-| `readFeedback` | `(agentId, client, index) => Promise<Feedback \| null>` | Alias for getFeedback |
-| `revokeFeedback` | `(agentId, index) => Promise<TransactionResult>` | Revoke submitted feedback |
-| `getLastIndex` | `(agentId, client) => Promise<bigint>` | Get last feedback index |
-| `appendResponse` | `(agentId, client, index, uri, hash) => Promise<TransactionResult>` | Add response to feedback |
-
-### Validation Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `requestValidation` | `(agentId, validator, methodId, uri, hash) => Promise<TransactionResult>` | Request validation |
-| `respondToValidation` | `(agentId, requestIndex, score, uri, hash, status) => Promise<TransactionResult>` | Respond to validation |
-
-### Advanced Queries (Requires Custom RPC)
-
-These methods require a custom RPC provider (Helius, Triton, etc.) that supports `getProgramAccounts`:
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `getAgentsByOwner` | `(owner: PublicKey) => Promise<AgentAccount[]>` | Get all agents owned by address |
-| `readAllFeedback` | `(agentId, includeRevoked?) => Promise<Feedback[]>` | Get all feedback for agent |
-| `getClients` | `(agentId) => Promise<PublicKey[]>` | Get all clients who gave feedback |
+- **[API Methods](docs/METHODS.md)** - Full SDK API reference
+- **[Operation Costs](docs/COSTS.md)** - Transaction costs measured on Solana devnet
 
 ---
 
@@ -306,49 +212,6 @@ npm run format
 
 ---
 
-## Operation Costs (Devnet Measured v0.2.0)
-
-Costs measured via SDK E2E tests on Solana devnet:
-
-| Operation | Total Cost | Lamports | Notes |
-|-----------|------------|----------|-------|
-| Register Agent | **0.00651 SOL** | 6,507,280 | Core asset + AgentAccount |
-| Set On-chain Metadata (1st) | **0.00319 SOL** | 3,192,680 | +MetadataEntryPda |
-| Set On-chain Metadata (update) | 0.000005 SOL | 5,000 | TX fee only |
-| Give Feedback (1st) | 0.00332 SOL | 3,324,920 | Feedback + AgentReputation init |
-| Give Feedback (2nd+) | 0.00209 SOL | 2,086,040 | FeedbackAccount only |
-| Append Response (1st) | 0.00275 SOL | 2,747,240 | Response + ResponseIndex init |
-| Append Response (2nd+) | 0.00163 SOL | 1,626,680 | ResponseAccount only |
-| Revoke Feedback | 0.000005 SOL | 5,000 | TX fee only |
-| Request Validation | 0.00183 SOL | 1,828,520 | ValidationRequest |
-| Respond to Validation | 0.000005 SOL | 5,000 | TX fee only |
-| **Full Lifecycle** | **0.0245 SOL** | 24,521,040 | Complete test cycle |
-
-### First vs Subsequent Cost Savings
-
-| Operation | 1st Call | 2nd+ Calls | Savings |
-|-----------|----------|------------|---------|
-| Set On-chain Metadata | 0.00319 SOL | 0.000005 SOL | **-99%** |
-| Give Feedback | 0.00332 SOL | 0.00209 SOL | **-37%** |
-| Append Response | 0.00275 SOL | 0.00163 SOL | **-41%** |
-
-First operation creates init_if_needed accounts. Subsequent calls skip initialization.
-
-### v0.2.0 Optimizations
-
-| Optimization | Before | After | Savings |
-|--------------|--------|-------|---------|
-| FeedbackAccount | 375 bytes | 171 bytes | **-54%** |
-| ResponseAccount | 309 bytes | 105 bytes | **-66%** |
-| MetadataEntryPda | Vec (fixed) | Individual PDAs | Unlimited entries |
-
-**v0.2.0 Changes:**
-- **Hash-only storage**: URIs stored in events, only hashes on-chain
-- **Individual Metadata PDAs**: Unlimited entries, deletable for rent recovery
-- **Immutable on-chain metadata option**: Lock metadata permanently
-
----
-
 ## Contributing
 
 Contributions welcome! This is a **public build** project.
@@ -415,4 +278,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built for the Solana ecosystem** | v0.2.0
+**Built for the Solana ecosystem** | v0.2.1

@@ -11,6 +11,7 @@ import { PDAHelpers, REPUTATION_PROGRAM_ID } from './pda-helpers.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import {
   FeedbackAccount,
+  FeedbackTagsPda,
   AgentReputationAccount,
   ResponseIndexAccount,
   ResponseAccount,
@@ -142,7 +143,8 @@ export class SolanaFeedbackManager {
       }
 
       const feedback = FeedbackAccount.deserialize(data);
-      return this.mapFeedbackAccount(feedback);
+      const tags = await this.fetchFeedbackTags(agentId, feedbackIndex);
+      return this.mapFeedbackAccount(feedback, tags);
     } catch (error) {
       console.error(
         `Error reading feedback for agent ${agentId}, client ${client.toBase58()}, index ${feedbackIndex}:`,
@@ -159,6 +161,7 @@ export class SolanaFeedbackManager {
    * @returns Array of feedback objects
    *
    * Implementation: Uses getProgramAccounts with memcmp filter on agent_id
+   * Also fetches FeedbackTagsPda for each feedback to get tag1/tag2
    */
   async readAllFeedback(agentId: bigint, includeRevoked: boolean = false): Promise<SolanaFeedback[]> {
     try {
@@ -185,12 +188,19 @@ export class SolanaFeedbackManager {
         },
       ]);
 
-      const feedbacks = accounts
+      const feedbackAccounts = accounts
         .map((acc) => FeedbackAccount.deserialize(acc.data))
-        .filter((f) => includeRevoked || !f.revoked)
-        .map((f) => this.mapFeedbackAccount(f));
+        .filter((f) => includeRevoked || !f.revoked);
 
-      return feedbacks;
+      // Fetch tags for all feedbacks in parallel
+      const feedbacksWithTags = await Promise.all(
+        feedbackAccounts.map(async (f) => {
+          const tags = await this.fetchFeedbackTags(agentId, f.feedback_index);
+          return this.mapFeedbackAccount(f, tags);
+        })
+      );
+
+      return feedbacksWithTags;
     } catch (error) {
       console.error(`Error reading all feedback for agent ${agentId}:`, error);
       return [];
@@ -358,20 +368,59 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Helper to map FeedbackAccount to SolanaFeedback interface
+   * Helper to fetch FeedbackTagsPda for a feedback
+   * Returns tag1 and tag2, or empty strings if no tags PDA exists
+   * Handles BN objects from borsh deserialization
    */
-  private mapFeedbackAccount(feedback: FeedbackAccount): SolanaFeedback {
+  private async fetchFeedbackTags(
+    agentId: bigint,
+    feedbackIndex: bigint | { toString(): string }
+  ): Promise<{ tag1: string; tag2: string }> {
+    try {
+      // Convert BN to bigint if needed (borsh returns BN objects)
+      const fbIndex = typeof feedbackIndex === 'bigint'
+        ? feedbackIndex
+        : BigInt(feedbackIndex.toString());
+
+      const [tagsPda] = PDAHelpers.getFeedbackTagsPDA(agentId, fbIndex, REPUTATION_PROGRAM_ID);
+      const data = await this.client.getAccount(tagsPda);
+
+      if (!data) {
+        return { tag1: '', tag2: '' };
+      }
+
+      const tags = FeedbackTagsPda.deserialize(data);
+      return { tag1: tags.tag1 || '', tag2: tags.tag2 || '' };
+    } catch {
+      return { tag1: '', tag2: '' };
+    }
+  }
+
+  /**
+   * Helper to map FeedbackAccount to SolanaFeedback interface
+   * Converts BN values from borsh to native BigInt
+   * @param feedback - The feedback account data
+   * @param tags - Optional tags from FeedbackTagsPda (fetched separately)
+   */
+  private mapFeedbackAccount(
+    feedback: FeedbackAccount,
+    tags?: { tag1: string; tag2: string }
+  ): SolanaFeedback {
+    // Borsh returns BN objects for u64, convert to native BigInt
+    const toBigInt = (val: bigint | { toString(): string }): bigint =>
+      typeof val === 'bigint' ? val : BigInt(val.toString());
+
     return {
-      agentId: feedback.agent_id,
+      agentId: toBigInt(feedback.agent_id),
       client: feedback.getClientPublicKey(),
-      feedbackIndex: feedback.feedback_index,
+      feedbackIndex: toBigInt(feedback.feedback_index),
       score: feedback.score,
-      tag1: feedback.tag1,
-      tag2: feedback.tag2,
+      tag1: tags?.tag1 || '',
+      tag2: tags?.tag2 || '',
       fileUri: feedback.file_uri,
       fileHash: feedback.file_hash,
       revoked: feedback.is_revoked,
-      createdAt: feedback.created_at,
+      createdAt: toBigInt(feedback.created_at),
     };
   }
 
