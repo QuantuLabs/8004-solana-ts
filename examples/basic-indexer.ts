@@ -2,10 +2,9 @@
  * Basic Indexer Example
  *
  * Demonstrates how to:
- * 1. Fetch all agents with on-chain metadata using getAllAgents()
+ * 1. Fetch all agents with feedbacks using getAllAgents({ includeFeedbacks: true })
  * 2. Fetch IPFS metadata in parallel batches
- * 3. Fetch ALL feedbacks with tags using readAllFeedback()
- * 4. Export complete data to JSON file
+ * 3. Export complete data to JSON file
  *
  * Requirements:
  * - CUSTOM RPC with getProgramAccounts support (Helius free tier works)
@@ -14,10 +13,10 @@
  * Output: agents.json
  */
 import { writeFileSync } from 'fs';
-import { SolanaSDK, SolanaFeedback } from '../src/index.js';
+import { SolanaSDK } from '../src/index.js';
 
 const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
-const BATCH_SIZE = 10;
+const IPFS_BATCH_SIZE = 10;
 
 interface IndexedFeedback {
   client: string;
@@ -25,7 +24,7 @@ interface IndexedFeedback {
   tag1: string;
   tag2: string;
   fileUri: string;
-  createdAt: string;
+  createdAt: string | null;
 }
 
 interface IndexedAgent {
@@ -99,9 +98,9 @@ async function main() {
 
   console.log('=== Agent Indexer ===\n');
 
-  // 1. Fetch all agents with on-chain metadata (2 parallel RPC calls)
-  console.log('Fetching all agents...');
-  const agentsWithMeta = await sdk.getAllAgents();
+  // 1. Fetch all agents with feedbacks (4 RPC calls total)
+  console.log('Fetching all agents with feedbacks...');
+  const agentsWithMeta = await sdk.getAllAgents({ includeFeedbacks: true });
   console.log(`Found ${agentsWithMeta.length} agents\n`);
 
   // 2. Parallel batch: Fetch IPFS metadata
@@ -109,28 +108,17 @@ async function main() {
   const ipfsResults = await processBatches(
     agentsWithMeta,
     ({ account }) => fetchMetadata(account.agent_uri),
-    BATCH_SIZE,
+    IPFS_BATCH_SIZE,
     'IPFS'
   );
 
-  // 3. Parallel batch: Fetch ALL feedbacks with tags (replaces getSummary)
-  console.log('\nFetching feedbacks with tags...');
-  const feedbackResults = await processBatches(
-    agentsWithMeta,
-    ({ account }) =>
-      sdk.readAllFeedback(Number(account.agent_id), false).catch(() => [] as SolanaFeedback[]),
-    BATCH_SIZE,
-    'Feedbacks'
-  );
-
-  // 4. Combine results
+  // 3. Combine results - feedbacks already included!
   console.log('\nBuilding index...');
-  const indexed: IndexedAgent[] = agentsWithMeta.map(({ account, metadata }, i) => {
-    const feedbacks = feedbackResults[i] || [];
-    const avgScore =
-      feedbacks.length > 0
-        ? feedbacks.reduce((sum, f) => sum + f.score, 0) / feedbacks.length
-        : 0;
+  const indexed: IndexedAgent[] = agentsWithMeta.map(({ account, metadata, feedbacks }, i) => {
+    const fbs = feedbacks || [];
+    const avgScore = fbs.length > 0
+      ? fbs.reduce((sum, f) => sum + f.score, 0) / fbs.length
+      : 0;
 
     return {
       agentId: Number(account.agent_id),
@@ -143,20 +131,24 @@ async function main() {
       skills: (ipfsResults[i]?.skills as string[]) || [],
       domains: (ipfsResults[i]?.domains as string[]) || [],
       averageScore: Math.round(avgScore),
-      feedbackCount: feedbacks.length,
-      feedbacks: feedbacks.map((f) => ({
-        client: f.client.toBase58(),
-        score: f.score,
-        tag1: f.tag1,
-        tag2: f.tag2,
-        fileUri: f.fileUri,
-        createdAt: new Date(Number(f.createdAt) * 1000).toISOString(),
-      })),
+      feedbackCount: fbs.length,
+      feedbacks: fbs.map((f) => {
+        const ts = Number(f.createdAt) * 1000;
+        const date = new Date(ts);
+        return {
+          client: f.client.toBase58(),
+          score: f.score,
+          tag1: f.tag1,
+          tag2: f.tag2,
+          fileUri: f.fileUri,
+          createdAt: isNaN(date.getTime()) ? null : date.toISOString(),
+        };
+      }),
       onChainMetadata: metadata,
     };
   });
 
-  // 5. Write to file
+  // 4. Write to file
   writeFileSync(outputFile, JSON.stringify(indexed, null, 2));
 
   // Stats
