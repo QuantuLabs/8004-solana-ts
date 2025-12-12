@@ -45,4 +45,5 @@ coverage/
 package-lock.json
 yarn.lock
 .pnp.*
-docs/
+# Reference docs (agent0-ts implementation reference)
+docs/reference/

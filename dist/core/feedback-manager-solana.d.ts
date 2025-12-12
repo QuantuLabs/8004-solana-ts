@@ -75,6 +75,7 @@ export declare class SolanaFeedbackManager {
      * @returns Array of feedback objects
      *
      * Implementation: Uses getProgramAccounts with memcmp filter on agent_id
+     * Also fetches FeedbackTagsPda for each feedback to get tag1/tag2
      */
     readAllFeedback(agentId: bigint, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
     /**
@@ -107,7 +108,16 @@ export declare class SolanaFeedbackManager {
      */
     readResponses(agentId: bigint, feedbackIndex: bigint): Promise<SolanaResponse[]>;
     /**
+     * Helper to fetch FeedbackTagsPda for a feedback
+     * Returns tag1 and tag2, or empty strings if no tags PDA exists
+     * Handles BN objects from borsh deserialization
+     */
+    private fetchFeedbackTags;
+    /**
      * Helper to map FeedbackAccount to SolanaFeedback interface
+     * Converts BN values from borsh to native BigInt
+     * @param feedback - The feedback account data
+     * @param tags - Optional tags from FeedbackTagsPda (fetched separately)
      */
     private mapFeedbackAccount;
     /**
