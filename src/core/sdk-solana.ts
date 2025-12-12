@@ -11,7 +11,7 @@ import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
-import { AgentAccount, MetadataEntry } from './borsh-schemas.js';
+import { AgentAccount } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
   ReputationTransactionBuilder,
