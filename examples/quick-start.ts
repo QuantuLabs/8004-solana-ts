@@ -1,12 +1,18 @@
 /**
  * Quick Start Example - Solana SDK
  *
- * Demonstrates basic read and write operations
+ * Demonstrates basic read and write operations using 8004-solana SDK
  */
 import { Keypair } from '@solana/web3.js';
-import { SolanaSDK } from '../src/index.js';
+import {
+  SolanaSDK,
+  buildRegistrationFileJson,
+  EndpointType,
+} from '../src/index.js';
+import type { RegistrationFile } from '../src/index.js';
 
 async function main() {
+  // === READ OPERATIONS ===
   // Create SDK (devnet by default, no signer = read-only)
   const sdk = new SolanaSDK();
 
@@ -18,8 +24,8 @@ async function main() {
   }
 
   // Get reputation summary
-  const summary = await sdk.getReputationSummary(1);
-  console.log(`Score: ${summary.averageScore}/100 (${summary.count} reviews)`);
+  const summary = await sdk.getSummary(1);
+  console.log(`Score: ${summary.averageScore}/100 (${summary.totalFeedbacks} reviews)`);
 
   // === WRITE OPERATIONS ===
   // Requires signer
@@ -32,9 +38,25 @@ async function main() {
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
   const writeSdk = new SolanaSDK({ signer });
 
-  // Register new agent
-  const result = await writeSdk.registerAgent('ipfs://QmYourAgentMetadata');
-  console.log(`Registered agent #${result.agentId}`);
+  // Build 8004 compliant metadata
+  const agentData: RegistrationFile = {
+    name: 'My AI Assistant',
+    description: 'A helpful AI agent for task automation',
+    endpoints: [
+      { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
+    ],
+    // OASF taxonomies (optional) - see docs/OASF.md for valid slugs
+    skills: ['natural_language_processing/summarization'],
+    domains: ['technology/software_engineering'],
+  };
+
+  const metadata = buildRegistrationFileJson(agentData);
+  console.log('Metadata:', JSON.stringify(metadata, null, 2));
+
+  // Upload to IPFS (implement your own uploadToIPFS function)
+  // const metadataUri = await uploadToIPFS(metadata);
+  // const result = await writeSdk.registerAgent(metadataUri);
+  // console.log(`Registered agent #${result.agentId}`);
 
   // Give feedback
   await writeSdk.giveFeedback(1, {
