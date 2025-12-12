@@ -6,6 +6,7 @@
 import { Keypair } from '@solana/web3.js';
 import {
   SolanaSDK,
+  IPFSClient,
   buildRegistrationFileJson,
   EndpointType,
 } from '../src/index.js';
@@ -53,19 +54,37 @@ async function main() {
   const metadata = buildRegistrationFileJson(agentData);
   console.log('Metadata:', JSON.stringify(metadata, null, 2));
 
-  // Upload to IPFS (implement your own uploadToIPFS function)
-  // const metadataUri = await uploadToIPFS(metadata);
-  // const result = await writeSdk.registerAgent(metadataUri);
-  // console.log(`Registered agent #${result.agentId}`);
+  // === IPFS UPLOAD ===
+  // Get a free Pinata JWT at https://pinata.cloud
+  if (process.env.PINATA_JWT) {
+    const ipfs = new IPFSClient({
+      pinataEnabled: true,
+      pinataJwt: process.env.PINATA_JWT,
+    });
 
-  // Give feedback
-  await writeSdk.giveFeedback(1, {
-    score: 85,
-    tag1: 'helpful',
-    tag2: 'accurate',
-    fileUri: 'ipfs://QmFeedbackDetails',
-    fileHash: Buffer.alloc(32),
-  });
+    // Upload metadata to IPFS
+    const metadataCid = await ipfs.addJson(metadata);
+    const metadataUri = `ipfs://${metadataCid}`;
+    console.log(`Metadata uploaded to: ${metadataUri}`);
+
+    // === REGISTER AGENT ===
+    // Uncomment to register a new agent:
+    // const result = await writeSdk.registerAgent(metadataUri);
+    // console.log(`Registered agent #${result.agentId}`);
+  } else {
+    console.log('Set PINATA_JWT to upload metadata to IPFS');
+    // Alternative: use web URL
+    // await writeSdk.registerAgent('https://my-server.com/metadata.json');
+  }
+
+  // === GIVE FEEDBACK ===
+  // Submit feedback for an existing agent
+  // await writeSdk.giveFeedback(1n, {
+  //   score: 85,
+  //   tag1: 'helpful',
+  //   tag2: 'accurate',
+  // });
+  console.log('\nQuick start complete!');
 }
 
 main().catch(console.error);

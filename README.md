@@ -54,33 +54,80 @@ const sdk = new SolanaSDK({ signer });
 
 ### 2. Register an Agent
 
-```typescript
-import { buildRegistrationFileJson, EndpointType } from '8004-solana';
-import type { RegistrationFile } from '8004-solana';
+**Step 1: Setup IPFS Client**
 
-// Build 8004 agent metadata
-const agent: RegistrationFile = {
+The SDK includes a built-in IPFS client with Pinata support:
+
+```typescript
+import {
+  SolanaSDK,
+  IPFSClient,
+  buildRegistrationFileJson,
+  EndpointType
+} from '8004-solana';
+
+// Get a free Pinata JWT at https://pinata.cloud
+const ipfs = new IPFSClient({
+  pinataEnabled: true,
+  pinataJwt: process.env.PINATA_JWT,
+});
+
+// Or use a local IPFS node
+// const ipfs = new IPFSClient({ url: 'http://localhost:5001' });
+```
+
+**Step 2: Upload Agent Image**
+
+```typescript
+// Upload image file to IPFS
+const imageCid = await ipfs.addFile('./agent-avatar.png');
+const imageUri = `ipfs://${imageCid}`;
+```
+
+**Step 3: Build and Upload Metadata**
+
+```typescript
+const agentData = {
   name: 'My AI Assistant',
   description: 'A helpful AI agent for task automation',
-  image: 'ipfs://QmYourImageHash',
+  image: imageUri, // IPFS image from step 2
   endpoints: [
     { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
     { type: EndpointType.A2A, value: 'https://api.example.com/a2a' },
   ],
   // OASF taxonomies (optional) - see docs/OASF.md for valid slugs
-  skills: ['natural_language_processing/summarization', 'analytical_skills/coding_skills/text_to_code'],
-  domains: ['technology/software_engineering'],
+  skills: ['natural_language_processing/natural_language_generation/summarization'],
+  domains: ['technology/software_engineering/software_engineering'],
 };
 
-// Convert to 8004 JSON (validates skills/domains)
-const metadata = buildRegistrationFileJson(agent);
+// Build 8004-compliant JSON and upload to IPFS
+const metadata = buildRegistrationFileJson(agentData);
+const metadataCid = await ipfs.addJson(metadata);
+const metadataUri = `ipfs://${metadataCid}`;
+```
 
-// Upload to IPFS (using your preferred provider)
-const metadataUri = await uploadToIPFS(metadata); // "ipfs://Qm..."
+**Step 4: Register on Solana**
 
-// Register the agent on-chain
+```typescript
+const sdk = new SolanaSDK({ signer });
 const result = await sdk.registerAgent(metadataUri);
-console.log(`Agent #${result.agentId} registered: ${result.signature}`);
+console.log(`Agent #${result.agentId} registered!`);
+```
+
+**Alternative: Use Web URLs**
+
+You can host metadata anywhere accessible via HTTP:
+
+```typescript
+// Build JSON without IPFS
+const metadata = buildRegistrationFileJson({
+  name: 'My AI Assistant',
+  image: 'https://my-server.com/agent-avatar.png',
+  // ...
+});
+
+// Host this JSON on your server, S3, Vercel, etc.
+await sdk.registerAgent('https://my-server.com/agent-metadata.json');
 ```
 
 ### 3. Load Agent Data
@@ -260,9 +307,9 @@ See the `examples/` directory for complete usage examples:
 
 | Example | Description |
 |---------|-------------|
-| [`quick-start.ts`](examples/quick-start.ts) | Basic read/write operations |
+| [`quick-start.ts`](examples/quick-start.ts) | Basic read/write with IPFS upload |
 | [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
-| [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & immutable entries |
+| [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
 | [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
 | [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
 | [`basic-indexer.ts`](examples/basic-indexer.ts) | Index all agents to JSON file |

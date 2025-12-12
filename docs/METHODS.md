@@ -170,3 +170,87 @@ const allFeedbacks = await sdk.getAllFeedbacks(true);
 | `getClients()` | **Fails** | Works |
 
 **Recommendation**: Start with default RPC. Use [Helius](https://helius.dev) free tier for advanced queries.
+
+## IPFS Client
+
+The SDK includes a built-in IPFS client supporting multiple providers.
+
+### Constructor
+
+```typescript
+import { IPFSClient } from '8004-solana';
+
+// Option 1: Pinata (recommended for production)
+const ipfs = new IPFSClient({
+  pinataEnabled: true,
+  pinataJwt: process.env.PINATA_JWT, // Get free JWT at https://pinata.cloud
+});
+
+// Option 2: Local IPFS node
+const ipfs = new IPFSClient({
+  url: 'http://localhost:5001',
+});
+
+// Option 3: Filecoin Pin (placeholder - requires CLI)
+const ipfs = new IPFSClient({
+  filecoinPinEnabled: true,
+  filecoinPrivateKey: '...',
+});
+```
+
+### IPFSClient Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `add` | `(data: string) => Promise<string>` | Add string data, returns CID |
+| `addJson` | `(data: object) => Promise<string>` | Add JSON object, returns CID |
+| `addFile` | `(filepath: string) => Promise<string>` | Add file from disk (Node.js only), returns CID |
+| `addRegistrationFile` | `(file: RegistrationFile, chainId?, registry?) => Promise<string>` | Add agent metadata, returns CID |
+| `get` | `(cid: string) => Promise<string>` | Get data by CID (supports `ipfs://` prefix) |
+| `getJson` | `<T>(cid: string) => Promise<T>` | Get and parse JSON by CID |
+| `getRegistrationFile` | `(cid: string) => Promise<RegistrationFile>` | Get agent metadata by CID |
+| `pin` | `(cid: string) => Promise<{ pinned: string[] }>` | Pin CID to local node |
+| `unpin` | `(cid: string) => Promise<{ unpinned: string[] }>` | Unpin CID from local node |
+| `close` | `() => Promise<void>` | Close client connection |
+
+### Usage Examples
+
+```typescript
+import { IPFSClient, buildRegistrationFileJson, EndpointType } from '8004-solana';
+
+const ipfs = new IPFSClient({
+  pinataEnabled: true,
+  pinataJwt: process.env.PINATA_JWT,
+});
+
+// Upload image
+const imageCid = await ipfs.addFile('./agent-avatar.png');
+const imageUri = `ipfs://${imageCid}`;
+
+// Build and upload metadata
+const metadata = buildRegistrationFileJson({
+  name: 'My Agent',
+  description: 'A helpful AI agent',
+  image: imageUri,
+  endpoints: [
+    { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
+  ],
+});
+
+const metadataCid = await ipfs.addJson(metadata);
+const metadataUri = `ipfs://${metadataCid}`;
+
+// Read back data
+const data = await ipfs.getJson(metadataCid);
+console.log(data.name); // "My Agent"
+```
+
+### Provider Comparison
+
+| Feature | Pinata | Local Node | Filecoin Pin |
+|---------|--------|------------|--------------|
+| Setup | API key only | Run IPFS daemon | API key |
+| Persistence | Pinned (persistent) | Local only | Filecoin deals |
+| Free tier | 1GB free | Unlimited (local) | Varies |
+| Speed | Fast | Fastest | Slower |
+| Status | ✅ Full support | ✅ Full support | ⚠️ Placeholder |
