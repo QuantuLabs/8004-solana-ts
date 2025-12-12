@@ -9,6 +9,7 @@ export interface RegistrationFileJsonOptions {
 }
 /**
  * Build ERC-8004 compliant JSON from RegistrationFile
+ * Validates OASF skills/domains if provided
  * Does NOT upload - just returns the JSON object
  */
 export declare function buildRegistrationFileJson(registrationFile: RegistrationFile, options?: RegistrationFileJsonOptions): Record<string, unknown>;

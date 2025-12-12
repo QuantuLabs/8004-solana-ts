@@ -13,4 +13,14 @@ export declare function validateSkill(slug: string): boolean;
  * @returns True if the domain exists in the taxonomy, False otherwise
  */
 export declare function validateDomain(slug: string): boolean;
+/**
+ * Get all available OASF skill slugs
+ * @returns Array of all valid skill slugs
+ */
+export declare function getAllSkills(): string[];
+/**
+ * Get all available OASF domain slugs
+ * @returns Array of all valid domain slugs
+ */
+export declare function getAllDomains(): string[];
 //# sourceMappingURL=oasf-validator.d.ts.map

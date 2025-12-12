@@ -1,9 +1,25 @@
+import { validateSkill, validateDomain } from '../core/oasf-validator.js';
 /**
  * Build ERC-8004 compliant JSON from RegistrationFile
+ * Validates OASF skills/domains if provided
  * Does NOT upload - just returns the JSON object
  */
 export function buildRegistrationFileJson(registrationFile, options) {
     const { chainId, identityRegistryAddress } = options || {};
+    // Validate skills if provided
+    if (registrationFile.skills?.length) {
+        const invalidSkills = registrationFile.skills.filter((s) => !validateSkill(s));
+        if (invalidSkills.length > 0) {
+            throw new Error(`Invalid OASF skills: ${invalidSkills.join(', ')}. Use getAllSkills() to list valid slugs.`);
+        }
+    }
+    // Validate domains if provided
+    if (registrationFile.domains?.length) {
+        const invalidDomains = registrationFile.domains.filter((d) => !validateDomain(d));
+        if (invalidDomains.length > 0) {
+            throw new Error(`Invalid OASF domains: ${invalidDomains.join(', ')}. Use getAllDomains() to list valid slugs.`);
+        }
+    }
     // Convert from internal format { type, value, meta } to ERC-8004 format { name, endpoint, version }
     const endpoints = [];
     for (const ep of registrationFile.endpoints) {
@@ -44,11 +60,13 @@ export function buildRegistrationFileJson(registrationFile, options) {
         ...(registrationFile.image && { image: registrationFile.image }),
         endpoints,
         ...(registrations.length > 0 && { registrations }),
-        ...(registrationFile.trustModels.length > 0 && {
+        ...(registrationFile.trustModels?.length && {
             supportedTrusts: registrationFile.trustModels,
         }),
-        active: registrationFile.active,
-        x402support: registrationFile.x402support,
+        active: registrationFile.active ?? true,
+        x402support: registrationFile.x402support ?? false,
+        ...(registrationFile.skills?.length && { skills: registrationFile.skills }),
+        ...(registrationFile.domains?.length && { domains: registrationFile.domains }),
     };
 }
 //# sourceMappingURL=registration-file-builder.js.map
