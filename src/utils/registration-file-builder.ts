@@ -3,6 +3,7 @@
  * Extracted from IPFSClient.addRegistrationFile for frontend use
  */
 import type { RegistrationFile } from '../models/interfaces.js';
+import { validateSkill, validateDomain } from '../core/oasf-validator.js';
 
 export interface RegistrationFileJsonOptions {
   chainId?: number;
@@ -11,6 +12,7 @@ export interface RegistrationFileJsonOptions {
 
 /**
  * Build ERC-8004 compliant JSON from RegistrationFile
+ * Validates OASF skills/domains if provided
  * Does NOT upload - just returns the JSON object
  */
 export function buildRegistrationFileJson(
@@ -18,6 +20,26 @@ export function buildRegistrationFileJson(
   options?: RegistrationFileJsonOptions
 ): Record<string, unknown> {
   const { chainId, identityRegistryAddress } = options || {};
+
+  // Validate skills if provided
+  if (registrationFile.skills?.length) {
+    const invalidSkills = registrationFile.skills.filter((s) => !validateSkill(s));
+    if (invalidSkills.length > 0) {
+      throw new Error(
+        `Invalid OASF skills: ${invalidSkills.join(', ')}. Use getAllSkills() to list valid slugs.`
+      );
+    }
+  }
+
+  // Validate domains if provided
+  if (registrationFile.domains?.length) {
+    const invalidDomains = registrationFile.domains.filter((d) => !validateDomain(d));
+    if (invalidDomains.length > 0) {
+      throw new Error(
+        `Invalid OASF domains: ${invalidDomains.join(', ')}. Use getAllDomains() to list valid slugs.`
+      );
+    }
+  }
 
   // Convert from internal format { type, value, meta } to ERC-8004 format { name, endpoint, version }
   const endpoints: Array<Record<string, unknown>> = [];
@@ -45,9 +67,10 @@ export function buildRegistrationFileJson(
   const registrations: Array<Record<string, unknown>> = [];
   if (registrationFile.agentId) {
     const [, , tokenId] = registrationFile.agentId.split(':');
-    const agentRegistry = chainId && identityRegistryAddress
-      ? `eip155:${chainId}:${identityRegistryAddress}`
-      : `eip155:1:{identityRegistry}`;
+    const agentRegistry =
+      chainId && identityRegistryAddress
+        ? `eip155:${chainId}:${identityRegistryAddress}`
+        : `eip155:1:{identityRegistry}`;
     registrations.push({
       agentId: parseInt(tokenId, 10),
       agentRegistry,
@@ -62,10 +85,12 @@ export function buildRegistrationFileJson(
     ...(registrationFile.image && { image: registrationFile.image }),
     endpoints,
     ...(registrations.length > 0 && { registrations }),
-    ...(registrationFile.trustModels.length > 0 && {
+    ...(registrationFile.trustModels?.length && {
       supportedTrusts: registrationFile.trustModels,
     }),
-    active: registrationFile.active,
-    x402support: registrationFile.x402support,
+    active: registrationFile.active ?? true,
+    x402support: registrationFile.x402support ?? false,
+    ...(registrationFile.skills?.length && { skills: registrationFile.skills }),
+    ...(registrationFile.domains?.length && { domains: registrationFile.domains }),
   };
 }

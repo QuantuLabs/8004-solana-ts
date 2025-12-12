@@ -35,3 +35,21 @@ export function validateDomain(slug: string): boolean {
   return slug in domains;
 }
 
+/**
+ * Get all available OASF skill slugs
+ * @returns Array of all valid skill slugs
+ */
+export function getAllSkills(): string[] {
+  const skillsData = allSkills as SkillsData;
+  return Object.keys(skillsData.skills || {});
+}
+
+/**
+ * Get all available OASF domain slugs
+ * @returns Array of all valid domain slugs
+ */
+export function getAllDomains(): string[] {
+  const domainsData = allDomains as DomainsData;
+  return Object.keys(domainsData.domains || {});
+}
+
