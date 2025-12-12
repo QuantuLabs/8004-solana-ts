@@ -16,6 +16,17 @@ export interface SolanaSDKConfig {
     ipfsClient?: IPFSClient;
 }
 /**
+ * Agent with on-chain metadata extensions
+ * Returned by getAllAgents() for efficient bulk fetching
+ */
+export interface AgentWithMetadata {
+    account: AgentAccount;
+    metadata: Array<{
+        key: string;
+        value: string;
+    }>;
+}
+/**
  * Main SDK class for Solana ERC-8004 implementation
  * Provides read and write access to agent registries on Solana
  */
@@ -30,7 +41,7 @@ export declare class SolanaSDK {
     private readonly validationTxBuilder;
     private mintResolver?;
     private collectionMint?;
-    constructor(config: SolanaSDKConfig);
+    constructor(config?: SolanaSDKConfig);
     /**
      * Initialize the agent mint resolver (lazy initialization)
      * Fetches registry config and creates resolver
@@ -43,12 +54,25 @@ export declare class SolanaSDK {
      */
     loadAgent(agentId: number | bigint): Promise<AgentAccount | null>;
     /**
+     * Get a specific metadata entry for an agent
+     * @param agentId - Agent ID (number or bigint)
+     * @param key - Metadata key
+     * @returns Metadata value as string, or null if not found
+     */
+    getMetadata(agentId: number | bigint, key: string): Promise<string | null>;
+    /**
      * Get agent by owner
      * @param owner - Owner public key
      * @returns Array of agent accounts owned by this address
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
     getAgentsByOwner(owner: PublicKey): Promise<AgentAccount[]>;
+    /**
+     * Get all registered agents with their on-chain metadata
+     * @returns Array of agents with metadata extensions
+     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+     */
+    getAllAgents(): Promise<AgentWithMetadata[]>;
     /**
      * Check if agent exists
      * @param agentId - Agent ID (number or bigint)
@@ -183,6 +207,14 @@ export declare class SolanaSDK {
      * @param options - Write options (skipSend, signer)
      */
     setMetadata(agentId: number | bigint, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Delete a metadata entry for an agent (write operation)
+     * Only works if metadata is not immutable
+     * @param agentId - Agent ID (number or bigint)
+     * @param key - Metadata key to delete
+     * @param options - Write options (skipSend, signer)
+     */
+    deleteMetadata(agentId: number | bigint, key: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Give feedback to an agent (write operation)
      * Aligned with agent0-ts SDK interface

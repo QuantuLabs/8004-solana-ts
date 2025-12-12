@@ -40,34 +40,40 @@ export declare class PDAHelpers {
      */
     static getMetadataExtensionPDA(asset: PublicKey, extensionIndex: number, programId?: PublicKey): [PublicKey, number];
     /**
+     * Get Metadata Entry PDA (v0.2.0 - individual metadata entries)
+     * Seeds: ["agent_meta", agent_id, key_hash]
+     * key_hash = SHA256(key)[0..8]
+     */
+    static getMetadataEntryPDA(agentId: bigint, keyHash: Buffer, programId?: PublicKey): [PublicKey, number];
+    /**
      * Get Feedback Account PDA
      * Seeds: ["feedback", agent_id, feedback_index]
      * BREAKING: v0.2.0 uses global feedback index (no client address)
      */
-    static getFeedbackPDA(agentId: bigint, feedbackIndex: bigint, programId?: PublicKey): [PublicKey, number];
+    static getFeedbackPDA(agentId: bigint | number, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
      * Get Feedback Tags PDA (optional tags for feedback)
      * Seeds: ["feedback_tags", agent_id, feedback_index]
      * Created only when tags are provided via set_feedback_tags
      */
-    static getFeedbackTagsPDA(agentId: bigint, feedbackIndex: bigint, programId?: PublicKey): [PublicKey, number];
+    static getFeedbackTagsPDA(agentId: bigint | number, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
      * Get Agent Reputation PDA
      * Seeds: ["agent_reputation", agent_id]
      */
-    static getAgentReputationPDA(agentId: bigint, programId?: PublicKey): [PublicKey, number];
+    static getAgentReputationPDA(agentId: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
      * Get Response PDA
      * Seeds: ["response", agent_id, feedback_index, response_index]
      * BREAKING: v0.2.0 removed client from seeds
      */
-    static getResponsePDA(agentId: bigint, feedbackIndex: bigint, responseIndex: bigint, programId?: PublicKey): [PublicKey, number];
+    static getResponsePDA(agentId: bigint | number, feedbackIndex: bigint | number, responseIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
      * Get Response Index PDA
      * Seeds: ["response_index", agent_id, feedback_index]
      * BREAKING: v0.2.0 removed client from seeds
      */
-    static getResponseIndexPDA(agentId: bigint, feedbackIndex: bigint, programId?: PublicKey): [PublicKey, number];
+    static getResponseIndexPDA(agentId: bigint | number, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
      * Get Validation Stats PDA
      * Seeds: ["validation_config"]
@@ -77,7 +83,7 @@ export declare class PDAHelpers {
      * Get Validation Request PDA
      * Seeds: ["validation", agent_id, validator, nonce]
      */
-    static getValidationRequestPDA(agentId: bigint, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
+    static getValidationRequestPDA(agentId: bigint | number, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
     /** Alias for getConfigPDA */
     static getRegistryConfigPDA(): [PublicKey, number];
     /** Alias for getValidationStatsPDA */
@@ -87,7 +93,7 @@ export declare class PDAHelpers {
      * Seeds: ["client_index", agent_id, client]
      * Used to track per-client feedback count
      */
-    static getClientIndexPDA(agentId: bigint, client: PublicKey, programId?: PublicKey): [PublicKey, number];
+    static getClientIndexPDA(agentId: bigint | number, client: PublicKey, programId?: PublicKey): [PublicKey, number];
 }
 /**
  * Helper to convert bytes32 to string
