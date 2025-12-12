@@ -86,7 +86,7 @@ console.log(`Agent #${result.agentId} registered: ${result.signature}`);
 ### 3. Load Agent Data
 
 ```typescript
-// Fetch agent data from the blockchain
+// Fetch agent by ID
 const agent = await sdk.loadAgent(agentId);
 
 if (agent) {
@@ -94,6 +94,16 @@ if (agent) {
   console.log(`Owner: ${agent.getOwnerPublicKey().toBase58()}`);
   console.log(`URI: ${agent.agent_uri}`);
   console.log(`Asset: ${agent.getAssetPublicKey().toBase58()}`);
+}
+
+// Or fetch all agents owned by a wallet (requires custom RPC)
+import { PublicKey } from '@solana/web3.js';
+
+const ownerWallet = new PublicKey('YourWalletAddress...');
+const myAgents = await sdk.getAgentsByOwner(ownerWallet);
+
+for (const agent of myAgents) {
+  console.log(`Agent #${agent.agent_id}: ${agent.nft_name}`);
 }
 ```
 
