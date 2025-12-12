@@ -46,8 +46,8 @@ async function main() {
       { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
     ],
     // OASF taxonomies (optional) - see docs/OASF.md for valid slugs
-    skills: ['natural_language_processing/summarization'],
-    domains: ['technology/software_engineering'],
+    skills: ['natural_language_processing/natural_language_generation/summarization'],
+    domains: ['technology/software_engineering/software_engineering'],
   };
 
   const metadata = buildRegistrationFileJson(agentData);
