@@ -188,9 +188,22 @@ export class SolanaFeedbackManager {
         },
       ]);
 
-      const feedbackAccounts = accounts
-        .map((acc) => FeedbackAccount.deserialize(acc.data))
-        .filter((f) => includeRevoked || !f.revoked);
+      // Deserialize accounts, skipping any that fail (e.g., old pre-v0.2.0 format)
+      const feedbackAccounts: FeedbackAccount[] = [];
+      for (const acc of accounts) {
+        try {
+          const feedback = FeedbackAccount.deserialize(acc.data);
+          // Validate: created_at should be a reasonable timestamp (after 2020, before 2100)
+          const ts = Number(feedback.created_at);
+          if (ts > 1577836800 && ts < 4102444800) {
+            if (includeRevoked || !feedback.revoked) {
+              feedbackAccounts.push(feedback);
+            }
+          }
+        } catch {
+          // Skip accounts that fail to deserialize (old format)
+        }
+      }
 
       // Fetch tags for all feedbacks in parallel
       const feedbacksWithTags = await Promise.all(
@@ -441,5 +454,62 @@ export class SolanaFeedbackManager {
       console.error(`Error fetching feedback file from ${uri}:`, error);
       return null;
     }
+  }
+
+  /**
+   * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+   * Much more efficient than calling readAllFeedback() per agent
+   * @param includeRevoked - Include revoked feedbacks? default: false
+   * @returns Map of agentId -> SolanaFeedback[]
+   */
+  async fetchAllFeedbacks(includeRevoked: boolean = false): Promise<Map<bigint, SolanaFeedback[]>> {
+    const programId = REPUTATION_PROGRAM_ID;
+
+    // 1. Fetch ALL FeedbackAccounts (discriminator only, no agent_id filter)
+    const [feedbackAccounts, tagAccounts] = await Promise.all([
+      this.client.getProgramAccounts(programId, [
+        { memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.FeedbackAccount) } },
+      ]),
+      // 2. Fetch ALL FeedbackTagsPda
+      this.client.getProgramAccounts(programId, [
+        { memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.FeedbackTagsPda) } },
+      ]),
+    ]);
+
+    // 3. Build tags map: "agentId-feedbackIndex" -> { tag1, tag2 }
+    const tagsMap = new Map<string, { tag1: string; tag2: string }>();
+    for (const acc of tagAccounts) {
+      try {
+        const tags = FeedbackTagsPda.deserialize(acc.data);
+        tagsMap.set(`${tags.agent_id}-${tags.feedback_index}`, { tag1: tags.tag1 || '', tag2: tags.tag2 || '' });
+      } catch { /* skip invalid */ }
+    }
+
+    // 4. Deserialize feedbacks and group by agent_id (use string key for grouping, convert back to bigint)
+    const grouped = new Map<string, SolanaFeedback[]>();
+    for (const acc of feedbackAccounts) {
+      try {
+        const fb = FeedbackAccount.deserialize(acc.data);
+
+        // Validate timestamp (skip old pre-v0.2.0 accounts)
+        const ts = Number(fb.created_at);
+        if (ts < 1577836800 || ts > 4102444800) continue;
+        if (!includeRevoked && fb.is_revoked) continue;
+
+        const agentIdStr = fb.agent_id.toString();
+        const tags = tagsMap.get(`${agentIdStr}-${fb.feedback_index}`) || { tag1: '', tag2: '' };
+        const mapped = this.mapFeedbackAccount(fb, tags);
+
+        if (!grouped.has(agentIdStr)) grouped.set(agentIdStr, []);
+        grouped.get(agentIdStr)!.push(mapped);
+      } catch { /* skip invalid */ }
+    }
+
+    // Convert string keys back to bigint
+    const result = new Map<bigint, SolanaFeedback[]>();
+    for (const [key, feedbacks] of grouped) {
+      result.set(BigInt(key), feedbacks);
+    }
+    return result;
   }
 }

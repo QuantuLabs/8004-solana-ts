@@ -124,5 +124,12 @@ export declare class SolanaFeedbackManager {
      * Helper to fetch and parse feedback file from IPFS/Arweave
      */
     fetchFeedbackFile(uri: string): Promise<any | null>;
+    /**
+     * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+     * Much more efficient than calling readAllFeedback() per agent
+     * @param includeRevoked - Include revoked feedbacks? default: false
+     * @returns Map of agentId -> SolanaFeedback[]
+     */
+    fetchAllFeedbacks(includeRevoked?: boolean): Promise<Map<bigint, SolanaFeedback[]>>;
 }
 //# sourceMappingURL=feedback-manager-solana.d.ts.map
