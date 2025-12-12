@@ -25,7 +25,7 @@ export interface AgentWithMetadata {
         key: string;
         value: string;
     }>;
-    feedbacks?: SolanaFeedback[];
+    feedbacks: SolanaFeedback[];
 }
 export interface GetAllAgentsOptions {
     /** Include feedbacks for each agent (2 additional RPC calls). Default: false */
@@ -68,12 +68,13 @@ export declare class SolanaSDK {
      */
     getMetadata(agentId: number | bigint, key: string): Promise<string | null>;
     /**
-     * Get agent by owner
+     * Get agents by owner with on-chain metadata
      * @param owner - Owner public key
-     * @returns Array of agent accounts owned by this address
+     * @param options - Optional settings for additional data fetching
+     * @returns Array of agents with metadata (and optionally feedbacks)
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
-    getAgentsByOwner(owner: PublicKey): Promise<AgentAccount[]>;
+    getAgentsByOwner(owner: PublicKey, options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
     /**
      * Get all registered agents with their on-chain metadata
      * @param options - Optional settings for additional data fetching

@@ -12,7 +12,7 @@ import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { createHash } from 'crypto';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
-import { AgentAccount, MetadataExtensionAccount, MetadataEntryPda } from './borsh-schemas.js';
+import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
   ReputationTransactionBuilder,
@@ -42,7 +42,7 @@ export interface SolanaSDKConfig {
 export interface AgentWithMetadata {
   account: AgentAccount;
   metadata: Array<{ key: string; value: string }>;
-  feedbacks?: SolanaFeedback[];
+  feedbacks: SolanaFeedback[];
 }
 
 export interface GetAllAgentsOptions {
@@ -207,29 +207,30 @@ export class SolanaSDK {
   }
 
   /**
-   * Get agent by owner
+   * Get agents by owner with on-chain metadata
    * @param owner - Owner public key
-   * @returns Array of agent accounts owned by this address
+   * @param options - Optional settings for additional data fetching
+   * @returns Array of agents with metadata (and optionally feedbacks)
    * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
    */
-  async getAgentsByOwner(owner: PublicKey): Promise<AgentAccount[]> {
-    // This operation requires getProgramAccounts which is limited on public devnet
+  async getAgentsByOwner(
+    owner: PublicKey,
+    options?: GetAllAgentsOptions
+  ): Promise<AgentWithMetadata[]> {
     this.client.requireAdvancedQueries('getAgentsByOwner');
 
     try {
       const programId = this.programIds.identityRegistry;
 
-      // Fetch all agent accounts using discriminator filter
-      const accounts = await this.client.getProgramAccounts(programId, [
+      // 1. Fetch agent accounts filtered by owner (1 RPC call)
+      const agentAccounts = await this.client.getProgramAccounts(programId, [
         {
-          // Filter by AgentAccount discriminator at offset 0
           memcmp: {
             offset: 0,
             bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount),
           },
         },
         {
-          // Filter by owner at offset 16 (8 discriminator + 8 agent_id)
           memcmp: {
             offset: 16,
             bytes: owner.toBase58(),
@@ -237,10 +238,52 @@ export class SolanaSDK {
         },
       ]);
 
-      // Deserialize accounts
-      const agents = accounts.map((acc) => AgentAccount.deserialize(acc.data));
+      const agents = agentAccounts.map((acc) => AgentAccount.deserialize(acc.data));
 
-      return agents;
+      // 2. Fetch ALL metadata entries (1 RPC call)
+      const metadataAccounts = await this.client.getProgramAccounts(programId, [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.MetadataEntryPda),
+          },
+        },
+      ]);
+
+      // Build metadata map: agentId -> [{key, value}]
+      const metadataMap = new Map<string, Array<{ key: string; value: string }>>();
+      for (const acc of metadataAccounts) {
+        try {
+          const entry = MetadataEntryPda.deserialize(acc.data);
+          const agentIdStr = entry.agent_id.toString();
+          if (!metadataMap.has(agentIdStr)) metadataMap.set(agentIdStr, []);
+          metadataMap.get(agentIdStr)!.push({
+            key: entry.metadata_key,
+            value: entry.getValueString(),
+          });
+        } catch {
+          /* skip invalid */
+        }
+      }
+
+      // 3. Optionally fetch feedbacks (2 RPC calls)
+      let feedbacksMap: Map<bigint, SolanaFeedback[]> | null = null;
+      if (options?.includeFeedbacks) {
+        feedbacksMap = await this.feedbackManager.fetchAllFeedbacks(
+          options.includeRevoked ?? false
+        );
+      }
+
+      // 4. Combine results (feedbacks = [] if not requested)
+      return agents.map((account) => {
+        const agentIdStr = account.agent_id.toString();
+        const agentIdBigInt = BigInt(agentIdStr);
+        return {
+          account,
+          metadata: metadataMap.get(agentIdStr) || [],
+          feedbacks: feedbacksMap ? feedbacksMap.get(agentIdBigInt) || [] : [],
+        };
+      });
     } catch (error) {
       if (error instanceof UnsupportedRpcError) throw error;
       console.error(`Error getting agents for owner ${owner.toBase58()}:`, error);
@@ -281,18 +324,17 @@ export class SolanaSDK {
         ]),
       ]);
 
-      // Build metadata map by agent_mint
+      // Build metadata map by agent_id
       const metadataMap = new Map<string, Array<{ key: string; value: string }>>();
       for (const acc of metadataAccounts) {
         try {
-          const extension = MetadataExtensionAccount.deserialize(acc.data);
-          const mintKey = extension.getMintPublicKey().toBase58();
-          const entries = extension.metadata.map((e) => ({
-            key: e.metadata_key,
-            value: Buffer.from(e.metadata_value).toString('utf8'),
-          }));
-          const existing = metadataMap.get(mintKey) || [];
-          metadataMap.set(mintKey, [...existing, ...entries]);
+          const entry = MetadataEntryPda.deserialize(acc.data);
+          const agentIdStr = entry.agent_id.toString();
+          if (!metadataMap.has(agentIdStr)) metadataMap.set(agentIdStr, []);
+          metadataMap.get(agentIdStr)!.push({
+            key: entry.metadata_key,
+            value: entry.getValueString(),
+          });
         } catch {
           // Skip malformed accounts
         }
@@ -303,10 +345,11 @@ export class SolanaSDK {
       for (const acc of agentAccounts) {
         try {
           const agent = AgentAccount.deserialize(acc.data);
-          const mintKey = agent.getMintPublicKey().toBase58();
+          const agentIdStr = agent.agent_id.toString();
           agents.push({
             account: agent,
-            metadata: metadataMap.get(mintKey) || [],
+            metadata: metadataMap.get(agentIdStr) || [],
+            feedbacks: [], // Always initialize as empty array
           });
         } catch {
           // Skip malformed accounts
