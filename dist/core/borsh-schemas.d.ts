@@ -52,6 +52,33 @@ export declare class AgentAccount {
     get metadata(): MetadataEntry[];
 }
 /**
+ * Metadata Entry PDA (v0.2.0 - Individual metadata storage)
+ * Seeds: ["agent_meta", agent_id (LE), key_hash[0..8]]
+ * Each metadata entry is stored in its own PDA for deleteability
+ */
+export declare class MetadataEntryPda {
+    agent_id: bigint;
+    metadata_key: string;
+    metadata_value: Uint8Array;
+    immutable: boolean;
+    created_at: bigint;
+    bump: number;
+    constructor(fields: {
+        agent_id: bigint;
+        metadata_key: string;
+        metadata_value: Uint8Array;
+        immutable: boolean;
+        created_at: bigint;
+        bump: number;
+    });
+    static schema: Schema;
+    static deserialize(data: Buffer): MetadataEntryPda;
+    getValueString(): string;
+    get key(): string;
+    get value(): string;
+    get isImmutable(): boolean;
+}
+/**
  * Registry Config Account (Identity Registry)
  * Seeds: ["config"]
  * v0.2.0: Removed collection_authority_bump, collection_mint renamed to collection

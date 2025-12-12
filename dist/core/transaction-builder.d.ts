@@ -91,6 +91,14 @@ export declare class IdentityTransactionBuilder {
      */
     setMetadata(asset: PublicKey, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
+     * Delete agent metadata (v0.2.0 - deletes MetadataEntryPda)
+     * Only works for mutable metadata (will fail for immutable)
+     * @param asset - Agent Core asset
+     * @param key - Metadata key to delete
+     * @param options - Write options (skipSend, signer)
+     */
+    deleteMetadata(asset: PublicKey, key: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
      * Transfer agent to another owner (Metaplex Core)
      * @param asset - Agent Core asset
      * @param toOwner - New owner public key

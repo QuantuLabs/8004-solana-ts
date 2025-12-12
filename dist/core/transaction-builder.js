@@ -246,6 +246,55 @@ export class IdentityTransactionBuilder {
         }
     }
     /**
+     * Delete agent metadata (v0.2.0 - deletes MetadataEntryPda)
+     * Only works for mutable metadata (will fail for immutable)
+     * @param asset - Agent Core asset
+     * @param key - Metadata key to delete
+     * @param options - Write options (skipSend, signer)
+     */
+    async deleteMetadata(asset, key, options) {
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            // Fetch agent account to get agent_id
+            const agentData = await this.connection.getAccountInfo(agentPda);
+            if (!agentData) {
+                throw new Error('Agent account not found');
+            }
+            // Read agent_id (u64 at offset 8 after discriminator)
+            const agentId = agentData.data.readBigUInt64LE(8);
+            // Compute key hash (SHA256(key)[0..8])
+            const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
+            // Derive metadata entry PDA
+            const agentIdBuffer = Buffer.alloc(8);
+            agentIdBuffer.writeBigUInt64LE(agentId);
+            const [metadataEntry] = PublicKey.findProgramAddressSync([Buffer.from('agent_meta'), agentIdBuffer, keyHash], PROGRAM_ID);
+            const instruction = this.instructionBuilder.buildDeleteMetadata(metadataEntry, agentPda, asset, signerPubkey, keyHash);
+            const transaction = new Transaction().add(instruction);
+            // If skipSend, return serialized transaction
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
+            // Normal mode: send transaction
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
      * Transfer agent to another owner (Metaplex Core)
      * @param asset - Agent Core asset
      * @param toOwner - New owner public key
