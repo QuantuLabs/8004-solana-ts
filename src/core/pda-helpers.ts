@@ -70,6 +70,25 @@ export class PDAHelpers {
     );
   }
 
+  /**
+   * Get Metadata Entry PDA (v0.2.0 - individual metadata entries)
+   * Seeds: ["agent_meta", agent_id, key_hash]
+   * key_hash = SHA256(key)[0..8]
+   */
+  static getMetadataEntryPDA(
+    agentId: bigint,
+    keyHash: Buffer,
+    programId: PublicKey = PROGRAM_ID
+  ): [PublicKey, number] {
+    const agentIdBuffer = Buffer.alloc(8);
+    agentIdBuffer.writeBigUInt64LE(agentId);
+
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('agent_meta'), agentIdBuffer, keyHash.slice(0, 8)],
+      programId
+    );
+  }
+
   // ============================================================================
   // Reputation Module PDAs
   // ============================================================================
@@ -80,15 +99,15 @@ export class PDAHelpers {
    * BREAKING: v0.2.0 uses global feedback index (no client address)
    */
   static getFeedbackPDA(
-    agentId: bigint,
-    feedbackIndex: bigint,
+    agentId: bigint | number,
+    feedbackIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     const feedbackIndexBuffer = Buffer.alloc(8);
-    feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
+    feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('feedback'), agentIdBuffer, feedbackIndexBuffer],
@@ -102,15 +121,15 @@ export class PDAHelpers {
    * Created only when tags are provided via set_feedback_tags
    */
   static getFeedbackTagsPDA(
-    agentId: bigint,
-    feedbackIndex: bigint,
+    agentId: bigint | number,
+    feedbackIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     const feedbackIndexBuffer = Buffer.alloc(8);
-    feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
+    feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('feedback_tags'), agentIdBuffer, feedbackIndexBuffer],
@@ -123,11 +142,11 @@ export class PDAHelpers {
    * Seeds: ["agent_reputation", agent_id]
    */
   static getAgentReputationPDA(
-    agentId: bigint,
+    agentId: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('agent_reputation'), agentIdBuffer],
@@ -141,19 +160,19 @@ export class PDAHelpers {
    * BREAKING: v0.2.0 removed client from seeds
    */
   static getResponsePDA(
-    agentId: bigint,
-    feedbackIndex: bigint,
-    responseIndex: bigint,
+    agentId: bigint | number,
+    feedbackIndex: bigint | number,
+    responseIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     const feedbackIndexBuffer = Buffer.alloc(8);
-    feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
+    feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     const responseIndexBuffer = Buffer.alloc(8);
-    responseIndexBuffer.writeBigUInt64LE(responseIndex);
+    responseIndexBuffer.writeBigUInt64LE(BigInt(responseIndex));
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('response'), agentIdBuffer, feedbackIndexBuffer, responseIndexBuffer],
@@ -167,15 +186,15 @@ export class PDAHelpers {
    * BREAKING: v0.2.0 removed client from seeds
    */
   static getResponseIndexPDA(
-    agentId: bigint,
-    feedbackIndex: bigint,
+    agentId: bigint | number,
+    feedbackIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     const feedbackIndexBuffer = Buffer.alloc(8);
-    feedbackIndexBuffer.writeBigUInt64LE(feedbackIndex);
+    feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('response_index'), agentIdBuffer, feedbackIndexBuffer],
@@ -203,13 +222,13 @@ export class PDAHelpers {
    * Seeds: ["validation", agent_id, validator, nonce]
    */
   static getValidationRequestPDA(
-    agentId: bigint,
+    agentId: bigint | number,
     validator: PublicKey,
     nonce: number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     const nonceBuffer = Buffer.alloc(4);
     nonceBuffer.writeUInt32LE(nonce);
@@ -240,12 +259,12 @@ export class PDAHelpers {
    * Used to track per-client feedback count
    */
   static getClientIndexPDA(
-    agentId: bigint,
+    agentId: bigint | number,
     client: PublicKey,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
+    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('client_index'), agentIdBuffer, client.toBuffer()],

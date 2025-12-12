@@ -116,6 +116,76 @@ export class AgentAccount {
 }
 
 /**
+ * Metadata Entry PDA (v0.2.0 - Individual metadata storage)
+ * Seeds: ["agent_meta", agent_id (LE), key_hash[0..8]]
+ * Each metadata entry is stored in its own PDA for deleteability
+ */
+export class MetadataEntryPda {
+  agent_id: bigint;
+  metadata_key: string;
+  metadata_value: Uint8Array;
+  immutable: boolean;
+  created_at: bigint;
+  bump: number;
+
+  constructor(fields: {
+    agent_id: bigint;
+    metadata_key: string;
+    metadata_value: Uint8Array;
+    immutable: boolean;
+    created_at: bigint;
+    bump: number;
+  }) {
+    this.agent_id = fields.agent_id;
+    this.metadata_key = fields.metadata_key;
+    this.metadata_value = fields.metadata_value;
+    this.immutable = fields.immutable;
+    this.created_at = fields.created_at;
+    this.bump = fields.bump;
+  }
+
+  static schema: Schema = new Map<any, any>([
+    [
+      MetadataEntryPda,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['metadata_key', 'string'],
+          ['metadata_value', ['u8']],  // Vec<u8>
+          ['immutable', 'u8'],         // bool as u8
+          ['created_at', 'u64'],       // i64 as u64 (borsh 0.7 limitation)
+          ['bump', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): MetadataEntryPda {
+    // Skip 8-byte Anchor discriminator
+    const accountData = data.slice(8);
+    return deserializeUnchecked(this.schema, MetadataEntryPda, accountData);
+  }
+
+  getValueString(): string {
+    return Buffer.from(this.metadata_value).toString('utf8');
+  }
+
+  // Convenient getters
+  get key(): string {
+    return this.metadata_key;
+  }
+
+  get value(): string {
+    return this.getValueString();
+  }
+
+  get isImmutable(): boolean {
+    return this.immutable;
+  }
+}
+
+/**
  * Registry Config Account (Identity Registry)
  * Seeds: ["config"]
  * v0.2.0: Removed collection_authority_bump, collection_mint renamed to collection
