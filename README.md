@@ -164,6 +164,7 @@ For **production use** or **advanced queries** (like `getProgramAccounts`), use 
 | `loadAgent()` | Works | Works |
 | `giveFeedback()` | Works | Works |
 | `getSummary()` | Works | Works |
+| `getAllAgents()` | **Fails** | Works |
 | `getAgentsByOwner()` | **Fails** | Works |
 | `readAllFeedback()` | **Fails** | Works |
 | `getClients()` | **Fails** | Works |

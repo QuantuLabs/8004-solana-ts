@@ -45,6 +45,7 @@ const sdk = new SolanaSDK({
 | `agentExists` | `(agentId: bigint) => Promise<boolean>` | Check if agent exists |
 | `getAgentOwner` | `(agentId: bigint) => Promise<PublicKey \| null>` | Get agent owner |
 | `isAgentOwner` | `(agentId, address) => Promise<boolean>` | Check ownership |
+| `getMetadata` | `(agentId, key) => Promise<string \| null>` | Read metadata entry |
 
 ## Agent Write Methods
 
@@ -53,19 +54,36 @@ const sdk = new SolanaSDK({
 | `registerAgent` | `(tokenUri?, metadata?) => Promise<TransactionResult>` | Register new agent |
 | `transferAgent` | `(agentId, newOwner) => Promise<TransactionResult>` | Transfer ownership |
 | `setAgentUri` | `(agentId, newUri) => Promise<TransactionResult>` | Update agent URI |
-| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set on-chain metadata |
+| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set/update on-chain metadata |
+| `deleteMetadata` | `(agentId, key) => Promise<TransactionResult>` | Delete mutable metadata |
 
 ### On-chain Metadata
 
 Store arbitrary key-value pairs directly on-chain (optional - most data should be in IPFS):
 
 ```typescript
-// Mutable metadata
+// Create metadata (first time: ~0.00319 SOL for rent)
 await sdk.setMetadata(agentId, 'version', '1.0.0');
 
-// Immutable metadata (cannot be modified)
+// Update metadata (same key: ~0.000005 SOL, TX fee only)
+await sdk.setMetadata(agentId, 'version', '2.0.0');
+
+// Read metadata
+const version = await sdk.getMetadata(agentId, 'version');
+console.log(version); // "2.0.0"
+
+// Delete metadata (recovers rent to owner)
+await sdk.deleteMetadata(agentId, 'version');
+
+// Immutable metadata (cannot be modified or deleted)
 await sdk.setMetadata(agentId, 'certification', 'verified', true);
+// await sdk.deleteMetadata(agentId, 'certification'); // Error: MetadataImmutable
 ```
+
+**Cost Summary:**
+- Create: ~0.00319 SOL (rent for MetadataEntryPda)
+- Update: ~0.000005 SOL (TX fee only)
+- Delete: recovers rent to owner
 
 ## Reputation Methods
 
