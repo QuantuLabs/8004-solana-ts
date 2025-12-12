@@ -173,10 +173,11 @@ export class SolanaSDK {
     }
     /**
      * Get all registered agents with their on-chain metadata
-     * @returns Array of agents with metadata extensions
+     * @param options - Optional settings for additional data fetching
+     * @returns Array of agents with metadata extensions (and optionally feedbacks)
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
-    async getAllAgents() {
+    async getAllAgents(options) {
         // This operation requires getProgramAccounts which is limited on public devnet
         this.client.requireAdvancedQueries('getAllAgents');
         try {
@@ -232,6 +233,15 @@ export class SolanaSDK {
                     // Skip malformed accounts
                 }
             }
+            // Optionally fetch all feedbacks (2 additional RPC calls)
+            if (options?.includeFeedbacks) {
+                const allFeedbacks = await this.feedbackManager.fetchAllFeedbacks(options.includeRevoked ?? false);
+                // Attach feedbacks to each agent (convert agent_id to BigInt for Map lookup)
+                for (const agent of agents) {
+                    const agentId = BigInt(agent.account.agent_id.toString());
+                    agent.feedbacks = allFeedbacks.get(agentId) || [];
+                }
+            }
             return agents;
         }
         catch (error) {
@@ -240,6 +250,17 @@ export class SolanaSDK {
             console.error('Error getting all agents:', error);
             return [];
         }
+    }
+    /**
+     * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+     * More efficient than calling readAllFeedback() per agent
+     * @param includeRevoked - Include revoked feedbacks? Default: false
+     * @returns Map of agentId -> SolanaFeedback[]
+     * @throws UnsupportedRpcError if using default devnet RPC
+     */
+    async getAllFeedbacks(includeRevoked = false) {
+        this.client.requireAdvancedQueries('getAllFeedbacks');
+        return await this.feedbackManager.fetchAllFeedbacks(includeRevoked);
     }
     /**
      * Check if agent exists

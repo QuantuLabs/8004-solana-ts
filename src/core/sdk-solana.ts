@@ -6,7 +6,7 @@
 import { PublicKey, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { SolanaClient, Cluster, createDevnetClient, UnsupportedRpcError } from './client.js';
-import { SolanaFeedbackManager } from './feedback-manager-solana.js';
+import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
@@ -42,6 +42,14 @@ export interface SolanaSDKConfig {
 export interface AgentWithMetadata {
   account: AgentAccount;
   metadata: Array<{ key: string; value: string }>;
+  feedbacks?: SolanaFeedback[];
+}
+
+export interface GetAllAgentsOptions {
+  /** Include feedbacks for each agent (2 additional RPC calls). Default: false */
+  includeFeedbacks?: boolean;
+  /** If includeFeedbacks=true, include revoked feedbacks? Default: false */
+  includeRevoked?: boolean;
 }
 
 /**
@@ -242,10 +250,11 @@ export class SolanaSDK {
 
   /**
    * Get all registered agents with their on-chain metadata
-   * @returns Array of agents with metadata extensions
+   * @param options - Optional settings for additional data fetching
+   * @returns Array of agents with metadata extensions (and optionally feedbacks)
    * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
    */
-  async getAllAgents(): Promise<AgentWithMetadata[]> {
+  async getAllAgents(options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]> {
     // This operation requires getProgramAccounts which is limited on public devnet
     this.client.requireAdvancedQueries('getAllAgents');
 
@@ -304,12 +313,35 @@ export class SolanaSDK {
         }
       }
 
+      // Optionally fetch all feedbacks (2 additional RPC calls)
+      if (options?.includeFeedbacks) {
+        const allFeedbacks = await this.feedbackManager.fetchAllFeedbacks(options.includeRevoked ?? false);
+
+        // Attach feedbacks to each agent (convert agent_id to BigInt for Map lookup)
+        for (const agent of agents) {
+          const agentId = BigInt(agent.account.agent_id.toString());
+          agent.feedbacks = allFeedbacks.get(agentId) || [];
+        }
+      }
+
       return agents;
     } catch (error) {
       if (error instanceof UnsupportedRpcError) throw error;
       console.error('Error getting all agents:', error);
       return [];
     }
+  }
+
+  /**
+   * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+   * More efficient than calling readAllFeedback() per agent
+   * @param includeRevoked - Include revoked feedbacks? Default: false
+   * @returns Map of agentId -> SolanaFeedback[]
+   * @throws UnsupportedRpcError if using default devnet RPC
+   */
+  async getAllFeedbacks(includeRevoked: boolean = false): Promise<Map<bigint, SolanaFeedback[]>> {
+    this.client.requireAdvancedQueries('getAllFeedbacks');
+    return await this.feedbackManager.fetchAllFeedbacks(includeRevoked);
   }
 
   /**

@@ -4,7 +4,7 @@
  */
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster } from './client.js';
-import { SolanaFeedbackManager } from './feedback-manager-solana.js';
+import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { TransactionResult, WriteOptions, RegisterAgentOptions, PreparedTransaction } from './transaction-builder.js';
@@ -25,6 +25,13 @@ export interface AgentWithMetadata {
         key: string;
         value: string;
     }>;
+    feedbacks?: SolanaFeedback[];
+}
+export interface GetAllAgentsOptions {
+    /** Include feedbacks for each agent (2 additional RPC calls). Default: false */
+    includeFeedbacks?: boolean;
+    /** If includeFeedbacks=true, include revoked feedbacks? Default: false */
+    includeRevoked?: boolean;
 }
 /**
  * Main SDK class for Solana ERC-8004 implementation
@@ -69,10 +76,19 @@ export declare class SolanaSDK {
     getAgentsByOwner(owner: PublicKey): Promise<AgentAccount[]>;
     /**
      * Get all registered agents with their on-chain metadata
-     * @returns Array of agents with metadata extensions
+     * @param options - Optional settings for additional data fetching
+     * @returns Array of agents with metadata extensions (and optionally feedbacks)
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
-    getAllAgents(): Promise<AgentWithMetadata[]>;
+    getAllAgents(options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
+    /**
+     * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+     * More efficient than calling readAllFeedback() per agent
+     * @param includeRevoked - Include revoked feedbacks? Default: false
+     * @returns Map of agentId -> SolanaFeedback[]
+     * @throws UnsupportedRpcError if using default devnet RPC
+     */
+    getAllFeedbacks(includeRevoked?: boolean): Promise<Map<bigint, SolanaFeedback[]>>;
     /**
      * Check if agent exists
      * @param agentId - Agent ID (number or bigint)
@@ -122,7 +138,7 @@ export declare class SolanaSDK {
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Feedback object or null
      */
-    readFeedback(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint): Promise<import("./feedback-manager-solana.js").SolanaFeedback | null>;
+    readFeedback(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
     /**
      * Get feedback (alias for readFeedback, for parity with agent0-ts)
      * @param agentId - Agent ID (number or bigint)
@@ -130,7 +146,7 @@ export declare class SolanaSDK {
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Feedback object or null
      */
-    getFeedback(agentId: number | bigint, clientAddress: PublicKey, feedbackIndex: number | bigint): Promise<import("./feedback-manager-solana.js").SolanaFeedback | null>;
+    getFeedback(agentId: number | bigint, clientAddress: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
     /**
      * 3. Read all feedbacks for an agent
      * @param agentId - Agent ID (number or bigint)
@@ -138,7 +154,7 @@ export declare class SolanaSDK {
      * @returns Array of feedback objects
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
      */
-    readAllFeedback(agentId: number | bigint, includeRevoked?: boolean): Promise<import("./feedback-manager-solana.js").SolanaFeedback[]>;
+    readAllFeedback(agentId: number | bigint, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
     /**
      * 4. Get last feedback index for a client
      * @param agentId - Agent ID (number or bigint)
