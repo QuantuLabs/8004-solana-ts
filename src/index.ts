@@ -47,3 +47,14 @@ export type { Cluster, SolanaClientConfig } from './core/client.js';
 export { SolanaSDK } from './core/sdk-solana.js';
 export type { SolanaSDKConfig } from './core/sdk-solana.js';
 
+// Export OASF taxonomy utilities
+export {
+  validateSkill,
+  validateDomain,
+  getAllSkills,
+  getAllDomains,
+} from './core/oasf-validator.js';
+
+// Export config reader
+export { fetchRegistryConfig } from './core/config-reader.js';
+
