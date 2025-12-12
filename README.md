@@ -127,7 +127,21 @@ for (const fb of feedbacks) {
 }
 ```
 
-> **Note**: For advanced queries like `getAgentsByOwner()` or `readAllFeedback()`, a custom RPC provider is recommended.
+### 6. Bulk Queries (Indexing)
+
+```typescript
+// Get ALL agents with their feedbacks in just 4 RPC calls
+const agents = await sdk.getAllAgents({ includeFeedbacks: true });
+for (const { account, feedbacks } of agents) {
+  console.log(`Agent #${account.agent_id}: ${feedbacks?.length || 0} feedbacks`);
+}
+
+// Or get ALL feedbacks separately as a Map
+const feedbacksMap = await sdk.getAllFeedbacks();
+const agent83Feedbacks = feedbacksMap.get(83n) || [];
+```
+
+> **Note**: For advanced queries like `getAllAgents()`, `getAllFeedbacks()`, or `readAllFeedback()`, a custom RPC provider is required.
 > Free tiers are available - see [RPC Provider Recommendations](#rpc-provider-recommendations).
 
 ---
@@ -165,6 +179,7 @@ For **production use** or **advanced queries** (like `getProgramAccounts`), use 
 | `giveFeedback()` | Works | Works |
 | `getSummary()` | Works | Works |
 | `getAllAgents()` | **Fails** | Works |
+| `getAllFeedbacks()` | **Fails** | Works |
 | `getAgentsByOwner()` | **Fails** | Works |
 | `readAllFeedback()` | **Fails** | Works |
 | `getClients()` | **Fails** | Works |

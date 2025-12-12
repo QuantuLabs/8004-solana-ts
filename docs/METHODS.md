@@ -111,9 +111,50 @@ await sdk.setMetadata(agentId, 'certification', 'verified', true);
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `getAllAgents` | `(options?) => Promise<AgentWithMetadata[]>` | All agents with metadata |
+| `getAllFeedbacks` | `(includeRevoked?) => Promise<Map<bigint, Feedback[]>>` | All feedbacks grouped by agent |
 | `getAgentsByOwner` | `(owner: PublicKey) => Promise<AgentAccount[]>` | All agents by owner |
-| `readAllFeedback` | `(agentId, includeRevoked?) => Promise<Feedback[]>` | All feedback |
-| `getClients` | `(agentId) => Promise<PublicKey[]>` | All clients |
+| `readAllFeedback` | `(agentId, includeRevoked?) => Promise<Feedback[]>` | All feedback for one agent |
+| `getClients` | `(agentId) => Promise<PublicKey[]>` | All clients for one agent |
+
+### getAllAgents Options
+
+```typescript
+interface GetAllAgentsOptions {
+  includeFeedbacks?: boolean;  // Attach feedbacks to each agent (default: false)
+  includeRevoked?: boolean;    // Include revoked feedbacks (default: false)
+}
+
+// Basic: Get all agents with on-chain metadata (2 RPC calls)
+const agents = await sdk.getAllAgents();
+
+// With feedbacks: Get all agents + all feedbacks (4 RPC calls)
+const agentsWithFeedbacks = await sdk.getAllAgents({ includeFeedbacks: true });
+for (const { account, metadata, feedbacks } of agentsWithFeedbacks) {
+  console.log(`Agent #${account.agent_id}: ${feedbacks?.length || 0} feedbacks`);
+}
+```
+
+### getAllFeedbacks
+
+```typescript
+// Get ALL feedbacks for ALL agents as a Map (2 RPC calls)
+const feedbacksMap = await sdk.getAllFeedbacks();
+
+// Access feedbacks by agent ID
+const agent83Feedbacks = feedbacksMap.get(83n) || [];
+console.log(`Agent 83 has ${agent83Feedbacks.length} feedbacks`);
+
+// Include revoked feedbacks
+const allFeedbacks = await sdk.getAllFeedbacks(true);
+```
+
+**Performance comparison:**
+| Approach | RPC Calls |
+|----------|-----------|
+| `readAllFeedback()` per agent (90 agents) | ~1000 |
+| `getAllAgents({ includeFeedbacks: true })` | **4** |
+| `getAllFeedbacks()` | **2** |
 
 ## RPC Requirements
 
@@ -122,6 +163,8 @@ await sdk.setMetadata(agentId, 'certification', 'verified', true);
 | `loadAgent()` | Works | Works |
 | `giveFeedback()` | Works | Works |
 | `getSummary()` | Works | Works |
+| `getAllAgents()` | **Fails** | Works |
+| `getAllFeedbacks()` | **Fails** | Works |
 | `getAgentsByOwner()` | **Fails** | Works |
 | `readAllFeedback()` | **Fails** | Works |
 | `getClients()` | **Fails** | Works |

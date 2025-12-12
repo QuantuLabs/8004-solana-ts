@@ -2,9 +2,18 @@
 
 ## v0.2.1 (Current)
 
-- Fix: FeedbackTagsPda fetching in readAllFeedback and readFeedback
-- Fix: BN to bigint conversion for feedback_index
-- Refactor: Cleanup SDK structure, reorganize docs
+**New Features:**
+- `getAllAgents({ includeFeedbacks: true })` - Fetch all agents with feedbacks in 4 RPC calls
+- `getAllFeedbacks()` - Fetch all feedbacks for all agents as Map (2 RPC calls)
+- OASF skills/domains validation in `buildRegistrationFileJson()`
+
+**Fixes:**
+- FeedbackTagsPda fetching in readAllFeedback and readFeedback
+- BN to bigint conversion for feedback_index
+- Skip invalid pre-v0.2.0 feedback accounts (timestamp validation)
+
+**Performance:**
+- Indexing 90 agents: ~1000 RPC calls → **4 RPC calls**
 
 ## v0.2.0 - Consolidated Program Architecture
 
