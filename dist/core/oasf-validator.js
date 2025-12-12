@@ -23,4 +23,20 @@ export function validateDomain(slug) {
     const domains = domainsData.domains || {};
     return slug in domains;
 }
+/**
+ * Get all available OASF skill slugs
+ * @returns Array of all valid skill slugs
+ */
+export function getAllSkills() {
+    const skillsData = allSkills;
+    return Object.keys(skillsData.skills || {});
+}
+/**
+ * Get all available OASF domain slugs
+ * @returns Array of all valid domain slugs
+ */
+export function getAllDomains() {
+    const domainsData = allDomains;
+    return Object.keys(domainsData.domains || {});
+}
 //# sourceMappingURL=oasf-validator.js.map

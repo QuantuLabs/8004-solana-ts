@@ -21,4 +21,6 @@ export { SolanaClient, UnsupportedRpcError, SOLANA_DEVNET_RPC, RECOMMENDED_RPC_P
 export type { Cluster, SolanaClientConfig } from './core/client.js';
 export { SolanaSDK } from './core/sdk-solana.js';
 export type { SolanaSDKConfig } from './core/sdk-solana.js';
+export { validateSkill, validateDomain, getAllSkills, getAllDomains, } from './core/oasf-validator.js';
+export { fetchRegistryConfig } from './core/config-reader.js';
 //# sourceMappingURL=index.d.ts.map

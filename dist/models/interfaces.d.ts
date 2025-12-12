@@ -13,6 +13,7 @@ export interface Endpoint {
 }
 /**
  * Agent registration file structure
+ * Used to build ERC-8004 compliant metadata JSON
  */
 export interface RegistrationFile {
     agentId?: AgentId;
@@ -23,13 +24,15 @@ export interface RegistrationFile {
     walletAddress?: Address;
     walletChainId?: number;
     endpoints: Endpoint[];
-    trustModels: (TrustModel | string)[];
-    owners: Address[];
-    operators: Address[];
-    active: boolean;
-    x402support: boolean;
-    metadata: Record<string, any>;
-    updatedAt: Timestamp;
+    trustModels?: (TrustModel | string)[];
+    owners?: Address[];
+    operators?: Address[];
+    active?: boolean;
+    x402support?: boolean;
+    metadata?: Record<string, any>;
+    updatedAt?: Timestamp;
+    skills?: string[];
+    domains?: string[];
 }
 /**
  * Summary information for agent discovery and search
