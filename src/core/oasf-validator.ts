@@ -2,8 +2,9 @@
  * OASF taxonomy validation utilities
  */
 
-import allSkills from '../taxonomies/all_skills.json';
-import allDomains from '../taxonomies/all_domains.json';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 interface SkillsData {
   skills: Record<string, unknown>;
@@ -13,14 +14,17 @@ interface DomainsData {
   domains: Record<string, unknown>;
 }
 
+// Use createRequire for JSON imports - works across all Node.js versions
+const allSkills = require('../taxonomies/all_skills.json') as SkillsData;
+const allDomains = require('../taxonomies/all_domains.json') as DomainsData;
+
 /**
  * Validate if a skill slug exists in the OASF taxonomy
  * @param slug The skill slug to validate (e.g., "natural_language_processing/summarization")
  * @returns True if the skill exists in the taxonomy, False otherwise
  */
 export function validateSkill(slug: string): boolean {
-  const skillsData = allSkills as SkillsData;
-  const skills = skillsData.skills || {};
+  const skills = allSkills.skills || {};
   return slug in skills;
 }
 
@@ -30,8 +34,7 @@ export function validateSkill(slug: string): boolean {
  * @returns True if the domain exists in the taxonomy, False otherwise
  */
 export function validateDomain(slug: string): boolean {
-  const domainsData = allDomains as DomainsData;
-  const domains = domainsData.domains || {};
+  const domains = allDomains.domains || {};
   return slug in domains;
 }
 
@@ -40,8 +43,7 @@ export function validateDomain(slug: string): boolean {
  * @returns Array of all valid skill slugs
  */
 export function getAllSkills(): string[] {
-  const skillsData = allSkills as SkillsData;
-  return Object.keys(skillsData.skills || {});
+  return Object.keys(allSkills.skills || {});
 }
 
 /**
@@ -49,7 +51,6 @@ export function getAllSkills(): string[] {
  * @returns Array of all valid domain slugs
  */
 export function getAllDomains(): string[] {
-  const domainsData = allDomains as DomainsData;
-  return Object.keys(domainsData.domains || {});
+  return Object.keys(allDomains.domains || {});
 }
 
