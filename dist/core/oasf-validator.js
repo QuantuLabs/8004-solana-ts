@@ -1,16 +1,18 @@
 /**
  * OASF taxonomy validation utilities
  */
-import allSkills from '../taxonomies/all_skills.json';
-import allDomains from '../taxonomies/all_domains.json';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+// Use createRequire for JSON imports - works across all Node.js versions
+const allSkills = require('../taxonomies/all_skills.json');
+const allDomains = require('../taxonomies/all_domains.json');
 /**
  * Validate if a skill slug exists in the OASF taxonomy
  * @param slug The skill slug to validate (e.g., "natural_language_processing/summarization")
  * @returns True if the skill exists in the taxonomy, False otherwise
  */
 export function validateSkill(slug) {
-    const skillsData = allSkills;
-    const skills = skillsData.skills || {};
+    const skills = allSkills.skills || {};
     return slug in skills;
 }
 /**
@@ -19,8 +21,7 @@ export function validateSkill(slug) {
  * @returns True if the domain exists in the taxonomy, False otherwise
  */
 export function validateDomain(slug) {
-    const domainsData = allDomains;
-    const domains = domainsData.domains || {};
+    const domains = allDomains.domains || {};
     return slug in domains;
 }
 /**
@@ -28,15 +29,13 @@ export function validateDomain(slug) {
  * @returns Array of all valid skill slugs
  */
 export function getAllSkills() {
-    const skillsData = allSkills;
-    return Object.keys(skillsData.skills || {});
+    return Object.keys(allSkills.skills || {});
 }
 /**
  * Get all available OASF domain slugs
  * @returns Array of all valid domain slugs
  */
 export function getAllDomains() {
-    const domainsData = allDomains;
-    return Object.keys(domainsData.domains || {});
+    return Object.keys(allDomains.domains || {});
 }
 //# sourceMappingURL=oasf-validator.js.map

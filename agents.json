@@ -1,0 +1,1987 @@
+[
+  {
+    "agentId": 81,
+    "name": "Agent #81",
+    "description": "",
+    "owner": "76gKDwd13GZzn8ejEoQBfLahACEirZ5PYwvhaDTBpzes",
+    "uri": "ipfs://QmTestAgent8004SolanaIntegration",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "76gKDwd13GZzn8ejEoQBfLahACEirZ5PYwvhaDTBpzes",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T18:53:50.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 44,
+    "name": "Agent #44",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/wrong-asset-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 11,
+    "name": "Agent #11",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/validation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 40,
+    "name": "Agent #40",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/validation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 67,
+    "name": "Agent #67",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "ipfs://QmTest1764936054521",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 92,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 92,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-05T12:01:07.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.1"
+      },
+      {
+        "key": "certification",
+        "value": "verified"
+      }
+    ]
+  },
+  {
+    "agentId": 79,
+    "name": "Agent #79",
+    "description": "",
+    "owner": "5Z5dfMrF6f8zhzABnsz1Mw88Wy7qa1gy46sdf3qgSgKY",
+    "uri": "ipfs://bafkreicyl34lr3iubqmd3txe4fml4fehkeuxw6dhke6j55omjpmvgebmma",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 9,
+    "name": "Agent #9",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/response-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 58,
+    "name": "Agent #58",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/numeric-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 50,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 100,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:11:20.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 0,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:11:19.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 39,
+    "name": "Agent #39",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/aggregation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 46,
+    "name": "Agent #46",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://a.b/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 75,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:09:11.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "exact_value_test",
+        "value": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      },
+      {
+        "key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "value": "test"
+      }
+    ]
+  },
+  {
+    "agentId": 66,
+    "name": "Agent #66",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "ipfs://QmTest1764883337219",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 92,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 92,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T21:22:24.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "certification",
+        "value": "verified"
+      },
+      {
+        "key": "version",
+        "value": "1.0.1"
+      }
+    ]
+  },
+  {
+    "agentId": 50,
+    "name": "Agent #50",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/numeric-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 50,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 0,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:10:04.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 100,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:10:06.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 52,
+    "name": "Agent #52",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/security-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 80,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:10:59.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 88,
+    "name": "Agent #88",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmTestAgent8004Solana-1765482429478",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:47:11.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 89,
+    "name": "Agent #89",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmTestAgent8004Solana-1765482491015",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:48:13.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 14,
+    "name": "Agent #14",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 20,
+    "name": "Agent #20",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 55,
+    "name": "Agent #55",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/wrong-asset-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 7,
+    "name": "Agent #7",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/reputation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 54,
+    "name": "Agent #54",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/state-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 18,
+    "name": "Agent #18",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/sync-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 13,
+    "name": "Agent #13",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/identity-test-1",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 68,
+    "name": "Agent #68",
+    "description": "",
+    "owner": "Ciip8RXXcoL29xYfYUestzCjwQwWJ2mLcToDHfCxE8ak",
+    "uri": "ipfs://bafkreichqm6lvoipihtkb7nxyjcvqhhmthglm37zlokcqps77fxy23e2du",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 83,
+    "name": "Agent #83",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmUpdatedMetadata",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 88,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:13:09.000Z"
+      },
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 90,
+        "tag1": "fast",
+        "tag2": "reliable",
+        "fileUri": "",
+        "createdAt": "2025-12-12T10:58:26.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "2.0.0"
+      },
+      {
+        "key": "certified_by",
+        "value": "TrustAuthority"
+      }
+    ]
+  },
+  {
+    "agentId": 69,
+    "name": "Agent #69",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/revoke-counter-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 60,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 60,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-06T18:29:08.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 26,
+    "name": "Agent #26",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "ipfs://QmTest1764863785622",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.1"
+      },
+      {
+        "key": "certification",
+        "value": "verified"
+      }
+    ]
+  },
+  {
+    "agentId": 72,
+    "name": "Agent #72",
+    "description": "",
+    "owner": "5Z5dfMrF6f8zhzABnsz1Mw88Wy7qa1gy46sdf3qgSgKY",
+    "uri": "ipfs://bafkreiggasabzqkhrg35xqyyqjtpdmimm7nl7amddirvxwj6vwmcsz4uk4",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 42,
+    "name": "Agent #42",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/other",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 75,
+    "name": "Agent #75",
+    "description": "",
+    "owner": "Ciip8RXXcoL29xYfYUestzCjwQwWJ2mLcToDHfCxE8ak",
+    "uri": "ipfs://bafkreib3ncrlrsa42bqiu6q6i6lqwdsch255vnhfsizgdsm7etj3smrcsm",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 35,
+    "name": "Agent #35",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/sync-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 45,
+    "name": "Agent #45",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/transfer-security",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 21,
+    "name": "Agent #21",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/metadata-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "capability",
+        "value": "code-generation"
+      },
+      {
+        "key": "framework",
+        "value": "anchor-v0.32"
+      },
+      {
+        "key": "mcp_endpoint",
+        "value": "https://mcp.example.com"
+      },
+      {
+        "key": "certification",
+        "value": "certified-v1"
+      },
+      {
+        "key": "version",
+        "value": "2.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 60,
+    "name": "Agent #60",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "ipfs://QmTest1764879102778",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 92,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 92,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:11:57.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "certification",
+        "value": "verified"
+      },
+      {
+        "key": "version",
+        "value": "1.0.1"
+      }
+    ]
+  },
+  {
+    "agentId": 87,
+    "name": "Agent #87",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmTestAgent8004Solana-1765482308786",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:45:11.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 62,
+    "name": "Agent #62",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/tags-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 81,
+    "feedbackCount": 3,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 88,
+        "tag1": "excellent",
+        "tag2": "fast",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:35.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:37.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:38.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 74,
+    "name": "Agent #74",
+    "description": "",
+    "owner": "JDy3mCxfv3gBAx2ogKpoNcEsFd5oWvYCEWJfwxSCsuY8",
+    "uri": "ipfs://bafkreib2ndlx5ceqraba4qevxe4so2dpdliqmlf2svvcjel3crf6jor3cq",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 82,
+    "name": "Agent #82",
+    "description": "",
+    "owner": "76gKDwd13GZzn8ejEoQBfLahACEirZ5PYwvhaDTBpzes",
+    "uri": "ipfs://QmTestAgent8004SolanaIntegration",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "76gKDwd13GZzn8ejEoQBfLahACEirZ5PYwvhaDTBpzes",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T18:54:06.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 17,
+    "name": "Agent #17",
+    "description": "",
+    "owner": "4G3bcXeJQMK4NaoQNU6au1SvewGJnDyecvXamzk5cu71",
+    "uri": "https://example.com/agent/transfer-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "new_owner_key",
+        "value": "new_owner_value"
+      }
+    ]
+  },
+  {
+    "agentId": 63,
+    "name": "Agent #63",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/revoke-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 85,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:43.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 48,
+    "name": "Agent #48",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 83,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 85,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:09:21.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:09:21.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 37,
+    "name": "Agent #37",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/revoke-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 85,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:43.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 29,
+    "name": "Agent #29",
+    "description": "",
+    "owner": "3r2dEwWH4oq2WGkER9tDzpqmEWnK84HPjszrzh5MmEG7",
+    "uri": "ipfs://QmUpdated1764863994894",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 32,
+    "name": "Agent #32",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/metadata-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "framework",
+        "value": "anchor-v0.32"
+      },
+      {
+        "key": "version",
+        "value": "2.0.0"
+      },
+      {
+        "key": "capability",
+        "value": "code-generation"
+      },
+      {
+        "key": "certification",
+        "value": "certified-v1"
+      },
+      {
+        "key": "mcp_endpoint",
+        "value": "https://mcp.example.com"
+      }
+    ]
+  },
+  {
+    "agentId": 36,
+    "name": "Agent #36",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/reputation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 64,
+    "feedbackCount": 6,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:36.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 60,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:37.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 0,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:34.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:33.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 100,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:35.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 70,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:39.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 41,
+    "name": "Agent #41",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/security-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 80,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:08:54.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 51,
+    "name": "Agent #51",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 83,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 85,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:10:12.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:10:11.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 85,
+    "name": "Agent #85",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmTestAgent8004Solana-1765480936327",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:22:19.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 56,
+    "name": "Agent #56",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/transfer-security",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 73,
+    "name": "Agent #73",
+    "description": "",
+    "owner": "5Z5dfMrF6f8zhzABnsz1Mw88Wy7qa1gy46sdf3qgSgKY",
+    "uri": "ipfs://bafkreidzfgw6sfxh563offbsdj5cud6uin3dwigz4qulr63yugbditwveu",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 65,
+    "name": "Agent #65",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/aggregation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 16,
+    "name": "Agent #16",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/uri-test-updated",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 76,
+    "name": "Agent #76",
+    "description": "",
+    "owner": "Ciip8RXXcoL29xYfYUestzCjwQwWJ2mLcToDHfCxE8ak",
+    "uri": "ipfs://bafkreifbjmbrll5bbi5a6oe6u3d4cyaj4pyzghdrotvspicwprloa7lpei",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 8,
+    "name": "Agent #8",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/revoke-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 19,
+    "name": "Agent #19",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/identity-test-1",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 6,
+    "name": "Agent #6",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/sync-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 49,
+    "name": "Agent #49",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://a.b/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 75,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:10:02.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "exact_value_test",
+        "value": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      },
+      {
+        "key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "value": "test"
+      }
+    ]
+  },
+  {
+    "agentId": 43,
+    "name": "Agent #43",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/state-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 86,
+    "name": "Agent #86",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmTestAgent8004Solana-1765481366046",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:29:28.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 10,
+    "name": "Agent #10",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/aggregation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 47,
+    "name": "Agent #47",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/numeric-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 50,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 100,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:09:14.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 0,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:09:13.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 24,
+    "name": "Agent #24",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/sync-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 80,
+    "name": "Agent #80",
+    "description": "",
+    "owner": "76gKDwd13GZzn8ejEoQBfLahACEirZ5PYwvhaDTBpzes",
+    "uri": "ipfs://QmTestAgent8004SolanaIntegration",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "76gKDwd13GZzn8ejEoQBfLahACEirZ5PYwvhaDTBpzes",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T18:53:24.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 25,
+    "name": "Agent #25",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/validation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 34,
+    "name": "Agent #34",
+    "description": "",
+    "owner": "4xxqtyZHMsrXXiiEV4mWkpFkE1HvYR4aUjMhQFBgmaZo",
+    "uri": "https://example.com/agent/transfer-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "new_owner_key",
+        "value": "new_owner_value"
+      }
+    ]
+  },
+  {
+    "agentId": 28,
+    "name": "Agent #28",
+    "description": "",
+    "owner": "GPjNikPiZoW2zJjHv8WaGCoz9F6uMyhJpT9AUM8S9Lkx",
+    "uri": "ipfs://QmUpdated1764863933558",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 23,
+    "name": "Agent #23",
+    "description": "",
+    "owner": "B11yQaD2gHX6KeLRrRXSJuyYNX2cmtvZjy159rBvR7aF",
+    "uri": "https://example.com/agent/transfer-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "new_owner_key",
+        "value": "new_owner_value"
+      }
+    ]
+  },
+  {
+    "agentId": 4,
+    "name": "Agent #4",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/uri-test-updated",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 27,
+    "name": "Agent #27",
+    "description": "",
+    "owner": "HHVEykKLdciaAT3fEp8mtDnHhM7HkwTrjpqDiTbUcS5e",
+    "uri": "ipfs://QmUpdated1764863811775",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 0,
+    "name": "Agent #0",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/0",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 3,
+    "name": "Agent #3",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/metadata-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "capability",
+        "value": "code-generation"
+      },
+      {
+        "key": "version",
+        "value": "2.0.0"
+      },
+      {
+        "key": "certification",
+        "value": "certified-v1"
+      },
+      {
+        "key": "mcp_endpoint",
+        "value": "https://mcp.example.com"
+      },
+      {
+        "key": "framework",
+        "value": "anchor-v0.32"
+      }
+    ]
+  },
+  {
+    "agentId": 57,
+    "name": "Agent #57",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://a.b/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 75,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:11:17.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "exact_value_test",
+        "value": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      },
+      {
+        "key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "value": "test"
+      }
+    ]
+  },
+  {
+    "agentId": 12,
+    "name": "Agent #12",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/validation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 61,
+    "name": "Agent #61",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/reputation-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 67,
+    "feedbackCount": 7,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 0,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:28.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:27.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 60,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:32.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:30.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 85,
+        "tag1": "quality",
+        "tag2": "responsive",
+        "fileUri": "",
+        "createdAt": "2025-12-06T17:11:57.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 70,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:33.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 100,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:29.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 22,
+    "name": "Agent #22",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/uri-test-updated",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 2,
+    "name": "Agent #2",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 53,
+    "name": "Agent #53",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/other",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 5,
+    "name": "Agent #5",
+    "description": "",
+    "owner": "H8hNr2L3T4rUzJ3rQW48BTapaYufNRnH7HJrmxFVH12Y",
+    "uri": "https://example.com/agent/transfer-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "new_owner_key",
+        "value": "new_owner_value"
+      }
+    ]
+  },
+  {
+    "agentId": 59,
+    "name": "Agent #59",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 83,
+    "feedbackCount": 2,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 85,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:11:26.000Z"
+      },
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 80,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:11:26.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 84,
+    "name": "Agent #84",
+    "description": "",
+    "owner": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+    "uri": "ipfs://QmTestAgent8004Solana-1765480594942",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 85,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-11T19:16:37.000Z"
+      }
+    ],
+    "onChainMetadata": [
+      {
+        "key": "version",
+        "value": "1.0.0"
+      }
+    ]
+  },
+  {
+    "agentId": 33,
+    "name": "Agent #33",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/uri-test-updated",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 31,
+    "name": "Agent #31",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 78,
+    "name": "Agent #78",
+    "description": "",
+    "owner": "5Z5dfMrF6f8zhzABnsz1Mw88Wy7qa1gy46sdf3qgSgKY",
+    "uri": "ipfs://bafkreibw4gy722txkfp45rqh6fb7me4ek47gvfjrhpvq7srbgl3mpgc32a",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 70,
+    "name": "Agent #70",
+    "description": "",
+    "owner": "8ogHNQ9RwVXqi9kkwionJ7rqw55NCP99vEW7LjL2HXYE",
+    "uri": "ipfs://bafkreiditnn73ezztenlrdwihj7pgsv7koeobf7xikdhs24s4co65cmvk4",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 15,
+    "name": "Agent #15",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/metadata-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": [
+      {
+        "key": "capability",
+        "value": "code-generation"
+      },
+      {
+        "key": "mcp_endpoint",
+        "value": "https://mcp.example.com"
+      },
+      {
+        "key": "framework",
+        "value": "anchor-v0.32"
+      },
+      {
+        "key": "version",
+        "value": "2.0.0"
+      },
+      {
+        "key": "certification",
+        "value": "certified-v1"
+      }
+    ]
+  },
+  {
+    "agentId": 64,
+    "name": "Agent #64",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/response-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 75,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:14:45.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 77,
+    "name": "Agent #77",
+    "description": "",
+    "owner": "JDy3mCxfv3gBAx2ogKpoNcEsFd5oWvYCEWJfwxSCsuY8",
+    "uri": "ipfs://bafkreidpkugsc4atbasa3fdiexmrvke2dcnwygn2fpt6dny6rlryllrlgq",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 1,
+    "name": "Agent #1",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/identity-test-1",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 87,
+    "feedbackCount": 5,
+    "feedbacks": [
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 90,
+        "tag1": "fast",
+        "tag2": "reliable",
+        "fileUri": "",
+        "createdAt": "2025-12-12T10:49:34.000Z"
+      },
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-12T10:57:39.000Z"
+      },
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 90,
+        "tag1": "fast",
+        "tag2": "reliable",
+        "fileUri": "",
+        "createdAt": "2025-12-12T10:15:47.000Z"
+      },
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-12T10:47:27.000Z"
+      },
+      {
+        "client": "31Y5sy2qhZaFxy1dvXq6733jTujGLtHob3xtWyqbh7qE",
+        "score": 85,
+        "tag1": "helpful",
+        "tag2": "accurate",
+        "fileUri": "",
+        "createdAt": "2025-12-12T10:15:20.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 38,
+    "name": "Agent #38",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/response-test",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 75,
+    "feedbackCount": 1,
+    "feedbacks": [
+      {
+        "client": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+        "score": 75,
+        "tag1": "",
+        "tag2": "",
+        "fileUri": "",
+        "createdAt": "2025-12-04T20:07:45.000Z"
+      }
+    ],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 71,
+    "name": "Agent #71",
+    "description": "",
+    "owner": "5Z5dfMrF6f8zhzABnsz1Mw88Wy7qa1gy46sdf3qgSgKY",
+    "uri": "ipfs://bafkreibwhaaxkmtjbvg5gwslriotpq2nq7763xnii23pniu7zfsjpug3p4",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  },
+  {
+    "agentId": 30,
+    "name": "Agent #30",
+    "description": "",
+    "owner": "2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t",
+    "uri": "https://example.com/agent/identity-test-1",
+    "endpoints": [],
+    "skills": [],
+    "domains": [],
+    "averageScore": 0,
+    "feedbackCount": 0,
+    "feedbacks": [],
+    "onChainMetadata": []
+  }
+]
