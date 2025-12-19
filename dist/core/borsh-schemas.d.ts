@@ -21,7 +21,7 @@ export declare class MetadataEntry {
     get value(): Uint8Array;
 }
 /**
- * Agent Account (Identity Registry) - v0.2.0 (no inline metadata)
+ * Agent Account (Identity Registry) - v0.2.1 (static fields first for indexing)
  * Represents an agent NFT - metadata is now stored in separate MetadataEntryPda accounts
  * Seeds: ["agent", asset.key()]
  */
@@ -29,22 +29,34 @@ export declare class AgentAccount {
     agent_id: bigint;
     owner: Uint8Array;
     agent_mint: Uint8Array;
+    created_at: bigint;
+    bump: number;
     agent_uri: string;
     nft_name: string;
     nft_symbol: string;
-    created_at: bigint;
-    bump: number;
     constructor(fields: {
         agent_id: bigint;
         owner: Uint8Array;
         agent_mint: Uint8Array;
+        created_at: bigint;
+        bump: number;
         agent_uri: string;
         nft_name: string;
         nft_symbol: string;
-        created_at: bigint;
-        bump: number;
     });
+    /**
+     * V2 Schema (v0.2.1) - Static fields first for indexing optimization
+     */
     static schema: Schema;
+    /**
+     * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
+     * V1 Schema (pre-v0.2.1) - Dynamic fields before static
+     */
+    static schemaLegacyV1: Schema;
+    /**
+     * Deserialize with backward compatibility
+     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     */
     static deserialize(data: Buffer): AgentAccount;
     getOwnerPublicKey(): PublicKey;
     getMintPublicKey(): PublicKey;
@@ -52,26 +64,38 @@ export declare class AgentAccount {
     get metadata(): MetadataEntry[];
 }
 /**
- * Metadata Entry PDA (v0.2.0 - Individual metadata storage)
+ * Metadata Entry PDA (v0.2.1 - Static fields first for indexing)
  * Seeds: ["agent_meta", agent_id (LE), key_hash[0..8]]
  * Each metadata entry is stored in its own PDA for deleteability
  */
 export declare class MetadataEntryPda {
     agent_id: bigint;
+    created_at: bigint;
+    immutable: boolean;
+    bump: number;
     metadata_key: string;
     metadata_value: Uint8Array;
-    immutable: boolean;
-    created_at: bigint;
-    bump: number;
     constructor(fields: {
         agent_id: bigint;
+        created_at: bigint;
+        immutable: boolean;
+        bump: number;
         metadata_key: string;
         metadata_value: Uint8Array;
-        immutable: boolean;
-        created_at: bigint;
-        bump: number;
     });
+    /**
+     * V2 Schema (v0.2.1) - Static fields first for indexing optimization
+     */
     static schema: Schema;
+    /**
+     * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
+     * V1 Schema (pre-v0.2.1) - Dynamic fields before static
+     */
+    static schemaLegacyV1: Schema;
+    /**
+     * Deserialize with backward compatibility
+     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     */
     static deserialize(data: Buffer): MetadataEntryPda;
     getValueString(): string;
     get key(): string;
@@ -158,7 +182,7 @@ export declare class FeedbackAccount {
     get tag2(): string;
 }
 /**
- * Feedback Tags PDA (Reputation Registry)
+ * Feedback Tags PDA (Reputation Registry) - v0.2.1 (static fields first)
  * Optional tags for feedback, created only when needed
  * Seeds: ["feedback_tags", agent_id (LE), feedback_index (LE)]
  * Separated from FeedbackAccount for -42% cost savings when tags not used
@@ -166,17 +190,29 @@ export declare class FeedbackAccount {
 export declare class FeedbackTagsPda {
     agent_id: bigint;
     feedback_index: bigint;
+    bump: number;
     tag1: string;
     tag2: string;
-    bump: number;
     constructor(fields: {
         agent_id: bigint;
         feedback_index: bigint;
+        bump: number;
         tag1: string;
         tag2: string;
-        bump: number;
     });
+    /**
+     * V2 Schema (v0.2.1) - Static fields first for indexing optimization
+     */
     static schema: Schema;
+    /**
+     * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
+     * V1 Schema (pre-v0.2.1) - Dynamic fields before static
+     */
+    static schemaLegacyV1: Schema;
+    /**
+     * Deserialize with backward compatibility
+     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     */
     static deserialize(data: Buffer): FeedbackTagsPda;
 }
 /**
