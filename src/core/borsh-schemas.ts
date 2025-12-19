@@ -35,7 +35,7 @@ export class MetadataEntry {
 }
 
 /**
- * Agent Account (Identity Registry) - v0.2.0 (no inline metadata)
+ * Agent Account (Identity Registry) - v0.2.1 (static fields first for indexing)
  * Represents an agent NFT - metadata is now stored in separate MetadataEntryPda accounts
  * Seeds: ["agent", asset.key()]
  */
@@ -43,57 +43,103 @@ export class AgentAccount {
   agent_id: bigint;
   owner: Uint8Array;
   agent_mint: Uint8Array;
+  created_at: bigint;        // v0.2.1: moved before dynamic fields
+  bump: number;              // v0.2.1: moved before dynamic fields
   agent_uri: string;         // Note: field name is agent_uri, not token_uri
   nft_name: string;
   nft_symbol: string;
-  // v0.2.0: metadata Vec removed - use MetadataEntryPda instead
-  created_at: bigint;
-  bump: number;
 
   constructor(fields: {
     agent_id: bigint;
     owner: Uint8Array;
     agent_mint: Uint8Array;
+    created_at: bigint;
+    bump: number;
     agent_uri: string;
     nft_name: string;
     nft_symbol: string;
-    created_at: bigint;
-    bump: number;
   }) {
     this.agent_id = fields.agent_id;
     this.owner = fields.owner;
     this.agent_mint = fields.agent_mint;
+    this.created_at = fields.created_at;
+    this.bump = fields.bump;
     this.agent_uri = fields.agent_uri;
     this.nft_name = fields.nft_name;
     this.nft_symbol = fields.nft_symbol;
-    this.created_at = fields.created_at;
-    this.bump = fields.bump;
   }
 
+  /**
+   * V2 Schema (v0.2.1) - Static fields first for indexing optimization
+   */
   static schema: Schema = new Map<any, any>([
     [
       AgentAccount,
       {
         kind: 'struct',
-        // v0.2.0: No metadata Vec - stored in separate PDAs
+        // v0.2.1: Static fields first for memcmp filtering
         fields: [
           ['agent_id', 'u64'],
           ['owner', [32]],
           ['agent_mint', [32]],
-          ['agent_uri', 'string'],         // agent_uri not token_uri
+          ['created_at', 'u64'],           // Static first (v0.2.1)
+          ['bump', 'u8'],                  // Static first (v0.2.1)
+          ['agent_uri', 'string'],
           ['nft_name', 'string'],
           ['nft_symbol', 'string'],
-          ['created_at', 'u64'],           // Note: borsh 0.7 doesn't support i64, using u64
+        ],
+      },
+    ],
+  ]);
+
+  /**
+   * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
+   * V1 Schema (pre-v0.2.1) - Dynamic fields before static
+   */
+  static schemaLegacyV1: Schema = new Map<any, any>([
+    [
+      AgentAccount,
+      {
+        kind: 'struct',
+        fields: [
+          ['agent_id', 'u64'],
+          ['owner', [32]],
+          ['agent_mint', [32]],
+          ['agent_uri', 'string'],
+          ['nft_name', 'string'],
+          ['nft_symbol', 'string'],
+          ['created_at', 'u64'],
           ['bump', 'u8'],
         ],
       },
     ],
   ]);
 
+  /**
+   * Deserialize with backward compatibility
+   * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+   */
   static deserialize(data: Buffer): AgentAccount {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, AgentAccount, accountData);
+    try {
+      // Try V2 (new layout) first
+      return deserializeUnchecked(this.schema, AgentAccount, accountData);
+    } catch {
+      // LEGACY_DEVNET: Fallback to V1 for old devnet accounts
+      const raw = deserializeUnchecked(this.schemaLegacyV1, AgentAccount, accountData) as any;
+      // Reorder fields to match V2 constructor
+      return new AgentAccount({
+        agent_id: raw.agent_id,
+        owner: raw.owner,
+        agent_mint: raw.agent_mint,
+        created_at: raw.created_at,
+        bump: raw.bump,
+        agent_uri: raw.agent_uri,
+        nft_name: raw.nft_name,
+        nft_symbol: raw.nft_symbol,
+      });
+    }
   }
 
   getOwnerPublicKey(): PublicKey {
@@ -116,35 +162,60 @@ export class AgentAccount {
 }
 
 /**
- * Metadata Entry PDA (v0.2.0 - Individual metadata storage)
+ * Metadata Entry PDA (v0.2.1 - Static fields first for indexing)
  * Seeds: ["agent_meta", agent_id (LE), key_hash[0..8]]
  * Each metadata entry is stored in its own PDA for deleteability
  */
 export class MetadataEntryPda {
   agent_id: bigint;
+  created_at: bigint;        // v0.2.1: moved before dynamic fields
+  immutable: boolean;        // v0.2.1: moved before dynamic fields
+  bump: number;              // v0.2.1: moved before dynamic fields
   metadata_key: string;
   metadata_value: Uint8Array;
-  immutable: boolean;
-  created_at: bigint;
-  bump: number;
 
   constructor(fields: {
     agent_id: bigint;
+    created_at: bigint;
+    immutable: boolean;
+    bump: number;
     metadata_key: string;
     metadata_value: Uint8Array;
-    immutable: boolean;
-    created_at: bigint;
-    bump: number;
   }) {
     this.agent_id = fields.agent_id;
+    this.created_at = fields.created_at;
+    this.immutable = fields.immutable;
+    this.bump = fields.bump;
     this.metadata_key = fields.metadata_key;
     this.metadata_value = fields.metadata_value;
-    this.immutable = fields.immutable;
-    this.created_at = fields.created_at;
-    this.bump = fields.bump;
   }
 
+  /**
+   * V2 Schema (v0.2.1) - Static fields first for indexing optimization
+   */
   static schema: Schema = new Map<any, any>([
+    [
+      MetadataEntryPda,
+      {
+        kind: 'struct',
+        // v0.2.1: Static fields first for memcmp filtering
+        fields: [
+          ['agent_id', 'u64'],
+          ['created_at', 'u64'],       // Static first (v0.2.1)
+          ['immutable', 'u8'],         // Static first (v0.2.1)
+          ['bump', 'u8'],              // Static first (v0.2.1)
+          ['metadata_key', 'string'],
+          ['metadata_value', ['u8']],  // Vec<u8>
+        ],
+      },
+    ],
+  ]);
+
+  /**
+   * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
+   * V1 Schema (pre-v0.2.1) - Dynamic fields before static
+   */
+  static schemaLegacyV1: Schema = new Map<any, any>([
     [
       MetadataEntryPda,
       {
@@ -152,19 +223,45 @@ export class MetadataEntryPda {
         fields: [
           ['agent_id', 'u64'],
           ['metadata_key', 'string'],
-          ['metadata_value', ['u8']],  // Vec<u8>
-          ['immutable', 'u8'],         // bool as u8
-          ['created_at', 'u64'],       // i64 as u64 (borsh 0.7 limitation)
+          ['metadata_value', ['u8']],
+          ['immutable', 'u8'],
+          ['created_at', 'u64'],
           ['bump', 'u8'],
         ],
       },
     ],
   ]);
 
+  /**
+   * Deserialize with backward compatibility
+   * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+   */
   static deserialize(data: Buffer): MetadataEntryPda {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, MetadataEntryPda, accountData);
+    try {
+      // Try V2 (new layout) first
+      const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData) as any;
+      return new MetadataEntryPda({
+        agent_id: raw.agent_id,
+        created_at: raw.created_at,
+        immutable: raw.immutable === 1,
+        bump: raw.bump,
+        metadata_key: raw.metadata_key,
+        metadata_value: raw.metadata_value,
+      });
+    } catch {
+      // LEGACY_DEVNET: Fallback to V1 for old devnet accounts
+      const raw = deserializeUnchecked(this.schemaLegacyV1, MetadataEntryPda, accountData) as any;
+      return new MetadataEntryPda({
+        agent_id: raw.agent_id,
+        created_at: raw.created_at,
+        immutable: raw.immutable === 1,
+        bump: raw.bump,
+        metadata_key: raw.metadata_key,
+        metadata_value: raw.metadata_value,
+      });
+    }
   }
 
   getValueString(): string {
@@ -415,7 +512,7 @@ export class FeedbackAccount {
 }
 
 /**
- * Feedback Tags PDA (Reputation Registry)
+ * Feedback Tags PDA (Reputation Registry) - v0.2.1 (static fields first)
  * Optional tags for feedback, created only when needed
  * Seeds: ["feedback_tags", agent_id (LE), feedback_index (LE)]
  * Separated from FeedbackAccount for -42% cost savings when tags not used
@@ -423,25 +520,49 @@ export class FeedbackAccount {
 export class FeedbackTagsPda {
   agent_id: bigint;
   feedback_index: bigint;
+  bump: number;              // v0.2.1: moved before dynamic fields
   tag1: string;
   tag2: string;
-  bump: number;
 
   constructor(fields: {
     agent_id: bigint;
     feedback_index: bigint;
+    bump: number;
     tag1: string;
     tag2: string;
-    bump: number;
   }) {
     this.agent_id = fields.agent_id;
     this.feedback_index = fields.feedback_index;
+    this.bump = fields.bump;
     this.tag1 = fields.tag1;
     this.tag2 = fields.tag2;
-    this.bump = fields.bump;
   }
 
+  /**
+   * V2 Schema (v0.2.1) - Static fields first for indexing optimization
+   */
   static schema: Schema = new Map<any, any>([
+    [
+      FeedbackTagsPda,
+      {
+        kind: 'struct',
+        // v0.2.1: Static fields first for memcmp filtering
+        fields: [
+          ['agent_id', 'u64'],
+          ['feedback_index', 'u64'],
+          ['bump', 'u8'],              // Static first (v0.2.1)
+          ['tag1', 'string'],
+          ['tag2', 'string'],
+        ],
+      },
+    ],
+  ]);
+
+  /**
+   * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
+   * V1 Schema (pre-v0.2.1) - Dynamic fields before static
+   */
+  static schemaLegacyV1: Schema = new Map<any, any>([
     [
       FeedbackTagsPda,
       {
@@ -457,10 +578,27 @@ export class FeedbackTagsPda {
     ],
   ]);
 
+  /**
+   * Deserialize with backward compatibility
+   * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+   */
   static deserialize(data: Buffer): FeedbackTagsPda {
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
+    try {
+      // Try V2 (new layout) first
+      return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
+    } catch {
+      // LEGACY_DEVNET: Fallback to V1 for old devnet accounts
+      const raw = deserializeUnchecked(this.schemaLegacyV1, FeedbackTagsPda, accountData) as any;
+      return new FeedbackTagsPda({
+        agent_id: raw.agent_id,
+        feedback_index: raw.feedback_index,
+        bump: raw.bump,
+        tag1: raw.tag1,
+        tag2: raw.tag2,
+      });
+    }
   }
 }
 
