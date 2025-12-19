@@ -331,6 +331,13 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
+## Community & Support
+
+- **Telegram (Builder Support)**: [t.me/sol8004](https://t.me/sol8004)
+- **X (Twitter)**: [x.com/Quantu_AI](https://x.com/Quantu_AI)
+
+---
+
 ## Links
 
 - **8004 Standard**: [eips.ethereum.org/EIPS/eip-8004](https://eips.ethereum.org/EIPS/eip-8004)
@@ -345,4 +352,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built for the Solana ecosystem** | v0.2.1
+**Built for the Solana ecosystem** | v0.2.2
