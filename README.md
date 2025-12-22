@@ -8,6 +8,8 @@
 [![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana-blue)](https://github.com/QuantuLabs/8004-solana)
 [![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantuLabs/8004-solana)
 
+> **[How to register your first agent in 5 steps](./docs/quickstart.html)**
+
 ---
 
 ## About

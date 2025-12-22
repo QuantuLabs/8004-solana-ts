@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Start - 8004-solana SDK</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #ffffff;
+      color: #1f2328;
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid #d1d9e0;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #0969da, #8250df);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: #656d76;
+      font-size: 1.1rem;
+    }
+
+    .step {
+      margin-bottom: 2.5rem;
+      padding: 1.5rem;
+      background: #f6f8fa;
+      border: 1px solid #d1d9e0;
+      border-radius: 8px;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .step-number {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: #0969da;
+      color: #ffffff;
+      font-weight: bold;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #1f2328;
+    }
+
+    .step p {
+      color: #656d76;
+      margin-bottom: 1rem;
+    }
+
+    pre {
+      background: #1f2328;
+      border: 1px solid #d1d9e0;
+      border-radius: 6px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.9rem;
+      margin: 1rem 0;
+      color: #e6edf3;
+    }
+
+    code {
+      font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+      background: #eff1f3;
+      color: #1f2328;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      color: #e6edf3;
+    }
+
+    .keyword { color: #ff7b72; }
+    .string { color: #a5d6ff; }
+    .comment { color: #8b949e; }
+    .function { color: #d2a8ff; }
+    .type { color: #79c0ff; }
+
+    a {
+      color: #0969da;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .link-pill {
+      display: inline-block;
+      padding: 0.4rem 0.8rem;
+      background: #ffffff;
+      border: 1px solid #d1d9e0;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .link-pill:hover {
+      border-color: #0969da;
+      background: #f6f8fa;
+      text-decoration: none;
+    }
+
+    .next-steps {
+      background: #f6f8fa;
+      border: 1px solid #d1d9e0;
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .next-steps h2 {
+      margin-bottom: 1rem;
+      font-size: 1.3rem;
+      color: #1f2328;
+    }
+
+    .next-steps ul {
+      list-style: none;
+      margin-bottom: 1.5rem;
+    }
+
+    .next-steps li {
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #d1d9e0;
+    }
+
+    .next-steps li:last-child {
+      border-bottom: none;
+    }
+
+    footer {
+      margin-top: 3rem;
+      padding-top: 2rem;
+      border-top: 1px solid #d1d9e0;
+      text-align: center;
+      color: #656d76;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 2rem; }
+      .step { padding: 1rem; }
+      pre { font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Quick Start</h1>
+      <p class="subtitle">Register your first AI agent on Solana in 5 minutes</p>
+    </header>
+
+    <main>
+      <!-- Step 1: Install -->
+      <section class="step">
+        <div class="step-header">
+          <span class="step-number">1</span>
+          <h2 class="step-title">Install the SDK</h2>
+        </div>
+        <pre><code><span class="function">npm</span> install 8004-solana</code></pre>
+        <p>Or use yarn/pnpm: <code>yarn add 8004-solana</code></p>
+      </section>
+
+      <!-- Step 2: Setup -->
+      <section class="step">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <h2 class="step-title">Setup Environment</h2>
+        </div>
+        <p>Export your Solana wallet private key (devnet only for now):</p>
+        <pre><code><span class="keyword">export</span> SOLANA_PRIVATE_KEY=<span class="string">'[1,2,3,...,64]'</span>  <span class="comment"># JSON array format</span>
+<span class="keyword">export</span> PINATA_JWT=<span class="string">'your-jwt-token'</span>       <span class="comment"># Optional: for IPFS uploads</span></code></pre>
+        <div class="links">
+          <a href="https://support.phantom.app/hc/en-us/articles/12988493966227-How-to-export-your-private-key" class="link-pill">Phantom: Export Key</a>
+          <a href="https://pinata.cloud" class="link-pill">Pinata: Get JWT</a>
+        </div>
+      </section>
+
+      <!-- Step 3: Register -->
+      <section class="step">
+        <div class="step-header">
+          <span class="step-number">3</span>
+          <h2 class="step-title">Create & Register Agent</h2>
+        </div>
+        <p>Create a new file <code>register.ts</code> and run with <code>npx tsx register.ts</code>:</p>
+        <pre><code><span class="keyword">import</span> { SolanaSDK, IPFSClient, buildRegistrationFileJson, EndpointType } <span class="keyword">from</span> <span class="string">'8004-solana'</span>;
+<span class="keyword">import</span> { Keypair } <span class="keyword">from</span> <span class="string">'@solana/web3.js'</span>;
+<span class="keyword">import</span> { readFileSync } <span class="keyword">from</span> <span class="string">'fs'</span>;
+
+<span class="comment">// 1. Setup SDK with your wallet</span>
+<span class="keyword">const</span> signer = Keypair.<span class="function">fromSecretKey</span>(
+  Uint8Array.<span class="function">from</span>(JSON.<span class="function">parse</span>(process.env.SOLANA_PRIVATE_KEY!))
+);
+<span class="keyword">const</span> sdk = <span class="keyword">new</span> <span class="type">SolanaSDK</span>({ signer });
+
+<span class="comment">// 2. Setup IPFS client (for image & metadata upload)</span>
+<span class="keyword">const</span> ipfs = <span class="keyword">new</span> <span class="type">IPFSClient</span>({
+  <span class="type">pinataEnabled</span>: <span class="keyword">true</span>,
+  <span class="type">pinataJwt</span>: process.env.PINATA_JWT!,
+});
+
+<span class="comment">// 3. Upload your agent's avatar image</span>
+<span class="keyword">const</span> imageBuffer = <span class="function">readFileSync</span>(<span class="string">'./my-agent-avatar.png'</span>);
+<span class="keyword">const</span> imageCid = <span class="keyword">await</span> ipfs.<span class="function">addFile</span>(imageBuffer, <span class="string">'image/png'</span>);
+<span class="keyword">const</span> imageUri = <span class="string">`ipfs://</span>${imageCid}<span class="string">`</span>;
+
+<span class="comment">// 4. Build your agent metadata with capabilities</span>
+<span class="keyword">const</span> metadata = <span class="function">buildRegistrationFileJson</span>({
+  <span class="type">name</span>: <span class="string">'My AI Agent'</span>,
+  <span class="type">description</span>: <span class="string">'An autonomous agent that does amazing things'</span>,
+  <span class="type">image</span>: imageUri,
+
+  <span class="comment">// Endpoints</span>
+  <span class="type">endpoints</span>: [
+    { <span class="type">type</span>: EndpointType.MCP, <span class="type">value</span>: <span class="string">'https://my-api.com/mcp'</span> },
+    { <span class="type">type</span>: EndpointType.A2A, <span class="type">value</span>: <span class="string">'https://my-api.com/a2a'</span> },
+  ],
+
+  <span class="comment">// Skills (OASF taxonomy)</span>
+  <span class="type">skills</span>: [
+    <span class="string">'natural_language_processing/text_generation/text_generation'</span>,
+    <span class="string">'natural_language_processing/conversational_ai/conversational_ai'</span>,
+  ],
+
+  <span class="comment">// Domains (OASF taxonomy)</span>
+  <span class="type">domains</span>: [
+    <span class="string">'technology/software_engineering/software_engineering'</span>,
+  ],
+});
+
+<span class="comment">// 5. Upload metadata to IPFS</span>
+<span class="keyword">const</span> metadataCid = <span class="keyword">await</span> ipfs.<span class="function">addJson</span>(metadata);
+<span class="keyword">const</span> metadataUri = <span class="string">`ipfs://</span>${metadataCid}<span class="string">`</span>;
+
+<span class="comment">// 6. Register on Solana</span>
+<span class="keyword">const</span> result = <span class="keyword">await</span> sdk.<span class="function">registerAgent</span>(metadataUri);
+
+<span class="comment">// 7. (Optional) Store on-chain metadata</span>
+<span class="keyword">await</span> sdk.<span class="function">setMetadata</span>(result.agentId, <span class="string">'token'</span>, <span class="string">'So11111111111111111111111111111111111111112'</span>, <span class="keyword">true</span>); <span class="comment">// immutable</span>
+
+console.<span class="function">log</span>(<span class="string">'Agent ID:'</span>, result.agentId);
+console.<span class="function">log</span>(<span class="string">'NFT Mint:'</span>, result.asset);
+console.<span class="function">log</span>(<span class="string">'Transaction:'</span>, result.signature);</code></pre>
+        <p>See <a href="./OASF.md">OASF.md</a> for the full list of available skills and domains.</p>
+        <p><strong>Note:</strong> On-chain metadata (via <code>setMetadata</code>) is stored directly on Solana for quick access without IPFS fetching.</p>
+      </section>
+
+      <!-- Step 4: Verify -->
+      <section class="step">
+        <div class="step-header">
+          <span class="step-number">4</span>
+          <h2 class="step-title">Verify Your Agent</h2>
+        </div>
+        <p>Load your agent to confirm it was registered correctly:</p>
+        <pre><code><span class="comment">// Load agent by ID (no wallet needed for reading)</span>
+<span class="keyword">const</span> readSdk = <span class="keyword">new</span> <span class="type">SolanaSDK</span>();
+<span class="keyword">const</span> agent = <span class="keyword">await</span> readSdk.<span class="function">loadAgent</span>(result.agentId);
+
+console.<span class="function">log</span>(<span class="string">'Name:'</span>, agent.name);
+console.<span class="function">log</span>(<span class="string">'Owner:'</span>, agent.owner.<span class="function">toBase58</span>());
+console.<span class="function">log</span>(<span class="string">'Endpoints:'</span>, agent.endpoints);
+console.<span class="function">log</span>(<span class="string">'Skills:'</span>, agent.skills);
+console.<span class="function">log</span>(<span class="string">'Domains:'</span>, agent.domains);</code></pre>
+        <p>You can also view your agent on the explorer a few minutes after registration:</p>
+        <div class="links">
+          <a href="https://x402synthex.xyz" class="link-pill" target="_blank">View on Explorer</a>
+        </div>
+      </section>
+
+      <!-- Step 5: Next Steps -->
+      <section class="next-steps">
+        <h2>What's Next?</h2>
+        <ul>
+          <li><strong>Give Feedback:</strong> <code>await sdk.giveFeedback(agentId, { score: 85, tag1: 'helpful' })</code></li>
+          <li><strong>Check Reputation:</strong> <code>await sdk.getSummary(agentId)</code></li>
+          <li><strong>Update URI:</strong> <code>await sdk.setAgentUri(agentId, 'ipfs://newCid')</code></li>
+        </ul>
+        <div class="links">
+          <a href="./METHODS.md" class="link-pill">Full API Reference</a>
+          <a href="https://github.com/QuantuLabs/8004-solana-ts/tree/main/examples" class="link-pill">Examples</a>
+          <a href="https://x402synthex.xyz" class="link-pill">Explorer</a>
+          <a href="https://t.me/sol8004" class="link-pill">Telegram</a>
+          <a href="https://x.com/Quantu_AI" class="link-pill">X / Twitter</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>8004-solana SDK &bull; <a href="https://github.com/QuantuLabs/8004-solana-ts">GitHub</a> &bull; MIT License</p>
+    </footer>
+  </div>
+</body>
+</html>
