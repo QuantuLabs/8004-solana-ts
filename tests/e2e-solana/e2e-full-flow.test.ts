@@ -232,7 +232,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
     it('should get response count', async () => {
       console.log(`\n🔢 Getting response count...`);
 
-      const count = await sdk.getResponseCount(agentId, signer.publicKey, feedbackIndex);
+      const count = await sdk.getResponseCount(agentId, feedbackIndex);
 
       expect(count).toBeGreaterThanOrEqual(1);
       console.log(`✅ Response count: ${count}`);
@@ -241,7 +241,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
     it('should read all responses', async () => {
       console.log(`\n📖 Reading all responses...`);
 
-      const responses = await sdk.readResponses(agentId, signer.publicKey, feedbackIndex);
+      const responses = await sdk.readResponses(agentId, feedbackIndex);
 
       expect(Array.isArray(responses)).toBe(true);
       expect(responses.length).toBeGreaterThanOrEqual(1);
@@ -333,7 +333,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       expect(Array.isArray(agents)).toBe(true);
       expect(agents.length).toBeGreaterThanOrEqual(1);
 
-      const hasOurAgent = agents.some(a => a.agent_id === agentId);
+      const hasOurAgent = agents.some(a => a.account.agent_id === agentId);
       expect(hasOurAgent).toBe(true);
 
       console.log(`✅ Found ${agents.length} agent(s) owned by signer`);
