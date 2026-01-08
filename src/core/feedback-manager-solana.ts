@@ -6,7 +6,7 @@
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import type { SolanaClient } from './client.js';
-import type { IPFSClient } from '../core/ipfs-client.js';
+import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers, REPUTATION_PROGRAM_ID } from './pda-helpers.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import {
@@ -482,7 +482,9 @@ export class SolanaFeedbackManager {
       try {
         const tags = FeedbackTagsPda.deserialize(acc.data);
         tagsMap.set(`${tags.agent_id}-${tags.feedback_index}`, { tag1: tags.tag1 || '', tag2: tags.tag2 || '' });
-      } catch { /* skip invalid */ }
+      } catch {
+        // Skip malformed FeedbackTagsPda accounts (corrupted or legacy format)
+      }
     }
 
     // 4. Deserialize feedbacks and group by agent_id (use string key for grouping, convert back to bigint)
@@ -502,7 +504,9 @@ export class SolanaFeedbackManager {
 
         if (!grouped.has(agentIdStr)) grouped.set(agentIdStr, []);
         grouped.get(agentIdStr)!.push(mapped);
-      } catch { /* skip invalid */ }
+      } catch {
+        // Skip malformed FeedbackAccount (corrupted or legacy format)
+      }
     }
 
     // Convert string keys back to bigint
