@@ -330,7 +330,9 @@ export class SolanaFeedbackManager {
                 const tags = FeedbackTagsPda.deserialize(acc.data);
                 tagsMap.set(`${tags.agent_id}-${tags.feedback_index}`, { tag1: tags.tag1 || '', tag2: tags.tag2 || '' });
             }
-            catch { /* skip invalid */ }
+            catch {
+                // Skip malformed FeedbackTagsPda accounts (corrupted or legacy format)
+            }
         }
         // 4. Deserialize feedbacks and group by agent_id (use string key for grouping, convert back to bigint)
         const grouped = new Map();
@@ -350,7 +352,9 @@ export class SolanaFeedbackManager {
                     grouped.set(agentIdStr, []);
                 grouped.get(agentIdStr).push(mapped);
             }
-            catch { /* skip invalid */ }
+            catch {
+                // Skip malformed FeedbackAccount (corrupted or legacy format)
+            }
         }
         // Convert string keys back to bigint
         const result = new Map();

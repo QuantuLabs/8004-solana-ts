@@ -4,7 +4,7 @@
  */
 import { PublicKey } from '@solana/web3.js';
 import type { SolanaClient } from './client.js';
-import type { IPFSClient } from '../core/ipfs-client.js';
+import type { IPFSClient } from './ipfs-client.js';
 /**
  * Summary result matching ERC-8004 getSummary interface
  */
