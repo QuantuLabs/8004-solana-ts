@@ -18,11 +18,15 @@ import bs58 from 'bs58';
 /**
  * Agent Mint Resolver
  * Maps agent_id → agent_mint using Identity Registry accounts
+ *
+ * Note: Cache is not thread-safe. This is acceptable for Node.js single-threaded
+ * event loop, but should be reviewed if used with Worker Threads.
  */
 export class AgentMintResolver {
     constructor(connection, _collectionMint) {
         this.cache = new Map();
         this.cacheLoaded = false;
+        this.loadingPromise = null; // Prevents concurrent loads
         this.connection = connection;
         // collectionMint is no longer needed (was for Metaplex filtering)
     }
@@ -39,8 +43,12 @@ export class AgentMintResolver {
             return this.cache.get(cacheKey);
         }
         // If cache not loaded, load all agents from Identity Registry
+        // Use loadingPromise to prevent concurrent loads (race condition protection)
         if (!this.cacheLoaded) {
-            await this.loadAllAgents();
+            if (!this.loadingPromise) {
+                this.loadingPromise = this.loadAllAgents();
+            }
+            await this.loadingPromise;
         }
         // Now check cache again
         const mint = this.cache.get(cacheKey);
@@ -82,11 +90,11 @@ export class AgentMintResolver {
                 }
             }
             this.cacheLoaded = true;
-            console.log(`AgentMintResolver: Loaded ${this.cache.size} agents from Identity Registry`);
+            this.loadingPromise = null;
         }
         catch (error) {
-            console.error(`Error loading agents from Identity Registry: ${error}`);
-            throw new Error(`Failed to load agents: ${error}`);
+            this.loadingPromise = null;
+            throw new Error('Failed to load agents from Identity Registry');
         }
     }
     /**
@@ -103,6 +111,7 @@ export class AgentMintResolver {
     clearCache() {
         this.cache.clear();
         this.cacheLoaded = false;
+        this.loadingPromise = null;
     }
     /**
      * Force reload all agents from chain
