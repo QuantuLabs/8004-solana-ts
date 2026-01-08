@@ -8,7 +8,6 @@ import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana
 import type { IPFSClient } from './ipfs-client.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { TransactionResult, WriteOptions, RegisterAgentOptions, PreparedTransaction } from './transaction-builder.js';
-import type { FeedbackAuth } from '../models/interfaces.js';
 export interface SolanaSDKConfig {
     cluster?: Cluster;
     rpcUrl?: string;
@@ -237,7 +236,6 @@ export declare class SolanaSDK {
      * Aligned with agent0-ts SDK interface
      * @param agentId - Agent ID (number or bigint)
      * @param feedbackFile - Feedback data object
-     * @param feedbackAuth - Optional feedback authorization (not yet implemented)
      * @param options - Write options (skipSend, signer)
      */
     giveFeedback(agentId: number | bigint, feedbackFile: {
@@ -246,7 +244,7 @@ export declare class SolanaSDK {
         tag2?: string;
         fileUri: string;
         fileHash: Buffer;
-    }, feedbackAuth?: FeedbackAuth, options?: WriteOptions): Promise<(TransactionResult & {
+    }, options?: WriteOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;
