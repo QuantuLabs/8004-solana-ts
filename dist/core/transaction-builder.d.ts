@@ -28,6 +28,7 @@ export interface RegisterAgentOptions extends WriteOptions {
 }
 /**
  * Result when skipSend is true - contains serialized transaction data
+ * IMPORTANT: Transaction is NOT signed - must be signed before sending
  */
 export interface PreparedTransaction {
     /** Base64 serialized transaction */
@@ -38,6 +39,8 @@ export interface PreparedTransaction {
     lastValidBlockHeight: number;
     /** Public key (base58) of the account that must sign */
     signer: string;
+    /** Security: Transaction is NOT signed - must be signed externally before sending */
+    signed: false;
 }
 /**
  * Serialize a transaction for later signing and sending

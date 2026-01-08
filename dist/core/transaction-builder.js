@@ -10,6 +10,7 @@ import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationIns
 import { fetchRegistryConfig } from './config-reader.js';
 import { AgentReputationAccount } from './borsh-schemas.js';
 import { toBigInt } from './utils.js';
+import { validateByteLength, validateNonce } from '../utils/validation.js';
 /**
  * Serialize a transaction for later signing and sending
  * @param transaction - The transaction to serialize
@@ -30,6 +31,7 @@ export function serializeTransaction(transaction, signer, blockhash, lastValidBl
         blockhash,
         lastValidBlockHeight,
         signer: signer.toBase58(),
+        signed: false, // Security: Explicitly indicate transaction is unsigned
     };
 }
 /**
@@ -143,7 +145,8 @@ export class IdentityTransactionBuilder {
             };
         }
         catch (error) {
-            console.error('registerAgent error:', error);
+            // Security: Don't log errors to console (may expose sensitive info)
+            // Error is returned in the result for caller to handle
             return {
                 signature: '',
                 success: false,
@@ -215,6 +218,10 @@ export class IdentityTransactionBuilder {
             if (!agentData) {
                 throw new Error('Agent account not found');
             }
+            // Security: Validate buffer size before reading (discriminator(8) + agent_id(8) = 16 bytes minimum)
+            if (agentData.data.length < 16) {
+                throw new Error(`Invalid agent data: expected >= 16 bytes, got ${agentData.data.length}`);
+            }
             // Read agent_id (u64 at offset 8 after discriminator)
             const agentId = agentData.data.readBigUInt64LE(8);
             // Compute key hash (SHA256(key)[0..8])
@@ -263,6 +270,10 @@ export class IdentityTransactionBuilder {
             const agentData = await this.connection.getAccountInfo(agentPda);
             if (!agentData) {
                 throw new Error('Agent account not found');
+            }
+            // Security: Validate buffer size before reading (discriminator(8) + agent_id(8) = 16 bytes minimum)
+            if (agentData.data.length < 16) {
+                throw new Error(`Invalid agent data: expected >= 16 bytes, got ${agentData.data.length}`);
             }
             // Read agent_id (u64 at offset 8 after discriminator)
             const agentId = agentData.data.readBigUInt64LE(8);
@@ -385,15 +396,10 @@ export class ReputationTransactionBuilder {
             if (score < 0 || score > 100) {
                 throw new Error('Score must be between 0 and 100');
             }
-            if (tag1.length > 32) {
-                throw new Error('tag1 must be <= 32 bytes');
-            }
-            if (tag2.length > 32) {
-                throw new Error('tag2 must be <= 32 bytes');
-            }
-            if (fileUri.length > 200) {
-                throw new Error('fileUri must be <= 200 bytes');
-            }
+            // Security: Use byte length validation for UTF-8 strings (not character count)
+            validateByteLength(tag1, 32, 'tag1');
+            validateByteLength(tag2, 32, 'tag2');
+            validateByteLength(fileUri, 200, 'fileUri');
             if (fileHash.length !== 32) {
                 throw new Error('fileHash must be 32 bytes');
             }
@@ -500,9 +506,8 @@ export class ReputationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            if (responseUri.length > 200) {
-                throw new Error('responseUri must be <= 200 bytes');
-            }
+            // Security: Use byte length validation for UTF-8 strings
+            validateByteLength(responseUri, 200, 'responseUri');
             if (responseHash.length !== 32) {
                 throw new Error('responseHash must be 32 bytes');
             }
@@ -515,6 +520,11 @@ export class ReputationTransactionBuilder {
             if (responseIndexInfo) {
                 // Skip discriminator (8 bytes), then read response_count after agent_id (8) + feedback_index (8)
                 const data = responseIndexInfo.data.slice(8);
+                // Security: Validate buffer size before reading
+                // Expected: agent_id(8) + feedback_index(8) + next_index(8) + bump(1) = 25 bytes minimum
+                if (data.length < 24) {
+                    throw new Error(`Invalid ResponseIndex data: expected >= 24 bytes, got ${data.length}`);
+                }
                 responseIndexValue = data.readBigUInt64LE(16); // After agent_id + feedback_index
             }
             const [responsePda] = PDAHelpers.getResponsePDA(agentId, feedbackIndex, responseIndexValue);
@@ -558,13 +568,9 @@ export class ReputationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            // Validate inputs
-            if (tag1.length > 32) {
-                throw new Error('tag1 must be <= 32 bytes');
-            }
-            if (tag2.length > 32) {
-                throw new Error('tag2 must be <= 32 bytes');
-            }
+            // Validate inputs - Security: Use byte length validation for UTF-8 strings
+            validateByteLength(tag1, 32, 'tag1');
+            validateByteLength(tag2, 32, 'tag2');
             if (!tag1 && !tag2) {
                 throw new Error('At least one tag must be provided');
             }
@@ -623,9 +629,10 @@ export class ValidationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            if (requestUri.length > 200) {
-                throw new Error('requestUri must be <= 200 bytes');
-            }
+            // Security: Validate nonce range (u32)
+            validateNonce(nonce);
+            // Security: Use byte length validation for UTF-8 strings
+            validateByteLength(requestUri, 200, 'requestUri');
             if (requestHash.length !== 32) {
                 throw new Error('requestHash must be 32 bytes');
             }
@@ -677,15 +684,14 @@ export class ValidationTransactionBuilder {
             if (response < 0 || response > 100) {
                 throw new Error('Response must be between 0 and 100');
             }
-            if (responseUri.length > 200) {
-                throw new Error('responseUri must be <= 200 bytes');
-            }
+            // Security: Validate nonce range (u32)
+            validateNonce(nonce);
+            // Security: Use byte length validation for UTF-8 strings
+            validateByteLength(responseUri, 200, 'responseUri');
             if (responseHash.length !== 32) {
                 throw new Error('responseHash must be 32 bytes');
             }
-            if (tag.length > 32) {
-                throw new Error('tag must be <= 32 bytes');
-            }
+            validateByteLength(tag, 32, 'tag');
             const [configPda] = PDAHelpers.getValidationConfigPDA();
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, signerPubkey, // validator
             nonce);
@@ -730,6 +736,14 @@ export class ValidationTransactionBuilder {
             if (response < 0 || response > 100) {
                 throw new Error('Response must be between 0 and 100');
             }
+            // Security: Validate nonce range (u32)
+            validateNonce(nonce);
+            // Security: Use byte length validation for UTF-8 strings
+            validateByteLength(responseUri, 200, 'responseUri');
+            if (responseHash.length !== 32) {
+                throw new Error('responseHash must be 32 bytes');
+            }
+            validateByteLength(tag, 32, 'tag');
             const [configPda] = PDAHelpers.getValidationConfigPDA();
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, signerPubkey, nonce);
             const instruction = this.instructionBuilder.buildUpdateValidation(configPda, signerPubkey, validationRequestPda, response, responseUri, responseHash, tag);
@@ -769,6 +783,8 @@ export class ValidationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
+            // Security: Validate nonce range (u32)
+            validateNonce(nonce);
             const [configPda] = PDAHelpers.getValidationConfigPDA();
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(agentId, validatorAddress, nonce);
