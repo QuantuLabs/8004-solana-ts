@@ -63,3 +63,36 @@ export function normalizeAddress(address: string): string {
   return address.toLowerCase();
 }
 
+/**
+ * Validate string byte length in UTF-8 encoding
+ * Security: Prevents bypassing on-chain byte limits with multi-byte Unicode characters
+ *
+ * @param str - String to validate
+ * @param maxBytes - Maximum allowed bytes in UTF-8 encoding
+ * @param fieldName - Field name for error messages
+ * @throws Error if byte length exceeds maxBytes
+ *
+ * @example
+ * validateByteLength('hello', 32, 'tag1'); // OK - 5 bytes
+ * validateByteLength('❤️'.repeat(10), 32, 'tag1'); // Error - ~60 bytes
+ */
+export function validateByteLength(str: string, maxBytes: number, fieldName: string): void {
+  const byteLength = Buffer.byteLength(str, 'utf8');
+  if (byteLength > maxBytes) {
+    throw new Error(`${fieldName} must be <= ${maxBytes} bytes (got ${byteLength} bytes)`);
+  }
+}
+
+/**
+ * Validate nonce is within u32 range
+ * Security: Prevents integer overflow on-chain
+ *
+ * @param nonce - Nonce value to validate
+ * @throws Error if nonce is out of u32 range (0 to 4294967295)
+ */
+export function validateNonce(nonce: number): void {
+  if (!Number.isInteger(nonce) || nonce < 0 || nonce > 4294967295) {
+    throw new Error(`nonce must be a u32 integer (0 to 4294967295), got ${nonce}`);
+  }
+}
+
