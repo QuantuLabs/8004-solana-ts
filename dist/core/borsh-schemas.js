@@ -46,26 +46,37 @@ export class AgentAccount {
      * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
      */
     static deserialize(data) {
+        // Security: Validate minimum buffer size
+        // Minimum: discriminator(8) + agent_id(8) + owner(32) + agent_mint(32) + created_at(8) + bump(1) = 89 bytes
+        if (data.length < 89) {
+            throw new Error(`Invalid AgentAccount data: expected >= 89 bytes, got ${data.length}`);
+        }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
         try {
             // Try V2 (new layout) first
             return deserializeUnchecked(this.schema, AgentAccount, accountData);
         }
-        catch {
-            // LEGACY_DEVNET: Fallback to V1 for old devnet accounts
-            const raw = deserializeUnchecked(this.schemaLegacyV1, AgentAccount, accountData);
-            // Reorder fields to match V2 constructor
-            return new AgentAccount({
-                agent_id: raw.agent_id,
-                owner: raw.owner,
-                agent_mint: raw.agent_mint,
-                created_at: raw.created_at,
-                bump: raw.bump,
-                agent_uri: raw.agent_uri,
-                nft_name: raw.nft_name,
-                nft_symbol: raw.nft_symbol,
-            });
+        catch (v2Error) {
+            // LEGACY_DEVNET: Log fallback for monitoring
+            // Note: Falling back to V1 schema for legacy devnet accounts
+            try {
+                const raw = deserializeUnchecked(this.schemaLegacyV1, AgentAccount, accountData);
+                // Reorder fields to match V2 constructor
+                return new AgentAccount({
+                    agent_id: raw.agent_id,
+                    owner: raw.owner,
+                    agent_mint: raw.agent_mint,
+                    created_at: raw.created_at,
+                    bump: raw.bump,
+                    agent_uri: raw.agent_uri,
+                    nft_name: raw.nft_name,
+                    nft_symbol: raw.nft_symbol,
+                });
+            }
+            catch (v1Error) {
+                throw new Error(`Failed to deserialize AgentAccount: V2 error: ${v2Error}, V1 error: ${v1Error}`);
+            }
         }
     }
     getOwnerPublicKey() {
@@ -146,6 +157,11 @@ export class MetadataEntryPda {
      * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
      */
     static deserialize(data) {
+        // Security: Validate minimum buffer size
+        // Minimum: discriminator(8) + agent_id(8) + created_at(8) + immutable(1) + bump(1) = 26 bytes
+        if (data.length < 26) {
+            throw new Error(`Invalid MetadataEntryPda data: expected >= 26 bytes, got ${data.length}`);
+        }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
         try {
@@ -160,17 +176,23 @@ export class MetadataEntryPda {
                 metadata_value: raw.metadata_value,
             });
         }
-        catch {
-            // LEGACY_DEVNET: Fallback to V1 for old devnet accounts
-            const raw = deserializeUnchecked(this.schemaLegacyV1, MetadataEntryPda, accountData);
-            return new MetadataEntryPda({
-                agent_id: raw.agent_id,
-                created_at: raw.created_at,
-                immutable: raw.immutable === 1,
-                bump: raw.bump,
-                metadata_key: raw.metadata_key,
-                metadata_value: raw.metadata_value,
-            });
+        catch (v2Error) {
+            // LEGACY_DEVNET: Log fallback for monitoring
+            // Note: Falling back to V1 schema for legacy devnet accounts
+            try {
+                const raw = deserializeUnchecked(this.schemaLegacyV1, MetadataEntryPda, accountData);
+                return new MetadataEntryPda({
+                    agent_id: raw.agent_id,
+                    created_at: raw.created_at,
+                    immutable: raw.immutable === 1,
+                    bump: raw.bump,
+                    metadata_key: raw.metadata_key,
+                    metadata_value: raw.metadata_value,
+                });
+            }
+            catch (v1Error) {
+                throw new Error(`Failed to deserialize MetadataEntryPda: V2 error: ${v2Error}, V1 error: ${v1Error}`);
+            }
         }
     }
     getValueString() {
@@ -241,6 +263,11 @@ export class RegistryConfig {
         this.bump = fields.bump;
     }
     static deserialize(data) {
+        // Security: Validate minimum buffer size
+        // discriminator(8) + authority(32) + next_agent_id(8) + total_agents(8) + collection(32) + bump(1) = 89 bytes
+        if (data.length < 89) {
+            throw new Error(`Invalid RegistryConfig data: expected >= 89 bytes, got ${data.length}`);
+        }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, RegistryConfig, accountData);
@@ -288,6 +315,11 @@ export class MetadataExtensionAccount {
         this.bump = fields.bump;
     }
     static deserialize(data) {
+        // Security: Validate minimum buffer size
+        // discriminator(8) + agent_mint(32) + extension_index(1) + metadata vec len(4) + bump(1) = 46 bytes minimum
+        if (data.length < 46) {
+            throw new Error(`Invalid MetadataExtensionAccount data: expected >= 46 bytes, got ${data.length}`);
+        }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, MetadataExtensionAccount, accountData);
@@ -413,22 +445,33 @@ export class FeedbackTagsPda {
      * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
      */
     static deserialize(data) {
+        // Security: Validate minimum buffer size
+        // Minimum: discriminator(8) + agent_id(8) + feedback_index(8) + bump(1) = 25 bytes
+        if (data.length < 25) {
+            throw new Error(`Invalid FeedbackTagsPda data: expected >= 25 bytes, got ${data.length}`);
+        }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
         try {
             // Try V2 (new layout) first
             return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
         }
-        catch {
-            // LEGACY_DEVNET: Fallback to V1 for old devnet accounts
-            const raw = deserializeUnchecked(this.schemaLegacyV1, FeedbackTagsPda, accountData);
-            return new FeedbackTagsPda({
-                agent_id: raw.agent_id,
-                feedback_index: raw.feedback_index,
-                bump: raw.bump,
-                tag1: raw.tag1,
-                tag2: raw.tag2,
-            });
+        catch (v2Error) {
+            // LEGACY_DEVNET: Log fallback for monitoring
+            // Note: Falling back to V1 schema for legacy devnet accounts
+            try {
+                const raw = deserializeUnchecked(this.schemaLegacyV1, FeedbackTagsPda, accountData);
+                return new FeedbackTagsPda({
+                    agent_id: raw.agent_id,
+                    feedback_index: raw.feedback_index,
+                    bump: raw.bump,
+                    tag1: raw.tag1,
+                    tag2: raw.tag2,
+                });
+            }
+            catch (v1Error) {
+                throw new Error(`Failed to deserialize FeedbackTagsPda: V2 error: ${v2Error}, V1 error: ${v1Error}`);
+            }
         }
     }
 }
