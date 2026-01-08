@@ -15,11 +15,15 @@ import { Connection, PublicKey } from '@solana/web3.js';
 /**
  * Agent Mint Resolver
  * Maps agent_id → agent_mint using Identity Registry accounts
+ *
+ * Note: Cache is not thread-safe. This is acceptable for Node.js single-threaded
+ * event loop, but should be reviewed if used with Worker Threads.
  */
 export declare class AgentMintResolver {
     private cache;
     private connection;
     private cacheLoaded;
+    private loadingPromise;
     constructor(connection: Connection, _collectionMint?: PublicKey);
     /**
      * Resolve agent_id to agent_mint PublicKey
