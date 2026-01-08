@@ -12,7 +12,6 @@ export type { McpCapabilities, A2aCapabilities } from './core/endpoint-crawler.j
 export * from './core/programs.js';
 export * from './core/pda-helpers.js';
 export * from './core/borsh-schemas.js';
-export * from './core/feedback-auth.js';
 export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';

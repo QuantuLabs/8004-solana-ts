@@ -182,7 +182,7 @@ export class SolanaSDK {
                     });
                 }
                 catch {
-                    /* skip invalid */
+                    // Skip malformed MetadataEntryPda (corrupted or legacy format)
                 }
             }
             // 3. Optionally fetch feedbacks (2 RPC calls)
@@ -542,10 +542,9 @@ export class SolanaSDK {
      * Aligned with agent0-ts SDK interface
      * @param agentId - Agent ID (number or bigint)
      * @param feedbackFile - Feedback data object
-     * @param feedbackAuth - Optional feedback authorization (not yet implemented)
      * @param options - Write options (skipSend, signer)
      */
-    async giveFeedback(agentId, feedbackFile, feedbackAuth, options) {
+    async giveFeedback(agentId, feedbackFile, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
@@ -553,10 +552,6 @@ export class SolanaSDK {
         // Resolve agentId → asset (v0.2.0: Core asset)
         await this.initializeMintResolver();
         const asset = await this.mintResolver.resolve(id);
-        // TODO: Handle feedbackAuth when signature verification is implemented
-        if (feedbackAuth) {
-            console.warn('feedbackAuth is not yet implemented for Solana - ignoring');
-        }
         return await this.reputationTxBuilder.giveFeedback(asset, id, feedbackFile.score, feedbackFile.tag1 || '', feedbackFile.tag2 || '', feedbackFile.fileUri, feedbackFile.fileHash, options);
     }
     /**

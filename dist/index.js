@@ -19,7 +19,7 @@ export { EndpointCrawler } from './core/endpoint-crawler.js';
 export * from './core/programs.js';
 export * from './core/pda-helpers.js';
 export * from './core/borsh-schemas.js';
-export * from './core/feedback-auth.js';
+// feedback-auth.ts removed - not used by on-chain program (uses native Signer constraint)
 export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';

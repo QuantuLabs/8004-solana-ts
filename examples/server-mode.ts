@@ -49,7 +49,6 @@ class TransactionServer {
         fileUri,
         fileHash: Buffer.alloc(32), // In production: compute actual hash
       },
-      undefined, // feedbackAuth
       {
         skipSend: true,
         signer: new PublicKey(userWallet),

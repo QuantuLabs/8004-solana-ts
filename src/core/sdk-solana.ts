@@ -24,7 +24,7 @@ import {
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { fetchRegistryConfig } from './config-reader.js';
-import type { FeedbackAuth } from '../models/interfaces.js';
+// FeedbackAuth removed - not used by Solana program (uses native Signer constraint)
 
 export interface SolanaSDKConfig {
   cluster?: Cluster;
@@ -262,7 +262,7 @@ export class SolanaSDK {
             value: entry.getValueString(),
           });
         } catch {
-          /* skip invalid */
+          // Skip malformed MetadataEntryPda (corrupted or legacy format)
         }
       }
 
@@ -706,7 +706,6 @@ export class SolanaSDK {
    * Aligned with agent0-ts SDK interface
    * @param agentId - Agent ID (number or bigint)
    * @param feedbackFile - Feedback data object
-   * @param feedbackAuth - Optional feedback authorization (not yet implemented)
    * @param options - Write options (skipSend, signer)
    */
   async giveFeedback(
@@ -718,7 +717,6 @@ export class SolanaSDK {
       fileUri: string;
       fileHash: Buffer;
     },
-    feedbackAuth?: FeedbackAuth,
     options?: WriteOptions
   ): Promise<(TransactionResult & { feedbackIndex?: bigint }) | (PreparedTransaction & { feedbackIndex: bigint })> {
     if (!options?.skipSend && !this.signer) {
@@ -729,11 +727,6 @@ export class SolanaSDK {
     // Resolve agentId → asset (v0.2.0: Core asset)
     await this.initializeMintResolver();
     const asset = await this.mintResolver!.resolve(id);
-
-    // TODO: Handle feedbackAuth when signature verification is implemented
-    if (feedbackAuth) {
-      console.warn('feedbackAuth is not yet implemented for Solana - ignoring');
-    }
 
     return await this.reputationTxBuilder.giveFeedback(
       asset,
