@@ -15,34 +15,34 @@ import {
 describe('Buffer Bounds Validation', () => {
   describe('AgentAccount.deserialize - v0.3.0', () => {
     it('should reject buffers smaller than minimum size', () => {
-      // v0.3.0 Minimum: discriminator(8) + owner(32) + asset(32) + bump(1) = 73 bytes
+      // v0.3.0 Minimum: discriminator(8) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 74 bytes
       const tooSmall = Buffer.alloc(50);
       expect(() => AgentAccount.deserialize(tooSmall)).toThrow(
-        /Invalid AgentAccount data: expected >= 73 bytes, got 50/
+        /Invalid AgentAccount data: expected >= 74 bytes, got 50/
       );
     });
 
     it('should reject empty buffer', () => {
       const empty = Buffer.alloc(0);
       expect(() => AgentAccount.deserialize(empty)).toThrow(
-        /Invalid AgentAccount data: expected >= 73 bytes, got 0/
+        /Invalid AgentAccount data: expected >= 74 bytes, got 0/
       );
     });
 
-    it('should reject buffer at boundary (72 bytes)', () => {
-      const boundary = Buffer.alloc(72);
+    it('should reject buffer at boundary (73 bytes)', () => {
+      const boundary = Buffer.alloc(73);
       expect(() => AgentAccount.deserialize(boundary)).toThrow(
-        /Invalid AgentAccount data: expected >= 73 bytes, got 72/
+        /Invalid AgentAccount data: expected >= 74 bytes, got 73/
       );
     });
 
-    it('should accept buffer at minimum size (73 bytes)', () => {
+    it('should accept buffer at minimum size (74 bytes)', () => {
       // Note: This may still fail deserialization due to invalid data,
       // but it should pass the size check
-      const minimal = Buffer.alloc(73);
+      const minimal = Buffer.alloc(74);
       // The deserialization may fail due to schema mismatch, but not due to size check
       expect(() => AgentAccount.deserialize(minimal)).not.toThrow(
-        /Invalid AgentAccount data: expected >= 73 bytes/
+        /Invalid AgentAccount data: expected >= 74 bytes/
       );
     });
   });
