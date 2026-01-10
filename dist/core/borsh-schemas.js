@@ -42,8 +42,7 @@ export class AgentAccount {
         this.nft_symbol = fields.nft_symbol;
     }
     /**
-     * Deserialize with backward compatibility
-     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     * Deserialize AgentAccount from buffer
      */
     static deserialize(data) {
         // Security: Validate minimum buffer size
@@ -53,31 +52,7 @@ export class AgentAccount {
         }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
-        try {
-            // Try V2 (new layout) first
-            return deserializeUnchecked(this.schema, AgentAccount, accountData);
-        }
-        catch (v2Error) {
-            // LEGACY_DEVNET: Log fallback for monitoring
-            // Note: Falling back to V1 schema for legacy devnet accounts
-            try {
-                const raw = deserializeUnchecked(this.schemaLegacyV1, AgentAccount, accountData);
-                // Reorder fields to match V2 constructor
-                return new AgentAccount({
-                    agent_id: raw.agent_id,
-                    owner: raw.owner,
-                    agent_mint: raw.agent_mint,
-                    created_at: raw.created_at,
-                    bump: raw.bump,
-                    agent_uri: raw.agent_uri,
-                    nft_name: raw.nft_name,
-                    nft_symbol: raw.nft_symbol,
-                });
-            }
-            catch (v1Error) {
-                throw new Error(`Failed to deserialize AgentAccount: V2 error: ${v2Error}, V1 error: ${v1Error}`);
-            }
-        }
+        return deserializeUnchecked(this.schema, AgentAccount, accountData);
     }
     getOwnerPublicKey() {
         return new PublicKey(this.owner);
@@ -117,28 +92,6 @@ AgentAccount.schema = new Map([
     ],
 ]);
 /**
- * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
- * V1 Schema (pre-v0.2.1) - Dynamic fields before static
- */
-AgentAccount.schemaLegacyV1 = new Map([
-    [
-        AgentAccount,
-        {
-            kind: 'struct',
-            fields: [
-                ['agent_id', 'u64'],
-                ['owner', [32]],
-                ['agent_mint', [32]],
-                ['agent_uri', 'string'],
-                ['nft_name', 'string'],
-                ['nft_symbol', 'string'],
-                ['created_at', 'u64'],
-                ['bump', 'u8'],
-            ],
-        },
-    ],
-]);
-/**
  * Metadata Entry PDA (v0.2.1 - Static fields first for indexing)
  * Seeds: ["agent_meta", agent_id (LE), key_hash[0..8]]
  * Each metadata entry is stored in its own PDA for deleteability
@@ -153,8 +106,7 @@ export class MetadataEntryPda {
         this.metadata_value = fields.metadata_value;
     }
     /**
-     * Deserialize with backward compatibility
-     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     * Deserialize MetadataEntryPda from buffer
      */
     static deserialize(data) {
         // Security: Validate minimum buffer size
@@ -164,36 +116,15 @@ export class MetadataEntryPda {
         }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
-        try {
-            // Try V2 (new layout) first
-            const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData);
-            return new MetadataEntryPda({
-                agent_id: raw.agent_id,
-                created_at: raw.created_at,
-                immutable: raw.immutable === 1,
-                bump: raw.bump,
-                metadata_key: raw.metadata_key,
-                metadata_value: raw.metadata_value,
-            });
-        }
-        catch (v2Error) {
-            // LEGACY_DEVNET: Log fallback for monitoring
-            // Note: Falling back to V1 schema for legacy devnet accounts
-            try {
-                const raw = deserializeUnchecked(this.schemaLegacyV1, MetadataEntryPda, accountData);
-                return new MetadataEntryPda({
-                    agent_id: raw.agent_id,
-                    created_at: raw.created_at,
-                    immutable: raw.immutable === 1,
-                    bump: raw.bump,
-                    metadata_key: raw.metadata_key,
-                    metadata_value: raw.metadata_value,
-                });
-            }
-            catch (v1Error) {
-                throw new Error(`Failed to deserialize MetadataEntryPda: V2 error: ${v2Error}, V1 error: ${v1Error}`);
-            }
-        }
+        const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData);
+        return new MetadataEntryPda({
+            agent_id: raw.agent_id,
+            created_at: raw.created_at,
+            immutable: raw.immutable === 1,
+            bump: raw.bump,
+            metadata_key: raw.metadata_key,
+            metadata_value: raw.metadata_value,
+        });
     }
     getValueString() {
         return Buffer.from(this.metadata_value).toString('utf8');
@@ -225,26 +156,6 @@ MetadataEntryPda.schema = new Map([
                 ['bump', 'u8'], // Static first (v0.2.1)
                 ['metadata_key', 'string'],
                 ['metadata_value', ['u8']], // Vec<u8>
-            ],
-        },
-    ],
-]);
-/**
- * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
- * V1 Schema (pre-v0.2.1) - Dynamic fields before static
- */
-MetadataEntryPda.schemaLegacyV1 = new Map([
-    [
-        MetadataEntryPda,
-        {
-            kind: 'struct',
-            fields: [
-                ['agent_id', 'u64'],
-                ['metadata_key', 'string'],
-                ['metadata_value', ['u8']],
-                ['immutable', 'u8'],
-                ['created_at', 'u64'],
-                ['bump', 'u8'],
             ],
         },
     ],
@@ -441,8 +352,7 @@ export class FeedbackTagsPda {
         this.tag2 = fields.tag2;
     }
     /**
-     * Deserialize with backward compatibility
-     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     * Deserialize FeedbackTagsPda from buffer
      */
     static deserialize(data) {
         // Security: Validate minimum buffer size
@@ -452,27 +362,7 @@ export class FeedbackTagsPda {
         }
         // Skip 8-byte Anchor discriminator
         const accountData = data.slice(8);
-        try {
-            // Try V2 (new layout) first
-            return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
-        }
-        catch (v2Error) {
-            // LEGACY_DEVNET: Log fallback for monitoring
-            // Note: Falling back to V1 schema for legacy devnet accounts
-            try {
-                const raw = deserializeUnchecked(this.schemaLegacyV1, FeedbackTagsPda, accountData);
-                return new FeedbackTagsPda({
-                    agent_id: raw.agent_id,
-                    feedback_index: raw.feedback_index,
-                    bump: raw.bump,
-                    tag1: raw.tag1,
-                    tag2: raw.tag2,
-                });
-            }
-            catch (v1Error) {
-                throw new Error(`Failed to deserialize FeedbackTagsPda: V2 error: ${v2Error}, V1 error: ${v1Error}`);
-            }
-        }
+        return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
     }
 }
 /**
@@ -490,25 +380,6 @@ FeedbackTagsPda.schema = new Map([
                 ['bump', 'u8'], // Static first (v0.2.1)
                 ['tag1', 'string'],
                 ['tag2', 'string'],
-            ],
-        },
-    ],
-]);
-/**
- * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
- * V1 Schema (pre-v0.2.1) - Dynamic fields before static
- */
-FeedbackTagsPda.schemaLegacyV1 = new Map([
-    [
-        FeedbackTagsPda,
-        {
-            kind: 'struct',
-            fields: [
-                ['agent_id', 'u64'],
-                ['feedback_index', 'u64'],
-                ['tag1', 'string'],
-                ['tag2', 'string'],
-                ['bump', 'u8'],
             ],
         },
     ],
