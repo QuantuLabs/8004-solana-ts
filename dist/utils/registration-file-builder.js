@@ -43,12 +43,22 @@ export function buildRegistrationFileJson(registrationFile, options) {
     // Build registrations array
     const registrations = [];
     if (registrationFile.agentId) {
-        const [, , tokenId] = registrationFile.agentId.split(':');
+        // Validate agentId format: "eip155:chainId:tokenId" or "chainId:tokenId"
+        const parts = registrationFile.agentId.split(':');
+        if (parts.length < 2) {
+            throw new Error(`Invalid agentId format: "${registrationFile.agentId}". Expected "chainId:tokenId" or "eip155:chainId:tokenId"`);
+        }
+        // Extract tokenId from last part
+        const tokenIdStr = parts[parts.length - 1];
+        const tokenId = parseInt(tokenIdStr, 10);
+        if (isNaN(tokenId) || tokenId < 0) {
+            throw new Error(`Invalid tokenId in agentId: "${tokenIdStr}" is not a valid positive integer`);
+        }
         const agentRegistry = chainId && identityRegistryAddress
             ? `eip155:${chainId}:${identityRegistryAddress}`
             : `eip155:1:{identityRegistry}`;
         registrations.push({
-            agentId: parseInt(tokenId, 10),
+            agentId: tokenId,
             agentRegistry,
         });
     }
