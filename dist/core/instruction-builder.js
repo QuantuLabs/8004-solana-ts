@@ -1,10 +1,15 @@
 /**
  * Manual instruction builder for ERC-8004 Solana programs
- * v0.2.0 - Metaplex Core architecture
+ * v0.3.0 - Asset-based identification
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
+ *
+ * BREAKING CHANGES from v0.2.0:
+ * - agent_id (u64) removed from all instruction arguments
+ * - Asset (Pubkey) used for PDA derivation only
+ * - New multi-collection instructions added
  */
-import { TransactionInstruction, SystemProgram, } from '@solana/web3.js';
+import { TransactionInstruction, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, } from '@solana/web3.js';
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
 import { IDENTITY_DISCRIMINATORS, REPUTATION_DISCRIMINATORS, VALIDATION_DISCRIMINATORS, } from './instruction-discriminators.js';
 import { toBigInt } from './utils.js';
@@ -13,6 +18,7 @@ import { toBigInt } from './utils.js';
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class IdentityInstructionBuilder {
+    programId;
     constructor() {
         this.programId = PROGRAM_ID;
     }
@@ -142,35 +148,160 @@ export class IdentityInstructionBuilder {
             data: IDENTITY_DISCRIMINATORS.syncOwner,
         });
     }
+    // ============================================================================
+    // v0.3.0 - Multi-collection instructions
+    // ============================================================================
+    /**
+     * Build createBaseRegistry instruction - v0.3.0
+     * Creates a new base registry (authority only)
+     * Accounts: root_config, registry_config, collection (signer), authority (signer), system_program, mpl_core_program
+     */
+    buildCreateBaseRegistry(rootConfig, registryConfig, collection, authority) {
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: rootConfig, isSigner: false, isWritable: true },
+                { pubkey: registryConfig, isSigner: false, isWritable: true },
+                { pubkey: collection, isSigner: true, isWritable: true },
+                { pubkey: authority, isSigner: true, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+            ],
+            data: IDENTITY_DISCRIMINATORS.createBaseRegistry,
+        });
+    }
+    /**
+     * Build rotateBaseRegistry instruction - v0.3.0
+     * Rotates to a new base registry (authority only)
+     * Accounts: root_config, new_registry, authority (signer)
+     */
+    buildRotateBaseRegistry(rootConfig, newRegistry, authority) {
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: rootConfig, isSigner: false, isWritable: true },
+                { pubkey: newRegistry, isSigner: false, isWritable: false },
+                { pubkey: authority, isSigner: true, isWritable: false },
+            ],
+            data: IDENTITY_DISCRIMINATORS.rotateBaseRegistry,
+        });
+    }
+    /**
+     * Build createUserRegistry instruction - v0.3.0
+     * Creates a user-owned registry collection
+     * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program
+     */
+    buildCreateUserRegistry(collectionAuthority, registryConfig, collection, owner, collectionName, collectionUri) {
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.createUserRegistry,
+            this.serializeString(collectionName),
+            this.serializeString(collectionUri),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: collectionAuthority, isSigner: false, isWritable: false },
+                { pubkey: registryConfig, isSigner: false, isWritable: true },
+                { pubkey: collection, isSigner: true, isWritable: true },
+                { pubkey: owner, isSigner: true, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build updateUserRegistryMetadata instruction - v0.3.0
+     * Updates metadata for a user-owned registry
+     * Accounts: collection_authority, registry_config, collection, owner (signer), system_program, mpl_core_program
+     */
+    buildUpdateUserRegistryMetadata(collectionAuthority, registryConfig, collection, owner, newName, newUri) {
+        // Serialize optional strings
+        const nameBuffer = this.serializeOption(newName, (s) => this.serializeString(s));
+        const uriBuffer = this.serializeOption(newUri, (s) => this.serializeString(s));
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.updateUserRegistryMetadata,
+            nameBuffer,
+            uriBuffer,
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: collectionAuthority, isSigner: false, isWritable: false },
+                { pubkey: registryConfig, isSigner: false, isWritable: false },
+                { pubkey: collection, isSigner: false, isWritable: true },
+                { pubkey: owner, isSigner: true, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build setAgentWallet instruction - v0.3.0
+     * Sets the agent wallet metadata with Ed25519 signature verification
+     * Accounts: owner (signer), payer (signer), agent_account, wallet_metadata, asset, instructions_sysvar, system_program
+     * NOTE: Requires Ed25519 signature instruction immediately before in transaction
+     */
+    buildSetAgentWallet(owner, payer, agentAccount, walletMetadata, asset, newWallet, deadline) {
+        const deadlineBuffer = Buffer.alloc(8);
+        deadlineBuffer.writeBigInt64LE(deadline);
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.setAgentWallet,
+            newWallet.toBuffer(),
+            deadlineBuffer,
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: owner, isSigner: true, isWritable: true },
+                { pubkey: payer, isSigner: true, isWritable: true },
+                { pubkey: agentAccount, isSigner: false, isWritable: false },
+                { pubkey: walletMetadata, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
     serializeString(str) {
         const strBytes = Buffer.from(str, 'utf8');
         const len = Buffer.alloc(4);
         len.writeUInt32LE(strBytes.length);
         return Buffer.concat([len, strBytes]);
     }
+    serializeOption(value, serializer) {
+        if (value === null) {
+            return Buffer.from([0]); // None
+        }
+        return Buffer.concat([Buffer.from([1]), serializer(value)]); // Some
+    }
 }
 /**
  * Instruction builder for Reputation Registry
+ * v0.3.0 - agent_id removed, uses asset for PDA derivation
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class ReputationInstructionBuilder {
+    programId;
     constructor() {
         this.programId = PROGRAM_ID;
     }
     /**
-     * Build giveFeedback instruction
-     * Matches: give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)
-     * Accounts: client, payer, asset, agent_account, feedback_account, agent_reputation, system_program
+     * Build giveFeedback instruction - v0.3.0
+     * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
+     * Accounts: client (signer), payer (signer), asset, agent_account, feedback_account, agent_reputation, system_program
      */
-    buildGiveFeedback(client, payer, asset, agentAccount, feedbackAccount, agentReputation, agentId, score, tag1, tag2, fileUri, fileHash, feedbackIndex) {
+    buildGiveFeedback(client, payer, asset, agentAccount, feedbackAccount, agentReputation, score, tag1, tag2, endpoint, feedbackUri, feedbackHash, feedbackIndex) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.giveFeedback,
-            this.serializeU64(agentId),
             Buffer.from([score]),
             this.serializeString(tag1),
             this.serializeString(tag2),
-            this.serializeString(fileUri),
-            fileHash,
+            this.serializeString(endpoint),
+            this.serializeString(feedbackUri),
+            feedbackHash,
             this.serializeU64(feedbackIndex),
         ]);
         return new TransactionInstruction({
@@ -188,13 +319,13 @@ export class ReputationInstructionBuilder {
         });
     }
     /**
-     * Build revokeFeedback instruction
-     * Matches: revoke_feedback(agent_id, feedback_index)
+     * Build revokeFeedback instruction - v0.3.0
+     * Matches: revoke_feedback(feedback_index)
+     * Accounts: client (signer), feedback_account, agent_reputation
      */
-    buildRevokeFeedback(client, feedbackAccount, agentReputation, agentId, feedbackIndex) {
+    buildRevokeFeedback(client, feedbackAccount, agentReputation, feedbackIndex) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.revokeFeedback,
-            this.serializeU64(agentId),
             this.serializeU64(feedbackIndex),
         ]);
         return new TransactionInstruction({
@@ -208,13 +339,13 @@ export class ReputationInstructionBuilder {
         });
     }
     /**
-     * Build appendResponse instruction
-     * Matches: append_response(agent_id, feedback_index, response_uri, response_hash)
+     * Build appendResponse instruction - v0.3.0
+     * Matches: append_response(feedback_index, response_uri, response_hash)
+     * Accounts: responder (signer), payer (signer), asset, feedback_account, response_index, response_account, system_program
      */
-    buildAppendResponse(responder, payer, feedbackAccount, responseIndex, responseAccount, agentId, feedbackIndex, responseUri, responseHash) {
+    buildAppendResponse(responder, payer, asset, feedbackAccount, responseIndex, responseAccount, feedbackIndex, responseUri, responseHash) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.appendResponse,
-            this.serializeU64(agentId),
             this.serializeU64(feedbackIndex),
             this.serializeString(responseUri),
             responseHash,
@@ -224,6 +355,7 @@ export class ReputationInstructionBuilder {
             keys: [
                 { pubkey: responder, isSigner: true, isWritable: false },
                 { pubkey: payer, isSigner: true, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
                 { pubkey: feedbackAccount, isSigner: false, isWritable: false },
                 { pubkey: responseIndex, isSigner: false, isWritable: true },
                 { pubkey: responseAccount, isSigner: false, isWritable: true },
@@ -233,14 +365,13 @@ export class ReputationInstructionBuilder {
         });
     }
     /**
-     * Build setFeedbackTags instruction
-     * Matches: set_feedback_tags(agent_id, feedback_index, tag1, tag2)
-     * Accounts: client, payer, feedback_account, feedback_tags, system_program
+     * Build setFeedbackTags instruction - v0.3.0
+     * Matches: set_feedback_tags(feedback_index, tag1, tag2)
+     * Accounts: client (signer), payer (signer), feedback_account, feedback_tags, system_program
      */
-    buildSetFeedbackTags(client, payer, feedbackAccount, feedbackTags, agentId, feedbackIndex, tag1, tag2) {
+    buildSetFeedbackTags(client, payer, feedbackAccount, feedbackTags, feedbackIndex, tag1, tag2) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.setFeedbackTags,
-            this.serializeU64(agentId),
             this.serializeU64(feedbackIndex),
             this.serializeString(tag1),
             this.serializeString(tag2),
@@ -271,20 +402,22 @@ export class ReputationInstructionBuilder {
 }
 /**
  * Instruction builder for Validation Registry
+ * v0.3.0 - agent_id removed, uses asset for PDA derivation
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class ValidationInstructionBuilder {
+    programId;
     constructor() {
         this.programId = PROGRAM_ID;
     }
     /**
-     * Build requestValidation instruction
-     * Matches: request_validation(agent_id, validator_address, nonce, request_uri, request_hash)
+     * Build requestValidation instruction - v0.3.0
+     * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
+     * Accounts: root_config, requester (signer), payer (signer), asset, agent_account, validation_request, system_program
      */
-    buildRequestValidation(config, requester, payer, asset, agentAccount, validationRequest, agentId, validatorAddress, nonce, requestUri, requestHash) {
+    buildRequestValidation(rootConfig, requester, payer, asset, agentAccount, validationRequest, validatorAddress, nonce, requestUri, requestHash) {
         const data = Buffer.concat([
             VALIDATION_DISCRIMINATORS.requestValidation,
-            this.serializeU64(agentId),
             validatorAddress.toBuffer(),
             this.serializeU32(nonce),
             this.serializeString(requestUri),
@@ -293,7 +426,7 @@ export class ValidationInstructionBuilder {
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: true },
+                { pubkey: rootConfig, isSigner: false, isWritable: false },
                 { pubkey: requester, isSigner: true, isWritable: false },
                 { pubkey: payer, isSigner: true, isWritable: true },
                 { pubkey: asset, isSigner: false, isWritable: false },
@@ -305,10 +438,11 @@ export class ValidationInstructionBuilder {
         });
     }
     /**
-     * Build respondToValidation instruction
+     * Build respondToValidation instruction - v0.3.0
      * Matches: respond_to_validation(response, response_uri, response_hash, tag)
+     * Accounts: validator (signer), asset, agent_account, validation_request
      */
-    buildRespondToValidation(config, validator, validationRequest, response, responseUri, responseHash, tag) {
+    buildRespondToValidation(validator, asset, agentAccount, validationRequest, response, responseUri, responseHash, tag) {
         const data = Buffer.concat([
             VALIDATION_DISCRIMINATORS.respondToValidation,
             Buffer.from([response]),
@@ -319,17 +453,20 @@ export class ValidationInstructionBuilder {
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: true },
                 { pubkey: validator, isSigner: true, isWritable: false },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: agentAccount, isSigner: false, isWritable: false },
                 { pubkey: validationRequest, isSigner: false, isWritable: true },
             ],
             data,
         });
     }
     /**
-     * Build updateValidation instruction (same as respondToValidation)
+     * Build updateValidation instruction - v0.3.0
+     * Same signature as respondToValidation but different discriminator
+     * Accounts: validator (signer), asset, agent_account, validation_request
      */
-    buildUpdateValidation(config, validator, validationRequest, response, responseUri, responseHash, tag) {
+    buildUpdateValidation(validator, asset, agentAccount, validationRequest, response, responseUri, responseHash, tag) {
         const data = Buffer.concat([
             VALIDATION_DISCRIMINATORS.updateValidation,
             Buffer.from([response]),
@@ -340,21 +477,23 @@ export class ValidationInstructionBuilder {
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: true },
                 { pubkey: validator, isSigner: true, isWritable: false },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: agentAccount, isSigner: false, isWritable: false },
                 { pubkey: validationRequest, isSigner: false, isWritable: true },
             ],
             data,
         });
     }
     /**
-     * Build closeValidation instruction
+     * Build closeValidation instruction - v0.3.0
+     * Accounts: root_config, closer (signer), asset, agent_account, validation_request, rent_receiver
      */
-    buildCloseValidation(config, closer, asset, agentAccount, validationRequest, rentReceiver) {
+    buildCloseValidation(rootConfig, closer, asset, agentAccount, validationRequest, rentReceiver) {
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: false },
+                { pubkey: rootConfig, isSigner: false, isWritable: false },
                 { pubkey: closer, isSigner: true, isWritable: false },
                 { pubkey: asset, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },

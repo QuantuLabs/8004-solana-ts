@@ -1,12 +1,11 @@
 /**
  * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
- * v0.2.0 - Consolidated single program architecture
+ * v0.3.0 - Asset-based identification
  *
- * BREAKING CHANGES from v0.1.0:
- * - Single PROGRAM_ID instead of 3 separate program IDs
- * - Agent PDA uses Core asset address, not mint
- * - Feedback PDA uses global index (no client address in seeds)
- * - Response PDA uses global feedback index (no client address in seeds)
+ * BREAKING CHANGES from v0.2.0:
+ * - agent_id (u64) replaced by asset (Pubkey) in all PDA seeds
+ * - New RootConfig and RegistryConfig PDAs for multi-collection support
+ * - ValidationStats removed (counters moved off-chain)
  */
 
 import { PublicKey } from '@solana/web3.js';
@@ -24,7 +23,7 @@ export const VALIDATION_PROGRAM_ID = PROGRAM_ID;
 
 /**
  * PDA derivation helpers
- * v0.2.0 - All PDAs now use single PROGRAM_ID
+ * v0.3.0 - All PDAs now use asset (Pubkey) instead of agent_id (u64)
  * All methods return [PublicKey, bump] tuple
  */
 export class PDAHelpers {
@@ -33,58 +32,58 @@ export class PDAHelpers {
   // ============================================================================
 
   /**
-   * Get Registry Config PDA
+   * Get Root Config PDA - v0.3.0
+   * Global pointer to current base registry
+   * Seeds: ["root_config"]
+   */
+  static getRootConfigPDA(programId: PublicKey = PROGRAM_ID): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync([Buffer.from('root_config')], programId);
+  }
+
+  /**
+   * Get Registry Config PDA - v0.3.0
+   * Per-collection configuration
+   * Seeds: ["registry_config", collection]
+   */
+  static getRegistryConfigPDA(
+    collection: PublicKey,
+    programId: PublicKey = PROGRAM_ID
+  ): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('registry_config'), collection.toBuffer()],
+      programId
+    );
+  }
+
+  /**
+   * @deprecated Use getRegistryConfigPDA instead for v0.3.0
+   * Get Config PDA (legacy)
    * Seeds: ["config"]
    */
   static getConfigPDA(programId: PublicKey = PROGRAM_ID): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from('config')],
-      programId
-    );
+    return PublicKey.findProgramAddressSync([Buffer.from('config')], programId);
   }
 
   /**
-   * Get Agent Account PDA
+   * Get Agent Account PDA - v0.3.0
    * Seeds: ["agent", asset]
-   * BREAKING: v0.2.0 uses Core asset address, not mint
    */
   static getAgentPDA(asset: PublicKey, programId: PublicKey = PROGRAM_ID): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from('agent'), asset.toBuffer()],
-      programId
-    );
+    return PublicKey.findProgramAddressSync([Buffer.from('agent'), asset.toBuffer()], programId);
   }
 
   /**
-   * Get Metadata Extension PDA
-   * Seeds: ["metadata_ext", asset, extension_index]
-   */
-  static getMetadataExtensionPDA(
-    asset: PublicKey,
-    extensionIndex: number,
-    programId: PublicKey = PROGRAM_ID
-  ): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from('metadata_ext'), asset.toBuffer(), Buffer.from([extensionIndex])],
-      programId
-    );
-  }
-
-  /**
-   * Get Metadata Entry PDA (v0.2.0 - individual metadata entries)
-   * Seeds: ["agent_meta", agent_id, key_hash]
+   * Get Metadata Entry PDA - v0.3.0
+   * Seeds: ["agent_meta", asset, key_hash[0..8]]
    * key_hash = SHA256(key)[0..8]
    */
   static getMetadataEntryPDA(
-    agentId: bigint,
+    asset: PublicKey,
     keyHash: Buffer,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(agentId);
-
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('agent_meta'), agentIdBuffer, keyHash.slice(0, 8)],
+      [Buffer.from('agent_meta'), asset.toBuffer(), keyHash.slice(0, 8)],
       programId
     );
   }
@@ -94,80 +93,65 @@ export class PDAHelpers {
   // ============================================================================
 
   /**
-   * Get Feedback Account PDA
-   * Seeds: ["feedback", agent_id, feedback_index]
-   * BREAKING: v0.2.0 uses global feedback index (no client address)
+   * Get Feedback Account PDA - v0.3.0
+   * Seeds: ["feedback", asset, feedback_index]
    */
   static getFeedbackPDA(
-    agentId: bigint | number,
+    asset: PublicKey,
     feedbackIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
     const feedbackIndexBuffer = Buffer.alloc(8);
     feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('feedback'), agentIdBuffer, feedbackIndexBuffer],
+      [Buffer.from('feedback'), asset.toBuffer(), feedbackIndexBuffer],
       programId
     );
   }
 
   /**
-   * Get Feedback Tags PDA (optional tags for feedback)
-   * Seeds: ["feedback_tags", agent_id, feedback_index]
-   * Created only when tags are provided via set_feedback_tags
+   * Get Feedback Tags PDA - v0.3.0
+   * Seeds: ["feedback_tags", asset, feedback_index]
    */
   static getFeedbackTagsPDA(
-    agentId: bigint | number,
+    asset: PublicKey,
     feedbackIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
     const feedbackIndexBuffer = Buffer.alloc(8);
     feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('feedback_tags'), agentIdBuffer, feedbackIndexBuffer],
+      [Buffer.from('feedback_tags'), asset.toBuffer(), feedbackIndexBuffer],
       programId
     );
   }
 
   /**
-   * Get Agent Reputation PDA
-   * Seeds: ["agent_reputation", agent_id]
+   * Get Agent Reputation Metadata PDA - v0.3.0
+   * Seeds: ["agent_reputation", asset]
    */
   static getAgentReputationPDA(
-    agentId: bigint | number,
+    asset: PublicKey,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('agent_reputation'), agentIdBuffer],
+      [Buffer.from('agent_reputation'), asset.toBuffer()],
       programId
     );
   }
 
   /**
-   * Get Response PDA
-   * Seeds: ["response", agent_id, feedback_index, response_index]
-   * BREAKING: v0.2.0 removed client from seeds
+   * Get Response PDA - v0.3.0
+   * Seeds: ["response", asset, feedback_index, response_index]
    */
   static getResponsePDA(
-    agentId: bigint | number,
+    asset: PublicKey,
     feedbackIndex: bigint | number,
     responseIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
     const feedbackIndexBuffer = Buffer.alloc(8);
     feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
@@ -175,29 +159,40 @@ export class PDAHelpers {
     responseIndexBuffer.writeBigUInt64LE(BigInt(responseIndex));
 
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('response'), agentIdBuffer, feedbackIndexBuffer, responseIndexBuffer],
+      [Buffer.from('response'), asset.toBuffer(), feedbackIndexBuffer, responseIndexBuffer],
       programId
     );
   }
 
   /**
-   * Get Response Index PDA
-   * Seeds: ["response_index", agent_id, feedback_index]
-   * BREAKING: v0.2.0 removed client from seeds
+   * Get Response Index PDA - v0.3.0
+   * Seeds: ["response_index", asset, feedback_index]
    */
   static getResponseIndexPDA(
-    agentId: bigint | number,
+    asset: PublicKey,
     feedbackIndex: bigint | number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
     const feedbackIndexBuffer = Buffer.alloc(8);
     feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
 
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('response_index'), agentIdBuffer, feedbackIndexBuffer],
+      [Buffer.from('response_index'), asset.toBuffer(), feedbackIndexBuffer],
+      programId
+    );
+  }
+
+  /**
+   * Get Client Index PDA - v0.3.0
+   * Seeds: ["client_index", asset, client]
+   */
+  static getClientIndexPDA(
+    asset: PublicKey,
+    client: PublicKey,
+    programId: PublicKey = PROGRAM_ID
+  ): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('client_index'), asset.toBuffer(), client.toBuffer()],
       programId
     );
   }
@@ -207,67 +202,20 @@ export class PDAHelpers {
   // ============================================================================
 
   /**
-   * Get Validation Stats PDA
-   * Seeds: ["validation_config"]
-   */
-  static getValidationStatsPDA(programId: PublicKey = PROGRAM_ID): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from('validation_config')],
-      programId
-    );
-  }
-
-  /**
-   * Get Validation Request PDA
-   * Seeds: ["validation", agent_id, validator, nonce]
+   * Get Validation Request PDA - v0.3.0
+   * Seeds: ["validation", asset, validator, nonce]
    */
   static getValidationRequestPDA(
-    agentId: bigint | number,
+    asset: PublicKey,
     validator: PublicKey,
     nonce: number,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
     const nonceBuffer = Buffer.alloc(4);
     nonceBuffer.writeUInt32LE(nonce);
 
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('validation'), agentIdBuffer, validator.toBuffer(), nonceBuffer],
-      programId
-    );
-  }
-
-  // ============================================================================
-  // Convenience Methods (sync wrappers)
-  // ============================================================================
-
-  /** Alias for getConfigPDA */
-  static getRegistryConfigPDA(): [PublicKey, number] {
-    return PDAHelpers.getConfigPDA();
-  }
-
-  /** Alias for getValidationStatsPDA */
-  static getValidationConfigPDA(): [PublicKey, number] {
-    return PDAHelpers.getValidationStatsPDA();
-  }
-
-  /**
-   * Get Client Index PDA
-   * Seeds: ["client_index", agent_id, client]
-   * Used to track per-client feedback count
-   */
-  static getClientIndexPDA(
-    agentId: bigint | number,
-    client: PublicKey,
-    programId: PublicKey = PROGRAM_ID
-  ): [PublicKey, number] {
-    const agentIdBuffer = Buffer.alloc(8);
-    agentIdBuffer.writeBigUInt64LE(BigInt(agentId));
-
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from('client_index'), agentIdBuffer, client.toBuffer()],
+      [Buffer.from('validation'), asset.toBuffer(), validator.toBuffer(), nonceBuffer],
       programId
     );
   }

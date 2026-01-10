@@ -1,22 +1,48 @@
 /**
  * Registry Config Reader
- * Fetches and deserializes the RegistryConfig account from on-chain
+ * v0.3.0 - Multi-collection support
+ * Fetches and deserializes RootConfig and RegistryConfig accounts from on-chain
  */
 
-import { Connection } from '@solana/web3.js';
-import { RegistryConfig } from './borsh-schemas.js';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { RootConfig, RegistryConfig } from './borsh-schemas.js';
 import { PDAHelpers } from './pda-helpers.js';
 
 /**
- * Fetch the Registry Config from on-chain
+ * Fetch the Root Config from on-chain - v0.3.0
  * @param connection - Solana RPC connection
+ * @returns RootConfig or null if not initialized
+ */
+export async function fetchRootConfig(
+  connection: Connection
+): Promise<RootConfig | null> {
+  try {
+    const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
+    const accountInfo = await connection.getAccountInfo(rootConfigPda);
+
+    if (!accountInfo || accountInfo.data.length === 0) {
+      return null;
+    }
+
+    return RootConfig.deserialize(accountInfo.data);
+  } catch (error) {
+    console.error('Error fetching root config:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch a Registry Config from on-chain - v0.3.0
+ * @param connection - Solana RPC connection
+ * @param collection - Collection pubkey for the registry
  * @returns RegistryConfig or null if not initialized
  */
 export async function fetchRegistryConfig(
-  connection: Connection
+  connection: Connection,
+  collection: PublicKey
 ): Promise<RegistryConfig | null> {
   try {
-    const [configPda] = PDAHelpers.getRegistryConfigPDA();
+    const [configPda] = PDAHelpers.getRegistryConfigPDA(collection);
     const accountInfo = await connection.getAccountInfo(configPda);
 
     if (!accountInfo || accountInfo.data.length === 0) {
@@ -31,13 +57,28 @@ export async function fetchRegistryConfig(
 }
 
 /**
- * Check if the Registry has been initialized
+ * Check if the Root Registry has been initialized - v0.3.0
  * @param connection - Solana RPC connection
  * @returns true if initialized, false otherwise
  */
 export async function isRegistryInitialized(
   connection: Connection
 ): Promise<boolean> {
-  const config = await fetchRegistryConfig(connection);
-  return config !== null;
+  const rootConfig = await fetchRootConfig(connection);
+  return rootConfig !== null;
+}
+
+/**
+ * Get the current base collection from root config - v0.3.0
+ * @param connection - Solana RPC connection
+ * @returns Base collection pubkey or null if not initialized
+ */
+export async function getCurrentBaseCollection(
+  connection: Connection
+): Promise<PublicKey | null> {
+  const rootConfig = await fetchRootConfig(connection);
+  if (!rootConfig) {
+    return null;
+  }
+  return rootConfig.getCurrentBaseRegistryPublicKey();
 }

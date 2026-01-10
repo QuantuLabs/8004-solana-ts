@@ -13,6 +13,7 @@ export declare function matchesDiscriminator(data: Buffer, expected: Buffer): bo
 /**
  * Identity Registry instruction discriminators
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
+ * v0.3.0 - Added multi-collection and wallet instructions
  */
 export declare const IDENTITY_DISCRIMINATORS: {
     readonly initialize: Buffer<ArrayBuffer>;
@@ -24,6 +25,11 @@ export declare const IDENTITY_DISCRIMINATORS: {
     readonly syncOwner: Buffer<ArrayBuffer>;
     readonly transferAgent: Buffer<ArrayBuffer>;
     readonly ownerOf: Buffer<ArrayBuffer>;
+    readonly createBaseRegistry: Buffer<ArrayBuffer>;
+    readonly rotateBaseRegistry: Buffer<ArrayBuffer>;
+    readonly createUserRegistry: Buffer<ArrayBuffer>;
+    readonly updateUserRegistryMetadata: Buffer<ArrayBuffer>;
+    readonly setAgentWallet: Buffer<ArrayBuffer>;
 };
 /**
  * Reputation Registry instruction discriminators
@@ -48,8 +54,10 @@ export declare const VALIDATION_DISCRIMINATORS: {
 /**
  * Account discriminators for identifying account types
  * Hardcoded from IDL - SHA256("account:StructName")[0..8]
+ * v0.3.0 - Added RootConfig, removed ValidationStats
  */
 export declare const ACCOUNT_DISCRIMINATORS: {
+    readonly RootConfig: Buffer<ArrayBuffer>;
     readonly RegistryConfig: Buffer<ArrayBuffer>;
     readonly AgentAccount: Buffer<ArrayBuffer>;
     readonly MetadataEntryPda: Buffer<ArrayBuffer>;
@@ -58,7 +66,6 @@ export declare const ACCOUNT_DISCRIMINATORS: {
     readonly FeedbackTagsPda: Buffer<ArrayBuffer>;
     readonly ResponseIndexAccount: Buffer<ArrayBuffer>;
     readonly ResponseAccount: Buffer<ArrayBuffer>;
-    readonly ValidationStats: Buffer<ArrayBuffer>;
     readonly ValidationRequest: Buffer<ArrayBuffer>;
 };
 //# sourceMappingURL=instruction-discriminators.d.ts.map

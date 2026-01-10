@@ -1,6 +1,11 @@
 /**
  * Solana feedback management system for Agent0 SDK
+ * v0.3.0 - Asset-based identification
  * Implements the 6 ERC-8004 read functions for Solana
+ *
+ * BREAKING CHANGES from v0.2.0:
+ * - All methods now use asset (PublicKey) instead of agentId (bigint)
+ * - Aggregates (average_score, total_feedbacks) computed off-chain
  */
 
 import { PublicKey } from '@solana/web3.js';
@@ -12,13 +17,14 @@ import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import {
   FeedbackAccount,
   FeedbackTagsPda,
-  AgentReputationAccount,
+  AgentReputationMetadata,
   ResponseIndexAccount,
   ResponseAccount,
 } from './borsh-schemas.js';
 
 /**
  * Summary result matching ERC-8004 getSummary interface
+ * v0.3.0: Aggregates computed off-chain from feedbacks
  */
 export interface SolanaAgentSummary {
   averageScore: number;
@@ -28,36 +34,32 @@ export interface SolanaAgentSummary {
 }
 
 /**
- * Feedback result matching SDK interface
+ * Feedback result matching SDK interface - v0.3.0
+ * Note: file_uri, file_hash, created_at are now in events only
  */
 export interface SolanaFeedback {
-  agentId: bigint;
+  asset: PublicKey;
   client: PublicKey;
   feedbackIndex: bigint;
   score: number;
   tag1: string;
   tag2: string;
-  fileUri: string;
-  fileHash: Uint8Array;
   revoked: boolean;
-  createdAt: bigint;
 }
 
 /**
- * Response result
+ * Response result - v0.3.0
+ * Note: response_uri, response_hash, created_at are now in events only
  */
 export interface SolanaResponse {
-  agentId: bigint;
+  asset: PublicKey;
   feedbackIndex: bigint;
   responseIndex: bigint;
   responder: PublicKey;
-  responseUri: string;
-  responseHash: Uint8Array;
-  createdAt: bigint;
 }
 
 /**
- * Manages feedback operations for Solana
+ * Manages feedback operations for Solana - v0.3.0
  * Implements all 6 ERC-8004 read functions
  */
 export class SolanaFeedbackManager {
@@ -67,42 +69,34 @@ export class SolanaFeedbackManager {
   ) {}
 
   /**
-   * 1. getSummary - Get agent reputation summary
-   * @param agentId - Agent ID
+   * 1. getSummary - Get agent reputation summary - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param minScore - Optional minimum score filter (client-side)
    * @param clientFilter - Optional client address filter (client-side)
    * @returns Summary with average score and total feedbacks
    *
-   * Implementation: Uses cached AgentReputationAccount for O(1) performance
-   * Falls back to client-side filtering if filters provided
+   * v0.3.0: Aggregates computed off-chain from all feedbacks
    */
   async getSummary(
-    agentId: bigint,
+    asset: PublicKey,
     minScore?: number,
     clientFilter?: PublicKey
   ): Promise<SolanaAgentSummary> {
     try {
-      // Fetch cached aggregate from AgentReputationAccount
-      const [reputationPDA] = await PDAHelpers.getAgentReputationPDA(agentId);
-      const data = await this.client.getAccount(reputationPDA);
+      // Get next_feedback_index from AgentReputationMetadata
+      const [reputationPDA] = PDAHelpers.getAgentReputationPDA(asset);
+      const reputationData = await this.client.getAccount(reputationPDA);
 
-      if (!data) {
-        return { averageScore: 0, totalFeedbacks: 0, nextFeedbackIndex: 0, totalClients: 0 };
+      let nextFeedbackIndex = 0;
+      if (reputationData) {
+        const reputation = AgentReputationMetadata.deserialize(reputationData);
+        nextFeedbackIndex = Number(reputation.next_feedback_index);
       }
 
-      const reputation = AgentReputationAccount.deserialize(data);
+      // v0.3.0: Aggregates computed off-chain - fetch all feedbacks
+      const feedbacks = await this.readAllFeedback(asset, false);
 
-      // If no filters, return cached data (O(1))
-      if (!minScore && !clientFilter) {
-        return {
-          averageScore: reputation.average_score,
-          totalFeedbacks: Number(reputation.total_feedbacks),
-          nextFeedbackIndex: Number(reputation.next_feedback_index),
-        };
-      }
-
-      // If filters provided, fetch all feedbacks and filter client-side
-      const feedbacks = await this.readAllFeedback(agentId, false);
+      // Apply filters if provided
       const filtered = feedbacks.filter(
         (f) =>
           (!minScore || f.score >= minScore) &&
@@ -110,32 +104,35 @@ export class SolanaFeedbackManager {
       );
 
       const sum = filtered.reduce((acc, f) => acc + f.score, 0);
+      const uniqueClients = new Set(filtered.map((f) => f.client.toBase58()));
+
       return {
         averageScore: filtered.length > 0 ? sum / filtered.length : 0,
         totalFeedbacks: filtered.length,
-        nextFeedbackIndex: Number(reputation.next_feedback_index),
+        nextFeedbackIndex,
+        totalClients: uniqueClients.size,
       };
     } catch (error) {
-      console.error(`Error getting summary for agent ${agentId}:`, error);
+      console.error(`Error getting summary for agent ${asset.toBase58()}:`, error);
       return { averageScore: 0, totalFeedbacks: 0, nextFeedbackIndex: 0, totalClients: 0 };
     }
   }
 
   /**
-   * 2. readFeedback - Read single feedback
-   * @param agentId - Agent ID
-   * @param client - Client public key
+   * 2. readFeedback - Read single feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
+   * @param _client - Client public key (kept for API compatibility, not used in PDA)
    * @param feedbackIndex - Feedback index
    * @returns Feedback object or null if not found
    */
   async readFeedback(
-    agentId: bigint,
-    client: PublicKey,
+    asset: PublicKey,
+    _client: PublicKey,
     feedbackIndex: bigint
   ): Promise<SolanaFeedback | null> {
     try {
-      // v0.2.0: client no longer in PDA seeds (global feedback index)
-      const [feedbackPDA] = PDAHelpers.getFeedbackPDA(agentId, feedbackIndex);
+      // v0.3.0: PDA uses asset, not agentId
+      const [feedbackPDA] = PDAHelpers.getFeedbackPDA(asset, feedbackIndex);
       const data = await this.client.getAccount(feedbackPDA);
 
       if (!data) {
@@ -143,11 +140,11 @@ export class SolanaFeedbackManager {
       }
 
       const feedback = FeedbackAccount.deserialize(data);
-      const tags = await this.fetchFeedbackTags(agentId, feedbackIndex);
+      const tags = await this.fetchFeedbackTags(asset, feedbackIndex);
       return this.mapFeedbackAccount(feedback, tags);
     } catch (error) {
       console.error(
-        `Error reading feedback for agent ${agentId}, client ${client.toBase58()}, index ${feedbackIndex}:`,
+        `Error reading feedback for agent ${asset.toBase58()}, index ${feedbackIndex}:`,
         error
       );
       return null;
@@ -155,22 +152,18 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * 3. readAllFeedback - Read all feedbacks for an agent
-   * @param agentId - Agent ID
+   * 3. readAllFeedback - Read all feedbacks for an agent - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param includeRevoked - Include revoked feedbacks (default: false)
    * @returns Array of feedback objects
    *
-   * Implementation: Uses getProgramAccounts with memcmp filter on agent_id
-   * Also fetches FeedbackTagsPda for each feedback to get tag1/tag2
+   * v0.3.0: Uses asset (32 bytes) filter instead of agent_id (8 bytes)
    */
-  async readAllFeedback(agentId: bigint, includeRevoked: boolean = false): Promise<SolanaFeedback[]> {
+  async readAllFeedback(asset: PublicKey, includeRevoked: boolean = false): Promise<SolanaFeedback[]> {
     try {
       const programId = REPUTATION_PROGRAM_ID;
 
-      // Create memcmp filter for agent_id (offset 8 to skip discriminator)
-      const agentIdBuffer = Buffer.alloc(8);
-      agentIdBuffer.writeBigUInt64LE(agentId);
-
+      // v0.3.0: Filter by asset at offset 8 (after discriminator)
       const accounts = await this.client.getProgramAccounts(programId, [
         {
           // Filter by FeedbackAccount discriminator at offset 0
@@ -180,64 +173,57 @@ export class SolanaFeedbackManager {
           },
         },
         {
-          // Filter by agent_id at offset 8 (after discriminator)
+          // Filter by asset at offset 8 (after discriminator)
           memcmp: {
             offset: 8,
-            bytes: bs58.encode(agentIdBuffer),
+            bytes: asset.toBase58(),
           },
         },
       ]);
 
-      // Deserialize accounts, skipping any that fail (e.g., old pre-v0.2.0 format)
+      // Deserialize accounts
       const feedbackAccounts: FeedbackAccount[] = [];
       for (const acc of accounts) {
         try {
           const feedback = FeedbackAccount.deserialize(acc.data);
-          // Validate: created_at should be a reasonable timestamp (after 2020, before 2100)
-          const ts = Number(feedback.created_at);
-          if (ts > 1577836800 && ts < 4102444800) {
-            if (includeRevoked || !feedback.revoked) {
-              feedbackAccounts.push(feedback);
-            }
+          if (includeRevoked || !feedback.is_revoked) {
+            feedbackAccounts.push(feedback);
           }
         } catch {
-          // Skip accounts that fail to deserialize (old format)
+          // Skip accounts that fail to deserialize
         }
       }
 
       // Fetch tags for all feedbacks in parallel
       const feedbacksWithTags = await Promise.all(
         feedbackAccounts.map(async (f) => {
-          const tags = await this.fetchFeedbackTags(agentId, f.feedback_index);
+          const tags = await this.fetchFeedbackTags(asset, f.feedback_index);
           return this.mapFeedbackAccount(f, tags);
         })
       );
 
       return feedbacksWithTags;
     } catch (error) {
-      console.error(`Error reading all feedback for agent ${agentId}:`, error);
+      console.error(`Error reading all feedback for agent ${asset.toBase58()}:`, error);
       return [];
     }
   }
 
   /**
-   * 4. getLastIndex - Get feedback count for a client
-   * v0.2.0: ClientIndexAccount removed - counts feedbacks by scanning
-   * @param agentId - Agent ID
+   * 4. getLastIndex - Get feedback count for a client - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param client - Client public key
    * @returns Count of feedbacks given by this client
    */
-  async getLastIndex(agentId: bigint, client: PublicKey): Promise<bigint> {
+  async getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint> {
     try {
-      // v0.2.0: Count feedbacks from this client by scanning
-      const allFeedbacks = await this.readAllFeedback(agentId, true);
-      const clientFeedbacks = allFeedbacks.filter((f) =>
-        f.client.equals(client)
-      );
+      // Count feedbacks from this client by scanning
+      const allFeedbacks = await this.readAllFeedback(asset, true);
+      const clientFeedbacks = allFeedbacks.filter((f) => f.client.equals(client));
       return BigInt(clientFeedbacks.length);
     } catch (error) {
       console.error(
-        `Error getting last index for agent ${agentId}, client ${client.toBase58()}:`,
+        `Error getting last index for agent ${asset.toBase58()}, client ${client.toBase58()}:`,
         error
       );
       return BigInt(0);
@@ -245,15 +231,13 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * 5. getClients - Get all clients who gave feedback to an agent
-   * v0.2.0: ClientIndexAccount removed - extracts unique clients from FeedbackAccounts
-   * @param agentId - Agent ID
+   * 5. getClients - Get all clients who gave feedback to an agent - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns Array of unique client public keys
    */
-  async getClients(agentId: bigint): Promise<PublicKey[]> {
+  async getClients(asset: PublicKey): Promise<PublicKey[]> {
     try {
-      // v0.2.0: Extract unique clients from feedbacks
-      const allFeedbacks = await this.readAllFeedback(agentId, true);
+      const allFeedbacks = await this.readAllFeedback(asset, true);
 
       // Extract unique client pubkeys
       const uniqueClients = Array.from(
@@ -262,39 +246,20 @@ export class SolanaFeedbackManager {
 
       return uniqueClients;
     } catch (error) {
-      console.error(`Error getting clients for agent ${agentId}:`, error);
+      console.error(`Error getting clients for agent ${asset.toBase58()}:`, error);
       return [];
     }
   }
 
   /**
-   * 6. getResponseCount - Get number of responses for a feedback
-   * @param agentId - Agent ID
+   * 6. getResponseCount - Get number of responses for a feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index
    * @returns Number of responses
-   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
-  async getResponseCount(
-    agentId: bigint,
-    feedbackIndex: bigint
-  ): Promise<number>;
-  async getResponseCount(
-    agentId: bigint,
-    clientOrFeedbackIndex: PublicKey | bigint,
-    feedbackIndex?: bigint
-  ): Promise<number> {
-    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
-    const actualFeedbackIndex =
-      feedbackIndex !== undefined
-        ? feedbackIndex
-        : (clientOrFeedbackIndex as bigint);
-
+  async getResponseCount(asset: PublicKey, feedbackIndex: bigint): Promise<number> {
     try {
-      // v0.2.0: client no longer in PDA seeds
-      const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(
-        agentId,
-        actualFeedbackIndex
-      );
+      const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(asset, feedbackIndex);
       const data = await this.client.getAccount(responseIndexPDA);
 
       if (!data) {
@@ -302,10 +267,10 @@ export class SolanaFeedbackManager {
       }
 
       const responseIndex = ResponseIndexAccount.deserialize(data);
-      return Number(responseIndex.response_count);
+      return Number(responseIndex.next_index);
     } catch (error) {
       console.error(
-        `Error getting response count for agent ${agentId}, index ${actualFeedbackIndex}:`,
+        `Error getting response count for agent ${asset.toBase58()}, index ${feedbackIndex}:`,
         error
       );
       return 0;
@@ -313,67 +278,52 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Bonus: Read all responses for a feedback
-   * Not required by ERC-8004 but useful for SDK completeness
-   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
+   * Bonus: Read all responses for a feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
+   * @param feedbackIndex - Feedback index
+   * @returns Array of response objects
    */
-  async readResponses(
-    agentId: bigint,
-    feedbackIndex: bigint
-  ): Promise<SolanaResponse[]>;
-  async readResponses(
-    agentId: bigint,
-    clientOrFeedbackIndex: PublicKey | bigint,
-    feedbackIndex?: bigint
-  ): Promise<SolanaResponse[]> {
-    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
-    const actualFeedbackIndex =
-      feedbackIndex !== undefined
-        ? feedbackIndex
-        : (clientOrFeedbackIndex as bigint);
-
+  async readResponses(asset: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]> {
     try {
       // Get response count first
-      const responseCount = await this.getResponseCount(agentId, actualFeedbackIndex);
+      const responseCount = await this.getResponseCount(asset, feedbackIndex);
 
       if (responseCount === 0) {
         return [];
       }
 
       // Fetch all responses by deriving PDAs
-      // v0.2.0: client no longer in PDA seeds
       const responsePDAs: PublicKey[] = [];
       for (let i = 0; i < responseCount; i++) {
-        const [responsePDA] = PDAHelpers.getResponsePDA(
-          agentId,
-          actualFeedbackIndex,
-          BigInt(i)
-        );
+        const [responsePDA] = PDAHelpers.getResponsePDA(asset, feedbackIndex, BigInt(i));
         responsePDAs.push(responsePDA);
       }
 
       // Batch fetch all response accounts
       const accountsData = await this.client.getMultipleAccounts(responsePDAs);
 
-      const responses = accountsData
-        .filter((data) => data !== null)
-        .map((data) => {
-          const response = ResponseAccount.deserialize(data!);
-          return {
-            agentId: response.agent_id,
-            feedbackIndex: response.feedback_index,
-            responseIndex: response.response_index,
-            responder: response.getResponderPublicKey(),
-            responseUri: response.response_uri,
-            responseHash: response.response_hash,
-            createdAt: response.created_at,
-          };
-        });
+      const responses: SolanaResponse[] = [];
+      for (let i = 0; i < accountsData.length; i++) {
+        const data = accountsData[i];
+        if (data) {
+          try {
+            const response = ResponseAccount.deserialize(data);
+            responses.push({
+              asset,
+              feedbackIndex,
+              responseIndex: BigInt(i),
+              responder: response.getResponderPublicKey(),
+            });
+          } catch {
+            // Skip malformed accounts
+          }
+        }
+      }
 
       return responses;
     } catch (error) {
       console.error(
-        `Error reading responses for agent ${agentId}, index ${actualFeedbackIndex}:`,
+        `Error reading responses for agent ${asset.toBase58()}, index ${feedbackIndex}:`,
         error
       );
       return [];
@@ -381,12 +331,11 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Helper to fetch FeedbackTagsPda for a feedback
+   * Helper to fetch FeedbackTagsPda for a feedback - v0.3.0
    * Returns tag1 and tag2, or empty strings if no tags PDA exists
-   * Handles BN objects from borsh deserialization
    */
   private async fetchFeedbackTags(
-    agentId: bigint,
+    asset: PublicKey,
     feedbackIndex: bigint | { toString(): string }
   ): Promise<{ tag1: string; tag2: string }> {
     try {
@@ -395,7 +344,7 @@ export class SolanaFeedbackManager {
         ? feedbackIndex
         : BigInt(feedbackIndex.toString());
 
-      const [tagsPda] = PDAHelpers.getFeedbackTagsPDA(agentId, fbIndex, REPUTATION_PROGRAM_ID);
+      const [tagsPda] = PDAHelpers.getFeedbackTagsPDA(asset, fbIndex);
       const data = await this.client.getAccount(tagsPda);
 
       if (!data) {
@@ -410,8 +359,7 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Helper to map FeedbackAccount to SolanaFeedback interface
-   * Converts BN values from borsh to native BigInt
+   * Helper to map FeedbackAccount to SolanaFeedback interface - v0.3.0
    * @param feedback - The feedback account data
    * @param tags - Optional tags from FeedbackTagsPda (fetched separately)
    */
@@ -424,16 +372,13 @@ export class SolanaFeedbackManager {
       typeof val === 'bigint' ? val : BigInt(val.toString());
 
     return {
-      agentId: toBigInt(feedback.agent_id),
+      asset: feedback.getAssetPublicKey(),
       client: feedback.getClientPublicKey(),
       feedbackIndex: toBigInt(feedback.feedback_index),
       score: feedback.score,
       tag1: tags?.tag1 || '',
       tag2: tags?.tag2 || '',
-      fileUri: feedback.file_uri,
-      fileHash: feedback.file_hash,
       revoked: feedback.is_revoked,
-      createdAt: toBigInt(feedback.created_at),
     };
   }
 
@@ -457,15 +402,15 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+   * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
    * Much more efficient than calling readAllFeedback() per agent
    * @param includeRevoked - Include revoked feedbacks? default: false
-   * @returns Map of agentId -> SolanaFeedback[]
+   * @returns Map of asset (base58 string) -> SolanaFeedback[]
    */
-  async fetchAllFeedbacks(includeRevoked: boolean = false): Promise<Map<bigint, SolanaFeedback[]>> {
+  async fetchAllFeedbacks(includeRevoked: boolean = false): Promise<Map<string, SolanaFeedback[]>> {
     const programId = REPUTATION_PROGRAM_ID;
 
-    // 1. Fetch ALL FeedbackAccounts (discriminator only, no agent_id filter)
+    // 1. Fetch ALL FeedbackAccounts (discriminator only, no agent filter)
     const [feedbackAccounts, tagAccounts] = await Promise.all([
       this.client.getProgramAccounts(programId, [
         { memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.FeedbackAccount) } },
@@ -476,44 +421,45 @@ export class SolanaFeedbackManager {
       ]),
     ]);
 
-    // 3. Build tags map: "agentId-feedbackIndex" -> { tag1, tag2 }
+    // 3. Build tags map: "asset-feedbackIndex" -> { tag1, tag2 }
+    // Note: In v0.3.0, FeedbackTagsPda doesn't store asset/feedbackIndex in account data,
+    // only in PDA seeds. We need to extract from feedback accounts instead.
     const tagsMap = new Map<string, { tag1: string; tag2: string }>();
     for (const acc of tagAccounts) {
       try {
         const tags = FeedbackTagsPda.deserialize(acc.data);
-        tagsMap.set(`${tags.agent_id}-${tags.feedback_index}`, { tag1: tags.tag1 || '', tag2: tags.tag2 || '' });
+        // For v0.3.0, we'll need to match tags to feedbacks by PDA address
+        // Store by account address for now
+        tagsMap.set(acc.pubkey.toBase58(), { tag1: tags.tag1 || '', tag2: tags.tag2 || '' });
       } catch {
-        // Skip malformed FeedbackTagsPda accounts (corrupted or legacy format)
+        // Skip malformed FeedbackTagsPda accounts
       }
     }
 
-    // 4. Deserialize feedbacks and group by agent_id (use string key for grouping, convert back to bigint)
+    // 4. Deserialize feedbacks and group by asset
     const grouped = new Map<string, SolanaFeedback[]>();
     for (const acc of feedbackAccounts) {
       try {
         const fb = FeedbackAccount.deserialize(acc.data);
 
-        // Validate timestamp (skip old pre-v0.2.0 accounts)
-        const ts = Number(fb.created_at);
-        if (ts < 1577836800 || ts > 4102444800) continue;
         if (!includeRevoked && fb.is_revoked) continue;
 
-        const agentIdStr = fb.agent_id.toString();
-        const tags = tagsMap.get(`${agentIdStr}-${fb.feedback_index}`) || { tag1: '', tag2: '' };
+        const assetPubkey = fb.getAssetPublicKey();
+        const assetStr = assetPubkey.toBase58();
+
+        // Try to get tags by deriving the FeedbackTagsPda
+        const [tagsPda] = PDAHelpers.getFeedbackTagsPDA(assetPubkey, fb.feedback_index);
+        const tags = tagsMap.get(tagsPda.toBase58()) || { tag1: '', tag2: '' };
+
         const mapped = this.mapFeedbackAccount(fb, tags);
 
-        if (!grouped.has(agentIdStr)) grouped.set(agentIdStr, []);
-        grouped.get(agentIdStr)!.push(mapped);
+        if (!grouped.has(assetStr)) grouped.set(assetStr, []);
+        grouped.get(assetStr)!.push(mapped);
       } catch {
-        // Skip malformed FeedbackAccount (corrupted or legacy format)
+        // Skip malformed FeedbackAccount
       }
     }
 
-    // Convert string keys back to bigint
-    const result = new Map<bigint, SolanaFeedback[]>();
-    for (const [key, feedbacks] of grouped) {
-      result.set(BigInt(key), feedbacks);
-    }
-    return result;
+    return grouped;
   }
 }

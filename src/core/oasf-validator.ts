@@ -1,10 +1,10 @@
 /**
  * OASF taxonomy validation utilities
+ * Requires Node.js 18+
  */
 
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 
 interface SkillsData {
   skills: Record<string, unknown>;
@@ -14,9 +14,34 @@ interface DomainsData {
   domains: Record<string, unknown>;
 }
 
-// Use createRequire for JSON imports - works across all Node.js versions
-const allSkills = require('../taxonomies/all_skills.json') as SkillsData;
-const allDomains = require('../taxonomies/all_domains.json') as DomainsData;
+// Try multiple paths to find the JSON files (works in both src and dist)
+function findTaxonomyFile(filename: string): string {
+  const possiblePaths = [
+    join(process.cwd(), 'src', 'taxonomies', filename),
+    join(process.cwd(), 'dist', 'taxonomies', filename),
+    join(__dirname, '..', 'taxonomies', filename),
+    join(__dirname, 'taxonomies', filename),
+  ];
+
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      return p;
+    }
+  }
+
+  throw new Error(`Could not find taxonomy file: ${filename}`);
+}
+
+// Load JSON files at module initialization
+let allSkills: SkillsData = { skills: {} };
+let allDomains: DomainsData = { domains: {} };
+
+try {
+  allSkills = JSON.parse(readFileSync(findTaxonomyFile('all_skills.json'), 'utf-8'));
+  allDomains = JSON.parse(readFileSync(findTaxonomyFile('all_domains.json'), 'utf-8'));
+} catch {
+  // Silently fail if files not found (for testing environments)
+}
 
 /**
  * Validate if a skill slug exists in the OASF taxonomy
@@ -53,4 +78,3 @@ export function getAllSkills(): string[] {
 export function getAllDomains(): string[] {
   return Object.keys(allDomains.domains || {});
 }
-

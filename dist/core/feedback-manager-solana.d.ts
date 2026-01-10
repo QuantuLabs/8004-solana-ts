@@ -1,12 +1,18 @@
 /**
  * Solana feedback management system for Agent0 SDK
+ * v0.3.0 - Asset-based identification
  * Implements the 6 ERC-8004 read functions for Solana
+ *
+ * BREAKING CHANGES from v0.2.0:
+ * - All methods now use asset (PublicKey) instead of agentId (bigint)
+ * - Aggregates (average_score, total_feedbacks) computed off-chain
  */
 import { PublicKey } from '@solana/web3.js';
 import type { SolanaClient } from './client.js';
 import type { IPFSClient } from './ipfs-client.js';
 /**
  * Summary result matching ERC-8004 getSummary interface
+ * v0.3.0: Aggregates computed off-chain from feedbacks
  */
 export interface SolanaAgentSummary {
     averageScore: number;
@@ -15,34 +21,30 @@ export interface SolanaAgentSummary {
     totalClients?: number;
 }
 /**
- * Feedback result matching SDK interface
+ * Feedback result matching SDK interface - v0.3.0
+ * Note: file_uri, file_hash, created_at are now in events only
  */
 export interface SolanaFeedback {
-    agentId: bigint;
+    asset: PublicKey;
     client: PublicKey;
     feedbackIndex: bigint;
     score: number;
     tag1: string;
     tag2: string;
-    fileUri: string;
-    fileHash: Uint8Array;
     revoked: boolean;
-    createdAt: bigint;
 }
 /**
- * Response result
+ * Response result - v0.3.0
+ * Note: response_uri, response_hash, created_at are now in events only
  */
 export interface SolanaResponse {
-    agentId: bigint;
+    asset: PublicKey;
     feedbackIndex: bigint;
     responseIndex: bigint;
     responder: PublicKey;
-    responseUri: string;
-    responseHash: Uint8Array;
-    createdAt: bigint;
 }
 /**
- * Manages feedback operations for Solana
+ * Manages feedback operations for Solana - v0.3.0
  * Implements all 6 ERC-8004 read functions
  */
 export declare class SolanaFeedbackManager {
@@ -50,72 +52,66 @@ export declare class SolanaFeedbackManager {
     private ipfsClient?;
     constructor(client: SolanaClient, ipfsClient?: IPFSClient | undefined);
     /**
-     * 1. getSummary - Get agent reputation summary
-     * @param agentId - Agent ID
+     * 1. getSummary - Get agent reputation summary - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param minScore - Optional minimum score filter (client-side)
      * @param clientFilter - Optional client address filter (client-side)
      * @returns Summary with average score and total feedbacks
      *
-     * Implementation: Uses cached AgentReputationAccount for O(1) performance
-     * Falls back to client-side filtering if filters provided
+     * v0.3.0: Aggregates computed off-chain from all feedbacks
      */
-    getSummary(agentId: bigint, minScore?: number, clientFilter?: PublicKey): Promise<SolanaAgentSummary>;
+    getSummary(asset: PublicKey, minScore?: number, clientFilter?: PublicKey): Promise<SolanaAgentSummary>;
     /**
-     * 2. readFeedback - Read single feedback
-     * @param agentId - Agent ID
-     * @param client - Client public key
+     * 2. readFeedback - Read single feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
+     * @param _client - Client public key (kept for API compatibility, not used in PDA)
      * @param feedbackIndex - Feedback index
      * @returns Feedback object or null if not found
      */
-    readFeedback(agentId: bigint, client: PublicKey, feedbackIndex: bigint): Promise<SolanaFeedback | null>;
+    readFeedback(asset: PublicKey, _client: PublicKey, feedbackIndex: bigint): Promise<SolanaFeedback | null>;
     /**
-     * 3. readAllFeedback - Read all feedbacks for an agent
-     * @param agentId - Agent ID
+     * 3. readAllFeedback - Read all feedbacks for an agent - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param includeRevoked - Include revoked feedbacks (default: false)
      * @returns Array of feedback objects
      *
-     * Implementation: Uses getProgramAccounts with memcmp filter on agent_id
-     * Also fetches FeedbackTagsPda for each feedback to get tag1/tag2
+     * v0.3.0: Uses asset (32 bytes) filter instead of agent_id (8 bytes)
      */
-    readAllFeedback(agentId: bigint, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
+    readAllFeedback(asset: PublicKey, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
     /**
-     * 4. getLastIndex - Get feedback count for a client
-     * v0.2.0: ClientIndexAccount removed - counts feedbacks by scanning
-     * @param agentId - Agent ID
+     * 4. getLastIndex - Get feedback count for a client - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param client - Client public key
      * @returns Count of feedbacks given by this client
      */
-    getLastIndex(agentId: bigint, client: PublicKey): Promise<bigint>;
+    getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint>;
     /**
-     * 5. getClients - Get all clients who gave feedback to an agent
-     * v0.2.0: ClientIndexAccount removed - extracts unique clients from FeedbackAccounts
-     * @param agentId - Agent ID
+     * 5. getClients - Get all clients who gave feedback to an agent - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns Array of unique client public keys
      */
-    getClients(agentId: bigint): Promise<PublicKey[]>;
+    getClients(asset: PublicKey): Promise<PublicKey[]>;
     /**
-     * 6. getResponseCount - Get number of responses for a feedback
-     * @param agentId - Agent ID
+     * 6. getResponseCount - Get number of responses for a feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index
      * @returns Number of responses
-     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    getResponseCount(agentId: bigint, feedbackIndex: bigint): Promise<number>;
+    getResponseCount(asset: PublicKey, feedbackIndex: bigint): Promise<number>;
     /**
-     * Bonus: Read all responses for a feedback
-     * Not required by ERC-8004 but useful for SDK completeness
-     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
+     * Bonus: Read all responses for a feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
+     * @param feedbackIndex - Feedback index
+     * @returns Array of response objects
      */
-    readResponses(agentId: bigint, feedbackIndex: bigint): Promise<SolanaResponse[]>;
+    readResponses(asset: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]>;
     /**
-     * Helper to fetch FeedbackTagsPda for a feedback
+     * Helper to fetch FeedbackTagsPda for a feedback - v0.3.0
      * Returns tag1 and tag2, or empty strings if no tags PDA exists
-     * Handles BN objects from borsh deserialization
      */
     private fetchFeedbackTags;
     /**
-     * Helper to map FeedbackAccount to SolanaFeedback interface
-     * Converts BN values from borsh to native BigInt
+     * Helper to map FeedbackAccount to SolanaFeedback interface - v0.3.0
      * @param feedback - The feedback account data
      * @param tags - Optional tags from FeedbackTagsPda (fetched separately)
      */
@@ -125,11 +121,11 @@ export declare class SolanaFeedbackManager {
      */
     fetchFeedbackFile(uri: string): Promise<any | null>;
     /**
-     * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+     * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
      * Much more efficient than calling readAllFeedback() per agent
      * @param includeRevoked - Include revoked feedbacks? default: false
-     * @returns Map of agentId -> SolanaFeedback[]
+     * @returns Map of asset (base58 string) -> SolanaFeedback[]
      */
-    fetchAllFeedbacks(includeRevoked?: boolean): Promise<Map<bigint, SolanaFeedback[]>>;
+    fetchAllFeedbacks(includeRevoked?: boolean): Promise<Map<string, SolanaFeedback[]>>;
 }
 //# sourceMappingURL=feedback-manager-solana.d.ts.map
