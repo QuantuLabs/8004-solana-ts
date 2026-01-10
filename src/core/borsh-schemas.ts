@@ -171,6 +171,7 @@ export class AgentAccount {
   owner: Uint8Array; // Pubkey - cached from Core asset
   asset: Uint8Array; // Pubkey - unique identifier (Metaplex Core asset)
   bump: number;
+  agent_wallet: Uint8Array | null; // Option<Pubkey> - operational wallet (Ed25519 verified)
   agent_uri: string; // max 200 bytes
   nft_name: string; // max 32 bytes
 
@@ -178,12 +179,14 @@ export class AgentAccount {
     owner: Uint8Array;
     asset: Uint8Array;
     bump: number;
+    agent_wallet: Uint8Array | null;
     agent_uri: string;
     nft_name: string;
   }) {
     this.owner = fields.owner;
     this.asset = fields.asset;
     this.bump = fields.bump;
+    this.agent_wallet = fields.agent_wallet;
     this.agent_uri = fields.agent_uri;
     this.nft_name = fields.nft_name;
   }
@@ -197,6 +200,7 @@ export class AgentAccount {
           ['owner', [32]],
           ['asset', [32]],
           ['bump', 'u8'],
+          ['agent_wallet', { kind: 'option', type: [32] }], // Option<Pubkey>
           ['agent_uri', 'string'],
           ['nft_name', 'string'],
         ],
@@ -205,9 +209,10 @@ export class AgentAccount {
   ]);
 
   static deserialize(data: Buffer): AgentAccount {
-    // discriminator(8) + owner(32) + asset(32) + bump(1) = 73 bytes minimum
-    if (data.length < 73) {
-      throw new Error(`Invalid AgentAccount data: expected >= 73 bytes, got ${data.length}`);
+    // discriminator(8) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 74 bytes minimum
+    // With Some(wallet): 74 + 32 = 106 bytes minimum
+    if (data.length < 74) {
+      throw new Error(`Invalid AgentAccount data: expected >= 74 bytes, got ${data.length}`);
     }
     const accountData = data.slice(8);
     return deserializeUnchecked(this.schema, AgentAccount, accountData);
@@ -219,6 +224,24 @@ export class AgentAccount {
 
   getAssetPublicKey(): PublicKey {
     return new PublicKey(this.asset);
+  }
+
+  /**
+   * Get the agent's operational wallet if set
+   * @returns PublicKey or null if no wallet is set
+   */
+  getAgentWalletPublicKey(): PublicKey | null {
+    if (this.agent_wallet === null) {
+      return null;
+    }
+    return new PublicKey(this.agent_wallet);
+  }
+
+  /**
+   * Check if agent has an operational wallet configured
+   */
+  hasAgentWallet(): boolean {
+    return this.agent_wallet !== null;
   }
 
   // Alias for backwards compatibility

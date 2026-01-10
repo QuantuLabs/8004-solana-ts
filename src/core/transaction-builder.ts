@@ -11,6 +11,7 @@
 import {
   PublicKey,
   Transaction,
+  TransactionInstruction,
   Connection,
   Keypair,
   sendAndConfirmTransaction,
@@ -499,6 +500,377 @@ export class IdentityTransactionBuilder {
         collection,
         signerPubkey,
         toOwner
+      );
+
+      const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Sync agent owner from Core asset after external transfer - v0.3.0
+   * Use this when an agent NFT was transferred outside the protocol (e.g., on a marketplace)
+   * @param asset - Agent Core asset
+   * @param options - Write options (skipSend, signer)
+   */
+  async syncOwner(
+    asset: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
+      const [agentPda] = PDAHelpers.getAgentPDA(asset);
+
+      const instruction = this.instructionBuilder.buildSyncOwner(
+        agentPda,
+        asset
+      );
+
+      const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Create a user-owned registry collection - v0.3.0
+   * Allows users to create their own agent shards for horizontal scaling
+   * @param collectionName - Collection name (max 32 bytes)
+   * @param collectionUri - Collection URI (max 200 bytes)
+   * @param options - Write options with optional collectionPubkey for skipSend mode
+   */
+  async createUserRegistry(
+    collectionName: string,
+    collectionUri: string,
+    options?: WriteOptions & { collectionPubkey?: PublicKey }
+  ): Promise<(TransactionResult & { collection?: PublicKey }) | (PreparedTransaction & { collection: PublicKey })> {
+    try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
+      // Validate inputs
+      validateByteLength(collectionName, 32, 'collectionName');
+      validateByteLength(collectionUri, 200, 'collectionUri');
+
+      // Determine collection keypair
+      let collectionPubkey: PublicKey;
+      let collectionKeypair: Keypair | undefined;
+
+      if (options?.skipSend) {
+        if (!options.collectionPubkey) {
+          throw new Error('collectionPubkey required when skipSend is true');
+        }
+        collectionPubkey = options.collectionPubkey;
+      } else {
+        if (!this.payer) {
+          throw new Error('No signer configured - SDK is read-only');
+        }
+        collectionKeypair = Keypair.generate();
+        collectionPubkey = collectionKeypair.publicKey;
+      }
+
+      // Derive PDAs
+      const [collectionAuthority] = PublicKey.findProgramAddressSync(
+        [Buffer.from('user_collection_authority'), collectionPubkey.toBuffer()],
+        PROGRAM_ID
+      );
+      const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
+
+      const instruction = this.instructionBuilder.buildCreateUserRegistry(
+        collectionAuthority,
+        registryConfigPda,
+        collectionPubkey,
+        signerPubkey,
+        collectionName,
+        collectionUri
+      );
+
+      const transaction = new Transaction().add(instruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return { ...prepared, collection: collectionPubkey };
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer || !collectionKeypair) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer, collectionKeypair]
+      );
+
+      return { signature, success: true, collection: collectionPubkey };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Set agent operational wallet with Ed25519 signature verification - v0.3.0
+   * The new wallet must sign the message to prove ownership
+   * Message format: "8004_WALLET_SET:" || asset || new_wallet || owner || deadline
+   * @param asset - Agent Core asset
+   * @param newWallet - New operational wallet public key
+   * @param signature - Ed25519 signature from the new wallet
+   * @param deadline - Unix timestamp deadline (max 5 minutes from now)
+   * @param options - Write options (skipSend, signer)
+   */
+  async setAgentWallet(
+    asset: PublicKey,
+    newWallet: PublicKey,
+    signature: Uint8Array,
+    deadline: bigint,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
+      // Validate signature length
+      if (signature.length !== 64) {
+        throw new Error('signature must be 64 bytes');
+      }
+
+      // Build the message that was signed
+      const messagePrefix = Buffer.from('8004_WALLET_SET:');
+      const message = Buffer.concat([
+        messagePrefix,
+        asset.toBuffer(),
+        newWallet.toBuffer(),
+        signerPubkey.toBuffer(),
+        (() => {
+          const buf = Buffer.alloc(8);
+          buf.writeBigInt64LE(deadline);
+          return buf;
+        })(),
+      ]);
+
+      // Derive PDAs
+      const [agentPda] = PDAHelpers.getAgentPDA(asset);
+
+      // Build Ed25519 verify instruction (must be immediately before setAgentWallet)
+      // Ed25519 instruction data format:
+      // - num_signatures: u8 = 1
+      // - padding: u8 = 0
+      // - signature_offset: u16 = 16 (after header)
+      // - signature_instruction_index: u16 = 0xFFFF (inline)
+      // - pubkey_offset: u16 = 80 (16 + 64)
+      // - pubkey_instruction_index: u16 = 0xFFFF (inline)
+      // - message_offset: u16 = 112 (16 + 64 + 32)
+      // - message_size: u16 = message.length
+      // - message_instruction_index: u16 = 0xFFFF (inline)
+      // Followed by: signature (64), pubkey (32), message (variable)
+      const signatureOffset = 16;
+      const pubkeyOffset = signatureOffset + 64;
+      const messageOffset = pubkeyOffset + 32;
+      const messageSize = message.length;
+
+      const ed25519Header = Buffer.alloc(16);
+      ed25519Header.writeUInt8(1, 0); // num_signatures
+      ed25519Header.writeUInt8(0, 1); // padding
+      ed25519Header.writeUInt16LE(signatureOffset, 2); // signature_offset
+      ed25519Header.writeUInt16LE(0xFFFF, 4); // signature_instruction_index (inline)
+      ed25519Header.writeUInt16LE(pubkeyOffset, 6); // pubkey_offset
+      ed25519Header.writeUInt16LE(0xFFFF, 8); // pubkey_instruction_index (inline)
+      ed25519Header.writeUInt16LE(messageOffset, 10); // message_offset
+      ed25519Header.writeUInt16LE(messageSize, 12); // message_size
+      ed25519Header.writeUInt16LE(0xFFFF, 14); // message_instruction_index (inline)
+
+      const ed25519Data = Buffer.concat([
+        ed25519Header,
+        Buffer.from(signature),
+        newWallet.toBuffer(),
+        message,
+      ]);
+
+      const ed25519ProgramId = new PublicKey('Ed25519SigVerify111111111111111111111111111');
+      const ed25519Instruction = new TransactionInstruction({
+        programId: ed25519ProgramId,
+        keys: [],
+        data: ed25519Data,
+      });
+
+      // Build setAgentWallet instruction
+      const setWalletInstruction = this.instructionBuilder.buildSetAgentWallet(
+        signerPubkey,    // owner
+        signerPubkey,    // payer
+        agentPda,        // agent_account
+        agentPda,        // wallet is stored in agent_account directly in v0.3.0
+        asset,
+        newWallet,
+        deadline
+      );
+
+      // Transaction: Ed25519 verify MUST be immediately before setAgentWallet
+      const transaction = new Transaction()
+        .add(ed25519Instruction)
+        .add(setWalletInstruction);
+
+      // If skipSend, return serialized transaction
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+      }
+
+      // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
+      const txSignature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature: txSignature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Build the message to sign for setAgentWallet - v0.3.0
+   * Use this to construct the message that must be signed by the new wallet
+   * @param asset - Agent Core asset
+   * @param newWallet - New operational wallet public key
+   * @param owner - Current agent owner
+   * @param deadline - Unix timestamp deadline
+   * @returns Buffer containing the message to sign
+   */
+  static buildWalletSetMessage(
+    asset: PublicKey,
+    newWallet: PublicKey,
+    owner: PublicKey,
+    deadline: bigint
+  ): Buffer {
+    const messagePrefix = Buffer.from('8004_WALLET_SET:');
+    const deadlineBuffer = Buffer.alloc(8);
+    deadlineBuffer.writeBigInt64LE(deadline);
+
+    return Buffer.concat([
+      messagePrefix,
+      asset.toBuffer(),
+      newWallet.toBuffer(),
+      owner.toBuffer(),
+      deadlineBuffer,
+    ]);
+  }
+
+  /**
+   * Update user registry metadata (collection name/URI) - v0.3.0
+   * Only the registry owner can update
+   * @param collection - Collection pubkey
+   * @param newName - New collection name (null to keep current)
+   * @param newUri - New collection URI (null to keep current)
+   * @param options - Write options (skipSend, signer)
+   */
+  async updateUserRegistryMetadata(
+    collection: PublicKey,
+    newName: string | null,
+    newUri: string | null,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+
+      // Validate inputs if provided
+      if (newName !== null) {
+        validateByteLength(newName, 32, 'newName');
+      }
+      if (newUri !== null) {
+        validateByteLength(newUri, 200, 'newUri');
+      }
+      if (newName === null && newUri === null) {
+        throw new Error('At least one of newName or newUri must be provided');
+      }
+
+      // Derive PDAs
+      const [collectionAuthority] = PublicKey.findProgramAddressSync(
+        [Buffer.from('user_collection_authority'), collection.toBuffer()],
+        PROGRAM_ID
+      );
+      const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collection);
+
+      const instruction = this.instructionBuilder.buildUpdateUserRegistryMetadata(
+        collectionAuthority,
+        registryConfigPda,
+        collection,
+        signerPubkey,
+        newName,
+        newUri
       );
 
       const transaction = new Transaction().add(instruction);
