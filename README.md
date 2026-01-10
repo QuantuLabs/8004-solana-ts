@@ -354,4 +354,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built for the Solana ecosystem** | v0.2.2
+**Built for the Solana ecosystem** | v0.3.0

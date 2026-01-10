@@ -80,12 +80,14 @@ export declare class AgentAccount {
     owner: Uint8Array;
     asset: Uint8Array;
     bump: number;
+    agent_wallet: Uint8Array | null;
     agent_uri: string;
     nft_name: string;
     constructor(fields: {
         owner: Uint8Array;
         asset: Uint8Array;
         bump: number;
+        agent_wallet: Uint8Array | null;
         agent_uri: string;
         nft_name: string;
     });
@@ -93,6 +95,15 @@ export declare class AgentAccount {
     static deserialize(data: Buffer): AgentAccount;
     getOwnerPublicKey(): PublicKey;
     getAssetPublicKey(): PublicKey;
+    /**
+     * Get the agent's operational wallet if set
+     * @returns PublicKey or null if no wallet is set
+     */
+    getAgentWalletPublicKey(): PublicKey | null;
+    /**
+     * Check if agent has an operational wallet configured
+     */
+    hasAgentWallet(): boolean;
     get token_uri(): string;
     get metadata(): MetadataEntry[];
 }
