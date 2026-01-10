@@ -7,10 +7,11 @@ export default {
   testPathIgnorePatterns: ['/node_modules/', '/tests/e2e-solana/'],
   transform: {
     '^.+\\.ts$': ['ts-jest', {
-      tsconfig: {
-        types: ['jest', 'node'],
-      },
+      tsconfig: 'tsconfig.test.json',
       useESM: true,
+      diagnostics: {
+        ignoreCodes: [151002],
+      },
     }],
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],

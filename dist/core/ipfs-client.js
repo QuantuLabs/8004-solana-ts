@@ -10,6 +10,9 @@ import { buildRegistrationFileJson } from '../utils/registration-file-builder.js
  * Client for IPFS operations supporting multiple providers
  */
 export class IPFSClient {
+    provider;
+    config;
+    client;
     constructor(config) {
         this.config = config;
         // Determine provider

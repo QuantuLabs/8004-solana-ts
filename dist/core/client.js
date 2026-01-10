@@ -17,6 +17,7 @@ export const RECOMMENDED_RPC_PROVIDERS = [
  * Error thrown when an operation requires RPC features not available on public devnet
  */
 export class UnsupportedRpcError extends Error {
+    operation;
     constructor(operation) {
         super(`Operation "${operation}" is not supported by the default Solana devnet RPC.\n` +
             `This operation requires getProgramAccounts with memcmp filters.\n\n` +
@@ -33,6 +34,11 @@ export class UnsupportedRpcError extends Error {
  * Avoids Anchor dependency for smaller package size
  */
 export class SolanaClient {
+    connection;
+    cluster;
+    rpcUrl;
+    /** True if using the default public Solana devnet RPC (limited features) */
+    isDefaultDevnetRpc;
     constructor(config) {
         this.cluster = config.cluster || 'devnet';
         this.rpcUrl = config.rpcUrl || SOLANA_DEVNET_RPC;

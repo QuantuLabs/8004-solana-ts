@@ -17,6 +17,7 @@ function createJsonRpcRequest(method, params, requestId = 1) {
  * Crawls MCP and A2A endpoints to fetch capabilities
  */
 export class EndpointCrawler {
+    timeout;
     constructor(timeout = 5000) {
         this.timeout = timeout;
     }

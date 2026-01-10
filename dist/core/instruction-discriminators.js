@@ -17,6 +17,7 @@ export function matchesDiscriminator(data, expected) {
 /**
  * Identity Registry instruction discriminators
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
+ * v0.3.0 - Added multi-collection and wallet instructions
  */
 export const IDENTITY_DISCRIMINATORS = {
     initialize: Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]),
@@ -28,6 +29,12 @@ export const IDENTITY_DISCRIMINATORS = {
     syncOwner: Buffer.from([46, 5, 232, 198, 59, 158, 160, 119]),
     transferAgent: Buffer.from([137, 80, 56, 147, 107, 99, 39, 192]),
     ownerOf: Buffer.from([165, 85, 46, 249, 100, 61, 249, 112]),
+    // v0.3.0 - Multi-collection instructions
+    createBaseRegistry: Buffer.from([150, 191, 7, 52, 251, 227, 60, 23]),
+    rotateBaseRegistry: Buffer.from([106, 216, 250, 57, 65, 122, 221, 109]),
+    createUserRegistry: Buffer.from([244, 141, 67, 250, 234, 104, 58, 135]),
+    updateUserRegistryMetadata: Buffer.from([121, 57, 38, 142, 118, 18, 204, 28]),
+    setAgentWallet: Buffer.from([154, 87, 251, 23, 51, 12, 4, 150]),
 };
 /**
  * Reputation Registry instruction discriminators
@@ -52,9 +59,11 @@ export const VALIDATION_DISCRIMINATORS = {
 /**
  * Account discriminators for identifying account types
  * Hardcoded from IDL - SHA256("account:StructName")[0..8]
+ * v0.3.0 - Added RootConfig, removed ValidationStats
  */
 export const ACCOUNT_DISCRIMINATORS = {
     // Identity Registry accounts
+    RootConfig: Buffer.from([42, 216, 8, 82, 19, 209, 223, 246]),
     RegistryConfig: Buffer.from([23, 118, 10, 246, 173, 231, 243, 156]),
     AgentAccount: Buffer.from([241, 119, 69, 140, 233, 9, 112, 50]),
     MetadataEntryPda: Buffer.from([48, 145, 12, 249, 176, 141, 197, 187]),
@@ -65,7 +74,6 @@ export const ACCOUNT_DISCRIMINATORS = {
     ResponseIndexAccount: Buffer.from([140, 144, 220, 22, 67, 28, 170, 200]),
     ResponseAccount: Buffer.from([136, 150, 125, 240, 7, 27, 61, 60]),
     // Validation Registry accounts
-    ValidationStats: Buffer.from([121, 215, 78, 88, 54, 243, 224, 187]),
     ValidationRequest: Buffer.from([130, 174, 153, 111, 74, 241, 40, 140]),
 };
 //# sourceMappingURL=instruction-discriminators.js.map

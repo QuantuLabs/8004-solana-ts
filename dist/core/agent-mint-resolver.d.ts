@@ -1,48 +1,60 @@
 /**
- * Agent Mint Resolver
- * Resolves agent_id (bigint) to agent_mint (PublicKey) using Identity Registry accounts
+ * Agent Resolver
+ * v0.3.0 - Asset-based identification
  *
- * Strategy:
- * - Scan the Identity Registry program (not Metaplex!) for AgentAccount PDAs
- * - Each AgentAccount contains agent_id and agent_mint
- * - Load all agents once and cache for O(1) subsequent lookups
+ * NOTE: This class is largely deprecated in v0.3.0 since agents are now
+ * identified directly by their Metaplex Core asset pubkey, not by sequential IDs.
  *
- * This is MUCH faster than scanning Metaplex (millions of NFTs) because:
- * - Identity Registry has only ~27 agents vs millions of Metaplex metadata accounts
- * - Single getProgramAccounts call fetches all mappings
+ * The class is kept for backwards compatibility but most methods are deprecated.
+ * Use the asset pubkey directly instead of resolving from agent_id.
  */
 import { Connection, PublicKey } from '@solana/web3.js';
+import { AgentAccount } from './borsh-schemas.js';
 /**
- * Agent Mint Resolver
- * Maps agent_id → agent_mint using Identity Registry accounts
+ * Agent Resolver
+ * v0.3.0 - Validates assets and loads agent accounts
+ *
+ * @deprecated In v0.3.0, agents are identified by their asset pubkey directly.
+ * Use asset pubkeys instead of agent_id numbers.
  *
  * Note: Cache is not thread-safe. This is acceptable for Node.js single-threaded
  * event loop, but should be reviewed if used with Worker Threads.
  */
 export declare class AgentMintResolver {
-    private cache;
+    private assetCache;
     private connection;
     private cacheLoaded;
     private loadingPromise;
     constructor(connection: Connection, _collectionMint?: PublicKey);
     /**
-     * Resolve agent_id to agent_mint PublicKey
-     * @param agentId - Sequential agent ID (0, 1, 2...)
-     * @returns agent_mint PublicKey
-     * @throws Error if agent not found
+     * @deprecated Use asset pubkey directly. In v0.3.0, agents are identified by asset, not agent_id.
+     *
+     * For backwards compatibility, this method now throws an error.
+     * Use getAgentByAsset() instead.
      */
-    resolve(agentId: bigint): Promise<PublicKey>;
+    resolve(_agentId: bigint): Promise<PublicKey>;
     /**
-     * Load all agents from Identity Registry and populate cache
-     * This is much faster than scanning Metaplex (one RPC call vs millions of accounts)
+     * Get AgentAccount by asset pubkey - v0.3.0
+     * @param asset - Metaplex Core asset pubkey
+     * @returns AgentAccount or null if not found
      */
-    private loadAllAgents;
+    getAgentByAsset(asset: PublicKey): Promise<AgentAccount | null>;
     /**
-     * Manually add a mapping to cache (used after registration)
-     * @param agentId - Agent ID
-     * @param mint - Agent mint address
+     * Check if an asset is a registered agent
+     * @param asset - Metaplex Core asset pubkey
+     * @returns true if the asset is a registered agent
      */
-    addToCache(agentId: bigint, mint: PublicKey): void;
+    isRegisteredAgent(asset: PublicKey): Promise<boolean>;
+    /**
+     * Load all agents from Identity Registry - v0.3.0
+     * Returns a map of asset pubkey → AgentAccount
+     */
+    loadAllAgents(): Promise<Map<string, AgentAccount>>;
+    private doLoadAllAgents;
+    /**
+     * @deprecated Use asset pubkey directly. No need to cache agent_id → asset mapping.
+     */
+    addToCache(_agentId: bigint, _mint: PublicKey): void;
     /**
      * Clear the cache (useful for testing or forcing refresh)
      */
@@ -52,12 +64,9 @@ export declare class AgentMintResolver {
      */
     refresh(): Promise<void>;
     /**
-     * Batch resolve multiple agent IDs
-     * More efficient than resolving one at a time
-     * @param agentIds - Array of agent IDs to resolve
-     * @returns Map of agent_id → agent_mint
+     * @deprecated Use loadAllAgents() instead. Agent IDs no longer exist.
      */
-    batchResolve(agentIds: bigint[]): Promise<Map<bigint, PublicKey>>;
+    batchResolve(_agentIds: bigint[]): Promise<Map<bigint, PublicKey>>;
     /**
      * Get cache size (number of loaded agents)
      */

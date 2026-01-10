@@ -1,12 +1,11 @@
 /**
  * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
- * v0.2.0 - Consolidated single program architecture
+ * v0.3.0 - Asset-based identification
  *
- * BREAKING CHANGES from v0.1.0:
- * - Single PROGRAM_ID instead of 3 separate program IDs
- * - Agent PDA uses Core asset address, not mint
- * - Feedback PDA uses global index (no client address in seeds)
- * - Response PDA uses global feedback index (no client address in seeds)
+ * BREAKING CHANGES from v0.2.0:
+ * - agent_id (u64) replaced by asset (Pubkey) in all PDA seeds
+ * - New RootConfig and RegistryConfig PDAs for multi-collection support
+ * - ValidationStats removed (counters moved off-chain)
  */
 import { PublicKey } from '@solana/web3.js';
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
@@ -19,81 +18,74 @@ export declare const REPUTATION_PROGRAM_ID: PublicKey;
 export declare const VALIDATION_PROGRAM_ID: PublicKey;
 /**
  * PDA derivation helpers
- * v0.2.0 - All PDAs now use single PROGRAM_ID
+ * v0.3.0 - All PDAs now use asset (Pubkey) instead of agent_id (u64)
  * All methods return [PublicKey, bump] tuple
  */
 export declare class PDAHelpers {
     /**
-     * Get Registry Config PDA
+     * Get Root Config PDA - v0.3.0
+     * Global pointer to current base registry
+     * Seeds: ["root_config"]
+     */
+    static getRootConfigPDA(programId?: PublicKey): [PublicKey, number];
+    /**
+     * Get Registry Config PDA - v0.3.0
+     * Per-collection configuration
+     * Seeds: ["registry_config", collection]
+     */
+    static getRegistryConfigPDA(collection: PublicKey, programId?: PublicKey): [PublicKey, number];
+    /**
+     * @deprecated Use getRegistryConfigPDA instead for v0.3.0
+     * Get Config PDA (legacy)
      * Seeds: ["config"]
      */
     static getConfigPDA(programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Agent Account PDA
+     * Get Agent Account PDA - v0.3.0
      * Seeds: ["agent", asset]
-     * BREAKING: v0.2.0 uses Core asset address, not mint
      */
     static getAgentPDA(asset: PublicKey, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Metadata Extension PDA
-     * Seeds: ["metadata_ext", asset, extension_index]
-     */
-    static getMetadataExtensionPDA(asset: PublicKey, extensionIndex: number, programId?: PublicKey): [PublicKey, number];
-    /**
-     * Get Metadata Entry PDA (v0.2.0 - individual metadata entries)
-     * Seeds: ["agent_meta", agent_id, key_hash]
+     * Get Metadata Entry PDA - v0.3.0
+     * Seeds: ["agent_meta", asset, key_hash[0..8]]
      * key_hash = SHA256(key)[0..8]
      */
-    static getMetadataEntryPDA(agentId: bigint, keyHash: Buffer, programId?: PublicKey): [PublicKey, number];
+    static getMetadataEntryPDA(asset: PublicKey, keyHash: Buffer, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Feedback Account PDA
-     * Seeds: ["feedback", agent_id, feedback_index]
-     * BREAKING: v0.2.0 uses global feedback index (no client address)
+     * Get Feedback Account PDA - v0.3.0
+     * Seeds: ["feedback", asset, feedback_index]
      */
-    static getFeedbackPDA(agentId: bigint | number, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
+    static getFeedbackPDA(asset: PublicKey, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Feedback Tags PDA (optional tags for feedback)
-     * Seeds: ["feedback_tags", agent_id, feedback_index]
-     * Created only when tags are provided via set_feedback_tags
+     * Get Feedback Tags PDA - v0.3.0
+     * Seeds: ["feedback_tags", asset, feedback_index]
      */
-    static getFeedbackTagsPDA(agentId: bigint | number, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
+    static getFeedbackTagsPDA(asset: PublicKey, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Agent Reputation PDA
-     * Seeds: ["agent_reputation", agent_id]
+     * Get Agent Reputation Metadata PDA - v0.3.0
+     * Seeds: ["agent_reputation", asset]
      */
-    static getAgentReputationPDA(agentId: bigint | number, programId?: PublicKey): [PublicKey, number];
+    static getAgentReputationPDA(asset: PublicKey, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Response PDA
-     * Seeds: ["response", agent_id, feedback_index, response_index]
-     * BREAKING: v0.2.0 removed client from seeds
+     * Get Response PDA - v0.3.0
+     * Seeds: ["response", asset, feedback_index, response_index]
      */
-    static getResponsePDA(agentId: bigint | number, feedbackIndex: bigint | number, responseIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
+    static getResponsePDA(asset: PublicKey, feedbackIndex: bigint | number, responseIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Response Index PDA
-     * Seeds: ["response_index", agent_id, feedback_index]
-     * BREAKING: v0.2.0 removed client from seeds
+     * Get Response Index PDA - v0.3.0
+     * Seeds: ["response_index", asset, feedback_index]
      */
-    static getResponseIndexPDA(agentId: bigint | number, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
+    static getResponseIndexPDA(asset: PublicKey, feedbackIndex: bigint | number, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Validation Stats PDA
-     * Seeds: ["validation_config"]
+     * Get Client Index PDA - v0.3.0
+     * Seeds: ["client_index", asset, client]
      */
-    static getValidationStatsPDA(programId?: PublicKey): [PublicKey, number];
+    static getClientIndexPDA(asset: PublicKey, client: PublicKey, programId?: PublicKey): [PublicKey, number];
     /**
-     * Get Validation Request PDA
-     * Seeds: ["validation", agent_id, validator, nonce]
+     * Get Validation Request PDA - v0.3.0
+     * Seeds: ["validation", asset, validator, nonce]
      */
-    static getValidationRequestPDA(agentId: bigint | number, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
-    /** Alias for getConfigPDA */
-    static getRegistryConfigPDA(): [PublicKey, number];
-    /** Alias for getValidationStatsPDA */
-    static getValidationConfigPDA(): [PublicKey, number];
-    /**
-     * Get Client Index PDA
-     * Seeds: ["client_index", agent_id, client]
-     * Used to track per-client feedback count
-     */
-    static getClientIndexPDA(agentId: bigint | number, client: PublicKey, programId?: PublicKey): [PublicKey, number];
+    static getValidationRequestPDA(asset: PublicKey, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
 }
 /**
  * Helper to convert bytes32 to string

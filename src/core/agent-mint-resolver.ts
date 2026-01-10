@@ -1,85 +1,114 @@
 /**
- * Agent Mint Resolver
- * Resolves agent_id (bigint) to agent_mint (PublicKey) using Identity Registry accounts
+ * Agent Resolver
+ * v0.3.0 - Asset-based identification
  *
- * Strategy:
- * - Scan the Identity Registry program (not Metaplex!) for AgentAccount PDAs
- * - Each AgentAccount contains agent_id and agent_mint
- * - Load all agents once and cache for O(1) subsequent lookups
+ * NOTE: This class is largely deprecated in v0.3.0 since agents are now
+ * identified directly by their Metaplex Core asset pubkey, not by sequential IDs.
  *
- * This is MUCH faster than scanning Metaplex (millions of NFTs) because:
- * - Identity Registry has only ~27 agents vs millions of Metaplex metadata accounts
- * - Single getProgramAccounts call fetches all mappings
+ * The class is kept for backwards compatibility but most methods are deprecated.
+ * Use the asset pubkey directly instead of resolving from agent_id.
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
-import { IDENTITY_PROGRAM_ID } from './pda-helpers.js';
+import { IDENTITY_PROGRAM_ID, PDAHelpers } from './pda-helpers.js';
 import bs58 from 'bs58';
 
 /**
- * Agent Mint Resolver
- * Maps agent_id → agent_mint using Identity Registry accounts
+ * Agent Resolver
+ * v0.3.0 - Validates assets and loads agent accounts
+ *
+ * @deprecated In v0.3.0, agents are identified by their asset pubkey directly.
+ * Use asset pubkeys instead of agent_id numbers.
  *
  * Note: Cache is not thread-safe. This is acceptable for Node.js single-threaded
  * event loop, but should be reviewed if used with Worker Threads.
  */
 export class AgentMintResolver {
-  private cache: Map<string, PublicKey> = new Map();
+  private assetCache: Map<string, AgentAccount> = new Map();
   private connection: Connection;
   private cacheLoaded: boolean = false;
-  private loadingPromise: Promise<void> | null = null; // Prevents concurrent loads
+  private loadingPromise: Promise<void> | null = null;
 
   constructor(connection: Connection, _collectionMint?: PublicKey) {
     this.connection = connection;
-    // collectionMint is no longer needed (was for Metaplex filtering)
+    // collectionMint is no longer needed in v0.3.0
   }
 
   /**
-   * Resolve agent_id to agent_mint PublicKey
-   * @param agentId - Sequential agent ID (0, 1, 2...)
-   * @returns agent_mint PublicKey
-   * @throws Error if agent not found
+   * @deprecated Use asset pubkey directly. In v0.3.0, agents are identified by asset, not agent_id.
+   *
+   * For backwards compatibility, this method now throws an error.
+   * Use getAgentByAsset() instead.
    */
-  async resolve(agentId: bigint): Promise<PublicKey> {
-    const cacheKey = agentId.toString();
-
-    // Check cache first (O(1))
-    if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
-    }
-
-    // If cache not loaded, load all agents from Identity Registry
-    // Use loadingPromise to prevent concurrent loads (race condition protection)
-    if (!this.cacheLoaded) {
-      if (!this.loadingPromise) {
-        this.loadingPromise = this.loadAllAgents();
-      }
-      await this.loadingPromise;
-    }
-
-    // Now check cache again
-    const mint = this.cache.get(cacheKey);
-    if (!mint) {
-      throw new Error(
-        `Agent #${agentId} not found. The agent may not exist.`
-      );
-    }
-
-    return mint;
+  async resolve(_agentId: bigint): Promise<PublicKey> {
+    throw new Error(
+      'AgentMintResolver.resolve() is deprecated in v0.3.0. ' +
+      'Agents are now identified by asset pubkey, not agent_id. ' +
+      'Use asset pubkey directly or getAgentByAsset() to validate an asset.'
+    );
   }
 
   /**
-   * Load all agents from Identity Registry and populate cache
-   * This is much faster than scanning Metaplex (one RPC call vs millions of accounts)
+   * Get AgentAccount by asset pubkey - v0.3.0
+   * @param asset - Metaplex Core asset pubkey
+   * @returns AgentAccount or null if not found
    */
-  private async loadAllAgents(): Promise<void> {
+  async getAgentByAsset(asset: PublicKey): Promise<AgentAccount | null> {
+    const cacheKey = asset.toBase58();
+
+    // Check cache first
+    if (this.assetCache.has(cacheKey)) {
+      return this.assetCache.get(cacheKey)!;
+    }
+
+    // Derive AgentAccount PDA
+    const [agentPda] = PDAHelpers.getAgentPDA(asset);
+
     try {
-      // Get AgentAccount discriminator bytes for filtering
+      const accountInfo = await this.connection.getAccountInfo(agentPda);
+      if (!accountInfo) {
+        return null;
+      }
+
+      const agentAccount = AgentAccount.deserialize(Buffer.from(accountInfo.data));
+      this.assetCache.set(cacheKey, agentAccount);
+      return agentAccount;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check if an asset is a registered agent
+   * @param asset - Metaplex Core asset pubkey
+   * @returns true if the asset is a registered agent
+   */
+  async isRegisteredAgent(asset: PublicKey): Promise<boolean> {
+    const agent = await this.getAgentByAsset(asset);
+    return agent !== null;
+  }
+
+  /**
+   * Load all agents from Identity Registry - v0.3.0
+   * Returns a map of asset pubkey → AgentAccount
+   */
+  async loadAllAgents(): Promise<Map<string, AgentAccount>> {
+    if (this.loadingPromise) {
+      await this.loadingPromise;
+      return this.assetCache;
+    }
+
+    this.loadingPromise = this.doLoadAllAgents();
+    await this.loadingPromise;
+    return this.assetCache;
+  }
+
+  private async doLoadAllAgents(): Promise<void> {
+    try {
       const discriminatorBytes = bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount);
 
-      // Fetch ALL AgentAccount PDAs from Identity Registry (single RPC call)
       const accounts = await this.connection.getProgramAccounts(IDENTITY_PROGRAM_ID, {
         filters: [
           {
@@ -91,14 +120,11 @@ export class AgentMintResolver {
         ],
       });
 
-      // Parse each account and populate cache
       for (const { account } of accounts) {
         try {
           const agentAccount = AgentAccount.deserialize(Buffer.from(account.data));
-          const agentId = agentAccount.agent_id.toString();
-          const agentMint = agentAccount.getMintPublicKey();
-
-          this.cache.set(agentId, agentMint);
+          const assetPubkey = agentAccount.getAssetPublicKey();
+          this.assetCache.set(assetPubkey.toBase58(), agentAccount);
         } catch {
           // Skip malformed accounts
           continue;
@@ -114,19 +140,17 @@ export class AgentMintResolver {
   }
 
   /**
-   * Manually add a mapping to cache (used after registration)
-   * @param agentId - Agent ID
-   * @param mint - Agent mint address
+   * @deprecated Use asset pubkey directly. No need to cache agent_id → asset mapping.
    */
-  addToCache(agentId: bigint, mint: PublicKey): void {
-    this.cache.set(agentId.toString(), mint);
+  addToCache(_agentId: bigint, _mint: PublicKey): void {
+    // No-op in v0.3.0
   }
 
   /**
    * Clear the cache (useful for testing or forcing refresh)
    */
   clearCache(): void {
-    this.cache.clear();
+    this.assetCache.clear();
     this.cacheLoaded = false;
     this.loadingPromise = null;
   }
@@ -140,32 +164,19 @@ export class AgentMintResolver {
   }
 
   /**
-   * Batch resolve multiple agent IDs
-   * More efficient than resolving one at a time
-   * @param agentIds - Array of agent IDs to resolve
-   * @returns Map of agent_id → agent_mint
+   * @deprecated Use loadAllAgents() instead. Agent IDs no longer exist.
    */
-  async batchResolve(agentIds: bigint[]): Promise<Map<bigint, PublicKey>> {
-    // Ensure cache is loaded
-    if (!this.cacheLoaded) {
-      await this.loadAllAgents();
-    }
-
-    const results = new Map<bigint, PublicKey>();
-    for (const agentId of agentIds) {
-      const mint = this.cache.get(agentId.toString());
-      if (mint) {
-        results.set(agentId, mint);
-      }
-    }
-
-    return results;
+  async batchResolve(_agentIds: bigint[]): Promise<Map<bigint, PublicKey>> {
+    throw new Error(
+      'AgentMintResolver.batchResolve() is deprecated in v0.3.0. ' +
+      'Use loadAllAgents() to get all registered agents.'
+    );
   }
 
   /**
    * Get cache size (number of loaded agents)
    */
   get size(): number {
-    return this.cache.size;
+    return this.assetCache.size;
   }
 }

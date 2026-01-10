@@ -1,6 +1,11 @@
 /**
  * Solana SDK for Agent0 - ERC-8004 implementation
+ * v0.3.0 - Asset-based identification
  * Provides read and write access to Solana-based agent registries
+ *
+ * BREAKING CHANGES from v0.2.0:
+ * - All methods now use asset (PublicKey) instead of agentId (bigint)
+ * - Multi-collection support via RootConfig and RegistryConfig
  */
 
 import { PublicKey, Keypair } from '@solana/web3.js';
@@ -23,8 +28,7 @@ import {
   PreparedTransaction,
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
-import { fetchRegistryConfig } from './config-reader.js';
-// FeedbackAuth removed - not used by Solana program (uses native Signer constraint)
+import { fetchRootConfig, fetchRegistryConfig, getCurrentBaseCollection } from './config-reader.js';
 
 export interface SolanaSDKConfig {
   cluster?: Cluster;
@@ -54,6 +58,7 @@ export interface GetAllAgentsOptions {
 
 /**
  * Main SDK class for Solana ERC-8004 implementation
+ * v0.3.0 - Asset-based identification
  * Provides read and write access to agent registries on Solana
  */
 export class SolanaSDK {
@@ -66,7 +71,7 @@ export class SolanaSDK {
   private readonly reputationTxBuilder: ReputationTransactionBuilder;
   private readonly validationTxBuilder: ValidationTransactionBuilder;
   private mintResolver?: AgentMintResolver;
-  private collectionMint?: PublicKey;
+  private baseCollection?: PublicKey;
 
   constructor(config: SolanaSDKConfig = {}) {
     this.cluster = config.cluster || 'devnet';
@@ -84,21 +89,15 @@ export class SolanaSDK {
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
 
-    // Initialize transaction builders (v0.2.0 - no cluster argument)
-    // They work with or without signer - skipSend mode allows building transactions
-    // without a signer, the signer pubkey is provided in options instead
+    // Initialize transaction builders (v0.3.0 - no cluster argument)
     const connection = this.client.getConnection();
     this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
     this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer);
     this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
-
-    // Initialize mint resolver (lazy - will be created on first use)
-    // This avoids blocking the constructor with async operations
   }
 
   /**
-   * Initialize the agent mint resolver (lazy initialization)
-   * Fetches registry config and creates resolver
+   * Initialize the agent mint resolver and base collection (lazy initialization)
    */
   private async initializeMintResolver(): Promise<void> {
     if (this.mintResolver) {
@@ -107,39 +106,39 @@ export class SolanaSDK {
 
     try {
       const connection = this.client.getConnection();
-      const configData = await fetchRegistryConfig(connection);
 
-      if (!configData) {
-        throw new Error('Registry config not found. Registry may not be initialized.');
+      // v0.3.0: Get base collection from RootConfig
+      this.baseCollection = await getCurrentBaseCollection(connection) || undefined;
+
+      if (!this.baseCollection) {
+        throw new Error('Registry not initialized. Root config not found.');
       }
 
-      this.collectionMint = configData.getCollectionMintPublicKey();
-      this.mintResolver = new AgentMintResolver(connection, this.collectionMint);
+      this.mintResolver = new AgentMintResolver(connection);
     } catch (error) {
-      throw new Error(`Failed to initialize agent mint resolver: ${error}`);
+      throw new Error(`Failed to initialize SDK: ${error}`);
     }
   }
 
-  // ==================== Agent Methods ====================
+  /**
+   * Get the current base collection pubkey
+   */
+  async getBaseCollection(): Promise<PublicKey | null> {
+    await this.initializeMintResolver();
+    return this.baseCollection || null;
+  }
+
+  // ==================== Agent Methods (v0.3.0 - asset-based) ====================
 
   /**
-   * Load agent by ID
-   * @param agentId - Agent ID (number or bigint)
+   * Load agent by asset pubkey - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns Agent account data or null if not found
    */
-  async loadAgent(agentId: number | bigint): Promise<AgentAccount | null> {
+  async loadAgent(asset: PublicKey): Promise<AgentAccount | null> {
     try {
-      // Convert to bigint if needed
-      const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-      // Initialize resolver if needed
-      await this.initializeMintResolver();
-
-      // Resolve agentId → mint via NFT metadata
-      const agentMint = await this.mintResolver!.resolve(id);
-
       // Derive PDA from asset
-      const [agentPDA] = PDAHelpers.getAgentPDA(agentMint);
+      const [agentPDA] = PDAHelpers.getAgentPDA(asset);
 
       // Fetch account data
       const data = await this.client.getAccount(agentPDA);
@@ -148,48 +147,26 @@ export class SolanaSDK {
         return null;
       }
 
-      const agentAccount = AgentAccount.deserialize(data);
-
-      // v0.2.0: Metadata is now stored in separate MetadataEntryPda accounts
-      // Use getMetadata(agentId, key) to read individual entries
-
-      return agentAccount;
+      return AgentAccount.deserialize(data);
     } catch (error) {
-      console.error(`Error loading agent ${agentId}:`, error);
+      console.error(`Error loading agent ${asset.toBase58()}:`, error);
       return null;
     }
   }
 
   /**
-   * Get a specific metadata entry for an agent
-   * @param agentId - Agent ID (number or bigint)
+   * Get a specific metadata entry for an agent - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param key - Metadata key
    * @returns Metadata value as string, or null if not found
    */
-  async getMetadata(agentId: number | bigint, key: string): Promise<string | null> {
+  async getMetadata(asset: PublicKey, key: string): Promise<string | null> {
     try {
-      const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-      // Initialize resolver if needed
-      await this.initializeMintResolver();
-
-      // Resolve agentId → asset
-      const asset = await this.mintResolver!.resolve(id);
-
-      // Get the agent account to retrieve the on-chain agent_id
-      const [agentPDA] = PDAHelpers.getAgentPDA(asset);
-      const agentData = await this.client.getAccount(agentPDA);
-      if (!agentData) {
-        return null;
-      }
-      // Read agent_id (u64 at offset 8 after discriminator)
-      const onChainAgentId = agentData.readBigUInt64LE(8);
-
       // Compute key hash (SHA256(key)[0..8])
       const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
 
-      // Derive metadata entry PDA
-      const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(onChainAgentId, keyHash);
+      // Derive metadata entry PDA (v0.3.0 - uses asset)
+      const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
 
       // Fetch metadata account
       const metadataData = await this.client.getAccount(metadataEntry);
@@ -201,13 +178,13 @@ export class SolanaSDK {
       const entry = MetadataEntryPda.deserialize(metadataData);
       return entry.getValueString();
     } catch (error) {
-      console.error(`Error getting metadata for agent ${agentId}, key "${key}":`, error);
+      console.error(`Error getting metadata for agent ${asset.toBase58()}, key "${key}":`, error);
       return null;
     }
   }
 
   /**
-   * Get agents by owner with on-chain metadata
+   * Get agents by owner with on-chain metadata - v0.3.0
    * @param owner - Owner public key
    * @param options - Optional settings for additional data fetching
    * @returns Array of agents with metadata (and optionally feedbacks)
@@ -223,6 +200,7 @@ export class SolanaSDK {
       const programId = this.programIds.identityRegistry;
 
       // 1. Fetch agent accounts filtered by owner (1 RPC call)
+      // v0.3.0: owner is at offset 8 (after discriminator)
       const agentAccounts = await this.client.getProgramAccounts(programId, [
         {
           memcmp: {
@@ -232,7 +210,7 @@ export class SolanaSDK {
         },
         {
           memcmp: {
-            offset: 16,
+            offset: 8, // owner is first field after discriminator
             bytes: owner.toBase58(),
           },
         },
@@ -250,38 +228,37 @@ export class SolanaSDK {
         },
       ]);
 
-      // Build metadata map: agentId -> [{key, value}]
+      // Build metadata map: asset → [{key, value}]
       const metadataMap = new Map<string, Array<{ key: string; value: string }>>();
       for (const acc of metadataAccounts) {
         try {
           const entry = MetadataEntryPda.deserialize(acc.data);
-          const agentIdStr = entry.agent_id.toString();
-          if (!metadataMap.has(agentIdStr)) metadataMap.set(agentIdStr, []);
-          metadataMap.get(agentIdStr)!.push({
+          const assetStr = entry.getAssetPublicKey().toBase58();
+          if (!metadataMap.has(assetStr)) metadataMap.set(assetStr, []);
+          metadataMap.get(assetStr)!.push({
             key: entry.metadata_key,
             value: entry.getValueString(),
           });
         } catch {
-          // Skip malformed MetadataEntryPda (corrupted or legacy format)
+          // Skip malformed MetadataEntryPda
         }
       }
 
       // 3. Optionally fetch feedbacks (2 RPC calls)
-      let feedbacksMap: Map<bigint, SolanaFeedback[]> | null = null;
+      let feedbacksMap: Map<string, SolanaFeedback[]> | null = null;
       if (options?.includeFeedbacks) {
         feedbacksMap = await this.feedbackManager.fetchAllFeedbacks(
           options.includeRevoked ?? false
         );
       }
 
-      // 4. Combine results (feedbacks = [] if not requested)
+      // 4. Combine results
       return agents.map((account) => {
-        const agentIdStr = account.agent_id.toString();
-        const agentIdBigInt = BigInt(agentIdStr);
+        const assetStr = account.getAssetPublicKey().toBase58();
         return {
           account,
-          metadata: metadataMap.get(agentIdStr) || [],
-          feedbacks: feedbacksMap ? feedbacksMap.get(agentIdBigInt) || [] : [],
+          metadata: metadataMap.get(assetStr) || [],
+          feedbacks: feedbacksMap ? feedbacksMap.get(assetStr) || [] : [],
         };
       });
     } catch (error) {
@@ -292,13 +269,12 @@ export class SolanaSDK {
   }
 
   /**
-   * Get all registered agents with their on-chain metadata
+   * Get all registered agents with their on-chain metadata - v0.3.0
    * @param options - Optional settings for additional data fetching
    * @returns Array of agents with metadata extensions (and optionally feedbacks)
    * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
    */
   async getAllAgents(options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]> {
-    // This operation requires getProgramAccounts which is limited on public devnet
     this.client.requireAdvancedQueries('getAllAgents');
 
     try {
@@ -324,14 +300,14 @@ export class SolanaSDK {
         ]),
       ]);
 
-      // Build metadata map by agent_id
+      // Build metadata map by asset (v0.3.0)
       const metadataMap = new Map<string, Array<{ key: string; value: string }>>();
       for (const acc of metadataAccounts) {
         try {
           const entry = MetadataEntryPda.deserialize(acc.data);
-          const agentIdStr = entry.agent_id.toString();
-          if (!metadataMap.has(agentIdStr)) metadataMap.set(agentIdStr, []);
-          metadataMap.get(agentIdStr)!.push({
+          const assetStr = entry.getAssetPublicKey().toBase58();
+          if (!metadataMap.has(assetStr)) metadataMap.set(assetStr, []);
+          metadataMap.get(assetStr)!.push({
             key: entry.metadata_key,
             value: entry.getValueString(),
           });
@@ -345,10 +321,10 @@ export class SolanaSDK {
       for (const acc of agentAccounts) {
         try {
           const agent = AgentAccount.deserialize(acc.data);
-          const agentIdStr = agent.agent_id.toString();
+          const assetStr = agent.getAssetPublicKey().toBase58();
           agents.push({
             account: agent,
-            metadata: metadataMap.get(agentIdStr) || [],
+            metadata: metadataMap.get(assetStr) || [],
             feedbacks: [], // Always initialize as empty array
           });
         } catch {
@@ -360,10 +336,10 @@ export class SolanaSDK {
       if (options?.includeFeedbacks) {
         const allFeedbacks = await this.feedbackManager.fetchAllFeedbacks(options.includeRevoked ?? false);
 
-        // Attach feedbacks to each agent (convert agent_id to BigInt for Map lookup)
+        // Attach feedbacks to each agent
         for (const agent of agents) {
-          const agentId = BigInt(agent.account.agent_id.toString());
-          agent.feedbacks = allFeedbacks.get(agentId) || [];
+          const assetStr = agent.account.getAssetPublicKey().toBase58();
+          agent.feedbacks = allFeedbacks.get(assetStr) || [];
         }
       }
 
@@ -376,218 +352,167 @@ export class SolanaSDK {
   }
 
   /**
-   * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+   * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
    * More efficient than calling readAllFeedback() per agent
    * @param includeRevoked - Include revoked feedbacks? Default: false
-   * @returns Map of agentId -> SolanaFeedback[]
+   * @returns Map of asset (base58) -> SolanaFeedback[]
    * @throws UnsupportedRpcError if using default devnet RPC
    */
-  async getAllFeedbacks(includeRevoked: boolean = false): Promise<Map<bigint, SolanaFeedback[]>> {
+  async getAllFeedbacks(includeRevoked: boolean = false): Promise<Map<string, SolanaFeedback[]>> {
     this.client.requireAdvancedQueries('getAllFeedbacks');
     return await this.feedbackManager.fetchAllFeedbacks(includeRevoked);
   }
 
   /**
-   * Check if agent exists
-   * @param agentId - Agent ID (number or bigint)
+   * Check if agent exists - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns True if agent exists
    */
-  async agentExists(agentId: number | bigint): Promise<boolean> {
-    const agent = await this.loadAgent(agentId);
+  async agentExists(asset: PublicKey): Promise<boolean> {
+    const agent = await this.loadAgent(asset);
     return agent !== null;
   }
 
   /**
-   * Get agent (alias for loadAgent, for parity with agent0-ts)
-   * @param agentId - Agent ID (number or bigint)
+   * Get agent (alias for loadAgent) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns Agent account data or null if not found
    */
-  async getAgent(agentId: number | bigint): Promise<AgentAccount | null> {
-    return this.loadAgent(agentId);
+  async getAgent(asset: PublicKey): Promise<AgentAccount | null> {
+    return this.loadAgent(asset);
   }
 
   /**
-   * Check if address is agent owner
-   * @param agentId - Agent ID (number or bigint)
+   * Check if address is agent owner - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param address - Address to check
    * @returns True if address is the owner
    */
-  async isAgentOwner(agentId: number | bigint, address: PublicKey): Promise<boolean> {
-    const agent = await this.loadAgent(agentId);
+  async isAgentOwner(asset: PublicKey, address: PublicKey): Promise<boolean> {
+    const agent = await this.loadAgent(asset);
     if (!agent) return false;
     return agent.getOwnerPublicKey().equals(address);
   }
 
   /**
-   * Get agent owner
-   * @param agentId - Agent ID (number or bigint)
+   * Get agent owner - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns Owner public key or null if agent not found
    */
-  async getAgentOwner(agentId: number | bigint): Promise<PublicKey | null> {
-    const agent = await this.loadAgent(agentId);
+  async getAgentOwner(asset: PublicKey): Promise<PublicKey | null> {
+    const agent = await this.loadAgent(asset);
     if (!agent) return null;
     return agent.getOwnerPublicKey();
   }
 
   /**
-   * Get reputation summary (alias for getSummary, for parity with agent0-ts)
-   * @param agentId - Agent ID (number or bigint)
+   * Get reputation summary - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns Reputation summary with count and average score
    */
-  async getReputationSummary(agentId: number | bigint): Promise<{ count: number; averageScore: number }> {
-    const summary = await this.getSummary(agentId);
+  async getReputationSummary(asset: PublicKey): Promise<{ count: number; averageScore: number }> {
+    const summary = await this.getSummary(asset);
     return {
       count: summary.totalFeedbacks,
       averageScore: summary.averageScore,
     };
   }
 
-  // ==================== Reputation Methods (6 ERC-8004 Read Functions) ====================
+  // ==================== Reputation Methods (v0.3.0 - asset-based) ====================
 
   /**
-   * 1. Get agent reputation summary
-   * @param agentId - Agent ID (number or bigint)
+   * 1. Get agent reputation summary - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param minScore - Optional minimum score filter
    * @param clientFilter - Optional client filter
    * @returns Reputation summary with average score and total feedbacks
    */
-  async getSummary(agentId: number | bigint, minScore?: number, clientFilter?: PublicKey) {
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    return await this.feedbackManager.getSummary(id, minScore, clientFilter);
+  async getSummary(asset: PublicKey, minScore?: number, clientFilter?: PublicKey) {
+    return await this.feedbackManager.getSummary(asset, minScore, clientFilter);
   }
 
   /**
-   * 2. Read single feedback
-   * @param agentId - Agent ID (number or bigint)
+   * 2. Read single feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param client - Client public key
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Feedback object or null
    */
-  async readFeedback(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint) {
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
+  async readFeedback(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint) {
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.feedbackManager.readFeedback(id, client, idx);
+    return await this.feedbackManager.readFeedback(asset, client, idx);
   }
 
   /**
-   * Get feedback (alias for readFeedback, for parity with agent0-ts)
-   * @param agentId - Agent ID (number or bigint)
+   * Get feedback (alias for readFeedback) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param clientAddress - Client public key
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Feedback object or null
    */
-  async getFeedback(agentId: number | bigint, clientAddress: PublicKey, feedbackIndex: number | bigint) {
-    return this.readFeedback(agentId, clientAddress, feedbackIndex);
+  async getFeedback(asset: PublicKey, clientAddress: PublicKey, feedbackIndex: number | bigint) {
+    return this.readFeedback(asset, clientAddress, feedbackIndex);
   }
 
   /**
-   * 3. Read all feedbacks for an agent
-   * @param agentId - Agent ID (number or bigint)
+   * 3. Read all feedbacks for an agent - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param includeRevoked - Include revoked feedbacks
    * @returns Array of feedback objects
-   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
+   * @throws UnsupportedRpcError if using default devnet RPC
    */
-  async readAllFeedback(agentId: number | bigint, includeRevoked: boolean = false) {
-    // This operation requires getProgramAccounts with memcmp
+  async readAllFeedback(asset: PublicKey, includeRevoked: boolean = false) {
     this.client.requireAdvancedQueries('readAllFeedback');
-
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    return await this.feedbackManager.readAllFeedback(id, includeRevoked);
+    return await this.feedbackManager.readAllFeedback(asset, includeRevoked);
   }
 
   /**
-   * 4. Get last feedback index for a client
-   * @param agentId - Agent ID (number or bigint)
+   * 4. Get last feedback index for a client - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param client - Client public key
    * @returns Last feedback index
    */
-  async getLastIndex(agentId: number | bigint, client: PublicKey) {
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    return await this.feedbackManager.getLastIndex(id, client);
+  async getLastIndex(asset: PublicKey, client: PublicKey) {
+    return await this.feedbackManager.getLastIndex(asset, client);
   }
 
   /**
-   * 5. Get all clients who gave feedback
-   * @param agentId - Agent ID (number or bigint)
+   * 5. Get all clients who gave feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @returns Array of client public keys
-   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
+   * @throws UnsupportedRpcError if using default devnet RPC
    */
-  async getClients(agentId: number | bigint) {
-    // This operation requires getProgramAccounts with memcmp
+  async getClients(asset: PublicKey) {
     this.client.requireAdvancedQueries('getClients');
-
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-    return await this.feedbackManager.getClients(id);
+    return await this.feedbackManager.getClients(asset);
   }
 
   /**
-   * 6. Get response count for a feedback
-   * @param agentId - Agent ID (number or bigint)
+   * 6. Get response count for a feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Number of responses
-   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
-  async getResponseCount(agentId: number | bigint, feedbackIndex: number | bigint): Promise<number>;
-  async getResponseCount(
-    agentId: number | bigint,
-    clientOrFeedbackIndex: PublicKey | number | bigint,
-    feedbackIndex?: number | bigint
-  ): Promise<number> {
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
-    let actualFeedbackIndex: bigint;
-    if (feedbackIndex !== undefined) {
-      // Old signature: (agentId, client, feedbackIndex)
-      actualFeedbackIndex =
-        typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    } else {
-      // New signature: (agentId, feedbackIndex)
-      actualFeedbackIndex =
-        typeof clientOrFeedbackIndex === 'number'
-          ? BigInt(clientOrFeedbackIndex)
-          : (clientOrFeedbackIndex as bigint);
-    }
-
-    return await this.feedbackManager.getResponseCount(id, actualFeedbackIndex);
+  async getResponseCount(asset: PublicKey, feedbackIndex: number | bigint): Promise<number> {
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    return await this.feedbackManager.getResponseCount(asset, idx);
   }
 
   /**
-   * Bonus: Read all responses for a feedback
-   * @param agentId - Agent ID (number or bigint)
+   * Bonus: Read all responses for a feedback - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Array of response objects
-   * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
    */
   async readResponses(
-    agentId: number | bigint,
+    asset: PublicKey,
     feedbackIndex: number | bigint
-  ): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
-  async readResponses(
-    agentId: number | bigint,
-    clientOrFeedbackIndex: PublicKey | number | bigint,
-    feedbackIndex?: number | bigint
   ): Promise<import('./feedback-manager-solana.js').SolanaResponse[]> {
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-    // Handle both old (agentId, client, feedbackIndex) and new (agentId, feedbackIndex) signatures
-    let actualFeedbackIndex: bigint;
-    if (feedbackIndex !== undefined) {
-      // Old signature: (agentId, client, feedbackIndex)
-      actualFeedbackIndex =
-        typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    } else {
-      // New signature: (agentId, feedbackIndex)
-      actualFeedbackIndex =
-        typeof clientOrFeedbackIndex === 'number'
-          ? BigInt(clientOrFeedbackIndex)
-          : (clientOrFeedbackIndex as bigint);
-    }
-
-    return await this.feedbackManager.readResponses(id, actualFeedbackIndex);
+    const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+    return await this.feedbackManager.readResponses(asset, idx);
   }
 
-  // ==================== Write Methods (require signer) ====================
+  // ==================== Write Methods (require signer) - v0.3.0 ====================
 
   /**
    * Check if SDK has write permissions
@@ -597,15 +522,17 @@ export class SolanaSDK {
   }
 
   /**
-   * Register a new agent (write operation)
+   * Register a new agent (write operation) - v0.3.0
    * @param tokenUri - Optional token URI
    * @param metadata - Optional metadata entries (key-value pairs)
-   * @param options - Write options (skipSend, signer, mintPubkey)
-   * @returns Transaction result with agent ID, or PreparedTransaction if skipSend
+   * @param collection - Optional collection pubkey (defaults to base registry)
+   * @param options - Write options (skipSend, signer, assetPubkey)
+   * @returns Transaction result with asset, or PreparedTransaction if skipSend
    */
   async registerAgent(
     tokenUri?: string,
     metadata?: Array<{ key: string; value: string }>,
+    collection?: PublicKey,
     options?: RegisterAgentOptions
   ) {
     // For non-skipSend operations, require signer
@@ -613,53 +540,39 @@ export class SolanaSDK {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
 
-    // Initialize resolver to cache the mint after registration
-    await this.initializeMintResolver();
-
-    const result = await this.identityTxBuilder.registerAgent(tokenUri, metadata, options);
-
-    // Cache the agentId → asset mapping for instant lookup (only for successful sent transactions)
-    // v0.2.0: Core asset replaces mint
-    if ('success' in result && result.success && result.agentId !== undefined && result.asset) {
-      this.mintResolver!.addToCache(result.agentId, result.asset);
-    }
-
-    return result;
+    return await this.identityTxBuilder.registerAgent(tokenUri, metadata, collection, options);
   }
 
   /**
-   * Set agent URI (write operation)
-   * @param agentId - Agent ID (number or bigint)
+   * Set agent URI (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
+   * @param collection - Collection pubkey for the agent
    * @param newUri - New URI
    * @param options - Write options (skipSend, signer)
    */
   async setAgentUri(
-    agentId: number | bigint,
+    asset: PublicKey,
+    collection: PublicKey,
     newUri: string,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → asset (v0.2.0: Core asset)
-    await this.initializeMintResolver();
-    const asset = await this.mintResolver!.resolve(id);
-
-    return await this.identityTxBuilder.setAgentUri(asset, newUri, options);
+    return await this.identityTxBuilder.setAgentUri(asset, collection, newUri, options);
   }
 
   /**
-   * Set agent metadata (write operation)
-   * @param agentId - Agent ID (number or bigint)
+   * Set agent metadata (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param key - Metadata key
    * @param value - Metadata value
    * @param immutable - If true, metadata cannot be modified or deleted (default: false)
    * @param options - Write options (skipSend, signer)
    */
   async setMetadata(
-    agentId: number | bigint,
+    asset: PublicKey,
     key: string,
     value: string,
     immutable: boolean = false,
@@ -668,110 +581,91 @@ export class SolanaSDK {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-    // Resolve agentId → asset (v0.2.0: Core asset)
-    await this.initializeMintResolver();
-    const asset = await this.mintResolver!.resolve(id);
 
     return await this.identityTxBuilder.setMetadata(asset, key, value, immutable, options);
   }
 
   /**
-   * Delete a metadata entry for an agent (write operation)
+   * Delete a metadata entry for an agent (write operation) - v0.3.0
    * Only works if metadata is not immutable
-   * @param agentId - Agent ID (number or bigint)
+   * @param asset - Agent Core asset pubkey
    * @param key - Metadata key to delete
    * @param options - Write options (skipSend, signer)
    */
   async deleteMetadata(
-    agentId: number | bigint,
+    asset: PublicKey,
     key: string,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-    // Resolve agentId → asset (v0.2.0: Core asset)
-    await this.initializeMintResolver();
-    const asset = await this.mintResolver!.resolve(id);
 
     return await this.identityTxBuilder.deleteMetadata(asset, key, options);
   }
 
   /**
-   * Give feedback to an agent (write operation)
-   * Aligned with agent0-ts SDK interface
-   * @param agentId - Agent ID (number or bigint)
+   * Give feedback to an agent (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param feedbackFile - Feedback data object
    * @param options - Write options (skipSend, signer)
    */
   async giveFeedback(
-    agentId: number | bigint,
+    asset: PublicKey,
     feedbackFile: {
       score: number;
       tag1?: string;
       tag2?: string;
-      fileUri: string;
-      fileHash: Buffer;
+      endpoint?: string;
+      feedbackUri: string;
+      feedbackHash: Buffer;
     },
     options?: WriteOptions
   ): Promise<(TransactionResult & { feedbackIndex?: bigint }) | (PreparedTransaction & { feedbackIndex: bigint })> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-    // Resolve agentId → asset (v0.2.0: Core asset)
-    await this.initializeMintResolver();
-    const asset = await this.mintResolver!.resolve(id);
 
     return await this.reputationTxBuilder.giveFeedback(
       asset,
-      id,
       feedbackFile.score,
       feedbackFile.tag1 || '',
       feedbackFile.tag2 || '',
-      feedbackFile.fileUri,
-      feedbackFile.fileHash,
+      feedbackFile.endpoint || '',
+      feedbackFile.feedbackUri,
+      feedbackFile.feedbackHash,
       options
     );
   }
 
   /**
-   * Revoke feedback (write operation)
-   * @param agentId - Agent ID (number or bigint)
+   * Revoke feedback (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index to revoke (number or bigint)
    * @param options - Write options (skipSend, signer)
    */
   async revokeFeedback(
-    agentId: number | bigint,
+    asset: PublicKey,
     feedbackIndex: number | bigint,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.reputationTxBuilder.revokeFeedback(id, idx, options);
+    return await this.reputationTxBuilder.revokeFeedback(asset, idx, options);
   }
 
   /**
-   * Append response to feedback (write operation)
-   * v0.2.0: client parameter removed (not needed for global feedback index)
-   * @param agentId - Agent ID (number or bigint)
-   * @param client - Client who gave feedback (kept for API compatibility, not used)
+   * Append response to feedback (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index (number or bigint)
    * @param responseUri - Response URI
    * @param responseHash - Response hash
    * @param options - Write options (skipSend, signer)
    */
   async appendResponse(
-    agentId: number | bigint,
-    _client: PublicKey,
+    asset: PublicKey,
     feedbackIndex: number | bigint,
     responseUri: string,
     responseHash: Buffer,
@@ -780,10 +674,9 @@ export class SolanaSDK {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
     return await this.reputationTxBuilder.appendResponse(
-      id,
+      asset,
       idx,
       responseUri,
       responseHash,
@@ -792,8 +685,8 @@ export class SolanaSDK {
   }
 
   /**
-   * Request validation (write operation)
-   * @param agentId - Agent ID (number or bigint)
+   * Request validation (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param validator - Validator public key
    * @param nonce - Request nonce (unique per agent-validator pair)
    * @param requestUri - Request URI (IPFS/Arweave)
@@ -801,7 +694,7 @@ export class SolanaSDK {
    * @param options - Write options (skipSend, signer)
    */
   async requestValidation(
-    agentId: number | bigint,
+    asset: PublicKey,
     validator: PublicKey,
     nonce: number,
     requestUri: string,
@@ -811,15 +704,9 @@ export class SolanaSDK {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
-
-    // Resolve agentId → asset (v0.2.0: Core asset)
-    await this.initializeMintResolver();
-    const asset = await this.mintResolver!.resolve(id);
 
     return await this.validationTxBuilder.requestValidation(
       asset,
-      id,
       validator,
       nonce,
       requestUri,
@@ -829,8 +716,8 @@ export class SolanaSDK {
   }
 
   /**
-   * Respond to validation request (write operation)
-   * @param agentId - Agent ID (number or bigint)
+   * Respond to validation request (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
    * @param nonce - Request nonce
    * @param response - Response score (0-100)
    * @param responseUri - Response URI (IPFS/Arweave)
@@ -839,7 +726,7 @@ export class SolanaSDK {
    * @param options - Write options (skipSend, signer)
    */
   async respondToValidation(
-    agentId: number | bigint,
+    asset: PublicKey,
     nonce: number,
     response: number,
     responseUri: string,
@@ -850,10 +737,9 @@ export class SolanaSDK {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
     return await this.validationTxBuilder.respondToValidation(
-      id,
+      asset,
       nonce,
       response,
       responseUri,
@@ -864,34 +750,29 @@ export class SolanaSDK {
   }
 
   /**
-   * Transfer agent ownership (write operation)
-   * Aligned with agent0-ts SDK interface
-   * @param agentId - Agent ID (number or bigint)
+   * Transfer agent ownership (write operation) - v0.3.0
+   * @param asset - Agent Core asset pubkey
+   * @param collection - Collection pubkey for the agent
    * @param newOwner - New owner public key
    * @param options - Write options (skipSend, signer)
    */
   async transferAgent(
-    agentId: number | bigint,
+    asset: PublicKey,
+    collection: PublicKey,
     newOwner: PublicKey,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
-    const id = typeof agentId === 'number' ? BigInt(agentId) : agentId;
 
-    // Resolve agentId → asset (v0.2.0: Core asset)
-    await this.initializeMintResolver();
-    const asset = await this.mintResolver!.resolve(id);
-
-    return await this.identityTxBuilder.transferAgent(asset, newOwner, options);
+    return await this.identityTxBuilder.transferAgent(asset, collection, newOwner, options);
   }
 
   // ==================== Utility Methods ====================
 
   /**
    * Check if SDK is in read-only mode (no signer configured)
-   * Aligned with agent0-ts SDK interface
    */
   get isReadOnly(): boolean {
     return this.signer === undefined;

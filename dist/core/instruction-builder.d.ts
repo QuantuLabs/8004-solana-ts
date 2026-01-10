@@ -1,8 +1,13 @@
 /**
  * Manual instruction builder for ERC-8004 Solana programs
- * v0.2.0 - Metaplex Core architecture
+ * v0.3.0 - Asset-based identification
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
+ *
+ * BREAKING CHANGES from v0.2.0:
+ * - agent_id (u64) removed from all instruction arguments
+ * - Asset (Pubkey) used for PDA derivation only
+ * - New multi-collection instructions added
  */
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 /**
@@ -42,65 +47,106 @@ export declare class IdentityInstructionBuilder {
      * Accounts: agent_account, asset
      */
     buildSyncOwner(agentAccount: PublicKey, asset: PublicKey): TransactionInstruction;
+    /**
+     * Build createBaseRegistry instruction - v0.3.0
+     * Creates a new base registry (authority only)
+     * Accounts: root_config, registry_config, collection (signer), authority (signer), system_program, mpl_core_program
+     */
+    buildCreateBaseRegistry(rootConfig: PublicKey, registryConfig: PublicKey, collection: PublicKey, authority: PublicKey): TransactionInstruction;
+    /**
+     * Build rotateBaseRegistry instruction - v0.3.0
+     * Rotates to a new base registry (authority only)
+     * Accounts: root_config, new_registry, authority (signer)
+     */
+    buildRotateBaseRegistry(rootConfig: PublicKey, newRegistry: PublicKey, authority: PublicKey): TransactionInstruction;
+    /**
+     * Build createUserRegistry instruction - v0.3.0
+     * Creates a user-owned registry collection
+     * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program
+     */
+    buildCreateUserRegistry(collectionAuthority: PublicKey, registryConfig: PublicKey, collection: PublicKey, owner: PublicKey, collectionName: string, collectionUri: string): TransactionInstruction;
+    /**
+     * Build updateUserRegistryMetadata instruction - v0.3.0
+     * Updates metadata for a user-owned registry
+     * Accounts: collection_authority, registry_config, collection, owner (signer), system_program, mpl_core_program
+     */
+    buildUpdateUserRegistryMetadata(collectionAuthority: PublicKey, registryConfig: PublicKey, collection: PublicKey, owner: PublicKey, newName: string | null, newUri: string | null): TransactionInstruction;
+    /**
+     * Build setAgentWallet instruction - v0.3.0
+     * Sets the agent wallet metadata with Ed25519 signature verification
+     * Accounts: owner (signer), payer (signer), agent_account, wallet_metadata, asset, instructions_sysvar, system_program
+     * NOTE: Requires Ed25519 signature instruction immediately before in transaction
+     */
+    buildSetAgentWallet(owner: PublicKey, payer: PublicKey, agentAccount: PublicKey, walletMetadata: PublicKey, asset: PublicKey, newWallet: PublicKey, deadline: bigint): TransactionInstruction;
     private serializeString;
+    private serializeOption;
 }
 /**
  * Instruction builder for Reputation Registry
+ * v0.3.0 - agent_id removed, uses asset for PDA derivation
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export declare class ReputationInstructionBuilder {
     private programId;
     constructor();
     /**
-     * Build giveFeedback instruction
-     * Matches: give_feedback(agent_id, score, tag1, tag2, file_uri, file_hash, feedback_index)
-     * Accounts: client, payer, asset, agent_account, feedback_account, agent_reputation, system_program
+     * Build giveFeedback instruction - v0.3.0
+     * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
+     * Accounts: client (signer), payer (signer), asset, agent_account, feedback_account, agent_reputation, system_program
      */
-    buildGiveFeedback(client: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, agentId: bigint, score: number, tag1: string, tag2: string, fileUri: string, fileHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
     /**
-     * Build revokeFeedback instruction
-     * Matches: revoke_feedback(agent_id, feedback_index)
+     * Build revokeFeedback instruction - v0.3.0
+     * Matches: revoke_feedback(feedback_index)
+     * Accounts: client (signer), feedback_account, agent_reputation
      */
-    buildRevokeFeedback(client: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, agentId: bigint, feedbackIndex: bigint): TransactionInstruction;
+    buildRevokeFeedback(client: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, feedbackIndex: bigint): TransactionInstruction;
     /**
-     * Build appendResponse instruction
-     * Matches: append_response(agent_id, feedback_index, response_uri, response_hash)
+     * Build appendResponse instruction - v0.3.0
+     * Matches: append_response(feedback_index, response_uri, response_hash)
+     * Accounts: responder (signer), payer (signer), asset, feedback_account, response_index, response_account, system_program
      */
-    buildAppendResponse(responder: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, responseIndex: PublicKey, responseAccount: PublicKey, agentId: bigint, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
+    buildAppendResponse(responder: PublicKey, payer: PublicKey, asset: PublicKey, feedbackAccount: PublicKey, responseIndex: PublicKey, responseAccount: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
     /**
-     * Build setFeedbackTags instruction
-     * Matches: set_feedback_tags(agent_id, feedback_index, tag1, tag2)
-     * Accounts: client, payer, feedback_account, feedback_tags, system_program
+     * Build setFeedbackTags instruction - v0.3.0
+     * Matches: set_feedback_tags(feedback_index, tag1, tag2)
+     * Accounts: client (signer), payer (signer), feedback_account, feedback_tags, system_program
      */
-    buildSetFeedbackTags(client: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, feedbackTags: PublicKey, agentId: bigint, feedbackIndex: bigint, tag1: string, tag2: string): TransactionInstruction;
+    buildSetFeedbackTags(client: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, feedbackTags: PublicKey, feedbackIndex: bigint, tag1: string, tag2: string): TransactionInstruction;
     private serializeString;
     private serializeU64;
 }
 /**
  * Instruction builder for Validation Registry
+ * v0.3.0 - agent_id removed, uses asset for PDA derivation
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export declare class ValidationInstructionBuilder {
     private programId;
     constructor();
     /**
-     * Build requestValidation instruction
-     * Matches: request_validation(agent_id, validator_address, nonce, request_uri, request_hash)
+     * Build requestValidation instruction - v0.3.0
+     * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
+     * Accounts: root_config, requester (signer), payer (signer), asset, agent_account, validation_request, system_program
      */
-    buildRequestValidation(config: PublicKey, requester: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, agentId: bigint, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
+    buildRequestValidation(rootConfig: PublicKey, requester: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
     /**
-     * Build respondToValidation instruction
+     * Build respondToValidation instruction - v0.3.0
      * Matches: respond_to_validation(response, response_uri, response_hash, tag)
+     * Accounts: validator (signer), asset, agent_account, validation_request
      */
-    buildRespondToValidation(config: PublicKey, validator: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
+    buildRespondToValidation(validator: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
     /**
-     * Build updateValidation instruction (same as respondToValidation)
+     * Build updateValidation instruction - v0.3.0
+     * Same signature as respondToValidation but different discriminator
+     * Accounts: validator (signer), asset, agent_account, validation_request
      */
-    buildUpdateValidation(config: PublicKey, validator: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
+    buildUpdateValidation(validator: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
     /**
-     * Build closeValidation instruction
+     * Build closeValidation instruction - v0.3.0
+     * Accounts: root_config, closer (signer), asset, agent_account, validation_request, rent_receiver
      */
-    buildCloseValidation(config: PublicKey, closer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
+    buildCloseValidation(rootConfig: PublicKey, closer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
     private serializeString;
     private serializeU64;
     private serializeU32;

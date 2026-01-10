@@ -1,6 +1,11 @@
 /**
  * Solana SDK for Agent0 - ERC-8004 implementation
+ * v0.3.0 - Asset-based identification
  * Provides read and write access to Solana-based agent registries
+ *
+ * BREAKING CHANGES from v0.2.0:
+ * - All methods now use asset (PublicKey) instead of agentId (bigint)
+ * - Multi-collection support via RootConfig and RegistryConfig
  */
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster } from './client.js';
@@ -34,6 +39,7 @@ export interface GetAllAgentsOptions {
 }
 /**
  * Main SDK class for Solana ERC-8004 implementation
+ * v0.3.0 - Asset-based identification
  * Provides read and write access to agent registries on Solana
  */
 export declare class SolanaSDK {
@@ -46,28 +52,31 @@ export declare class SolanaSDK {
     private readonly reputationTxBuilder;
     private readonly validationTxBuilder;
     private mintResolver?;
-    private collectionMint?;
+    private baseCollection?;
     constructor(config?: SolanaSDKConfig);
     /**
-     * Initialize the agent mint resolver (lazy initialization)
-     * Fetches registry config and creates resolver
+     * Initialize the agent mint resolver and base collection (lazy initialization)
      */
     private initializeMintResolver;
     /**
-     * Load agent by ID
-     * @param agentId - Agent ID (number or bigint)
+     * Get the current base collection pubkey
+     */
+    getBaseCollection(): Promise<PublicKey | null>;
+    /**
+     * Load agent by asset pubkey - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns Agent account data or null if not found
      */
-    loadAgent(agentId: number | bigint): Promise<AgentAccount | null>;
+    loadAgent(asset: PublicKey): Promise<AgentAccount | null>;
     /**
-     * Get a specific metadata entry for an agent
-     * @param agentId - Agent ID (number or bigint)
+     * Get a specific metadata entry for an agent - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param key - Metadata key
      * @returns Metadata value as string, or null if not found
      */
-    getMetadata(agentId: number | bigint, key: string): Promise<string | null>;
+    getMetadata(asset: PublicKey, key: string): Promise<string | null>;
     /**
-     * Get agents by owner with on-chain metadata
+     * Get agents by owner with on-chain metadata - v0.3.0
      * @param owner - Owner public key
      * @param options - Optional settings for additional data fetching
      * @returns Array of agents with metadata (and optionally feedbacks)
@@ -75,215 +84,211 @@ export declare class SolanaSDK {
      */
     getAgentsByOwner(owner: PublicKey, options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
     /**
-     * Get all registered agents with their on-chain metadata
+     * Get all registered agents with their on-chain metadata - v0.3.0
      * @param options - Optional settings for additional data fetching
      * @returns Array of agents with metadata extensions (and optionally feedbacks)
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
     getAllAgents(options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
     /**
-     * Fetch ALL feedbacks for ALL agents in 2 RPC calls
+     * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
      * More efficient than calling readAllFeedback() per agent
      * @param includeRevoked - Include revoked feedbacks? Default: false
-     * @returns Map of agentId -> SolanaFeedback[]
+     * @returns Map of asset (base58) -> SolanaFeedback[]
      * @throws UnsupportedRpcError if using default devnet RPC
      */
-    getAllFeedbacks(includeRevoked?: boolean): Promise<Map<bigint, SolanaFeedback[]>>;
+    getAllFeedbacks(includeRevoked?: boolean): Promise<Map<string, SolanaFeedback[]>>;
     /**
-     * Check if agent exists
-     * @param agentId - Agent ID (number or bigint)
+     * Check if agent exists - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns True if agent exists
      */
-    agentExists(agentId: number | bigint): Promise<boolean>;
+    agentExists(asset: PublicKey): Promise<boolean>;
     /**
-     * Get agent (alias for loadAgent, for parity with agent0-ts)
-     * @param agentId - Agent ID (number or bigint)
+     * Get agent (alias for loadAgent) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns Agent account data or null if not found
      */
-    getAgent(agentId: number | bigint): Promise<AgentAccount | null>;
+    getAgent(asset: PublicKey): Promise<AgentAccount | null>;
     /**
-     * Check if address is agent owner
-     * @param agentId - Agent ID (number or bigint)
+     * Check if address is agent owner - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param address - Address to check
      * @returns True if address is the owner
      */
-    isAgentOwner(agentId: number | bigint, address: PublicKey): Promise<boolean>;
+    isAgentOwner(asset: PublicKey, address: PublicKey): Promise<boolean>;
     /**
-     * Get agent owner
-     * @param agentId - Agent ID (number or bigint)
+     * Get agent owner - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns Owner public key or null if agent not found
      */
-    getAgentOwner(agentId: number | bigint): Promise<PublicKey | null>;
+    getAgentOwner(asset: PublicKey): Promise<PublicKey | null>;
     /**
-     * Get reputation summary (alias for getSummary, for parity with agent0-ts)
-     * @param agentId - Agent ID (number or bigint)
+     * Get reputation summary - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns Reputation summary with count and average score
      */
-    getReputationSummary(agentId: number | bigint): Promise<{
+    getReputationSummary(asset: PublicKey): Promise<{
         count: number;
         averageScore: number;
     }>;
     /**
-     * 1. Get agent reputation summary
-     * @param agentId - Agent ID (number or bigint)
+     * 1. Get agent reputation summary - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param minScore - Optional minimum score filter
      * @param clientFilter - Optional client filter
      * @returns Reputation summary with average score and total feedbacks
      */
-    getSummary(agentId: number | bigint, minScore?: number, clientFilter?: PublicKey): Promise<import("./feedback-manager-solana.js").SolanaAgentSummary>;
+    getSummary(asset: PublicKey, minScore?: number, clientFilter?: PublicKey): Promise<import("./feedback-manager-solana.js").SolanaAgentSummary>;
     /**
-     * 2. Read single feedback
-     * @param agentId - Agent ID (number or bigint)
+     * 2. Read single feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param client - Client public key
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Feedback object or null
      */
-    readFeedback(agentId: number | bigint, client: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
+    readFeedback(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
     /**
-     * Get feedback (alias for readFeedback, for parity with agent0-ts)
-     * @param agentId - Agent ID (number or bigint)
+     * Get feedback (alias for readFeedback) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param clientAddress - Client public key
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Feedback object or null
      */
-    getFeedback(agentId: number | bigint, clientAddress: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
+    getFeedback(asset: PublicKey, clientAddress: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
     /**
-     * 3. Read all feedbacks for an agent
-     * @param agentId - Agent ID (number or bigint)
+     * 3. Read all feedbacks for an agent - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param includeRevoked - Include revoked feedbacks
      * @returns Array of feedback objects
-     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
+     * @throws UnsupportedRpcError if using default devnet RPC
      */
-    readAllFeedback(agentId: number | bigint, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
+    readAllFeedback(asset: PublicKey, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
     /**
-     * 4. Get last feedback index for a client
-     * @param agentId - Agent ID (number or bigint)
+     * 4. Get last feedback index for a client - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param client - Client public key
      * @returns Last feedback index
      */
-    getLastIndex(agentId: number | bigint, client: PublicKey): Promise<bigint>;
+    getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint>;
     /**
-     * 5. Get all clients who gave feedback
-     * @param agentId - Agent ID (number or bigint)
+     * 5. Get all clients who gave feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @returns Array of client public keys
-     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts with memcmp)
+     * @throws UnsupportedRpcError if using default devnet RPC
      */
-    getClients(agentId: number | bigint): Promise<PublicKey[]>;
+    getClients(asset: PublicKey): Promise<PublicKey[]>;
     /**
-     * 6. Get response count for a feedback
-     * @param agentId - Agent ID (number or bigint)
+     * 6. Get response count for a feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Number of responses
-     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    getResponseCount(agentId: number | bigint, feedbackIndex: number | bigint): Promise<number>;
+    getResponseCount(asset: PublicKey, feedbackIndex: number | bigint): Promise<number>;
     /**
-     * Bonus: Read all responses for a feedback
-     * @param agentId - Agent ID (number or bigint)
+     * Bonus: Read all responses for a feedback - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Array of response objects
-     * @deprecated The client parameter is no longer used in v0.2.0 (global feedback index)
      */
-    readResponses(agentId: number | bigint, feedbackIndex: number | bigint): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
+    readResponses(asset: PublicKey, feedbackIndex: number | bigint): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
     /**
      * Check if SDK has write permissions
      */
     get canWrite(): boolean;
     /**
-     * Register a new agent (write operation)
+     * Register a new agent (write operation) - v0.3.0
      * @param tokenUri - Optional token URI
      * @param metadata - Optional metadata entries (key-value pairs)
-     * @param options - Write options (skipSend, signer, mintPubkey)
-     * @returns Transaction result with agent ID, or PreparedTransaction if skipSend
+     * @param collection - Optional collection pubkey (defaults to base registry)
+     * @param options - Write options (skipSend, signer, assetPubkey)
+     * @returns Transaction result with asset, or PreparedTransaction if skipSend
      */
     registerAgent(tokenUri?: string, metadata?: Array<{
         key: string;
         value: string;
-    }>, options?: RegisterAgentOptions): Promise<(TransactionResult & {
-        agentId?: bigint;
+    }>, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {
-        agentId: bigint;
         asset: PublicKey;
     })>;
     /**
-     * Set agent URI (write operation)
-     * @param agentId - Agent ID (number or bigint)
+     * Set agent URI (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
+     * @param collection - Collection pubkey for the agent
      * @param newUri - New URI
      * @param options - Write options (skipSend, signer)
      */
-    setAgentUri(agentId: number | bigint, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setAgentUri(asset: PublicKey, collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set agent metadata (write operation)
-     * @param agentId - Agent ID (number or bigint)
+     * Set agent metadata (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param key - Metadata key
      * @param value - Metadata value
      * @param immutable - If true, metadata cannot be modified or deleted (default: false)
      * @param options - Write options (skipSend, signer)
      */
-    setMetadata(agentId: number | bigint, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setMetadata(asset: PublicKey, key: string, value: string, immutable?: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Delete a metadata entry for an agent (write operation)
+     * Delete a metadata entry for an agent (write operation) - v0.3.0
      * Only works if metadata is not immutable
-     * @param agentId - Agent ID (number or bigint)
+     * @param asset - Agent Core asset pubkey
      * @param key - Metadata key to delete
      * @param options - Write options (skipSend, signer)
      */
-    deleteMetadata(agentId: number | bigint, key: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    deleteMetadata(asset: PublicKey, key: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Give feedback to an agent (write operation)
-     * Aligned with agent0-ts SDK interface
-     * @param agentId - Agent ID (number or bigint)
+     * Give feedback to an agent (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param feedbackFile - Feedback data object
      * @param options - Write options (skipSend, signer)
      */
-    giveFeedback(agentId: number | bigint, feedbackFile: {
+    giveFeedback(asset: PublicKey, feedbackFile: {
         score: number;
         tag1?: string;
         tag2?: string;
-        fileUri: string;
-        fileHash: Buffer;
+        endpoint?: string;
+        feedbackUri: string;
+        feedbackHash: Buffer;
     }, options?: WriteOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;
     })>;
     /**
-     * Revoke feedback (write operation)
-     * @param agentId - Agent ID (number or bigint)
+     * Revoke feedback (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
      * @param options - Write options (skipSend, signer)
      */
-    revokeFeedback(agentId: number | bigint, feedbackIndex: number | bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Append response to feedback (write operation)
-     * v0.2.0: client parameter removed (not needed for global feedback index)
-     * @param agentId - Agent ID (number or bigint)
-     * @param client - Client who gave feedback (kept for API compatibility, not used)
+     * Append response to feedback (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index (number or bigint)
      * @param responseUri - Response URI
      * @param responseHash - Response hash
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(agentId: number | bigint, _client: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
+    appendResponse(asset: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
         responseIndex?: bigint;
     }) | (PreparedTransaction & {
         responseIndex: bigint;
     })>;
     /**
-     * Request validation (write operation)
-     * @param agentId - Agent ID (number or bigint)
+     * Request validation (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param validator - Validator public key
      * @param nonce - Request nonce (unique per agent-validator pair)
      * @param requestUri - Request URI (IPFS/Arweave)
      * @param requestHash - Request hash (32 bytes)
      * @param options - Write options (skipSend, signer)
      */
-    requestValidation(agentId: number | bigint, validator: PublicKey, nonce: number, requestUri: string, requestHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    requestValidation(asset: PublicKey, validator: PublicKey, nonce: number, requestUri: string, requestHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Respond to validation request (write operation)
-     * @param agentId - Agent ID (number or bigint)
+     * Respond to validation request (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
      * @param nonce - Request nonce
      * @param response - Response score (0-100)
      * @param responseUri - Response URI (IPFS/Arweave)
@@ -291,18 +296,17 @@ export declare class SolanaSDK {
      * @param tag - Response tag (max 32 bytes)
      * @param options - Write options (skipSend, signer)
      */
-    respondToValidation(agentId: number | bigint, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag?: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    respondToValidation(asset: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag?: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Transfer agent ownership (write operation)
-     * Aligned with agent0-ts SDK interface
-     * @param agentId - Agent ID (number or bigint)
+     * Transfer agent ownership (write operation) - v0.3.0
+     * @param asset - Agent Core asset pubkey
+     * @param collection - Collection pubkey for the agent
      * @param newOwner - New owner public key
      * @param options - Write options (skipSend, signer)
      */
-    transferAgent(agentId: number | bigint, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    transferAgent(asset: PublicKey, collection: PublicKey, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Check if SDK is in read-only mode (no signer configured)
-     * Aligned with agent0-ts SDK interface
      */
     get isReadOnly(): boolean;
     /**
