@@ -2,16 +2,6 @@
  * Validation utilities
  */
 /**
- * Validate Ethereum address format
- */
-export function isValidAddress(address) {
-    if (!address || typeof address !== 'string') {
-        return false;
-    }
-    // Ethereum address: 0x followed by 40 hex characters
-    return /^0x[a-fA-F0-9]{40}$/.test(address);
-}
-/**
  * Validate AgentId format
  * Format: "chainId:tokenId" where both are positive integers
  */
@@ -48,15 +38,6 @@ export function isValidURI(uri) {
  */
 export function isValidScore(score) {
     return Number.isInteger(score) && score >= 0 && score <= 100;
-}
-/**
- * Normalize address to lowercase for consistent storage and comparison
- */
-export function normalizeAddress(address) {
-    if (address.startsWith('0x') || address.startsWith('0X')) {
-        return '0x' + address.slice(2).toLowerCase();
-    }
-    return address.toLowerCase();
 }
 /**
  * Validate string byte length in UTF-8 encoding
