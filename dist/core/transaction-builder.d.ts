@@ -114,6 +114,78 @@ export declare class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     transferAgent(asset: PublicKey, collection: PublicKey, toOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Sync agent owner from Core asset after external transfer - v0.3.0
+     * Use this when an agent NFT was transferred outside the protocol (e.g., on a marketplace)
+     * @param asset - Agent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    syncOwner(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Create a user-owned collection - v0.3.0
+     * Allows users to create their own 8004 asset collections for horizontal scaling
+     * @param collectionName - Collection name (max 32 bytes)
+     * @param collectionUri - Collection URI (max 200 bytes)
+     * @param options - Write options with optional collectionPubkey for skipSend mode
+     */
+    createCollection(collectionName: string, collectionUri: string, options?: WriteOptions & {
+        collectionPubkey?: PublicKey;
+    }): Promise<(TransactionResult & {
+        collection?: PublicKey;
+    }) | (PreparedTransaction & {
+        collection: PublicKey;
+    })>;
+    /**
+     * Set agent operational wallet with Ed25519 signature verification - v0.3.0
+     * The new wallet must sign the message to prove ownership
+     * Message format: "8004_WALLET_SET:" || asset || new_wallet || owner || deadline
+     * @param asset - Agent Core asset
+     * @param newWallet - New operational wallet public key
+     * @param signature - Ed25519 signature from the new wallet
+     * @param deadline - Unix timestamp deadline (max 5 minutes from now)
+     * @param options - Write options (skipSend, signer)
+     */
+    setAgentWallet(asset: PublicKey, newWallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Build the message to sign for setAgentWallet - v0.3.0
+     * Use this to construct the message that must be signed by the new wallet
+     * @param asset - Agent Core asset
+     * @param newWallet - New operational wallet public key
+     * @param owner - Current agent owner
+     * @param deadline - Unix timestamp deadline
+     * @returns Buffer containing the message to sign
+     */
+    static buildWalletSetMessage(asset: PublicKey, newWallet: PublicKey, owner: PublicKey, deadline: bigint): Buffer;
+    /**
+     * Update collection metadata (name/URI) - v0.3.0
+     * Only the collection owner can update
+     * @param collection - Collection pubkey
+     * @param newName - New collection name (null to keep current)
+     * @param newUri - New collection URI (null to keep current)
+     * @param options - Write options (skipSend, signer)
+     */
+    updateCollectionMetadata(collection: PublicKey, newName: string | null, newUri: string | null, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Create a new base collection - v0.3.0 (Admin only)
+     * Creates a new protocol-managed collection for horizontal scaling
+     * Only the program authority can call this
+     * @param options - Write options with optional collectionPubkey for skipSend mode
+     */
+    createBaseCollection(options?: WriteOptions & {
+        collectionPubkey?: PublicKey;
+    }): Promise<(TransactionResult & {
+        collection?: PublicKey;
+    }) | (PreparedTransaction & {
+        collection: PublicKey;
+    })>;
+    /**
+     * Rotate to a new base collection - v0.3.0 (Admin only)
+     * Sets a different collection as the active base collection for new registrations
+     * Only the program authority can call this
+     * @param newCollection - The collection to set as active base
+     * @param options - Write options (skipSend, signer)
+     */
+    rotateBaseCollection(newCollection: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     private sendWithRetry;
 }
 /**
