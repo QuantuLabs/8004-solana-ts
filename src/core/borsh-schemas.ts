@@ -93,31 +93,7 @@ export class AgentAccount {
   ]);
 
   /**
-   * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
-   * V1 Schema (pre-v0.2.1) - Dynamic fields before static
-   */
-  static schemaLegacyV1: Schema = new Map<any, any>([
-    [
-      AgentAccount,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['owner', [32]],
-          ['agent_mint', [32]],
-          ['agent_uri', 'string'],
-          ['nft_name', 'string'],
-          ['nft_symbol', 'string'],
-          ['created_at', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  /**
-   * Deserialize with backward compatibility
-   * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+   * Deserialize AgentAccount from buffer
    */
   static deserialize(data: Buffer): AgentAccount {
     // Security: Validate minimum buffer size
@@ -128,29 +104,7 @@ export class AgentAccount {
 
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    try {
-      // Try V2 (new layout) first
-      return deserializeUnchecked(this.schema, AgentAccount, accountData);
-    } catch (v2Error) {
-      // LEGACY_DEVNET: Log fallback for monitoring
-      // Note: Falling back to V1 schema for legacy devnet accounts
-      try {
-        const raw = deserializeUnchecked(this.schemaLegacyV1, AgentAccount, accountData) as any;
-        // Reorder fields to match V2 constructor
-        return new AgentAccount({
-          agent_id: raw.agent_id,
-          owner: raw.owner,
-          agent_mint: raw.agent_mint,
-          created_at: raw.created_at,
-          bump: raw.bump,
-          agent_uri: raw.agent_uri,
-          nft_name: raw.nft_name,
-          nft_symbol: raw.nft_symbol,
-        });
-      } catch (v1Error) {
-        throw new Error(`Failed to deserialize AgentAccount: V2 error: ${v2Error}, V1 error: ${v1Error}`);
-      }
-    }
+    return deserializeUnchecked(this.schema, AgentAccount, accountData);
   }
 
   getOwnerPublicKey(): PublicKey {
@@ -223,29 +177,7 @@ export class MetadataEntryPda {
   ]);
 
   /**
-   * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
-   * V1 Schema (pre-v0.2.1) - Dynamic fields before static
-   */
-  static schemaLegacyV1: Schema = new Map<any, any>([
-    [
-      MetadataEntryPda,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['metadata_key', 'string'],
-          ['metadata_value', ['u8']],
-          ['immutable', 'u8'],
-          ['created_at', 'u64'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  /**
-   * Deserialize with backward compatibility
-   * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+   * Deserialize MetadataEntryPda from buffer
    */
   static deserialize(data: Buffer): MetadataEntryPda {
     // Security: Validate minimum buffer size
@@ -256,34 +188,15 @@ export class MetadataEntryPda {
 
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    try {
-      // Try V2 (new layout) first
-      const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData) as any;
-      return new MetadataEntryPda({
-        agent_id: raw.agent_id,
-        created_at: raw.created_at,
-        immutable: raw.immutable === 1,
-        bump: raw.bump,
-        metadata_key: raw.metadata_key,
-        metadata_value: raw.metadata_value,
-      });
-    } catch (v2Error) {
-      // LEGACY_DEVNET: Log fallback for monitoring
-      // Note: Falling back to V1 schema for legacy devnet accounts
-      try {
-        const raw = deserializeUnchecked(this.schemaLegacyV1, MetadataEntryPda, accountData) as any;
-        return new MetadataEntryPda({
-          agent_id: raw.agent_id,
-          created_at: raw.created_at,
-          immutable: raw.immutable === 1,
-          bump: raw.bump,
-          metadata_key: raw.metadata_key,
-          metadata_value: raw.metadata_value,
-        });
-      } catch (v1Error) {
-        throw new Error(`Failed to deserialize MetadataEntryPda: V2 error: ${v2Error}, V1 error: ${v1Error}`);
-      }
-    }
+    const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData) as any;
+    return new MetadataEntryPda({
+      agent_id: raw.agent_id,
+      created_at: raw.created_at,
+      immutable: raw.immutable === 1,
+      bump: raw.bump,
+      metadata_key: raw.metadata_key,
+      metadata_value: raw.metadata_value,
+    });
   }
 
   getValueString(): string {
@@ -591,28 +504,7 @@ export class FeedbackTagsPda {
   ]);
 
   /**
-   * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
-   * V1 Schema (pre-v0.2.1) - Dynamic fields before static
-   */
-  static schemaLegacyV1: Schema = new Map<any, any>([
-    [
-      FeedbackTagsPda,
-      {
-        kind: 'struct',
-        fields: [
-          ['agent_id', 'u64'],
-          ['feedback_index', 'u64'],
-          ['tag1', 'string'],
-          ['tag2', 'string'],
-          ['bump', 'u8'],
-        ],
-      },
-    ],
-  ]);
-
-  /**
-   * Deserialize with backward compatibility
-   * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+   * Deserialize FeedbackTagsPda from buffer
    */
   static deserialize(data: Buffer): FeedbackTagsPda {
     // Security: Validate minimum buffer size
@@ -623,25 +515,7 @@ export class FeedbackTagsPda {
 
     // Skip 8-byte Anchor discriminator
     const accountData = data.slice(8);
-    try {
-      // Try V2 (new layout) first
-      return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
-    } catch (v2Error) {
-      // LEGACY_DEVNET: Log fallback for monitoring
-      // Note: Falling back to V1 schema for legacy devnet accounts
-      try {
-        const raw = deserializeUnchecked(this.schemaLegacyV1, FeedbackTagsPda, accountData) as any;
-        return new FeedbackTagsPda({
-          agent_id: raw.agent_id,
-          feedback_index: raw.feedback_index,
-          bump: raw.bump,
-          tag1: raw.tag1,
-          tag2: raw.tag2,
-        });
-      } catch (v1Error) {
-        throw new Error(`Failed to deserialize FeedbackTagsPda: V2 error: ${v2Error}, V1 error: ${v1Error}`);
-      }
-    }
+    return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
   }
 }
 

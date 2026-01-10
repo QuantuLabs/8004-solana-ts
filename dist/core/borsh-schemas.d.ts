@@ -49,13 +49,7 @@ export declare class AgentAccount {
      */
     static schema: Schema;
     /**
-     * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
-     * V1 Schema (pre-v0.2.1) - Dynamic fields before static
-     */
-    static schemaLegacyV1: Schema;
-    /**
-     * Deserialize with backward compatibility
-     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     * Deserialize AgentAccount from buffer
      */
     static deserialize(data: Buffer): AgentAccount;
     getOwnerPublicKey(): PublicKey;
@@ -88,13 +82,7 @@ export declare class MetadataEntryPda {
      */
     static schema: Schema;
     /**
-     * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
-     * V1 Schema (pre-v0.2.1) - Dynamic fields before static
-     */
-    static schemaLegacyV1: Schema;
-    /**
-     * Deserialize with backward compatibility
-     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     * Deserialize MetadataEntryPda from buffer
      */
     static deserialize(data: Buffer): MetadataEntryPda;
     getValueString(): string;
@@ -205,13 +193,7 @@ export declare class FeedbackTagsPda {
      */
     static schema: Schema;
     /**
-     * @deprecated LEGACY_DEVNET - Remove when migrating to mainnet
-     * V1 Schema (pre-v0.2.1) - Dynamic fields before static
-     */
-    static schemaLegacyV1: Schema;
-    /**
-     * Deserialize with backward compatibility
-     * @deprecated LEGACY_DEVNET - Simplify to single schema for mainnet
+     * Deserialize FeedbackTagsPda from buffer
      */
     static deserialize(data: Buffer): FeedbackTagsPda;
 }
