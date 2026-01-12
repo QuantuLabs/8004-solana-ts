@@ -1179,10 +1179,26 @@ export class SolanaSDK {
 
   /**
    * Register a new agent (write operation) - v0.3.0
-   * @param tokenUri - Token URI pointing to agent metadata JSON
+   *
+   * @param tokenUri - Token URI pointing to agent metadata JSON (IPFS, Arweave, or HTTP)
    * @param collection - Optional collection pubkey (defaults to base registry, only creator can register)
-   * @param options - Write options (skipSend, signer, assetPubkey)
+   * @param options - Optional settings for server mode:
+   *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
+   *   - `signer`: PublicKey of the signer (required with skipSend)
+   *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
    * @returns Transaction result with asset, or PreparedTransaction if skipSend
+   *
+   * @example
+   * // Simple usage
+   * const result = await sdk.registerAgent('ipfs://QmMetadata...');
+   *
+   * @example
+   * // Server mode (backend builds, frontend signs)
+   * const prepared = await sdk.registerAgent('ipfs://QmMetadata...', undefined, {
+   *   skipSend: true,
+   *   signer: userWalletPubkey,
+   *   assetPubkey: clientGeneratedAssetPubkey,
+   * });
    */
   async registerAgent(
     tokenUri?: string,
