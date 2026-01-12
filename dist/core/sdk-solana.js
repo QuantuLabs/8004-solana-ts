@@ -959,12 +959,8 @@ export class SolanaSDK {
      * const result = await sdk.registerAgent('ipfs://QmMetadata...');
      *
      * @example
-     * // Server mode (backend builds, frontend signs)
-     * const prepared = await sdk.registerAgent('ipfs://QmMetadata...', undefined, {
-     *   skipSend: true,
-     *   signer: userWalletPubkey,
-     *   assetPubkey: clientGeneratedAssetPubkey,
-     * });
+     * // With collection
+     * const result = await sdk.registerAgent('ipfs://QmMetadata...', myCollection);
      */
     async registerAgent(tokenUri, collection, options) {
         // For non-skipSend operations, require signer
