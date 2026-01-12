@@ -4,7 +4,8 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 interface SkillsData {
   skills: Record<string, unknown>;
@@ -13,6 +14,10 @@ interface SkillsData {
 interface DomainsData {
   domains: Record<string, unknown>;
 }
+
+// Get __dirname equivalent for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Try multiple paths to find the JSON files (works in both src and dist)
 function findTaxonomyFile(filename: string): string {
