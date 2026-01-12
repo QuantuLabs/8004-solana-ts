@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://8004.dev/schemas/collection-metadata.json",
+  "title": "8004 Collection Metadata",
+  "description": "JSON schema for AI agent collection metadata URI",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Collection display name",
+      "maxLength": 32
+    },
+    "description": {
+      "type": "string",
+      "description": "Collection description"
+    },
+    "image": {
+      "type": "string",
+      "format": "uri",
+      "description": "Collection logo/image URL (IPFS, Arweave, or HTTPS)"
+    },
+    "external_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Website or documentation URL"
+    },
+    "project": {
+      "type": "object",
+      "description": "Project info for this collection",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Project name"
+        },
+        "socials": {
+          "type": "object",
+          "description": "Social links",
+          "properties": {
+            "website": {
+              "type": "string",
+              "format": "uri"
+            },
+            "x": {
+              "type": "string",
+              "description": "X/Twitter handle (without @)"
+            },
+            "discord": {
+              "type": "string",
+              "description": "Discord invite link or server ID"
+            },
+            "telegram": {
+              "type": "string",
+              "description": "Telegram group/channel"
+            },
+            "github": {
+              "type": "string",
+              "description": "GitHub organization/user"
+            }
+          }
+        }
+      }
+    },
+    "category": {
+      "type": "string",
+      "description": "Primary category of agents in this collection",
+      "enum": [
+        "assistant",
+        "coding",
+        "data-analysis",
+        "creative",
+        "research",
+        "automation",
+        "finance",
+        "healthcare",
+        "education",
+        "gaming",
+        "other"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Searchable tags for discovery",
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      },
+      "maxItems": 10
+    },
+    "attributes": {
+      "type": "array",
+      "description": "Custom attributes (NFT-style)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "trait_type": { "type": "string" },
+          "value": { "type": ["string", "number", "boolean"] }
+        },
+        "required": ["trait_type", "value"]
+      }
+    }
+  }
+}

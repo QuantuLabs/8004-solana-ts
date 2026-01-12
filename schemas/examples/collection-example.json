@@ -1,0 +1,21 @@
+{
+  "name": "Acme AI Agents",
+  "description": "Production-ready AI agents by Acme Corp for enterprise automation",
+  "image": "ipfs://QmXxx.../logo.png",
+  "external_url": "https://acme.ai/agents",
+  "project": {
+    "name": "Acme Corporation",
+    "socials": {
+      "website": "https://acme.ai",
+      "x": "acme_ai",
+      "discord": "acme-ai",
+      "github": "acme-ai"
+    }
+  },
+  "category": "automation",
+  "tags": ["enterprise", "automation", "productivity", "api"],
+  "attributes": [
+    { "trait_type": "Verified", "value": true },
+    { "trait_type": "Launch Year", "value": 2024 }
+  ]
+}
