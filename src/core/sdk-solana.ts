@@ -30,7 +30,8 @@ import {
   PreparedTransaction,
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
-import { getCurrentBaseCollection } from './config-reader.js';
+import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.js';
+import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
 // ATOM Engine imports (v0.4.0)
 import { AtomStats, TrustTier, ATOM_STATS_SCHEMA } from './atom-schemas.js';
@@ -49,6 +50,13 @@ import {
 import { IndexerError } from './indexer-errors.js';
 import type { AgentSearchParams, FeedbackSearchParams } from './indexer-types.js';
 import { indexedFeedbackToSolanaFeedback, indexedReputationToSummary } from './indexer-types.js';
+// Indexer defaults (v0.4.1)
+import {
+  DEFAULT_INDEXER_URL,
+  DEFAULT_INDEXER_API_KEY,
+  DEFAULT_FORCE_ON_CHAIN,
+  SMALL_QUERY_OPERATIONS,
+} from './indexer-defaults.js';
 
 export interface SolanaSDKConfig {
   cluster?: Cluster;
@@ -57,15 +65,20 @@ export interface SolanaSDKConfig {
   signer?: Keypair;
   // Storage configuration
   ipfsClient?: IPFSClient;
-  // Indexer configuration (v0.4.0)
-  /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
+  // Indexer configuration (v0.4.0) - all optional with sensible defaults
+  /** Supabase REST API URL (default: hardcoded, override via INDEXER_URL env) */
   indexerUrl?: string;
-  /** Supabase anon key for authentication */
+  /** Supabase anon key (default: hardcoded, override via INDEXER_API_KEY env) */
   indexerApiKey?: string;
-  /** Use indexer for read operations (default: true if indexerUrl provided) */
+  /** Use indexer for read operations (default: true) */
   useIndexer?: boolean;
   /** Fallback to on-chain if indexer unavailable (default: true) */
   indexerFallback?: boolean;
+  /**
+   * Force all queries on-chain, bypass indexer (default: false, or FORCE_ON_CHAIN=true env)
+   * When true, indexer-only methods (getLeaderboard, etc.) will throw
+   */
+  forceOnChain?: boolean;
 }
 
 /**
@@ -111,6 +124,17 @@ export interface EnrichedSummary {
 }
 
 /**
+ * Collection information returned by getCollection()
+ * Represents on-chain RegistryConfig data in a user-friendly format
+ */
+export interface CollectionInfo {
+  collection: PublicKey;
+  registryType: 'BASE' | 'USER';
+  authority: PublicKey;
+  baseIndex: number;
+}
+
+/**
  * Main SDK class for Solana ERC-8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
  * Provides read and write access to agent registries on Solana
@@ -128,9 +152,10 @@ export class SolanaSDK {
   private mintResolver?: AgentMintResolver;
   private baseCollection?: PublicKey;
   // Indexer (v0.4.0)
-  private readonly indexerClient?: IndexerClient;
+  private readonly indexerClient: IndexerClient;
   private readonly useIndexer: boolean;
   private readonly indexerFallback: boolean;
+  private readonly forceOnChain: boolean;
 
   constructor(config: SolanaSDKConfig = {}) {
     this.cluster = config.cluster || 'devnet';
@@ -155,17 +180,24 @@ export class SolanaSDK {
     this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
     this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer);
 
-    // Initialize indexer client (v0.4.0)
-    if (config.indexerUrl && config.indexerApiKey) {
-      this.indexerClient = new IndexerClient({
-        baseUrl: config.indexerUrl,
-        apiKey: config.indexerApiKey,
-      });
-      this.useIndexer = config.useIndexer ?? true;
-    } else {
-      this.useIndexer = false;
-    }
+    // Initialize indexer client (v0.4.1) - always created with defaults
+    const indexerUrl = config.indexerUrl ?? DEFAULT_INDEXER_URL;
+    const indexerApiKey = config.indexerApiKey ?? DEFAULT_INDEXER_API_KEY;
+    this.indexerClient = new IndexerClient({
+      baseUrl: indexerUrl,
+      apiKey: indexerApiKey,
+    });
+    this.useIndexer = config.useIndexer ?? true;
     this.indexerFallback = config.indexerFallback ?? true;
+    // Force on-chain mode (bypass indexer)
+    this.forceOnChain = config.forceOnChain ?? DEFAULT_FORCE_ON_CHAIN;
+  }
+
+  /**
+   * Check if operation is a "small query" that prefers RPC in 'auto' mode
+   */
+  private isSmallQuery(operation: string): boolean {
+    return (SMALL_QUERY_OPERATIONS as readonly string[]).includes(operation);
   }
 
   /**
@@ -491,6 +523,166 @@ export class SolanaSDK {
     };
   }
 
+  // ==================== Collection Methods (v0.4.0) ====================
+
+  /**
+   * Get collection details by collection pubkey - v0.4.0
+   * @param collection - Collection (Metaplex Core collection) public key
+   * @returns Collection info or null if not registered
+   */
+  async getCollection(collection: PublicKey): Promise<CollectionInfo | null> {
+    try {
+      const connection = this.client.getConnection();
+      const registryConfig = await fetchRegistryConfig(connection, collection);
+
+      if (!registryConfig) {
+        return null;
+      }
+
+      return {
+        collection: registryConfig.getCollectionPublicKey(),
+        registryType: registryConfig.isBaseRegistry() ? 'BASE' : 'USER',
+        authority: registryConfig.getAuthorityPublicKey(),
+        baseIndex: registryConfig.base_index,
+      };
+    } catch (error) {
+      logger.error('Error getting collection', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get all registered collections - v0.4.0
+   * Note: This always uses on-chain queries because indexer doesn't have
+   * registryType/authority/baseIndex. Use getCollectionStats() for indexed stats.
+   * @returns Array of all collection infos
+   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+   */
+  async getCollections(): Promise<CollectionInfo[]> {
+    this.client.requireAdvancedQueries('getCollections');
+
+    try {
+      const programId = this.programIds.identityRegistry;
+
+      // Fetch all RegistryConfig accounts
+      const registryAccounts = await this.client.getProgramAccounts(programId, [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.RegistryConfig),
+          },
+        },
+      ]);
+
+      return registryAccounts.map((acc) => {
+        const config = RegistryConfig.deserialize(acc.data);
+        return {
+          collection: config.getCollectionPublicKey(),
+          registryType: config.isBaseRegistry() ? 'BASE' : 'USER',
+          authority: config.getAuthorityPublicKey(),
+          baseIndex: config.base_index,
+        };
+      });
+    } catch (error) {
+      logger.error('Error getting collections', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all agents in a collection (on-chain) - v0.4.0
+   * Returns full AgentAccount data with metadata extensions.
+   *
+   * For faster queries, use `getLeaderboard({ collection: 'xxx' })` which uses the indexer.
+   *
+   * @param collection - Collection public key
+   * @param options - Optional settings for additional data fetching
+   * @returns Array of agents with metadata (and optionally feedbacks)
+   * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+   */
+  async getCollectionAgents(
+    collection: PublicKey,
+    options?: GetAllAgentsOptions
+  ): Promise<AgentWithMetadata[]> {
+    // Skip on-chain if indexer preferred and user doesn't need full account data
+    // Note: For indexed queries, use getLeaderboard({ collection }) instead
+    this.client.requireAdvancedQueries('getCollectionAgents');
+
+    try {
+      const programId = this.programIds.identityRegistry;
+
+      // 1. Fetch agent accounts filtered by collection (1 RPC call)
+      // AgentAccount layout: discriminator (8) + collection (32)
+      // Collection is at offset 8
+      const agentAccounts = await this.client.getProgramAccounts(programId, [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount),
+          },
+        },
+        {
+          memcmp: {
+            offset: 8, // collection is right after discriminator
+            bytes: collection.toBase58(),
+          },
+        },
+      ]);
+
+      const agents = agentAccounts.map((acc) => AgentAccount.deserialize(acc.data));
+
+      // 2. Fetch ALL metadata entries (1 RPC call)
+      const metadataAccounts = await this.client.getProgramAccounts(programId, [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.MetadataEntryPda),
+          },
+        },
+      ]);
+
+      // Map metadata to agents (by asset)
+      const metadataMap = new Map<string, Array<{ key: string; value: string }>>();
+      for (const acc of metadataAccounts) {
+        try {
+          const entry = MetadataEntryPda.deserialize(acc.data);
+          const assetKey = entry.getAssetPublicKey().toBase58();
+          if (!metadataMap.has(assetKey)) {
+            metadataMap.set(assetKey, []);
+          }
+          metadataMap.get(assetKey)!.push({
+            key: entry.key,
+            value: entry.value,
+          });
+        } catch {
+          // Skip invalid metadata entries
+        }
+      }
+
+      // Build result
+      const result: AgentWithMetadata[] = agents.map((agent) => ({
+        account: agent,
+        metadata: metadataMap.get(agent.getAssetPublicKey().toBase58()) || [],
+        feedbacks: [],
+      }));
+
+      // 3. Optionally fetch feedbacks
+      if (options?.includeFeedbacks) {
+        // getAllFeedbacks returns Map<assetKey, SolanaFeedback[]>
+        const feedbackMap = await this.getAllFeedbacks(options.includeRevoked);
+
+        for (const agent of result) {
+          agent.feedbacks = feedbackMap.get(agent.account.getAssetPublicKey().toBase58()) || [];
+        }
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Error getting collection agents', error);
+      return [];
+    }
+  }
+
   // ==================== Reputation Methods (v0.3.0 - asset-based) ====================
 
   /**
@@ -690,13 +882,14 @@ export class SolanaSDK {
 
   /**
    * Helper: Execute with indexer fallback to on-chain
+   * Used internally when forceRpc='false' (force indexer mode)
    */
   private async withIndexerFallback<T>(
     indexerFn: () => Promise<T>,
     onChainFn: () => Promise<T>,
     operationName: string
   ): Promise<T> {
-    if (!this.useIndexer || !this.indexerClient) {
+    if (!this.useIndexer) {
       return onChainFn();
     }
 
@@ -713,20 +906,65 @@ export class SolanaSDK {
   }
 
   /**
+   * Smart routing helper: Chooses between indexer and RPC
+   * - forceOnChain=true: All on-chain
+   * - forceOnChain=false: Smart routing (RPC for small queries, indexer for large)
+   */
+  private async withSmartRouting<T>(
+    operation: string,
+    indexerFn: () => Promise<T>,
+    onChainFn: () => Promise<T>
+  ): Promise<T> {
+    // Force on-chain mode
+    if (this.forceOnChain) {
+      logger.debug(`[${operation}] Forcing on-chain (forceOnChain=true)`);
+      return onChainFn();
+    }
+
+    // Smart routing: RPC for small queries, indexer for large
+    if (this.isSmallQuery(operation)) {
+      logger.debug(`[${operation}] Small query → RPC`);
+      try {
+        return await onChainFn();
+      } catch (error) {
+        // Fallback to indexer if RPC fails and indexer is enabled
+        if (this.useIndexer) {
+          logger.debug(`[${operation}] RPC failed, falling back to indexer`);
+          return indexerFn();
+        }
+        throw error;
+      }
+    }
+
+    // Large query → indexer with fallback
+    logger.debug(`[${operation}] Large query → indexer`);
+    return this.withIndexerFallback(indexerFn, onChainFn, operation);
+  }
+
+  /**
    * Check if indexer is available
    */
   async isIndexerAvailable(): Promise<boolean> {
-    if (!this.indexerClient) {
-      return false;
-    }
     return this.indexerClient.isAvailable();
   }
 
   /**
    * Get the indexer client for direct access
    */
-  getIndexerClient(): IndexerClient | undefined {
+  getIndexerClient(): IndexerClient {
     return this.indexerClient;
+  }
+
+  /**
+   * Helper: Throws if forceOnChain=true for indexer-only methods
+   */
+  private requireIndexer(methodName: string): void {
+    if (this.forceOnChain) {
+      throw new Error(
+        `${methodName} requires indexer (no on-chain equivalent). ` +
+        `Set forceOnChain=false or remove FORCE_ON_CHAIN env var.`
+      );
+    }
   }
 
   /**
@@ -735,9 +973,7 @@ export class SolanaSDK {
    * @returns Array of indexed agents
    */
   async searchAgents(params: AgentSearchParams): Promise<IndexedAgent[]> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
+    this.requireIndexer('searchAgents');
 
     // Build query based on params
     if (params.owner) {
@@ -774,10 +1010,7 @@ export class SolanaSDK {
     limit?: number;
     cursorSortKey?: string;
   }): Promise<IndexedAgent[]> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getLeaderboard');
     return this.indexerClient.getLeaderboard(options);
   }
 
@@ -786,10 +1019,7 @@ export class SolanaSDK {
    * @returns Global stats (total agents, feedbacks, etc.)
    */
   async getGlobalStats(): Promise<GlobalStats> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getGlobalStats');
     return this.indexerClient.getGlobalStats();
   }
 
@@ -799,10 +1029,7 @@ export class SolanaSDK {
    * @returns Collection stats or null if not found
    */
   async getCollectionStats(collection: string): Promise<CollectionStats | null> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getCollectionStats');
     return this.indexerClient.getCollectionStats(collection);
   }
 
@@ -812,10 +1039,7 @@ export class SolanaSDK {
    * @returns Array of feedbacks for this endpoint
    */
   async getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getFeedbacksByEndpoint');
     return this.indexerClient.getFeedbacksByEndpoint(endpoint);
   }
 
@@ -825,10 +1049,7 @@ export class SolanaSDK {
    * @returns Array of feedbacks with this tag
    */
   async getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getFeedbacksByTag');
     return this.indexerClient.getFeedbacksByTag(tag);
   }
 
@@ -838,10 +1059,7 @@ export class SolanaSDK {
    * @returns Indexed agent or null
    */
   async getAgentByWallet(wallet: string): Promise<IndexedAgent | null> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getAgentByWallet');
     return this.indexerClient.getAgentByWallet(wallet);
   }
 
@@ -851,10 +1069,7 @@ export class SolanaSDK {
    * @returns Array of pending validation requests
    */
   async getPendingValidations(validator: string): Promise<IndexedValidation[]> {
-    if (!this.indexerClient) {
-      throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-    }
-
+    this.requireIndexer('getPendingValidations');
     return this.indexerClient.getPendingValidations(validator);
   }
 
@@ -930,6 +1145,38 @@ export class SolanaSDK {
    */
   get canWrite(): boolean {
     return this.signer !== undefined;
+  }
+
+  /**
+   * Create a new user collection (write operation) - v0.4.1
+   * Users can create their own collections to organize agents.
+   * Agents registered to user collections still use the same reputation system.
+   *
+   * @param name - Collection name (max 32 bytes)
+   * @param uri - Collection metadata URI (max 200 bytes)
+   * @param options - Write options (skipSend, signer, collectionPubkey)
+   * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
+   *
+   * @example
+   * ```typescript
+   * // Create a new collection
+   * const result = await sdk.createCollection('MyAgents', 'ipfs://Qm...');
+   * console.log('Collection:', result.collection?.toBase58());
+   *
+   * // Register agent in user collection
+   * await sdk.registerAgent('ipfs://agent-uri', [], result.collection);
+   * ```
+   */
+  async createCollection(
+    name: string,
+    uri: string,
+    options?: WriteOptions & { collectionPubkey?: PublicKey }
+  ) {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+
+    return await this.identityTxBuilder.createCollection(name, uri, options);
   }
 
   /**
