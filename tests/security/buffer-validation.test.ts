@@ -13,36 +13,36 @@ import {
 } from '../../src/core/borsh-schemas.js';
 
 describe('Buffer Bounds Validation', () => {
-  describe('AgentAccount.deserialize - v0.3.0', () => {
+  describe('AgentAccount.deserialize - v0.4.0', () => {
     it('should reject buffers smaller than minimum size', () => {
-      // v0.3.0 Minimum: discriminator(8) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 74 bytes
+      // v0.4.0 Minimum: discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 106 bytes
       const tooSmall = Buffer.alloc(50);
       expect(() => AgentAccount.deserialize(tooSmall)).toThrow(
-        /Invalid AgentAccount data: expected >= 74 bytes, got 50/
+        /Invalid AgentAccount data: expected >= 106 bytes, got 50/
       );
     });
 
     it('should reject empty buffer', () => {
       const empty = Buffer.alloc(0);
       expect(() => AgentAccount.deserialize(empty)).toThrow(
-        /Invalid AgentAccount data: expected >= 74 bytes, got 0/
+        /Invalid AgentAccount data: expected >= 106 bytes, got 0/
       );
     });
 
-    it('should reject buffer at boundary (73 bytes)', () => {
-      const boundary = Buffer.alloc(73);
+    it('should reject buffer at boundary (105 bytes)', () => {
+      const boundary = Buffer.alloc(105);
       expect(() => AgentAccount.deserialize(boundary)).toThrow(
-        /Invalid AgentAccount data: expected >= 74 bytes, got 73/
+        /Invalid AgentAccount data: expected >= 106 bytes, got 105/
       );
     });
 
-    it('should accept buffer at minimum size (74 bytes)', () => {
+    it('should accept buffer at minimum size (106 bytes)', () => {
       // Note: This may still fail deserialization due to invalid data,
       // but it should pass the size check
-      const minimal = Buffer.alloc(74);
+      const minimal = Buffer.alloc(106);
       // The deserialization may fail due to schema mismatch, but not due to size check
       expect(() => AgentAccount.deserialize(minimal)).not.toThrow(
-        /Invalid AgentAccount data: expected >= 74 bytes/
+        /Invalid AgentAccount data: expected >= 106 bytes/
       );
     });
   });
