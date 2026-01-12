@@ -183,8 +183,15 @@ const metadataUri = `ipfs://${metadataCid}`;
 
 ```typescript
 const sdk = new SolanaSDK({ signer });
+
+// Register in default collection
 const result = await sdk.registerAgent(metadataUri);
-console.log(`Agent #${result.agentId} registered!`);
+console.log(`Agent registered! Asset: ${result.asset.toBase58()}`);
+
+// Or register in your own collection
+// Note: Only the collection creator can register agents in their collection
+const myCollection = new PublicKey('YourCollectionPublicKey...');
+const result2 = await sdk.registerAgent(metadataUri, [], myCollection);
 ```
 
 **Alternative: Use Web URLs**
@@ -206,8 +213,11 @@ await sdk.registerAgent('https://my-server.com/agent-metadata.json');
 ### 4. Load Agent Data
 
 ```typescript
-// Fetch agent by ID
-const agent = await sdk.loadAgent(agentId);
+import { PublicKey } from '@solana/web3.js';
+
+// Fetch agent by asset (PublicKey)
+const agentAsset = new PublicKey('AgentAssetPublicKey...');
+const agent = await sdk.loadAgent(agentAsset);
 
 if (agent) {
   console.log(`Name: ${agent.nft_name}`);
@@ -217,13 +227,11 @@ if (agent) {
 }
 
 // Or fetch all agents owned by a wallet (requires custom RPC)
-import { PublicKey } from '@solana/web3.js';
-
 const ownerWallet = new PublicKey('YourWalletAddress...');
 const myAgents = await sdk.getAgentsByOwner(ownerWallet);
 
 for (const agent of myAgents) {
-  console.log(`Agent #${agent.agent_id}: ${agent.nft_name}`);
+  console.log(`Agent: ${agent.nft_name} (${agent.getAssetPublicKey().toBase58().slice(0,8)}...)`);
 }
 ```
 
@@ -232,12 +240,12 @@ for (const agent of myAgents) {
 ```typescript
 // Submit feedback for an agent (as a client/user)
 // Score is 0-100, tags are optional keywords
-await sdk.giveFeedback(agentId, {
-  score: 85,                              // Rating out of 100
-  tag1: 'helpful',                        // Optional: first tag
-  tag2: 'accurate',                       // Optional: second tag
-  fileUri: 'ipfs://QmFeedbackDetails',    // Optional: detailed feedback file
-  fileHash: Buffer.alloc(32),             // Optional: SHA256 hash of file
+await sdk.giveFeedback(agentAsset, {
+  score: 85,                                // Rating out of 100
+  tag1: 'helpful',                          // Optional: first tag
+  tag2: 'accurate',                         // Optional: second tag
+  feedbackUri: 'ipfs://QmFeedbackDetails',  // Optional: detailed feedback file
+  feedbackHash: Buffer.alloc(32),           // Optional: SHA256 hash of file
 });
 ```
 
@@ -245,13 +253,13 @@ await sdk.giveFeedback(agentId, {
 
 ```typescript
 // Get aggregated reputation stats
-const summary = await sdk.getSummary(agentId);
+const summary = await sdk.getSummary(agentAsset);
 console.log(`Average Score: ${summary.averageScore}/100`);
 console.log(`Total Feedbacks: ${summary.totalFeedbacks}`);
 console.log(`Next Index: ${summary.nextFeedbackIndex}`);
 
 // Read all individual feedbacks (requires custom RPC)
-const feedbacks = await sdk.readAllFeedback(agentId);
+const feedbacks = await sdk.readAllFeedback(agentAsset);
 for (const fb of feedbacks) {
   console.log(`Score: ${fb.score}, Client: ${fb.client.toBase58()}`);
 }
@@ -263,12 +271,12 @@ for (const fb of feedbacks) {
 // Get ALL agents with their feedbacks in just 4 RPC calls
 const agents = await sdk.getAllAgents({ includeFeedbacks: true });
 for (const { account, feedbacks } of agents) {
-  console.log(`Agent #${account.agent_id}: ${feedbacks?.length || 0} feedbacks`);
+  console.log(`Agent ${account.getAssetPublicKey().toBase58().slice(0,8)}...: ${feedbacks?.length || 0} feedbacks`);
 }
 
-// Or get ALL feedbacks separately as a Map
+// Or get ALL feedbacks separately as a Map (keyed by asset string)
 const feedbacksMap = await sdk.getAllFeedbacks();
-const agent83Feedbacks = feedbacksMap.get(83n) || [];
+const agentFeedbacks = feedbacksMap.get(agentAsset.toBase58()) || [];
 ```
 
 > **Note**: For advanced queries like `getAllAgents()`, `getAllFeedbacks()`, or `readAllFeedback()`, a custom RPC provider is required.
@@ -283,7 +291,7 @@ const agent83Feedbacks = feedbacksMap.get(83n) || [];
 - **[OASF Taxonomies](docs/OASF.md)** - Skills and domains reference
 - **[Changelog](docs/CHANGELOG.md)** - Version history and breaking changes
 
-**Program ID:** `HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp`
+**Program ID (Devnet):** `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT`
 
 ---
 
@@ -385,7 +393,7 @@ See the `examples/` directory for complete usage examples:
 | [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
 | [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
 | [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
-| [`basic-indexer.ts`](examples/basic-indexer.ts) | Index all agents to JSON file |
+| [`basic-indexer.ts`](examples/basic-indexer.ts) | Indexer reference → [8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer) |
 
 Run examples:
 ```bash
