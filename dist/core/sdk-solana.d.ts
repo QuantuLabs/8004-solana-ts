@@ -22,14 +22,19 @@ export interface SolanaSDKConfig {
     rpcUrl?: string;
     signer?: Keypair;
     ipfsClient?: IPFSClient;
-    /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
+    /** Supabase REST API URL (default: hardcoded, override via INDEXER_URL env) */
     indexerUrl?: string;
-    /** Supabase anon key for authentication */
+    /** Supabase anon key (default: hardcoded, override via INDEXER_API_KEY env) */
     indexerApiKey?: string;
-    /** Use indexer for read operations (default: true if indexerUrl provided) */
+    /** Use indexer for read operations (default: true) */
     useIndexer?: boolean;
     /** Fallback to on-chain if indexer unavailable (default: true) */
     indexerFallback?: boolean;
+    /**
+     * Force all queries on-chain, bypass indexer (default: false, or FORCE_ON_CHAIN=true env)
+     * When true, indexer-only methods (getLeaderboard, etc.) will throw
+     */
+    forceOnChain?: boolean;
 }
 /**
  * Agent with on-chain metadata extensions
@@ -71,6 +76,16 @@ export interface EnrichedSummary {
     volatility: number;
 }
 /**
+ * Collection information returned by getCollection()
+ * Represents on-chain RegistryConfig data in a user-friendly format
+ */
+export interface CollectionInfo {
+    collection: PublicKey;
+    registryType: 'BASE' | 'USER';
+    authority: PublicKey;
+    baseIndex: number;
+}
+/**
  * Main SDK class for Solana ERC-8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
  * Provides read and write access to agent registries on Solana
@@ -87,10 +102,15 @@ export declare class SolanaSDK {
     private readonly atomTxBuilder;
     private mintResolver?;
     private baseCollection?;
-    private readonly indexerClient?;
+    private readonly indexerClient;
     private readonly useIndexer;
     private readonly indexerFallback;
+    private readonly forceOnChain;
     constructor(config?: SolanaSDKConfig);
+    /**
+     * Check if operation is a "small query" that prefers RPC in 'auto' mode
+     */
+    private isSmallQuery;
     /**
      * Initialize the agent mint resolver and base collection (lazy initialization)
      */
@@ -169,6 +189,32 @@ export declare class SolanaSDK {
         count: number;
         averageScore: number;
     }>;
+    /**
+     * Get collection details by collection pubkey - v0.4.0
+     * @param collection - Collection (Metaplex Core collection) public key
+     * @returns Collection info or null if not registered
+     */
+    getCollection(collection: PublicKey): Promise<CollectionInfo | null>;
+    /**
+     * Get all registered collections - v0.4.0
+     * Note: This always uses on-chain queries because indexer doesn't have
+     * registryType/authority/baseIndex. Use getCollectionStats() for indexed stats.
+     * @returns Array of all collection infos
+     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+     */
+    getCollections(): Promise<CollectionInfo[]>;
+    /**
+     * Get all agents in a collection (on-chain) - v0.4.0
+     * Returns full AgentAccount data with metadata extensions.
+     *
+     * For faster queries, use `getLeaderboard({ collection: 'xxx' })` which uses the indexer.
+     *
+     * @param collection - Collection public key
+     * @param options - Optional settings for additional data fetching
+     * @returns Array of agents with metadata (and optionally feedbacks)
+     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+     */
+    getCollectionAgents(collection: PublicKey, options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
     /**
      * 1. Get agent reputation summary - v0.3.0
      * @param asset - Agent Core asset pubkey
@@ -256,8 +302,15 @@ export declare class SolanaSDK {
     getEnrichedSummary(asset: PublicKey): Promise<EnrichedSummary | null>;
     /**
      * Helper: Execute with indexer fallback to on-chain
+     * Used internally when forceRpc='false' (force indexer mode)
      */
     private withIndexerFallback;
+    /**
+     * Smart routing helper: Chooses between indexer and RPC
+     * - forceOnChain=true: All on-chain
+     * - forceOnChain=false: Smart routing (RPC for small queries, indexer for large)
+     */
+    private withSmartRouting;
     /**
      * Check if indexer is available
      */
@@ -265,7 +318,11 @@ export declare class SolanaSDK {
     /**
      * Get the indexer client for direct access
      */
-    getIndexerClient(): IndexerClient | undefined;
+    getIndexerClient(): IndexerClient;
+    /**
+     * Helper: Throws if forceOnChain=true for indexer-only methods
+     */
+    private requireIndexer;
     /**
      * Search agents with filters (indexer only)
      * @param params - Search parameters
@@ -343,6 +400,33 @@ export declare class SolanaSDK {
      * Check if SDK has write permissions
      */
     get canWrite(): boolean;
+    /**
+     * Create a new user collection (write operation) - v0.4.1
+     * Users can create their own collections to organize agents.
+     * Agents registered to user collections still use the same reputation system.
+     *
+     * @param name - Collection name (max 32 bytes)
+     * @param uri - Collection metadata URI (max 200 bytes)
+     * @param options - Write options (skipSend, signer, collectionPubkey)
+     * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
+     *
+     * @example
+     * ```typescript
+     * // Create a new collection
+     * const result = await sdk.createCollection('MyAgents', 'ipfs://Qm...');
+     * console.log('Collection:', result.collection?.toBase58());
+     *
+     * // Register agent in user collection
+     * await sdk.registerAgent('ipfs://agent-uri', [], result.collection);
+     * ```
+     */
+    createCollection(name: string, uri: string, options?: WriteOptions & {
+        collectionPubkey?: PublicKey;
+    }): Promise<(TransactionResult & {
+        collection?: PublicKey;
+    }) | (PreparedTransaction & {
+        collection: PublicKey;
+    })>;
     /**
      * Register a new agent (write operation) - v0.3.0
      * @param tokenUri - Optional token URI

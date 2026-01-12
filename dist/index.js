@@ -1,7 +1,7 @@
 /**
  * 8004-solana-ts SDK
  * TypeScript SDK for ERC-8004 on Solana
- * v0.4.0 - ATOM Engine + Indexer support
+ * v0.4.0 - ATOM Engine + Indexer + User Collections
  * Main entry point - exports public API
  */
 // Export models
@@ -46,4 +46,6 @@ export { IndexerClient } from './core/indexer-client.js';
 // Indexer errors
 export { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './core/indexer-errors.js';
 export { indexedAgentToSimplified, indexedFeedbackToSolanaFeedback, indexedReputationToSummary, indexedReputationToExtendedSummary, } from './core/indexer-types.js';
+// Indexer defaults and routing (v0.4.1)
+export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
 //# sourceMappingURL=index.js.map

@@ -393,8 +393,8 @@ export class IdentityTransactionBuilder {
                 collectionKeypair = Keypair.generate();
                 collectionPubkey = collectionKeypair.publicKey;
             }
-            // Derive PDAs
-            const [collectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority'), collectionPubkey.toBuffer()], PROGRAM_ID);
+            // Derive PDAs - user_collection_authority uses only the string seed (no collection key)
+            const [collectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], PROGRAM_ID);
             const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
             const instruction = this.instructionBuilder.buildCreateUserRegistry(collectionAuthority, registryConfigPda, collectionPubkey, signerPubkey, collectionName, collectionUri);
             const transaction = new Transaction().add(instruction);
@@ -567,8 +567,8 @@ export class IdentityTransactionBuilder {
             if (newName === null && newUri === null) {
                 throw new Error('At least one of newName or newUri must be provided');
             }
-            // Derive PDAs
-            const [collectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority'), collection.toBuffer()], PROGRAM_ID);
+            // Derive PDAs - user_collection_authority uses only the string seed (no collection key)
+            const [collectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], PROGRAM_ID);
             const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collection);
             const instruction = this.instructionBuilder.buildUpdateUserRegistryMetadata(collectionAuthority, registryConfigPda, collection, signerPubkey, newName, newUri);
             const transaction = new Transaction().add(instruction);

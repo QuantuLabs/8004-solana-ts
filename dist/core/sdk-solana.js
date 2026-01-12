@@ -18,7 +18,8 @@ import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
 import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
-import { getCurrentBaseCollection } from './config-reader.js';
+import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.js';
+import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
 // ATOM Engine imports (v0.4.0)
 import { AtomStats, TrustTier } from './atom-schemas.js';
@@ -26,6 +27,8 @@ import { getAtomStatsPDA } from './atom-pda.js';
 // Indexer imports (v0.4.0)
 import { IndexerClient, } from './indexer-client.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
+// Indexer defaults (v0.4.1)
+import { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
 /**
  * Main SDK class for Solana ERC-8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
@@ -47,6 +50,7 @@ export class SolanaSDK {
     indexerClient;
     useIndexer;
     indexerFallback;
+    forceOnChain;
     constructor(config = {}) {
         this.cluster = config.cluster || 'devnet';
         this.programIds = getProgramIds();
@@ -66,18 +70,23 @@ export class SolanaSDK {
         this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer);
         this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
         this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer);
-        // Initialize indexer client (v0.4.0)
-        if (config.indexerUrl && config.indexerApiKey) {
-            this.indexerClient = new IndexerClient({
-                baseUrl: config.indexerUrl,
-                apiKey: config.indexerApiKey,
-            });
-            this.useIndexer = config.useIndexer ?? true;
-        }
-        else {
-            this.useIndexer = false;
-        }
+        // Initialize indexer client (v0.4.1) - always created with defaults
+        const indexerUrl = config.indexerUrl ?? DEFAULT_INDEXER_URL;
+        const indexerApiKey = config.indexerApiKey ?? DEFAULT_INDEXER_API_KEY;
+        this.indexerClient = new IndexerClient({
+            baseUrl: indexerUrl,
+            apiKey: indexerApiKey,
+        });
+        this.useIndexer = config.useIndexer ?? true;
         this.indexerFallback = config.indexerFallback ?? true;
+        // Force on-chain mode (bypass indexer)
+        this.forceOnChain = config.forceOnChain ?? DEFAULT_FORCE_ON_CHAIN;
+    }
+    /**
+     * Check if operation is a "small query" that prefers RPC in 'auto' mode
+     */
+    isSmallQuery(operation) {
+        return SMALL_QUERY_OPERATIONS.includes(operation);
     }
     /**
      * Initialize the agent mint resolver and base collection (lazy initialization)
@@ -374,6 +383,149 @@ export class SolanaSDK {
             averageScore: summary.averageScore,
         };
     }
+    // ==================== Collection Methods (v0.4.0) ====================
+    /**
+     * Get collection details by collection pubkey - v0.4.0
+     * @param collection - Collection (Metaplex Core collection) public key
+     * @returns Collection info or null if not registered
+     */
+    async getCollection(collection) {
+        try {
+            const connection = this.client.getConnection();
+            const registryConfig = await fetchRegistryConfig(connection, collection);
+            if (!registryConfig) {
+                return null;
+            }
+            return {
+                collection: registryConfig.getCollectionPublicKey(),
+                registryType: registryConfig.isBaseRegistry() ? 'BASE' : 'USER',
+                authority: registryConfig.getAuthorityPublicKey(),
+                baseIndex: registryConfig.base_index,
+            };
+        }
+        catch (error) {
+            logger.error('Error getting collection', error);
+            return null;
+        }
+    }
+    /**
+     * Get all registered collections - v0.4.0
+     * Note: This always uses on-chain queries because indexer doesn't have
+     * registryType/authority/baseIndex. Use getCollectionStats() for indexed stats.
+     * @returns Array of all collection infos
+     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+     */
+    async getCollections() {
+        this.client.requireAdvancedQueries('getCollections');
+        try {
+            const programId = this.programIds.identityRegistry;
+            // Fetch all RegistryConfig accounts
+            const registryAccounts = await this.client.getProgramAccounts(programId, [
+                {
+                    memcmp: {
+                        offset: 0,
+                        bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.RegistryConfig),
+                    },
+                },
+            ]);
+            return registryAccounts.map((acc) => {
+                const config = RegistryConfig.deserialize(acc.data);
+                return {
+                    collection: config.getCollectionPublicKey(),
+                    registryType: config.isBaseRegistry() ? 'BASE' : 'USER',
+                    authority: config.getAuthorityPublicKey(),
+                    baseIndex: config.base_index,
+                };
+            });
+        }
+        catch (error) {
+            logger.error('Error getting collections', error);
+            return [];
+        }
+    }
+    /**
+     * Get all agents in a collection (on-chain) - v0.4.0
+     * Returns full AgentAccount data with metadata extensions.
+     *
+     * For faster queries, use `getLeaderboard({ collection: 'xxx' })` which uses the indexer.
+     *
+     * @param collection - Collection public key
+     * @param options - Optional settings for additional data fetching
+     * @returns Array of agents with metadata (and optionally feedbacks)
+     * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
+     */
+    async getCollectionAgents(collection, options) {
+        // Skip on-chain if indexer preferred and user doesn't need full account data
+        // Note: For indexed queries, use getLeaderboard({ collection }) instead
+        this.client.requireAdvancedQueries('getCollectionAgents');
+        try {
+            const programId = this.programIds.identityRegistry;
+            // 1. Fetch agent accounts filtered by collection (1 RPC call)
+            // AgentAccount layout: discriminator (8) + collection (32)
+            // Collection is at offset 8
+            const agentAccounts = await this.client.getProgramAccounts(programId, [
+                {
+                    memcmp: {
+                        offset: 0,
+                        bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount),
+                    },
+                },
+                {
+                    memcmp: {
+                        offset: 8, // collection is right after discriminator
+                        bytes: collection.toBase58(),
+                    },
+                },
+            ]);
+            const agents = agentAccounts.map((acc) => AgentAccount.deserialize(acc.data));
+            // 2. Fetch ALL metadata entries (1 RPC call)
+            const metadataAccounts = await this.client.getProgramAccounts(programId, [
+                {
+                    memcmp: {
+                        offset: 0,
+                        bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.MetadataEntryPda),
+                    },
+                },
+            ]);
+            // Map metadata to agents (by asset)
+            const metadataMap = new Map();
+            for (const acc of metadataAccounts) {
+                try {
+                    const entry = MetadataEntryPda.deserialize(acc.data);
+                    const assetKey = entry.getAssetPublicKey().toBase58();
+                    if (!metadataMap.has(assetKey)) {
+                        metadataMap.set(assetKey, []);
+                    }
+                    metadataMap.get(assetKey).push({
+                        key: entry.key,
+                        value: entry.value,
+                    });
+                }
+                catch {
+                    // Skip invalid metadata entries
+                }
+            }
+            // Build result
+            const result = agents.map((agent) => ({
+                account: agent,
+                metadata: metadataMap.get(agent.getAssetPublicKey().toBase58()) || [],
+                feedbacks: [],
+            }));
+            // 3. Optionally fetch feedbacks
+            if (options?.includeFeedbacks) {
+                // getAllFeedbacks returns Map<assetKey, SolanaFeedback[]>
+                const feedbackMap = await this.getAllFeedbacks(options.includeRevoked);
+                for (const agent of result) {
+                    agent.feedbacks = feedbackMap.get(agent.account.getAssetPublicKey().toBase58()) || [];
+                }
+            }
+            return result;
+        }
+        catch (error) {
+            logger.error('Error getting collection agents', error);
+            return [];
+        }
+    }
     // ==================== Reputation Methods (v0.3.0 - asset-based) ====================
     /**
      * 1. Get agent reputation summary - v0.3.0
@@ -547,9 +699,10 @@ export class SolanaSDK {
     // ==================== Indexer Methods (v0.4.0) ====================
     /**
      * Helper: Execute with indexer fallback to on-chain
+     * Used internally when forceRpc='false' (force indexer mode)
      */
     async withIndexerFallback(indexerFn, onChainFn, operationName) {
-        if (!this.useIndexer || !this.indexerClient) {
+        if (!this.useIndexer) {
             return onChainFn();
         }
         try {
@@ -565,12 +718,39 @@ export class SolanaSDK {
         }
     }
     /**
+     * Smart routing helper: Chooses between indexer and RPC
+     * - forceOnChain=true: All on-chain
+     * - forceOnChain=false: Smart routing (RPC for small queries, indexer for large)
+     */
+    async withSmartRouting(operation, indexerFn, onChainFn) {
+        // Force on-chain mode
+        if (this.forceOnChain) {
+            logger.debug(`[${operation}] Forcing on-chain (forceOnChain=true)`);
+            return onChainFn();
+        }
+        // Smart routing: RPC for small queries, indexer for large
+        if (this.isSmallQuery(operation)) {
+            logger.debug(`[${operation}] Small query → RPC`);
+            try {
+                return await onChainFn();
+            }
+            catch (error) {
+                // Fallback to indexer if RPC fails and indexer is enabled
+                if (this.useIndexer) {
+                    logger.debug(`[${operation}] RPC failed, falling back to indexer`);
+                    return indexerFn();
+                }
+                throw error;
+            }
+        }
+        // Large query → indexer with fallback
+        logger.debug(`[${operation}] Large query → indexer`);
+        return this.withIndexerFallback(indexerFn, onChainFn, operation);
+    }
+    /**
      * Check if indexer is available
      */
     async isIndexerAvailable() {
-        if (!this.indexerClient) {
-            return false;
-        }
         return this.indexerClient.isAvailable();
     }
     /**
@@ -580,14 +760,21 @@ export class SolanaSDK {
         return this.indexerClient;
     }
     /**
+     * Helper: Throws if forceOnChain=true for indexer-only methods
+     */
+    requireIndexer(methodName) {
+        if (this.forceOnChain) {
+            throw new Error(`${methodName} requires indexer (no on-chain equivalent). ` +
+                `Set forceOnChain=false or remove FORCE_ON_CHAIN env var.`);
+        }
+    }
+    /**
      * Search agents with filters (indexer only)
      * @param params - Search parameters
      * @returns Array of indexed agents
      */
     async searchAgents(params) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('searchAgents');
         // Build query based on params
         if (params.owner) {
             return this.indexerClient.getAgentsByOwner(params.owner);
@@ -616,9 +803,7 @@ export class SolanaSDK {
      * @returns Array of agents sorted by sort_key DESC
      */
     async getLeaderboard(options) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getLeaderboard');
         return this.indexerClient.getLeaderboard(options);
     }
     /**
@@ -626,9 +811,7 @@ export class SolanaSDK {
      * @returns Global stats (total agents, feedbacks, etc.)
      */
     async getGlobalStats() {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getGlobalStats');
         return this.indexerClient.getGlobalStats();
     }
     /**
@@ -637,9 +820,7 @@ export class SolanaSDK {
      * @returns Collection stats or null if not found
      */
     async getCollectionStats(collection) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getCollectionStats');
         return this.indexerClient.getCollectionStats(collection);
     }
     /**
@@ -648,9 +829,7 @@ export class SolanaSDK {
      * @returns Array of feedbacks for this endpoint
      */
     async getFeedbacksByEndpoint(endpoint) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getFeedbacksByEndpoint');
         return this.indexerClient.getFeedbacksByEndpoint(endpoint);
     }
     /**
@@ -659,9 +838,7 @@ export class SolanaSDK {
      * @returns Array of feedbacks with this tag
      */
     async getFeedbacksByTag(tag) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getFeedbacksByTag');
         return this.indexerClient.getFeedbacksByTag(tag);
     }
     /**
@@ -670,9 +847,7 @@ export class SolanaSDK {
      * @returns Indexed agent or null
      */
     async getAgentByWallet(wallet) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getAgentByWallet');
         return this.indexerClient.getAgentByWallet(wallet);
     }
     /**
@@ -681,9 +856,7 @@ export class SolanaSDK {
      * @returns Array of pending validation requests
      */
     async getPendingValidations(validator) {
-        if (!this.indexerClient) {
-            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
-        }
+        this.requireIndexer('getPendingValidations');
         return this.indexerClient.getPendingValidations(validator);
     }
     /**
@@ -743,6 +916,32 @@ export class SolanaSDK {
      */
     get canWrite() {
         return this.signer !== undefined;
+    }
+    /**
+     * Create a new user collection (write operation) - v0.4.1
+     * Users can create their own collections to organize agents.
+     * Agents registered to user collections still use the same reputation system.
+     *
+     * @param name - Collection name (max 32 bytes)
+     * @param uri - Collection metadata URI (max 200 bytes)
+     * @param options - Write options (skipSend, signer, collectionPubkey)
+     * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
+     *
+     * @example
+     * ```typescript
+     * // Create a new collection
+     * const result = await sdk.createCollection('MyAgents', 'ipfs://Qm...');
+     * console.log('Collection:', result.collection?.toBase58());
+     *
+     * // Register agent in user collection
+     * await sdk.registerAgent('ipfs://agent-uri', [], result.collection);
+     * ```
+     */
+    async createCollection(name, uri, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        return await this.identityTxBuilder.createCollection(name, uri, options);
     }
     /**
      * Register a new agent (write operation) - v0.3.0
