@@ -1,11 +1,12 @@
 /**
- * Server Mode Example - Solana SDK
+ * Server Mode Example - Solana SDK v0.3.0+
  *
  * Demonstrates how to use skipSend for server/client architecture:
  * - Server builds unsigned transactions (no private key needed)
  * - Client signs with their wallet (Phantom, Solflare, etc.)
  *
  * Use case: Web app where backend builds transactions, frontend signs
+ * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
 import { Keypair, PublicKey, Transaction, Connection } from '@solana/web3.js';
 import { SolanaSDK, PreparedTransaction } from '../src/index.js';
@@ -31,23 +32,23 @@ class TransactionServer {
    * Build a feedback transaction for the user to sign
    */
   async buildFeedbackTransaction(params: {
-    agentId: number;
+    agentAsset: string; // Agent asset PublicKey (base58)
     score: number;
     tag1: string;
     tag2: string;
     fileUri: string;
     userWallet: string; // User's wallet address (base58)
   }): Promise<PreparedTransaction & { feedbackIndex: bigint }> {
-    const { agentId, score, tag1, tag2, fileUri, userWallet } = params;
+    const { agentAsset, score, tag1, tag2, fileUri, userWallet } = params;
 
     const prepared = await this.sdk.giveFeedback(
-      agentId,
+      new PublicKey(agentAsset),
       {
         score,
         tag1,
         tag2,
-        fileUri,
-        fileHash: Buffer.alloc(32), // In production: compute actual hash
+        feedbackUri: fileUri,
+        feedbackHash: Buffer.alloc(32), // In production: compute actual hash
       },
       {
         skipSend: true,
@@ -66,26 +67,29 @@ class TransactionServer {
   /**
    * POST /api/register
    * Build a register agent transaction
-   * Note: Client must generate mintKeypair locally and send pubkey
    */
   async buildRegisterTransaction(params: {
     tokenUri: string;
     userWallet: string;
-    mintPubkey: string; // Client-generated mint keypair public key
-  }): Promise<PreparedTransaction & { agentId: bigint; agentMint: PublicKey }> {
-    const { tokenUri, userWallet, mintPubkey } = params;
+    collection?: string; // Optional: specific collection to register in
+  }): Promise<PreparedTransaction & { asset: PublicKey }> {
+    const { tokenUri, userWallet, collection } = params;
 
-    const prepared = await this.sdk.registerAgent(tokenUri, undefined, {
-      skipSend: true,
-      signer: new PublicKey(userWallet),
-      mintPubkey: new PublicKey(mintPubkey),
-    });
+    const prepared = await this.sdk.registerAgent(
+      tokenUri,
+      undefined, // metadata
+      collection ? new PublicKey(collection) : undefined,
+      {
+        skipSend: true,
+        signer: new PublicKey(userWallet),
+      }
+    );
 
     if ('signature' in prepared) {
       throw new Error('Unexpected: got TransactionResult instead of PreparedTransaction');
     }
 
-    return prepared as PreparedTransaction & { agentId: bigint; agentMint: PublicKey };
+    return prepared as PreparedTransaction & { asset: PublicKey };
   }
 
   /**
@@ -93,14 +97,16 @@ class TransactionServer {
    * Build a transfer agent transaction
    */
   async buildTransferTransaction(params: {
-    agentId: number;
+    agentAsset: string;
+    collection: string;
     newOwner: string;
     userWallet: string;
   }): Promise<PreparedTransaction> {
-    const { agentId, newOwner, userWallet } = params;
+    const { agentAsset, collection, newOwner, userWallet } = params;
 
     const prepared = await this.sdk.transferAgent(
-      agentId,
+      new PublicKey(agentAsset),
+      new PublicKey(collection),
       new PublicKey(newOwner),
       {
         skipSend: true,
@@ -135,6 +141,7 @@ async function clientSideSigning() {
     blockhash: '...blockhash...',
     lastValidBlockHeight: 12345678,
     signer: userKeypair.publicKey.toBase58(),
+    signed: false,
   };
 
   // 2. Deserialize the transaction
@@ -158,37 +165,28 @@ async function clientSideSigning() {
 }
 
 /**
- * Example: Register agent with client-generated mint keypair
- * This is special because registerAgent requires 2 signatures:
- * 1. User wallet (fee payer + owner)
- * 2. Mint keypair (new account creation)
+ * Example: Register agent flow
  */
 async function clientSideRegisterAgent() {
   const userKeypair = Keypair.generate();
   const connection = new Connection('https://api.devnet.solana.com');
 
-  // 1. Client generates the mint keypair locally
-  const mintKeypair = Keypair.generate();
-
-  // 2. Send mintPubkey to server, receive prepared transaction
+  // 1. Send request to server
   const server = new TransactionServer();
   const prepared = await server.buildRegisterTransaction({
     tokenUri: 'ipfs://QmYourAgentMetadata',
     userWallet: userKeypair.publicKey.toBase58(),
-    mintPubkey: mintKeypair.publicKey.toBase58(),
   });
 
-  console.log('Agent ID will be:', prepared.agentId.toString());
-  console.log('Agent Mint:', prepared.agentMint.toBase58());
+  console.log('Agent asset will be:', prepared.asset.toBase58());
 
-  // 3. Deserialize transaction
+  // 2. Deserialize transaction
   const tx = Transaction.from(Buffer.from(prepared.transaction, 'base64'));
 
-  // 4. Sign with BOTH keypairs (order matters!)
-  tx.partialSign(mintKeypair); // Mint keypair signs first
-  tx.partialSign(userKeypair); // Then user wallet
+  // 3. Sign with user wallet
+  tx.sign(userKeypair);
 
-  // 5. Send and confirm
+  // 4. Send and confirm
   const signature = await connection.sendRawTransaction(tx.serialize());
   await connection.confirmTransaction({
     signature,
@@ -213,11 +211,15 @@ async function main() {
   const userWallet = Keypair.generate();
   console.log('User wallet:', userWallet.publicKey.toBase58());
 
+  // Example agent asset and collection (replace with actual values)
+  const agentAsset = 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ';
+  const collection = 'AucZdyKKkeJL8J5ZMqLrqhqbp4DZPUfaCP9A8RZG5iSL';
+
   try {
     // Build a feedback transaction
     console.log('\n1. Building feedback transaction on server...');
     const feedbackTx = await server.buildFeedbackTransaction({
-      agentId: 1,
+      agentAsset,
       score: 85,
       tag1: 'helpful',
       tag2: 'accurate',
@@ -240,7 +242,8 @@ async function main() {
     console.log('\n2. Building transfer transaction on server...');
     const newOwner = Keypair.generate();
     const transferTx = await server.buildTransferTransaction({
-      agentId: 1,
+      agentAsset,
+      collection,
       newOwner: newOwner.publicKey.toBase58(),
       userWallet: userWallet.publicKey.toBase58(),
     });
@@ -259,5 +262,9 @@ async function main() {
     console.error('Error:', error);
   }
 }
+
+// Suppress unused variable warnings for example functions
+void clientSideSigning;
+void clientSideRegisterAgent;
 
 main().catch(console.error);
