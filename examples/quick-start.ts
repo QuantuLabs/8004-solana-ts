@@ -1,9 +1,10 @@
 /**
- * Quick Start Example - Solana SDK
+ * Quick Start Example - Solana SDK v0.3.0+
  *
  * Demonstrates basic read and write operations using 8004-solana SDK
+ * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import {
   SolanaSDK,
   IPFSClient,
@@ -17,15 +18,19 @@ async function main() {
   // Create SDK (devnet by default, no signer = read-only)
   const sdk = new SolanaSDK();
 
-  // Load an agent
-  const agent = await sdk.loadAgent(1);
+  // Example agent asset (replace with actual asset PublicKey)
+  const agentAsset = new PublicKey('Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ');
+
+  // Load an agent by asset
+  const agent = await sdk.loadAgent(agentAsset);
   if (agent) {
     console.log(`Agent: ${agent.nft_name}`);
     console.log(`Owner: ${agent.getOwnerPublicKey().toBase58()}`);
+    console.log(`Asset: ${agent.getAssetPublicKey().toBase58()}`);
   }
 
   // Get reputation summary
-  const summary = await sdk.getSummary(1);
+  const summary = await sdk.getSummary(agentAsset);
   console.log(`Score: ${summary.averageScore}/100 (${summary.totalFeedbacks} reviews)`);
 
   // === WRITE OPERATIONS ===
@@ -68,18 +73,18 @@ async function main() {
     console.log(`Metadata uploaded to: ${metadataUri}`);
 
     // === REGISTER AGENT ===
-    // Uncomment to register a new agent:
+    // Uncomment to register a new agent (returns { asset, signature })
     // const result = await writeSdk.registerAgent(metadataUri);
-    // console.log(`Registered agent #${result.agentId}`);
+    // console.log(`Registered agent with asset: ${result.asset.toBase58()}`);
   } else {
     console.log('Set PINATA_JWT to upload metadata to IPFS');
     // Alternative: use web URL
-    // await writeSdk.registerAgent('https://my-server.com/metadata.json');
+    // const result = await writeSdk.registerAgent('https://my-server.com/metadata.json');
   }
 
   // === GIVE FEEDBACK ===
-  // Submit feedback for an existing agent
-  // await writeSdk.giveFeedback(1n, {
+  // Submit feedback for an existing agent (using asset PublicKey)
+  // await writeSdk.giveFeedback(agentAsset, {
   //   score: 85,
   //   tag1: 'helpful',
   //   tag2: 'accurate',
