@@ -9,7 +9,7 @@ import { PublicKey } from '@solana/web3.js';
  * Consolidated AgentRegistry8004 Program ID
  * Single program containing Identity, Reputation, and Validation modules
  */
-export const PROGRAM_ID = new PublicKey('ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz');
+export const PROGRAM_ID = new PublicKey('HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT');
 
 /**
  * Metaplex Core Program ID
@@ -22,7 +22,7 @@ export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm
  * Agent Trust On-chain Model - reputation computation engine
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
-export const ATOM_ENGINE_PROGRAM_ID = new PublicKey('CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3');
+export const ATOM_ENGINE_PROGRAM_ID = new PublicKey('B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7');
 
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility

@@ -158,7 +158,7 @@ export declare class ValidationInstructionBuilder {
 /**
  * Instruction builder for ATOM Engine
  * v0.4.0 - Agent Trust On-chain Model
- * Program: CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3
+ * Program: B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7
  */
 export declare class AtomInstructionBuilder {
     private programId;
