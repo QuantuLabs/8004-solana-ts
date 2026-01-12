@@ -934,7 +934,7 @@ export class SolanaSDK {
      * console.log('Collection:', result.collection?.toBase58());
      *
      * // Register agent in user collection
-     * await sdk.registerAgent('ipfs://agent-uri', [], result.collection);
+     * await sdk.registerAgent('ipfs://agent-uri', result.collection);
      * ```
      */
     async createCollection(name, uri, options) {
@@ -945,18 +945,17 @@ export class SolanaSDK {
     }
     /**
      * Register a new agent (write operation) - v0.3.0
-     * @param tokenUri - Optional token URI
-     * @param metadata - Optional metadata entries (key-value pairs)
-     * @param collection - Optional collection pubkey (defaults to base registry)
+     * @param tokenUri - Token URI pointing to agent metadata JSON
+     * @param collection - Optional collection pubkey (defaults to base registry, only creator can register)
      * @param options - Write options (skipSend, signer, assetPubkey)
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
      */
-    async registerAgent(tokenUri, metadata, collection, options) {
+    async registerAgent(tokenUri, collection, options) {
         // For non-skipSend operations, require signer
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
-        return await this.identityTxBuilder.registerAgent(tokenUri, metadata, collection, options);
+        return await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
     }
     /**
      * Set agent URI (write operation) - v0.3.0

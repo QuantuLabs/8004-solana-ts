@@ -181,10 +181,9 @@ async function main() {
   }
   let newAgentAsset: PublicKey | null = null;
   try {
-    // SDK signature: registerAgent(tokenUri?, metadata?, collection?, options?)
+    // SDK signature: registerAgent(tokenUri?, collection?, options?)
     const result = await sdk.registerAgent(
       `ipfs://QmTest${Date.now()}`,  // tokenUri
-      [{ key: 'name', value: `TestAgent-${Date.now()}` }],  // metadata
       newCollection || undefined,  // use new collection if available
     );
     console.log('  Success:', result.success);

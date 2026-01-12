@@ -78,10 +78,7 @@ export declare class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer, assetPubkey)
      * @returns Transaction result with asset and all signatures
      */
-    registerAgent(agentUri?: string, metadata?: Array<{
-        key: string;
-        value: string;
-    }>, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
+    registerAgent(agentUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {

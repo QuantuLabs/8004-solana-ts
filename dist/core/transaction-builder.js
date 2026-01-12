@@ -61,7 +61,7 @@ export class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer, assetPubkey)
      * @returns Transaction result with asset and all signatures
      */
-    async registerAgent(agentUri, metadata, collection, options) {
+    async registerAgent(agentUri, collection, options) {
         try {
             // Determine the signer pubkey
             const signerPubkey = options?.signer || this.payer?.publicKey;
@@ -121,10 +121,6 @@ export class IdentityTransactionBuilder {
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
                 const prepared = serializeTransaction(registerTransaction, signerPubkey, blockhash, lastValidBlockHeight);
-                // Note: Metadata should be set via separate setMetadata calls after registration
-                if (metadata && metadata.length > 0) {
-                    logger.warn('Metadata with skipSend: call setMetadata separately after registration');
-                }
                 return {
                     ...prepared,
                     asset: assetPubkey,
@@ -136,27 +132,9 @@ export class IdentityTransactionBuilder {
             }
             // Send register transaction with retry
             const registerSignature = await this.sendWithRetry(registerTransaction, [this.payer, assetKeypair]);
-            const allSignatures = [registerSignature];
-            // If we have metadata, create MetadataEntryPda accounts (v0.3.0 - uses asset for PDA)
-            if (metadata && metadata.length > 0) {
-                logger.info(`Setting ${metadata.length} metadata entries...`);
-                for (const { key, value } of metadata) {
-                    // Compute key hash for PDA derivation (v1.9 security update: 16 bytes)
-                    const keyHash = createHash('sha256').update(key).digest().slice(0, 16);
-                    // Derive metadata entry PDA (v0.3.0 - uses asset)
-                    const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(assetPubkey, keyHash);
-                    const setMetadataIx = this.instructionBuilder.buildSetMetadata(metadataEntry, agentPda, assetPubkey, this.payer.publicKey, keyHash, key, value, false // not immutable by default
-                    );
-                    const metadataTx = new Transaction().add(computeBudgetIx).add(setMetadataIx);
-                    const metadataSignature = await this.sendWithRetry(metadataTx, [this.payer]);
-                    allSignatures.push(metadataSignature);
-                    logger.debug(`Metadata '${key}' set`);
-                }
-                logger.info(`All metadata entries created successfully.`);
-            }
             return {
-                signature: allSignatures[0],
-                signatures: allSignatures,
+                signature: registerSignature,
+                signatures: [registerSignature],
                 success: true,
                 asset: assetPubkey,
             };

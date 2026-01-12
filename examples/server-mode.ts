@@ -77,7 +77,6 @@ class TransactionServer {
 
     const prepared = await this.sdk.registerAgent(
       tokenUri,
-      undefined, // metadata
       collection ? new PublicKey(collection) : undefined,
       {
         skipSend: true,
