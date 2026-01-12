@@ -54,7 +54,78 @@ const signer = Keypair.fromSecretKey(Uint8Array.from(privateKey));
 const sdk = new SolanaSDK({ signer });
 ```
 
-### 2. Register an Agent
+### 2. Create a Collection (Optional)
+
+Users can create their own collections to organize agents:
+
+```typescript
+import {
+  SolanaSDK,
+  IPFSClient,
+  buildCollectionMetadataJson
+} from '8004-solana';
+
+// 1. Build collection metadata using the helper
+const collectionData = buildCollectionMetadataJson({
+  name: 'My AI Agents',
+  description: 'Production AI agents for automation',
+  image: 'ipfs://QmLogo...',
+  category: 'automation',
+  tags: ['enterprise', 'api'],
+  project: {
+    name: 'Acme Corp',
+    socials: {
+      website: 'https://acme.ai',
+      x: 'acme_ai'
+    }
+  }
+});
+
+// 2. Upload metadata to IPFS
+const ipfs = new IPFSClient({ pinataJwt: process.env.PINATA_JWT });
+const collectionCid = await ipfs.addJson(collectionData);
+
+// 3. Create collection on-chain
+const sdk = new SolanaSDK({ signer });
+const collectionResult = await sdk.createCollection(
+  collectionData.name,              // Collection name (max 32 bytes)
+  `ipfs://${collectionCid}`         // Collection metadata URI
+);
+
+console.log('Collection:', collectionResult.collection?.toBase58());
+
+// 4. Register agents in your collection
+const agentResult = await sdk.registerAgent(
+  'ipfs://QmAgentMetadata...',       // Agent metadata URI
+  undefined,                          // No inline metadata
+  collectionResult.collection         // Your collection
+);
+```
+
+**Collection Metadata JSON Schema:**
+
+```json
+{
+  "name": "Acme AI Agents",
+  "description": "Production-ready AI agents for enterprise automation",
+  "image": "ipfs://QmXxx.../logo.png",
+  "external_url": "https://acme.ai/agents",
+  "project": {
+    "name": "Acme Corporation",
+    "socials": {
+      "website": "https://acme.ai",
+      "x": "acme_ai",
+      "github": "acme-ai"
+    }
+  },
+  "category": "automation",
+  "tags": ["enterprise", "automation", "api"]
+}
+```
+
+> See full schemas: [`schemas/collection-metadata.schema.json`](schemas/collection-metadata.schema.json) and [`schemas/agent-metadata.schema.json`](schemas/agent-metadata.schema.json)
+
+### 3. Register an Agent (Detailed)
 
 **Step 1: Setup IPFS Client**
 
@@ -132,7 +203,7 @@ const metadata = buildRegistrationFileJson({
 await sdk.registerAgent('https://my-server.com/agent-metadata.json');
 ```
 
-### 3. Load Agent Data
+### 4. Load Agent Data
 
 ```typescript
 // Fetch agent by ID
@@ -156,7 +227,7 @@ for (const agent of myAgents) {
 }
 ```
 
-### 4. Give Feedback
+### 5. Give Feedback
 
 ```typescript
 // Submit feedback for an agent (as a client/user)
@@ -170,7 +241,7 @@ await sdk.giveFeedback(agentId, {
 });
 ```
 
-### 5. Get Reputation
+### 6. Get Reputation
 
 ```typescript
 // Get aggregated reputation stats
@@ -186,7 +257,7 @@ for (const fb of feedbacks) {
 }
 ```
 
-### 6. Bulk Queries (Indexing)
+### 7. Bulk Queries (Indexer)
 
 ```typescript
 // Get ALL agents with their feedbacks in just 4 RPC calls
@@ -354,4 +425,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built for the Solana ecosystem** | v0.3.0
+**Built for the Solana ecosystem** | v0.4.0
