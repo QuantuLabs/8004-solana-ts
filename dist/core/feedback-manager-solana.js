@@ -1,64 +1,93 @@
 /**
  * Solana feedback management system for Agent0 SDK
- * v0.3.0 - Asset-based identification
+ * v0.4.0 - ATOM Engine + Indexer support
  * Implements the 6 ERC-8004 read functions for Solana
  *
- * BREAKING CHANGES from v0.2.0:
- * - All methods now use asset (PublicKey) instead of agentId (bigint)
- * - Aggregates (average_score, total_feedbacks) computed off-chain
+ * BREAKING CHANGES from v0.3.0:
+ * - Optional indexer support for fast queries
+ * - SolanaFeedback interface extended with event-sourced fields
  */
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { PDAHelpers, REPUTATION_PROGRAM_ID } from './pda-helpers.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { FeedbackAccount, FeedbackTagsPda, AgentReputationMetadata, ResponseIndexAccount, ResponseAccount, } from './borsh-schemas.js';
+import { logger } from '../utils/logger.js';
 /**
- * Manages feedback operations for Solana - v0.3.0
+ * Security: Default limits for getProgramAccounts to prevent OOM
+ */
+const DEFAULT_MAX_FEEDBACKS = 1000;
+const DEFAULT_MAX_ALL_FEEDBACKS = 5000;
+/**
+ * Manages feedback operations for Solana - v0.4.0
  * Implements all 6 ERC-8004 read functions
+ * Optional indexer support for fast queries
  */
 export class SolanaFeedbackManager {
     client;
     ipfsClient;
-    constructor(client, ipfsClient) {
+    indexerClient;
+    constructor(client, ipfsClient, indexerClient) {
         this.client = client;
         this.ipfsClient = ipfsClient;
+        this.indexerClient = indexerClient;
     }
     /**
-     * 1. getSummary - Get agent reputation summary - v0.3.0
+     * Set the indexer client (for late binding)
+     */
+    setIndexerClient(indexerClient) {
+        this.indexerClient = indexerClient;
+    }
+    /**
+     * 1. getSummary - Get agent reputation summary - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @param minScore - Optional minimum score filter (client-side)
      * @param clientFilter - Optional client address filter (client-side)
-     * @returns Summary with average score and total feedbacks
+     * @returns Summary with average score, total feedbacks, and positive/negative counts
      *
-     * v0.3.0: Aggregates computed off-chain from all feedbacks
+     * v0.4.0: Added positive/negative counts
+     * Security: Fetches metadata and feedbacks in parallel to reduce state drift window
      */
     async getSummary(asset, minScore, clientFilter) {
         try {
-            // Get next_feedback_index from AgentReputationMetadata
+            // Security: Fetch in parallel to minimize state drift window
             const [reputationPDA] = PDAHelpers.getAgentReputationPDA(asset);
-            const reputationData = await this.client.getAccount(reputationPDA);
+            const [reputationData, feedbacks] = await Promise.all([
+                this.client.getAccount(reputationPDA),
+                this.readAllFeedback(asset, false),
+            ]);
             let nextFeedbackIndex = 0;
             if (reputationData) {
                 const reputation = AgentReputationMetadata.deserialize(reputationData);
                 nextFeedbackIndex = Number(reputation.next_feedback_index);
             }
-            // v0.3.0: Aggregates computed off-chain - fetch all feedbacks
-            const feedbacks = await this.readAllFeedback(asset, false);
             // Apply filters if provided
             const filtered = feedbacks.filter((f) => (!minScore || f.score >= minScore) &&
                 (!clientFilter || f.client.equals(clientFilter)));
             const sum = filtered.reduce((acc, f) => acc + f.score, 0);
             const uniqueClients = new Set(filtered.map((f) => f.client.toBase58()));
+            // v0.4.0: Calculate positive/negative counts (threshold: 50)
+            const positiveCount = filtered.filter((f) => f.score >= 50).length;
+            const negativeCount = filtered.filter((f) => f.score < 50).length;
             return {
                 averageScore: filtered.length > 0 ? sum / filtered.length : 0,
                 totalFeedbacks: filtered.length,
                 nextFeedbackIndex,
                 totalClients: uniqueClients.size,
+                positiveCount,
+                negativeCount,
             };
         }
         catch (error) {
-            console.error(`Error getting summary for agent ${asset.toBase58()}:`, error);
-            return { averageScore: 0, totalFeedbacks: 0, nextFeedbackIndex: 0, totalClients: 0 };
+            logger.error(`Error getting summary for agent`, error);
+            return {
+                averageScore: 0,
+                totalFeedbacks: 0,
+                nextFeedbackIndex: 0,
+                totalClients: 0,
+                positiveCount: 0,
+                negativeCount: 0,
+            };
         }
     }
     /**
@@ -81,7 +110,7 @@ export class SolanaFeedbackManager {
             return this.mapFeedbackAccount(feedback, tags);
         }
         catch (error) {
-            console.error(`Error reading feedback for agent ${asset.toBase58()}, index ${feedbackIndex}:`, error);
+            logger.error(`Error reading feedback index ${feedbackIndex}`, error);
             return null;
         }
     }
@@ -89,11 +118,14 @@ export class SolanaFeedbackManager {
      * 3. readAllFeedback - Read all feedbacks for an agent - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param includeRevoked - Include revoked feedbacks (default: false)
+     * @param options - Query options including maxResults limit
      * @returns Array of feedback objects
      *
      * v0.3.0: Uses asset (32 bytes) filter instead of agent_id (8 bytes)
+     * Security: Limited to maxResults (default 1000) to prevent OOM
      */
-    async readAllFeedback(asset, includeRevoked = false) {
+    async readAllFeedback(asset, includeRevoked = false, options = {}) {
+        const maxResults = options.maxResults ?? DEFAULT_MAX_FEEDBACKS;
         try {
             const programId = REPUTATION_PROGRAM_ID;
             // v0.3.0: Filter by asset at offset 8 (after discriminator)
@@ -113,9 +145,16 @@ export class SolanaFeedbackManager {
                     },
                 },
             ]);
-            // Deserialize accounts
+            // Security: Warn if limit reached
+            if (accounts.length > maxResults) {
+                logger.warn(`readAllFeedback returned ${accounts.length} accounts, limiting to ${maxResults}. ` +
+                    `Use options.maxResults to adjust limit.`);
+            }
+            // Deserialize accounts (with limit)
             const feedbackAccounts = [];
-            for (const acc of accounts) {
+            let skipped = 0;
+            const accountsToProcess = accounts.slice(0, maxResults);
+            for (const acc of accountsToProcess) {
                 try {
                     const feedback = FeedbackAccount.deserialize(acc.data);
                     if (includeRevoked || !feedback.is_revoked) {
@@ -123,8 +162,11 @@ export class SolanaFeedbackManager {
                     }
                 }
                 catch {
-                    // Skip accounts that fail to deserialize
+                    skipped++;
                 }
+            }
+            if (skipped > 0) {
+                logger.warn(`Skipped ${skipped} malformed feedback account(s)`);
             }
             // Fetch tags for all feedbacks in parallel
             const feedbacksWithTags = await Promise.all(feedbackAccounts.map(async (f) => {
@@ -134,7 +176,7 @@ export class SolanaFeedbackManager {
             return feedbacksWithTags;
         }
         catch (error) {
-            console.error(`Error reading all feedback for agent ${asset.toBase58()}:`, error);
+            logger.error(`Error reading all feedback for agent`, error);
             return [];
         }
     }
@@ -152,7 +194,7 @@ export class SolanaFeedbackManager {
             return BigInt(clientFeedbacks.length);
         }
         catch (error) {
-            console.error(`Error getting last index for agent ${asset.toBase58()}, client ${client.toBase58()}:`, error);
+            logger.error(`Error getting last index for client`, error);
             return BigInt(0);
         }
     }
@@ -169,7 +211,7 @@ export class SolanaFeedbackManager {
             return uniqueClients;
         }
         catch (error) {
-            console.error(`Error getting clients for agent ${asset.toBase58()}:`, error);
+            logger.error(`Error getting clients for agent`, error);
             return [];
         }
     }
@@ -190,7 +232,7 @@ export class SolanaFeedbackManager {
             return Number(responseIndex.next_index);
         }
         catch (error) {
-            console.error(`Error getting response count for agent ${asset.toBase58()}, index ${feedbackIndex}:`, error);
+            logger.error(`Error getting response count for feedback index ${feedbackIndex}`, error);
             return 0;
         }
     }
@@ -216,6 +258,7 @@ export class SolanaFeedbackManager {
             // Batch fetch all response accounts
             const accountsData = await this.client.getMultipleAccounts(responsePDAs);
             const responses = [];
+            let skipped = 0;
             for (let i = 0; i < accountsData.length; i++) {
                 const data = accountsData[i];
                 if (data) {
@@ -229,14 +272,17 @@ export class SolanaFeedbackManager {
                         });
                     }
                     catch {
-                        // Skip malformed accounts
+                        skipped++;
                     }
                 }
+            }
+            if (skipped > 0) {
+                logger.warn(`Skipped ${skipped} malformed response account(s)`);
             }
             return responses;
         }
         catch (error) {
-            console.error(`Error reading responses for agent ${asset.toBase58()}, index ${feedbackIndex}:`, error);
+            logger.error(`Error reading responses for feedback index ${feedbackIndex}`, error);
             return [];
         }
     }
@@ -263,7 +309,7 @@ export class SolanaFeedbackManager {
         }
     }
     /**
-     * Helper to map FeedbackAccount to SolanaFeedback interface - v0.3.0
+     * Helper to map FeedbackAccount to SolanaFeedback interface - v0.4.0
      * @param feedback - The feedback account data
      * @param tags - Optional tags from FeedbackTagsPda (fetched separately)
      */
@@ -278,14 +324,59 @@ export class SolanaFeedbackManager {
             tag1: tags?.tag1 || '',
             tag2: tags?.tag2 || '',
             revoked: feedback.is_revoked,
+            isRevoked: feedback.is_revoked, // v0.4.0 naming
+        };
+    }
+    /**
+     * Read feedbacks from indexer (v0.4.0)
+     * Falls back to on-chain if indexer unavailable
+     * @param asset - Agent Core asset pubkey
+     * @param options - Query options
+     * @returns Array of feedbacks with full event-sourced data
+     */
+    async readFeedbackListFromIndexer(asset, options) {
+        if (!this.indexerClient) {
+            logger.warn('No indexer client configured, falling back to on-chain');
+            return this.readAllFeedback(asset, options?.includeRevoked ?? false);
+        }
+        try {
+            const indexed = await this.indexerClient.getFeedbacks(asset.toBase58(), options);
+            return indexed.map((f) => this.mapIndexedFeedback(f));
+        }
+        catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.warn(`Indexer failed, falling back to on-chain: ${errMsg}`);
+            return this.readAllFeedback(asset, options?.includeRevoked ?? false);
+        }
+    }
+    /**
+     * Helper to map IndexedFeedback to SolanaFeedback - v0.4.0
+     */
+    mapIndexedFeedback(indexed) {
+        return {
+            asset: new PublicKey(indexed.asset),
+            client: new PublicKey(indexed.client_address),
+            feedbackIndex: BigInt(indexed.feedback_index),
+            score: indexed.score,
+            tag1: indexed.tag1 || '',
+            tag2: indexed.tag2 || '',
+            revoked: indexed.is_revoked,
+            isRevoked: indexed.is_revoked,
+            endpoint: indexed.endpoint || '',
+            feedbackUri: indexed.feedback_uri || '',
+            feedbackHash: indexed.feedback_hash
+                ? Buffer.from(indexed.feedback_hash, 'hex')
+                : undefined,
+            blockSlot: BigInt(indexed.block_slot),
+            txSignature: indexed.tx_signature,
         };
     }
     /**
      * Helper to fetch and parse feedback file from IPFS/Arweave
      */
-    async fetchFeedbackFile(uri) {
+    async fetchFeedbackFile(_uri) {
         if (!this.ipfsClient) {
-            console.warn('IPFS client not configured, cannot fetch feedback file');
+            logger.warn('IPFS client not configured, cannot fetch feedback file');
             return null;
         }
         try {
@@ -294,7 +385,7 @@ export class SolanaFeedbackManager {
             return null;
         }
         catch (error) {
-            console.error(`Error fetching feedback file from ${uri}:`, error);
+            logger.error(`Error fetching feedback file`, error);
             return null;
         }
     }
@@ -302,9 +393,13 @@ export class SolanaFeedbackManager {
      * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
      * Much more efficient than calling readAllFeedback() per agent
      * @param includeRevoked - Include revoked feedbacks? default: false
+     * @param options - Query options including maxResults limit
      * @returns Map of asset (base58 string) -> SolanaFeedback[]
+     *
+     * Security: Limited to maxResults (default 5000) to prevent OOM
      */
-    async fetchAllFeedbacks(includeRevoked = false) {
+    async fetchAllFeedbacks(includeRevoked = false, options = {}) {
+        const maxResults = options.maxResults ?? DEFAULT_MAX_ALL_FEEDBACKS;
         const programId = REPUTATION_PROGRAM_ID;
         // 1. Fetch ALL FeedbackAccounts (discriminator only, no agent filter)
         const [feedbackAccounts, tagAccounts] = await Promise.all([
@@ -316,10 +411,16 @@ export class SolanaFeedbackManager {
                 { memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT_DISCRIMINATORS.FeedbackTagsPda) } },
             ]),
         ]);
+        // Security: Warn if limit reached
+        if (feedbackAccounts.length > maxResults) {
+            logger.warn(`fetchAllFeedbacks returned ${feedbackAccounts.length} accounts, limiting to ${maxResults}. ` +
+                `Use options.maxResults to adjust limit or use an indexer for production.`);
+        }
         // 3. Build tags map: "asset-feedbackIndex" -> { tag1, tag2 }
         // Note: In v0.3.0, FeedbackTagsPda doesn't store asset/feedbackIndex in account data,
         // only in PDA seeds. We need to extract from feedback accounts instead.
         const tagsMap = new Map();
+        let skippedTags = 0;
         for (const acc of tagAccounts) {
             try {
                 const tags = FeedbackTagsPda.deserialize(acc.data);
@@ -328,12 +429,18 @@ export class SolanaFeedbackManager {
                 tagsMap.set(acc.pubkey.toBase58(), { tag1: tags.tag1 || '', tag2: tags.tag2 || '' });
             }
             catch {
-                // Skip malformed FeedbackTagsPda accounts
+                skippedTags++;
             }
         }
-        // 4. Deserialize feedbacks and group by asset
+        if (skippedTags > 0) {
+            logger.warn(`Skipped ${skippedTags} malformed FeedbackTagsPda account(s)`);
+        }
+        // 4. Deserialize feedbacks and group by asset (with limit)
         const grouped = new Map();
-        for (const acc of feedbackAccounts) {
+        let skippedFeedbacks = 0;
+        let processedCount = 0;
+        const accountsToProcess = feedbackAccounts.slice(0, maxResults);
+        for (const acc of accountsToProcess) {
             try {
                 const fb = FeedbackAccount.deserialize(acc.data);
                 if (!includeRevoked && fb.is_revoked)
@@ -347,11 +454,16 @@ export class SolanaFeedbackManager {
                 if (!grouped.has(assetStr))
                     grouped.set(assetStr, []);
                 grouped.get(assetStr).push(mapped);
+                processedCount++;
             }
             catch {
-                // Skip malformed FeedbackAccount
+                skippedFeedbacks++;
             }
         }
+        if (skippedFeedbacks > 0) {
+            logger.warn(`Skipped ${skippedFeedbacks} malformed FeedbackAccount(s)`);
+        }
+        logger.debug(`fetchAllFeedbacks processed ${processedCount} feedbacks across ${grouped.size} agents`);
         return grouped;
     }
 }

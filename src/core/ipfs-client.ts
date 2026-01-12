@@ -7,8 +7,18 @@
 
 import type { IPFSHTTPClient } from 'ipfs-http-client';
 import type { RegistrationFile } from '../models/interfaces.js';
-import { IPFS_GATEWAYS, TIMEOUTS } from '../utils/constants.js';
+import { IPFS_GATEWAYS, TIMEOUTS, MAX_SIZES } from '../utils/constants.js';
 import { buildRegistrationFileJson } from '../utils/registration-file-builder.js';
+import { logger } from '../utils/logger.js';
+import { createHash } from 'crypto';
+import bs58 from 'bs58';
+
+/**
+ * Security: IPFS CID validation pattern
+ * CIDv0: Base58btc, 46 chars starting with Qm
+ * CIDv1: Base32 lower, starts with 'b'
+ */
+const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,})$/;
 
 export interface IPFSClientConfig {
   url?: string; // IPFS node URL (e.g., "http://localhost:5001")
@@ -106,6 +116,7 @@ export class IPFSClient {
       // Verify CID is accessible on Pinata gateway (with short timeout since we just uploaded)
       // This catches cases where Pinata returns a CID but the upload actually failed
       // Note: We treat HTTP 429 (rate limit) and timeouts as non-fatal since content may propagate with delay
+      // Verify CID is accessible on Pinata gateway (non-blocking)
       try {
         const verifyUrl = `https://gateway.pinata.cloud/ipfs/${cid}`;
         const verifyResponse = await fetch(verifyUrl, {
@@ -114,15 +125,11 @@ export class IPFSClient {
         if (!verifyResponse.ok) {
           // HTTP 429 (rate limit) is not a failure - gateway is just rate limiting
           if (verifyResponse.status === 429) {
-            console.warn(
-              `[IPFS] Pinata returned CID ${cid} but gateway is rate-limited (HTTP 429). ` +
-              `Content is likely available but verification skipped due to rate limiting.`
-            );
+            logger.warn('Pinata gateway rate-limited, verification skipped');
           } else {
             // Other HTTP errors might indicate a real problem
             throw new Error(
-              `Pinata returned CID ${cid} but content is not accessible on gateway (HTTP ${verifyResponse.status}). ` +
-              `This may indicate the upload failed. Full Pinata response: ${JSON.stringify(result)}`
+              `Pinata upload verification failed (HTTP ${verifyResponse.status})`
             );
           }
         }
@@ -131,23 +138,12 @@ export class IPFSClient {
         if (verifyError instanceof Error) {
           // Timeout or network errors are non-fatal - content may propagate with delay
           if (verifyError.message.includes('timeout') || verifyError.message.includes('aborted')) {
-            console.warn(
-              `[IPFS] Pinata returned CID ${cid} but verification timed out. ` +
-              `Content may propagate with delay. Full Pinata response: ${JSON.stringify(result)}`
-            );
+            logger.warn('Pinata verification timed out, content may propagate with delay');
           } else if (verifyError.message.includes('429')) {
-            // Rate limit is non-fatal
-            console.warn(
-              `[IPFS] Pinata returned CID ${cid} but gateway is rate-limited. ` +
-              `Content is likely available but verification skipped.`
-            );
+            logger.warn('Pinata gateway rate-limited, verification skipped');
           } else {
-            // Other errors might indicate a real problem, but we'll still continue
-            // since Pinata API returned success - content might just need time to propagate
-            console.warn(
-              `[IPFS] Pinata returned CID ${cid} but verification failed: ${verifyError.message}. ` +
-              `Content may propagate with delay. Full Pinata response: ${JSON.stringify(result)}`
-            );
+            // Security: Don't log full error details, just type
+            logger.warn('Pinata verification failed, content may propagate with delay');
           }
         }
       }
@@ -235,38 +231,203 @@ export class IPFSClient {
   }
 
   /**
+   * Validate CID format
+   * Security: Prevents path injection and validates CID structure
+   */
+  private validateCid(cid: string): void {
+    if (!IPFS_CID_PATTERN.test(cid)) {
+      throw new Error(`Security: Invalid IPFS CID format: ${cid.slice(0, 20)}...`);
+    }
+  }
+
+  /**
+   * Verify content hash matches CIDv0 (Qm... = SHA256 multihash)
+   * Security: Ensures content integrity from potentially malicious gateways
+   * Note: CIDv1 verification requires multiformats library, skipped for now
+   */
+  private verifyCidV0(cid: string, content: Uint8Array): boolean {
+    if (!cid.startsWith('Qm')) {
+      // CIDv1 - would need multiformats library for proper verification
+      // For now, log warning and accept (defense in depth, not sole protection)
+      logger.debug('CIDv1 hash verification not implemented, skipping');
+      return true;
+    }
+
+    // CIDv0: Qm... is base58btc encoded multihash (0x12 0x20 + SHA256)
+    // We verify the SHA256 hash matches
+    const hash = createHash('sha256').update(content).digest();
+
+    // Decode base58 CID to get the expected hash
+    // CIDv0 format: 0x12 (sha256) + 0x20 (32 bytes) + hash
+    try {
+      const decoded = bs58.decode(cid);
+      // First 2 bytes are multihash header (0x12, 0x20), rest is the hash
+      if (decoded.length !== 34) {
+        logger.warn('CIDv0 unexpected length, skipping verification');
+        return true;
+      }
+      const expectedHash = decoded.slice(2);
+      const matches = Buffer.compare(hash, Buffer.from(expectedHash)) === 0;
+      if (!matches) {
+        logger.error('Security: IPFS content hash mismatch - possible tampering');
+      }
+      return matches;
+    } catch {
+      // If bs58 decode fails, log and continue (defense in depth)
+      logger.warn('Failed to decode CID for verification');
+      return true;
+    }
+  }
+
+  /**
    * Get data from IPFS by CID
+   * Security:
+   * - Limits response size to prevent OOM attacks
+   * - Blocks redirects to prevent SSRF
+   * - Aborts concurrent requests when one succeeds
+   * - Verifies content hash for CIDv0
+   *
+   * NOTE: DNS rebinding attacks are NOT fully mitigated here.
+   * For high-security deployments, resolve DNS manually and verify IP
+   * before fetching, or use a dedicated IPFS node.
    */
   async get(cid: string): Promise<string> {
     // Extract CID from IPFS URL if needed
     if (cid.startsWith('ipfs://')) {
       cid = cid.slice(7); // Remove "ipfs://" prefix
     }
+    // Remove any path component after CID
+    const cidOnly = cid.split('/')[0];
+
+    // Security: Validate CID format
+    this.validateCid(cidOnly);
+
+    const maxSize = MAX_SIZES.IPFS_RESPONSE;
 
     // For Pinata and Filecoin Pin, use IPFS gateways
     if (this.provider === 'pinata' || this.provider === 'filecoinPin') {
-      const gateways = IPFS_GATEWAYS.map(gateway => `${gateway}${cid}`);
+      const gateways = IPFS_GATEWAYS.map(gateway => `${gateway}${encodeURIComponent(cidOnly)}`);
 
-      // Try all gateways in parallel - use the first successful response
-      const promises = gateways.map(async (gateway) => {
-        const response = await fetch(gateway, {
-          signal: AbortSignal.timeout(TIMEOUTS.IPFS_GATEWAY),
-        });
-        if (response.ok) {
-          return await response.text();
+      // Security: Shared abort controller to cancel all requests when one succeeds
+      const globalAbortController = new AbortController();
+
+      // Security: Fetch with streaming, size limit, no redirects, and proper timeout
+      const fetchWithLimit = async (gateway: string): Promise<Uint8Array> => {
+        // Security: Integrate timeout directly into AbortController
+        const timeoutId = setTimeout(() => globalAbortController.abort(), TIMEOUTS.IPFS_GATEWAY);
+
+        try {
+          const response = await fetch(gateway, {
+            signal: globalAbortController.signal,
+            // Security: Block redirects to prevent SSRF via redirect to internal IPs
+            redirect: 'error',
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          // Check Content-Length header if available
+          const contentLength = response.headers.get('content-length');
+          if (contentLength && parseInt(contentLength, 10) > maxSize) {
+            throw new Error(`Content too large: ${contentLength} bytes > ${maxSize} max`);
+          }
+
+          // Stream response with size limit
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('No response body');
+          }
+
+          const chunks: Uint8Array[] = [];
+          let totalSize = 0;
+
+          try {
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              totalSize += value.length;
+              if (totalSize > maxSize) {
+                throw new Error(`Response exceeded max size: ${totalSize} > ${maxSize} bytes`);
+              }
+              chunks.push(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+
+          // Concatenate chunks
+          const result = new Uint8Array(totalSize);
+          let offset = 0;
+          for (const chunk of chunks) {
+            result.set(chunk, offset);
+            offset += chunk.length;
+          }
+
+          return result;
+        } finally {
+          clearTimeout(timeoutId);
         }
-        throw new Error(`HTTP ${response.status}`);
-      });
+      };
 
-      // Use Promise.allSettled to get the first successful result
-      const results = await Promise.allSettled(promises);
-      for (const result of results) {
-        if (result.status === 'fulfilled') {
-          return result.value;
+      // Race all gateways, abort on first success
+      let result: Uint8Array | null = null;
+      let lastError: Error | null = null;
+
+      // Sequential with hedging: start next gateway after delay if no response
+      const HEDGE_DELAY = 2000;
+
+      for (let i = 0; i < gateways.length && !result; i++) {
+        const gateway = gateways[i];
+        try {
+          const fetchPromise = fetchWithLimit(gateway);
+
+          if (i < gateways.length - 1) {
+            // Race with hedge delay
+            type RaceResult = { ok: true; data: Uint8Array } | { ok: false; hedge: true } | { ok: false; error: Error };
+
+            const raceResult = await Promise.race<RaceResult>([
+              fetchPromise.then((data): RaceResult => ({ ok: true, data }))
+                          .catch((err): RaceResult => ({ ok: false, error: err })),
+              new Promise<RaceResult>((resolve) =>
+                setTimeout(() => resolve({ ok: false, hedge: true }), HEDGE_DELAY)
+              ),
+            ]);
+
+            if (raceResult.ok) {
+              result = raceResult.data;
+              globalAbortController.abort();
+              break;
+            } else if ('error' in raceResult) {
+              lastError = raceResult.error;
+              logger.debug(`Gateway failed: ${gateway.slice(0, 30)}...`);
+              continue;
+            }
+            // hedge: continue to next gateway
+          } else {
+            result = await fetchPromise;
+          }
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          logger.debug(`Gateway failed: ${gateway.slice(0, 30)}...`);
         }
       }
 
-      throw new Error('Failed to retrieve data from all IPFS gateways');
+      globalAbortController.abort();
+
+      if (!result) {
+        throw lastError || new Error('Failed to retrieve data from all IPFS gateways');
+      }
+
+      // Security: Verify content hash matches CID (CIDv0 only for now)
+      const hashValid = this.verifyCidV0(cidOnly, result);
+      if (!hashValid) {
+        throw new Error('Security: IPFS content hash verification failed');
+      }
+
+      return new TextDecoder().decode(result);
     } else {
       await this._ensureClient();
       if (!this.client) {
@@ -274,17 +435,29 @@ export class IPFSClient {
       }
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of this.client.cat(cid)) {
+      let totalSize = 0;
+
+      for await (const chunk of this.client.cat(cidOnly)) {
+        totalSize += chunk.length;
+        // Security: Enforce size limit for local IPFS node too
+        if (totalSize > maxSize) {
+          throw new Error(`IPFS content exceeded max size: ${totalSize} > ${maxSize} bytes`);
+        }
         chunks.push(chunk);
       }
 
       // Concatenate chunks and convert to string
-      const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-      const result = new Uint8Array(totalLength);
+      const result = new Uint8Array(totalSize);
       let offset = 0;
       for (const chunk of chunks) {
         result.set(chunk, offset);
         offset += chunk.length;
+      }
+
+      // Security: Local IPFS node already verifies hashes, but we verify anyway
+      const hashValid = this.verifyCidV0(cidOnly, result);
+      if (!hashValid) {
+        throw new Error('Security: IPFS content hash verification failed');
       }
 
       return new TextDecoder().decode(result);

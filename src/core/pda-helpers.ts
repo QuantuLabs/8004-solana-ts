@@ -83,7 +83,7 @@ export class PDAHelpers {
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
-      [Buffer.from('agent_meta'), asset.toBuffer(), keyHash.slice(0, 8)],
+      [Buffer.from('agent_meta'), asset.toBuffer(), keyHash.slice(0, 16)],
       programId
     );
   }

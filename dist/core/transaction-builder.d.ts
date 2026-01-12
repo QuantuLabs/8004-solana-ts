@@ -22,6 +22,11 @@ export interface WriteOptions {
     skipSend?: boolean;
     /** Signer public key - defaults to sdk.signer.publicKey if not provided */
     signer?: PublicKey;
+    /**
+     * Fee payer public key - defaults to signer if not provided
+     * Security: Explicitly specifying feePayer prevents implicit fee payment assumptions
+     */
+    feePayer?: PublicKey;
 }
 /**
  * Extended options for registerAgent (requires assetPubkey when skipSend is true)
@@ -52,9 +57,10 @@ export interface PreparedTransaction {
  * @param signer - The public key that will sign the transaction
  * @param blockhash - Recent blockhash
  * @param lastValidBlockHeight - Block height after which transaction expires
+ * @param feePayer - Optional fee payer (defaults to signer)
  * @returns PreparedTransaction with base64 serialized transaction
  */
-export declare function serializeTransaction(transaction: Transaction, signer: PublicKey, blockhash: string, lastValidBlockHeight: number): PreparedTransaction;
+export declare function serializeTransaction(transaction: Transaction, signer: PublicKey, blockhash: string, lastValidBlockHeight: number, feePayer?: PublicKey): PreparedTransaction;
 /**
  * Transaction builder for Identity Registry operations (Metaplex Core)
  * v0.3.0 - Asset-based identification
@@ -198,15 +204,18 @@ export declare class ReputationTransactionBuilder {
     private instructionBuilder;
     constructor(connection: Connection, payer?: Keypair | undefined);
     /**
-     * Give feedback to an agent - v0.3.0
+     * Give feedback - v0.4.0
      * @param asset - Agent Core asset
-     * @param score - Score 0-100
-     * @param tag1 - Tag 1 (max 32 bytes)
-     * @param tag2 - Tag 2 (max 32 bytes)
-     * @param endpoint - Endpoint being rated (max 200 bytes)
-     * @param feedbackUri - IPFS/Arweave URI (max 200 bytes)
+     * @param score - Feedback score (0-100)
+     * @param tag1 - First tag
+     * @param tag2 - Second tag
+     * @param endpoint - API endpoint being reviewed
+     * @param feedbackUri - Feedback URI (IPFS/Arweave)
      * @param feedbackHash - Feedback hash (32 bytes)
      * @param options - Write options (skipSend, signer)
+     *
+     * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
+     * Feedbacks are no longer stored on-chain individually.
      */
     giveFeedback(asset: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
@@ -214,10 +223,12 @@ export declare class ReputationTransactionBuilder {
         feedbackIndex: bigint;
     })>;
     /**
-     * Revoke feedback - v0.3.0
+     * Revoke feedback - v0.4.0
      * @param asset - Agent Core asset
      * @param feedbackIndex - Feedback index to revoke
      * @param options - Write options (skipSend, signer)
+     *
+     * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
      */
     revokeFeedback(asset: PublicKey, feedbackIndex: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
@@ -294,5 +305,22 @@ export declare class ValidationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     closeValidation(asset: PublicKey, validatorAddress: PublicKey, nonce: number, rentReceiver?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+}
+/**
+ * Transaction builder for ATOM Engine operations
+ * v0.4.0 - Agent Trust On-chain Model
+ */
+export declare class AtomTransactionBuilder {
+    private connection;
+    private payer?;
+    private instructionBuilder;
+    constructor(connection: Connection, payer?: Keypair | undefined);
+    /**
+     * Initialize AtomStats for an agent - v0.4.0
+     * Must be called by the agent owner before any feedback can be given
+     * @param asset - Agent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    initializeStats(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 //# sourceMappingURL=transaction-builder.d.ts.map

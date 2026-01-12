@@ -42,6 +42,16 @@ export declare const REPUTATION_DISCRIMINATORS: {
     readonly setFeedbackTags: Buffer<ArrayBuffer>;
 };
 /**
+ * ATOM Engine instruction discriminators
+ * v0.4.0 - For atom-engine program CPI and direct calls
+ */
+export declare const ATOM_ENGINE_DISCRIMINATORS: {
+    readonly initializeStats: Buffer<ArrayBuffer>;
+    readonly updateStats: Buffer<ArrayBuffer>;
+    readonly revokeStats: Buffer<ArrayBuffer>;
+    readonly getSummary: Buffer<ArrayBuffer>;
+};
+/**
  * Validation Registry instruction discriminators
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */

@@ -1,6 +1,7 @@
 /**
  * 8004-solana-ts SDK
  * TypeScript SDK for ERC-8004 on Solana
+ * v0.4.0 - ATOM Engine + Indexer support
  * Main entry point - exports public API
  */
 // Export models
@@ -31,5 +32,18 @@ export { SolanaSDK } from './core/sdk-solana.js';
 // Export OASF taxonomy utilities
 export { validateSkill, validateDomain, getAllSkills, getAllDomains, } from './core/oasf-validator.js';
 // Export config reader
-export { fetchRegistryConfig } from './core/config-reader.js';
+export { fetchRegistryConfig, fetchRegistryConfigByPda, getCurrentBaseRegistryPda, } from './core/config-reader.js';
+// ============================================================================
+// ATOM Engine exports (v0.4.0)
+// ============================================================================
+export { AtomStats, AtomConfig, TrustTier, ATOM_STATS_SCHEMA, ATOM_CONFIG_SCHEMA, trustTierToString, } from './core/atom-schemas.js';
+export { getAtomConfigPDA, getAtomStatsPDA, } from './core/atom-pda.js';
+// ============================================================================
+// Indexer exports (v0.4.0)
+// ============================================================================
+// Indexer client
+export { IndexerClient } from './core/indexer-client.js';
+// Indexer errors
+export { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './core/indexer-errors.js';
+export { indexedAgentToSimplified, indexedFeedbackToSolanaFeedback, indexedReputationToSummary, indexedReputationToExtendedSummary, } from './core/indexer-types.js';
 //# sourceMappingURL=index.js.map

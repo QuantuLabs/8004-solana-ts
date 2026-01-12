@@ -10,6 +10,72 @@
  */
 import { deserializeUnchecked } from 'borsh';
 import { PublicKey } from '@solana/web3.js';
+import { LIMITS } from '../utils/constants.js';
+/**
+ * Security: Pre-validate Borsh string/vec length prefixes BEFORE deserialization
+ * This prevents DoS via malicious buffers with huge length values that would
+ * cause OOM during deserializeUnchecked() before post-validation runs.
+ *
+ * Borsh string format: u32 length prefix (LE) + utf8 bytes
+ * Borsh vec format: u32 length prefix (LE) + elements
+ */
+function preValidateBorshLength(data, offset, maxLength, fieldName) {
+    if (offset + 4 > data.length) {
+        throw new Error(`Security: Buffer too short to read ${fieldName} length at offset ${offset}`);
+    }
+    const length = data.readUInt32LE(offset);
+    if (length > maxLength) {
+        throw new Error(`Security: ${fieldName} length prefix (${length}) exceeds max (${maxLength}). ` +
+            `Rejecting before deserialization to prevent OOM.`);
+    }
+    // Also verify the buffer has enough data for the declared length
+    if (offset + 4 + length > data.length) {
+        throw new Error(`Security: ${fieldName} declares ${length} bytes but buffer only has ${data.length - offset - 4} remaining.`);
+    }
+    return length;
+}
+/**
+ * Security: Pre-validate Borsh Option<Pubkey> format
+ * Option format: 1 byte (0=None, 1=Some) + optional 32 bytes
+ */
+function preValidateBorshOption(data, offset, innerSize) {
+    if (offset >= data.length) {
+        throw new Error(`Security: Buffer too short to read Option tag at offset ${offset}`);
+    }
+    const tag = data[offset];
+    if (tag === 0) {
+        return { hasValue: false, consumedBytes: 1 };
+    }
+    else if (tag === 1) {
+        if (offset + 1 + innerSize > data.length) {
+            throw new Error(`Security: Option(Some) at offset ${offset} declares ${innerSize} bytes but buffer too short`);
+        }
+        return { hasValue: true, consumedBytes: 1 + innerSize };
+    }
+    else {
+        throw new Error(`Security: Invalid Option tag ${tag} at offset ${offset}`);
+    }
+}
+/**
+ * Security: Validate deserialized string lengths (post-validation backup)
+ * Borsh can decode arbitrarily large strings that could cause OOM
+ */
+function validateStringLength(value, maxBytes, fieldName) {
+    const byteLength = Buffer.byteLength(value, 'utf8');
+    if (byteLength > maxBytes) {
+        throw new Error(`Security: ${fieldName} exceeds max length (${byteLength} > ${maxBytes} bytes). ` +
+            `Possible malformed account data.`);
+    }
+}
+/**
+ * Security: Validate byte array lengths (post-validation backup)
+ */
+function validateArrayLength(value, maxLength, fieldName) {
+    if (value.length > maxLength) {
+        throw new Error(`Security: ${fieldName} exceeds max length (${value.length} > ${maxLength} bytes). ` +
+            `Possible malformed account data.`);
+    }
+}
 /**
  * Metadata Entry (inline struct for metadata storage)
  * Matches Rust: { metadata_key: String, metadata_value: Vec<u8> }
@@ -136,6 +202,7 @@ export class RegistryConfig {
  * Seeds: ["agent", asset]
  */
 export class AgentAccount {
+    collection; // Pubkey - collection this agent belongs to
     owner; // Pubkey - cached from Core asset
     asset; // Pubkey - unique identifier (Metaplex Core asset)
     bump;
@@ -143,6 +210,7 @@ export class AgentAccount {
     agent_uri; // max 200 bytes
     nft_name; // max 32 bytes
     constructor(fields) {
+        this.collection = fields.collection;
         this.owner = fields.owner;
         this.asset = fields.asset;
         this.bump = fields.bump;
@@ -156,6 +224,7 @@ export class AgentAccount {
             {
                 kind: 'struct',
                 fields: [
+                    ['collection', [32]], // Collection pubkey
                     ['owner', [32]],
                     ['asset', [32]],
                     ['bump', 'u8'],
@@ -167,13 +236,32 @@ export class AgentAccount {
         ],
     ]);
     static deserialize(data) {
-        // discriminator(8) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 74 bytes minimum
-        // With Some(wallet): 74 + 32 = 106 bytes minimum
-        if (data.length < 74) {
-            throw new Error(`Invalid AgentAccount data: expected >= 74 bytes, got ${data.length}`);
+        // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 106 bytes minimum
+        // With Some(wallet): 106 + 32 = 138 bytes minimum
+        if (data.length < 106) {
+            throw new Error(`Invalid AgentAccount data: expected >= 106 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
-        return deserializeUnchecked(this.schema, AgentAccount, accountData);
+        // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
+        // Layout: collection(32) + owner(32) + asset(32) + bump(1) + agent_wallet(Option) + agent_uri(String) + nft_name(String)
+        let offset = 32 + 32 + 32 + 1; // = 97, at agent_wallet Option tag
+        // Pre-validate Option<Pubkey>
+        const optionResult = preValidateBorshOption(accountData, offset, 32);
+        offset += optionResult.consumedBytes;
+        // Pre-validate agent_uri string length
+        const agentUriLen = preValidateBorshLength(accountData, offset, LIMITS.MAX_URI_LENGTH, 'agent_uri');
+        offset += 4 + agentUriLen;
+        // Pre-validate nft_name string length
+        preValidateBorshLength(accountData, offset, LIMITS.MAX_NFT_NAME_LENGTH, 'nft_name');
+        // Now safe to deserialize - lengths are validated
+        const result = deserializeUnchecked(this.schema, AgentAccount, accountData);
+        // Post-validation backup (defense in depth)
+        validateStringLength(result.agent_uri, LIMITS.MAX_URI_LENGTH, 'agent_uri');
+        validateStringLength(result.nft_name, LIMITS.MAX_NFT_NAME_LENGTH, 'nft_name');
+        return result;
+    }
+    getCollectionPublicKey() {
+        return new PublicKey(this.collection);
     }
     getOwnerPublicKey() {
         return new PublicKey(this.owner);
@@ -244,10 +332,22 @@ export class MetadataEntryPda {
             throw new Error(`Invalid MetadataEntryPda data: expected >= 42 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
+        // Security: PRE-VALIDATE lengths BEFORE deserializeUnchecked to prevent OOM
+        // Layout: asset(32) + immutable(1) + bump(1) + metadata_key(String) + metadata_value(Vec<u8>)
+        let offset = 32 + 1 + 1; // = 34, at metadata_key
+        // Pre-validate metadata_key string length
+        const keyLen = preValidateBorshLength(accountData, offset, LIMITS.MAX_METADATA_KEY_LENGTH, 'metadata_key');
+        offset += 4 + keyLen;
+        // Pre-validate metadata_value vec length
+        preValidateBorshLength(accountData, offset, LIMITS.MAX_METADATA_VALUE_LENGTH, 'metadata_value');
+        // Now safe to deserialize
         const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData);
+        // Post-validation backup (defense in depth)
+        validateStringLength(raw.metadata_key, LIMITS.MAX_METADATA_KEY_LENGTH, 'metadata_key');
+        validateArrayLength(raw.metadata_value, LIMITS.MAX_METADATA_VALUE_LENGTH, 'metadata_value');
         return new MetadataEntryPda({
             asset: raw.asset,
-            immutable: raw.immutable === 1,
+            immutable: raw.immutable !== 0, // Security: treat any non-zero as true
             bump: raw.bump,
             metadata_key: raw.metadata_key,
             metadata_value: raw.metadata_value,
@@ -316,7 +416,7 @@ export class FeedbackAccount {
             client_address: raw.client_address,
             feedback_index: raw.feedback_index,
             score: raw.score,
-            is_revoked: raw.is_revoked === 1,
+            is_revoked: raw.is_revoked !== 0, // Security: treat any non-zero as true (revoked)
             bump: raw.bump,
         });
     }
@@ -363,7 +463,20 @@ export class FeedbackTagsPda {
             throw new Error(`Invalid FeedbackTagsPda data: expected >= 9 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
-        return deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
+        // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
+        // Layout: bump(1) + tag1(String) + tag2(String)
+        let offset = 1; // = 1, at tag1
+        // Pre-validate tag1 string length
+        const tag1Len = preValidateBorshLength(accountData, offset, LIMITS.MAX_TAG_LENGTH, 'tag1');
+        offset += 4 + tag1Len;
+        // Pre-validate tag2 string length
+        preValidateBorshLength(accountData, offset, LIMITS.MAX_TAG_LENGTH, 'tag2');
+        // Now safe to deserialize
+        const result = deserializeUnchecked(this.schema, FeedbackTagsPda, accountData);
+        // Post-validation backup (defense in depth)
+        validateStringLength(result.tag1, LIMITS.MAX_TAG_LENGTH, 'tag1');
+        validateStringLength(result.tag2, LIMITS.MAX_TAG_LENGTH, 'tag2');
+        return result;
     }
 }
 /**
@@ -531,7 +644,7 @@ export class ValidationRequest {
             response_hash: raw.response_hash,
             response: raw.response,
             last_update: raw.last_update,
-            has_response: raw.has_response === 1,
+            has_response: raw.has_response !== 0, // Security: treat any non-zero as true
             bump: raw.bump,
         });
     }

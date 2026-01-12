@@ -1,0 +1,486 @@
+/**
+ * ATOM Engine Borsh Schemas
+ * Agent Trust On-chain Model - v0.4.0
+ *
+ * These schemas must match exactly the Rust structs in atom-engine program.
+ * Seeds:
+ * - AtomStats: ["atom_stats", asset.key()]
+ * - AtomConfig: ["atom_config"]
+ */
+
+import { Schema, deserializeUnchecked } from 'borsh';
+import { PublicKey } from '@solana/web3.js';
+
+/**
+ * Trust Tier enum (0-4)
+ * Represents the agent's reputation level
+ */
+export enum TrustTier {
+  Unrated = 0,
+  Bronze = 1,
+  Silver = 2,
+  Gold = 3,
+  Platinum = 4,
+}
+
+/**
+ * Get human-readable trust tier name
+ */
+export function getTrustTierName(tier: TrustTier): string {
+  switch (tier) {
+    case TrustTier.Unrated:
+      return 'Unrated';
+    case TrustTier.Bronze:
+      return 'Bronze';
+    case TrustTier.Silver:
+      return 'Silver';
+    case TrustTier.Gold:
+      return 'Gold';
+    case TrustTier.Platinum:
+      return 'Platinum';
+    default:
+      return 'Unknown';
+  }
+}
+
+// Alias for export consistency
+export const trustTierToString = getTrustTierName;
+
+/**
+ * AtomStats - Raw reputation metrics for an agent
+ * Size: 460 bytes (8 discriminator + 452 data)
+ * Seeds: ["atom_stats", asset.key()]
+ *
+ * Layout v3.2:
+ * - BLOC 0: Identity (64 bytes) - collection + asset
+ * - BLOC 1: Core (24 bytes) - slots + count
+ * - BLOC 2: Dual-EMA (12 bytes)
+ * - BLOC 3: Epoch & Bounds (8 bytes)
+ * - BLOC 4: HLL (128 bytes) - 256 registers × 4 bits
+ * - BLOC 4b: HLL Salt (8 bytes)
+ * - BLOC 5: Burst Detection (196 bytes) - 24×u64 ring + 4×u8
+ * - BLOC 6: Output Cache (12 bytes)
+ */
+export class AtomStats {
+  // BLOC 0: Identity (64 bytes)
+  collection: Uint8Array; // 32 bytes - Collection this agent belongs to
+  asset: Uint8Array; // 32 bytes - Asset (agent NFT) this stats belongs to
+
+  // BLOC 1: Core metrics (24 bytes)
+  first_feedback_slot: bigint; // u64 - Slot of first feedback
+  last_feedback_slot: bigint; // u64 - Slot of most recent feedback
+  feedback_count: bigint; // u64 - Total feedbacks received
+
+  // BLOC 2: Dual-EMA (12 bytes)
+  ema_score_fast: number; // u16 - Fast EMA (α=0.30), scale 0-10000
+  ema_score_slow: number; // u16 - Slow EMA (α=0.05), scale 0-10000
+  ema_volatility: number; // u16 - Smoothed |fast - slow|, scale 0-10000
+  ema_arrival_log: number; // u16 - EMA of arrival rate, scale 0-1500
+  peak_ema: number; // u16 - Historical peak of slow EMA
+  max_drawdown: number; // u16 - Maximum drawdown from peak
+
+  // BLOC 3: Epoch tracking (8 bytes)
+  epoch_count: number; // u16 - Distinct epochs with activity
+  current_epoch: number; // u16 - Current epoch number
+  min_score: number; // u8 - Minimum score ever (0-100)
+  max_score: number; // u8 - Maximum score ever (0-100)
+  first_score: number; // u8 - First score received
+  last_score: number; // u8 - Most recent score
+
+  // BLOC 4: HLL (128 bytes) - HyperLogLog for unique client estimation
+  hll_packed: Uint8Array; // 128 bytes - 256 registers × 4 bits (v3.2)
+
+  // BLOC 4b: HLL Salt (8 bytes) - v3.0 security fix
+  hll_salt: bigint; // u64 - Random salt for HLL to prevent cross-agent grinding
+
+  // BLOC 5: Burst detection (196 bytes)
+  recent_callers: bigint[]; // 24×u64 - Ring buffer of caller fingerprints (v3.2: reduced from 32)
+  burst_pressure: number; // u8 - Repeat caller pressure (0-255)
+  updates_since_hll_change: number; // u8 - Updates since HLL change
+  neg_pressure: number; // u8 - Negative momentum pressure (v2.3)
+  eviction_cursor: number; // u8 - Round Robin eviction cursor (v3.0)
+
+  // BLOC 6: Output cache (12 bytes)
+  loyalty_score: number; // u16 - Cached loyalty score
+  quality_score: number; // u16 - Cached quality score (0-10000)
+  risk_score: number; // u8 - Risk score (0-100)
+  diversity_ratio: number; // u8 - Unique/total ratio (0-255)
+  trust_tier: number; // u8 - Trust tier (0-4)
+  flags: number; // u8 - Bit flags
+  confidence: number; // u16 - Confidence (0-10000)
+  bump: number; // u8 - PDA bump
+  schema_version: number; // u8 - Schema version
+
+  constructor(fields: {
+    collection: Uint8Array;
+    asset: Uint8Array;
+    first_feedback_slot: bigint;
+    last_feedback_slot: bigint;
+    feedback_count: bigint;
+    ema_score_fast: number;
+    ema_score_slow: number;
+    ema_volatility: number;
+    ema_arrival_log: number;
+    peak_ema: number;
+    max_drawdown: number;
+    epoch_count: number;
+    current_epoch: number;
+    min_score: number;
+    max_score: number;
+    first_score: number;
+    last_score: number;
+    hll_packed: Uint8Array;
+    hll_salt: bigint; // v3.0
+    recent_callers: bigint[];
+    burst_pressure: number;
+    updates_since_hll_change: number;
+    neg_pressure: number;
+    eviction_cursor: number; // v3.0
+    loyalty_score: number;
+    quality_score: number;
+    risk_score: number;
+    diversity_ratio: number;
+    trust_tier: number;
+    flags: number;
+    confidence: number;
+    bump: number;
+    schema_version: number;
+  }) {
+    this.collection = fields.collection;
+    this.asset = fields.asset;
+    this.first_feedback_slot = fields.first_feedback_slot;
+    this.last_feedback_slot = fields.last_feedback_slot;
+    this.feedback_count = fields.feedback_count;
+    this.ema_score_fast = fields.ema_score_fast;
+    this.ema_score_slow = fields.ema_score_slow;
+    this.ema_volatility = fields.ema_volatility;
+    this.ema_arrival_log = fields.ema_arrival_log;
+    this.peak_ema = fields.peak_ema;
+    this.max_drawdown = fields.max_drawdown;
+    this.epoch_count = fields.epoch_count;
+    this.current_epoch = fields.current_epoch;
+    this.min_score = fields.min_score;
+    this.max_score = fields.max_score;
+    this.first_score = fields.first_score;
+    this.last_score = fields.last_score;
+    this.hll_packed = fields.hll_packed;
+    this.hll_salt = fields.hll_salt;
+    this.recent_callers = fields.recent_callers;
+    this.burst_pressure = fields.burst_pressure;
+    this.updates_since_hll_change = fields.updates_since_hll_change;
+    this.neg_pressure = fields.neg_pressure;
+    this.eviction_cursor = fields.eviction_cursor;
+    this.loyalty_score = fields.loyalty_score;
+    this.quality_score = fields.quality_score;
+    this.risk_score = fields.risk_score;
+    this.diversity_ratio = fields.diversity_ratio;
+    this.trust_tier = fields.trust_tier;
+    this.flags = fields.flags;
+    this.confidence = fields.confidence;
+    this.bump = fields.bump;
+    this.schema_version = fields.schema_version;
+  }
+
+  // Borsh schema
+  static schema: Schema = new Map<any, any>([
+    [
+      AtomStats,
+      {
+        kind: 'struct',
+        fields: [
+          ['collection', [32]],
+          ['asset', [32]],
+          ['first_feedback_slot', 'u64'],
+          ['last_feedback_slot', 'u64'],
+          ['feedback_count', 'u64'],
+          ['ema_score_fast', 'u16'],
+          ['ema_score_slow', 'u16'],
+          ['ema_volatility', 'u16'],
+          ['ema_arrival_log', 'u16'],
+          ['peak_ema', 'u16'],
+          ['max_drawdown', 'u16'],
+          ['epoch_count', 'u16'],
+          ['current_epoch', 'u16'],
+          ['min_score', 'u8'],
+          ['max_score', 'u8'],
+          ['first_score', 'u8'],
+          ['last_score', 'u8'],
+          ['hll_packed', [128]], // v3.2: 256 registers × 4 bits = 128 bytes
+          ['hll_salt', 'u64'], // v3.0: Random salt for HLL
+          ['recent_callers', ['u64', 24]], // v3.2: Reduced from 32 to 24 slots
+          ['burst_pressure', 'u8'],
+          ['updates_since_hll_change', 'u8'],
+          ['neg_pressure', 'u8'],
+          ['eviction_cursor', 'u8'], // v3.0: Round Robin eviction cursor
+          ['loyalty_score', 'u16'],
+          ['quality_score', 'u16'],
+          ['risk_score', 'u8'],
+          ['diversity_ratio', 'u8'],
+          ['trust_tier', 'u8'],
+          ['flags', 'u8'],
+          ['confidence', 'u16'],
+          ['bump', 'u8'],
+          ['schema_version', 'u8'],
+        ],
+      },
+    ],
+  ]);
+
+  /**
+   * Deserialize AtomStats from account data
+   * @param data - Raw account data (with 8-byte discriminator)
+   */
+  static deserialize(data: Buffer): AtomStats {
+    // Skip 8-byte Anchor discriminator
+    const dataWithoutDiscriminator = data.slice(8);
+    return deserializeUnchecked(AtomStats.schema, AtomStats, dataWithoutDiscriminator);
+  }
+
+  // Helper methods
+  getCollectionPublicKey(): PublicKey {
+    return new PublicKey(this.collection);
+  }
+
+  getAssetPublicKey(): PublicKey {
+    return new PublicKey(this.asset);
+  }
+
+  getTrustTier(): TrustTier {
+    return this.trust_tier as TrustTier;
+  }
+
+  /**
+   * Get quality score as percentage (0-100)
+   */
+  getQualityPercent(): number {
+    return this.quality_score / 100;
+  }
+
+  /**
+   * Get confidence as percentage (0-100)
+   */
+  getConfidencePercent(): number {
+    return this.confidence / 100;
+  }
+
+  /**
+   * Get EMA score (slow) as percentage (0-100)
+   */
+  getAverageScore(): number {
+    return this.ema_score_slow / 100;
+  }
+
+  /**
+   * Estimate unique clients from HLL
+   * Uses standard HLL estimation formula
+   * v3.2: Updated for 256 registers (128 bytes)
+   */
+  estimateUniqueClients(): number {
+    // Unpack 4-bit registers from hll_packed (256 registers in 128 bytes)
+    const registers: number[] = [];
+    for (let i = 0; i < 128; i++) {
+      registers.push(this.hll_packed[i] & 0x0f);
+      registers.push((this.hll_packed[i] >> 4) & 0x0f);
+    }
+
+    // HLL estimation for 256 registers
+    const m = 256; // number of registers (v3.2)
+    const alpha = 0.7213 / (1 + 1.079 / m); // bias correction
+
+    let sum = 0;
+    let zeros = 0;
+    for (const reg of registers) {
+      sum += Math.pow(2, -reg);
+      if (reg === 0) zeros++;
+    }
+
+    let estimate = (alpha * m * m) / sum;
+
+    // Small range correction (linear counting for small cardinalities)
+    if (estimate <= 2.5 * m && zeros > 0) {
+      estimate = m * Math.log(m / zeros);
+    }
+
+    return Math.round(estimate);
+  }
+
+  // Alias for SDK consistency
+  getUniqueCallersEstimate(): number {
+    return this.estimateUniqueClients();
+  }
+}
+
+// Export schema references for direct access
+export const ATOM_STATS_SCHEMA = AtomStats.schema;
+
+/**
+ * AtomConfig - Configuration account for ATOM engine
+ * Seeds: ["atom_config"]
+ */
+export class AtomConfig {
+  authority!: Uint8Array; // 32 bytes
+  agent_registry_program!: Uint8Array; // 32 bytes
+
+  // EMA Parameters (9×u16)
+  alpha_fast!: number;
+  alpha_slow!: number;
+  alpha_volatility!: number;
+  alpha_arrival!: number;
+  alpha_quality!: number; // DEPRECATED
+  alpha_quality_up!: number;
+  alpha_quality_down!: number;
+  alpha_burst_up!: number;
+  alpha_burst_down!: number;
+
+  // Risk Weights (6×u8)
+  weight_sybil!: number;
+  weight_burst!: number;
+  weight_stagnation!: number;
+  weight_shock!: number;
+  weight_volatility!: number;
+  weight_arrival!: number;
+
+  // Thresholds
+  diversity_threshold!: number;
+  burst_threshold!: number;
+  shock_threshold!: number;
+  volatility_threshold!: number;
+  arrival_fast_threshold!: number;
+
+  // Tier Thresholds (4 tiers × 3 values)
+  tier_platinum_quality!: number;
+  tier_platinum_risk!: number;
+  tier_platinum_confidence!: number;
+  tier_gold_quality!: number;
+  tier_gold_risk!: number;
+  tier_gold_confidence!: number;
+  tier_silver_quality!: number;
+  tier_silver_risk!: number;
+  tier_silver_confidence!: number;
+  tier_bronze_quality!: number;
+  tier_bronze_risk!: number;
+  tier_bronze_confidence!: number;
+
+  // Cold Start
+  cold_start_min!: number;
+  cold_start_max!: number;
+  cold_start_penalty_heavy!: number;
+  cold_start_penalty_per_feedback!: number;
+
+  // Bonus/Loyalty
+  uniqueness_bonus!: number;
+  loyalty_bonus!: number;
+  loyalty_min_slot_delta!: number;
+  bonus_max_burst_pressure!: number;
+
+  // Decay
+  inactive_decay_per_epoch!: number;
+
+  // Meta
+  bump!: number;
+  version!: number;
+  paused!: boolean;
+  _padding!: Uint8Array;
+
+  constructor(fields: Record<string, unknown>) {
+    Object.assign(this, fields);
+  }
+
+  static schema: Schema = new Map<any, any>([
+    [
+      AtomConfig,
+      {
+        kind: 'struct',
+        fields: [
+          ['authority', [32]],
+          ['agent_registry_program', [32]],
+          ['alpha_fast', 'u16'],
+          ['alpha_slow', 'u16'],
+          ['alpha_volatility', 'u16'],
+          ['alpha_arrival', 'u16'],
+          ['alpha_quality', 'u16'],
+          ['alpha_quality_up', 'u16'],
+          ['alpha_quality_down', 'u16'],
+          ['alpha_burst_up', 'u16'],
+          ['alpha_burst_down', 'u16'],
+          ['weight_sybil', 'u8'],
+          ['weight_burst', 'u8'],
+          ['weight_stagnation', 'u8'],
+          ['weight_shock', 'u8'],
+          ['weight_volatility', 'u8'],
+          ['weight_arrival', 'u8'],
+          ['diversity_threshold', 'u8'],
+          ['burst_threshold', 'u8'],
+          ['shock_threshold', 'u16'],
+          ['volatility_threshold', 'u16'],
+          ['arrival_fast_threshold', 'u16'],
+          ['tier_platinum_quality', 'u16'],
+          ['tier_platinum_risk', 'u8'],
+          ['tier_platinum_confidence', 'u16'],
+          ['tier_gold_quality', 'u16'],
+          ['tier_gold_risk', 'u8'],
+          ['tier_gold_confidence', 'u16'],
+          ['tier_silver_quality', 'u16'],
+          ['tier_silver_risk', 'u8'],
+          ['tier_silver_confidence', 'u16'],
+          ['tier_bronze_quality', 'u16'],
+          ['tier_bronze_risk', 'u8'],
+          ['tier_bronze_confidence', 'u16'],
+          ['cold_start_min', 'u16'],
+          ['cold_start_max', 'u16'],
+          ['cold_start_penalty_heavy', 'u16'],
+          ['cold_start_penalty_per_feedback', 'u16'],
+          ['uniqueness_bonus', 'u16'],
+          ['loyalty_bonus', 'u16'],
+          ['loyalty_min_slot_delta', 'u32'],
+          ['bonus_max_burst_pressure', 'u8'],
+          ['inactive_decay_per_epoch', 'u16'],
+          ['bump', 'u8'],
+          ['version', 'u8'],
+          ['paused', 'u8'], // bool as u8
+          ['_padding', [5]],
+        ],
+      },
+    ],
+  ]);
+
+  static deserialize(data: Buffer): AtomConfig {
+    const dataWithoutDiscriminator = data.slice(8);
+    return deserializeUnchecked(AtomConfig.schema, AtomConfig, dataWithoutDiscriminator);
+  }
+
+  getAuthorityPublicKey(): PublicKey {
+    return new PublicKey(this.authority);
+  }
+
+  getAgentRegistryProgramPublicKey(): PublicKey {
+    return new PublicKey(this.agent_registry_program);
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+}
+
+// Export schema references for direct access
+export const ATOM_CONFIG_SCHEMA = AtomConfig.schema;
+
+/**
+ * Enriched summary returned by SDK
+ * Combines AtomStats with human-readable values
+ */
+export interface EnrichedSummary {
+  asset: PublicKey;
+  feedbackCount: number;
+  averageScore: number; // 0-100
+  qualityScore: number; // 0-100
+  confidence: number; // 0-100
+  riskScore: number; // 0-100
+  trustTier: TrustTier;
+  trustTierName: string;
+  diversityRatio: number; // 0-1
+  estimatedUniqueClients: number;
+  loyaltyScore: number;
+  firstFeedbackSlot: bigint;
+  lastFeedbackSlot: bigint;
+}

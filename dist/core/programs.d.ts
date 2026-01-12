@@ -14,6 +14,12 @@ export declare const PROGRAM_ID: PublicKey;
  */
 export declare const MPL_CORE_PROGRAM_ID: PublicKey;
 /**
+ * ATOM Engine Program ID
+ * Agent Trust On-chain Model - reputation computation engine
+ * v0.4.0 - Cross-program invocation for feedback/revoke operations
+ */
+export declare const ATOM_ENGINE_PROGRAM_ID: PublicKey;
+/**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
  * Program IDs for devnet deployment (legacy 3-program architecture)
  */
@@ -22,6 +28,7 @@ export declare const PROGRAM_IDS: {
     readonly reputationRegistry: PublicKey;
     readonly validationRegistry: PublicKey;
     readonly agentRegistry: PublicKey;
+    readonly atomEngine: PublicKey;
 };
 /**
  * Get program ID
@@ -35,6 +42,7 @@ export declare function getProgramIds(): {
     readonly reputationRegistry: PublicKey;
     readonly validationRegistry: PublicKey;
     readonly agentRegistry: PublicKey;
+    readonly atomEngine: PublicKey;
 };
 /**
  * Account discriminators (first 8 bytes of account data)

@@ -47,6 +47,16 @@ export const REPUTATION_DISCRIMINATORS = {
     setFeedbackTags: Buffer.from([154, 15, 246, 207, 174, 114, 255, 7]),
 };
 /**
+ * ATOM Engine instruction discriminators
+ * v0.4.0 - For atom-engine program CPI and direct calls
+ */
+export const ATOM_ENGINE_DISCRIMINATORS = {
+    initializeStats: Buffer.from([144, 201, 117, 76, 127, 118, 176, 16]),
+    updateStats: Buffer.from([145, 138, 9, 150, 178, 31, 158, 244]),
+    revokeStats: Buffer.from([86, 178, 106, 195, 51, 236, 38, 104]),
+    getSummary: Buffer.from([159, 2, 226, 186, 90, 59, 255, 104]),
+};
+/**
  * Validation Registry instruction discriminators
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */

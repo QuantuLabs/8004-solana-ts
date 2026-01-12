@@ -49,7 +49,27 @@ export declare class IPFSClient {
      */
     addFile(filepath: string): Promise<string>;
     /**
+     * Validate CID format
+     * Security: Prevents path injection and validates CID structure
+     */
+    private validateCid;
+    /**
+     * Verify content hash matches CIDv0 (Qm... = SHA256 multihash)
+     * Security: Ensures content integrity from potentially malicious gateways
+     * Note: CIDv1 verification requires multiformats library, skipped for now
+     */
+    private verifyCidV0;
+    /**
      * Get data from IPFS by CID
+     * Security:
+     * - Limits response size to prevent OOM attacks
+     * - Blocks redirects to prevent SSRF
+     * - Aborts concurrent requests when one succeeds
+     * - Verifies content hash for CIDv0
+     *
+     * NOTE: DNS rebinding attacks are NOT fully mitigated here.
+     * For high-security deployments, resolve DNS manually and verify IP
+     * before fetching, or use a dedicated IPFS node.
      */
     get(cid: string): Promise<string>;
     /**
