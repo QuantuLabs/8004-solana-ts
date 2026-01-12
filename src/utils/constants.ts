@@ -23,6 +23,13 @@ export const TIMEOUTS = {
 } as const;
 
 /**
+ * Security: Maximum response sizes to prevent OOM attacks
+ */
+export const MAX_SIZES = {
+  IPFS_RESPONSE: 10 * 1024 * 1024, // 10 MB - max IPFS content to fetch
+} as const;
+
+/**
  * Default values
  */
 export const DEFAULTS = {

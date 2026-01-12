@@ -63,7 +63,7 @@ export class PDAHelpers {
      * key_hash = SHA256(key)[0..8]
      */
     static getMetadataEntryPDA(asset, keyHash, programId = PROGRAM_ID) {
-        return PublicKey.findProgramAddressSync([Buffer.from('agent_meta'), asset.toBuffer(), keyHash.slice(0, 8)], programId);
+        return PublicKey.findProgramAddressSync([Buffer.from('agent_meta'), asset.toBuffer(), keyHash.slice(0, 16)], programId);
     }
     // ============================================================================
     // Reputation Module PDAs

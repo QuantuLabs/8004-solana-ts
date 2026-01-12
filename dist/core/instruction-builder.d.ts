@@ -19,12 +19,14 @@ export declare class IdentityInstructionBuilder {
     constructor();
     /**
      * Build register instruction (Metaplex Core)
-     * Accounts: config, agent_account, asset (signer), collection, owner (signer), system_program, mpl_core_program
+     * Accounts: registry_config, agent_account, asset (signer), collection,
+     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
      */
     buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
     /**
      * Build setAgentUri instruction (Metaplex Core)
-     * Accounts: config, agent_account, asset, collection, owner (signer), system_program, mpl_core_program
+     * Accounts: registry_config, agent_account, asset, collection,
+     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
      */
     buildSetAgentUri(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
     /**
@@ -90,17 +92,19 @@ export declare class ReputationInstructionBuilder {
     private programId;
     constructor();
     /**
-     * Build giveFeedback instruction - v0.3.0
+     * Build giveFeedback instruction - v0.4.0
      * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
-     * Accounts: client (signer), payer (signer), asset, agent_account, feedback_account, agent_reputation, system_program
+     * Accounts: client (signer), asset, collection, agent_account, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+     * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildGiveFeedback(client: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, asset: PublicKey, collection: PublicKey, agentAccount: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
     /**
-     * Build revokeFeedback instruction - v0.3.0
+     * Build revokeFeedback instruction - v0.4.0
      * Matches: revoke_feedback(feedback_index)
-     * Accounts: client (signer), feedback_account, agent_reputation
+     * Accounts: client (signer), asset, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+     * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildRevokeFeedback(client: PublicKey, feedbackAccount: PublicKey, agentReputation: PublicKey, feedbackIndex: bigint): TransactionInstruction;
+    buildRevokeFeedback(client: PublicKey, asset: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, feedbackIndex: bigint): TransactionInstruction;
     /**
      * Build appendResponse instruction - v0.3.0
      * Matches: append_response(feedback_index, response_uri, response_hash)
@@ -150,5 +154,21 @@ export declare class ValidationInstructionBuilder {
     private serializeString;
     private serializeU64;
     private serializeU32;
+}
+/**
+ * Instruction builder for ATOM Engine
+ * v0.4.0 - Agent Trust On-chain Model
+ * Program: CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3
+ */
+export declare class AtomInstructionBuilder {
+    private programId;
+    constructor();
+    /**
+     * Build initializeStats instruction
+     * Initializes AtomStats PDA for an agent (must be called before any feedback)
+     * Only the agent owner can call this
+     * Accounts: owner (signer), asset, collection, config, stats (created), system_program
+     */
+    buildInitializeStats(owner: PublicKey, asset: PublicKey, collection: PublicKey, config: PublicKey, stats: PublicKey): TransactionInstruction;
 }
 //# sourceMappingURL=instruction-builder.d.ts.map

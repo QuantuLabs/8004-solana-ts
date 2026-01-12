@@ -7,12 +7,18 @@ import { PublicKey } from '@solana/web3.js';
  * Consolidated AgentRegistry8004 Program ID
  * Single program containing Identity, Reputation, and Validation modules
  */
-export const PROGRAM_ID = new PublicKey('HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp');
+export const PROGRAM_ID = new PublicKey('ASD4jYGBofvxwdKV8EArNWhK6jv9cDquGLH5ybL3Qqkz');
 /**
  * Metaplex Core Program ID
  * Used for NFT asset creation and management
  */
 export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+/**
+ * ATOM Engine Program ID
+ * Agent Trust On-chain Model - reputation computation engine
+ * v0.4.0 - Cross-program invocation for feedback/revoke operations
+ */
+export const ATOM_ENGINE_PROGRAM_ID = new PublicKey('CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3');
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
  * Program IDs for devnet deployment (legacy 3-program architecture)
@@ -23,6 +29,8 @@ export const PROGRAM_IDS = {
     validationRegistry: PROGRAM_ID,
     // Consolidated program
     agentRegistry: PROGRAM_ID,
+    // ATOM Engine (v0.4.0)
+    atomEngine: ATOM_ENGINE_PROGRAM_ID,
 };
 /**
  * Get program ID

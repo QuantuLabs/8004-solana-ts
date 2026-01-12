@@ -1,11 +1,12 @@
 /**
  * Solana SDK for Agent0 - ERC-8004 implementation
- * v0.3.0 - Asset-based identification
+ * v0.4.0 - ATOM Engine integration + Indexer support
  * Provides read and write access to Solana-based agent registries
  *
- * BREAKING CHANGES from v0.2.0:
- * - All methods now use asset (PublicKey) instead of agentId (bigint)
- * - Multi-collection support via RootConfig and RegistryConfig
+ * BREAKING CHANGES from v0.3.0:
+ * - GiveFeedback/RevokeFeedback now use ATOM Engine for reputation tracking
+ * - New ATOM methods: getAtomStats, getTrustTier, getEnrichedSummary
+ * - Optional indexer integration for fast queries
  */
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster } from './client.js';
@@ -13,11 +14,22 @@ import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana
 import type { IPFSClient } from './ipfs-client.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { TransactionResult, WriteOptions, RegisterAgentOptions, PreparedTransaction } from './transaction-builder.js';
+import { AtomStats, TrustTier } from './atom-schemas.js';
+import { IndexerClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, CollectionStats, GlobalStats } from './indexer-client.js';
+import type { AgentSearchParams } from './indexer-types.js';
 export interface SolanaSDKConfig {
     cluster?: Cluster;
     rpcUrl?: string;
     signer?: Keypair;
     ipfsClient?: IPFSClient;
+    /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
+    indexerUrl?: string;
+    /** Supabase anon key for authentication */
+    indexerApiKey?: string;
+    /** Use indexer for read operations (default: true if indexerUrl provided) */
+    useIndexer?: boolean;
+    /** Fallback to on-chain if indexer unavailable (default: true) */
+    indexerFallback?: boolean;
 }
 /**
  * Agent with on-chain metadata extensions
@@ -38,8 +50,29 @@ export interface GetAllAgentsOptions {
     includeRevoked?: boolean;
 }
 /**
+ * Enriched summary combining on-chain agent data with ATOM metrics (v0.4.0)
+ */
+export interface EnrichedSummary {
+    asset: PublicKey;
+    owner: PublicKey;
+    collection: PublicKey;
+    totalFeedbacks: number;
+    averageScore: number;
+    positiveCount: number;
+    negativeCount: number;
+    trustTier: TrustTier;
+    qualityScore: number;
+    confidence: number;
+    riskScore: number;
+    diversityRatio: number;
+    uniqueCallers: number;
+    emaScoreFast: number;
+    emaScoreSlow: number;
+    volatility: number;
+}
+/**
  * Main SDK class for Solana ERC-8004 implementation
- * v0.3.0 - Asset-based identification
+ * v0.4.0 - ATOM Engine + Indexer support
  * Provides read and write access to agent registries on Solana
  */
 export declare class SolanaSDK {
@@ -51,8 +84,12 @@ export declare class SolanaSDK {
     private readonly identityTxBuilder;
     private readonly reputationTxBuilder;
     private readonly validationTxBuilder;
+    private readonly atomTxBuilder;
     private mintResolver?;
     private baseCollection?;
+    private readonly indexerClient?;
+    private readonly useIndexer;
+    private readonly indexerFallback;
     constructor(config?: SolanaSDKConfig);
     /**
      * Initialize the agent mint resolver and base collection (lazy initialization)
@@ -193,6 +230,116 @@ export declare class SolanaSDK {
      */
     readResponses(asset: PublicKey, feedbackIndex: number | bigint): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
     /**
+     * Get ATOM stats for an agent
+     * @param asset - Agent Core asset pubkey
+     * @returns AtomStats account data or null if not found
+     */
+    getAtomStats(asset: PublicKey): Promise<AtomStats | null>;
+    /**
+     * Initialize ATOM stats for an agent (write operation) - v0.4.0
+     * Must be called by the agent owner before any feedback can be given
+     * @param asset - Agent Core asset pubkey
+     * @param options - Write options (skipSend, signer)
+     */
+    initializeAtomStats(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Get trust tier for an agent
+     * @param asset - Agent Core asset pubkey
+     * @returns TrustTier enum value (0-4)
+     */
+    getTrustTier(asset: PublicKey): Promise<TrustTier>;
+    /**
+     * Get enriched summary combining agent data with ATOM metrics
+     * @param asset - Agent Core asset pubkey
+     * @returns EnrichedSummary with full reputation data
+     */
+    getEnrichedSummary(asset: PublicKey): Promise<EnrichedSummary | null>;
+    /**
+     * Helper: Execute with indexer fallback to on-chain
+     */
+    private withIndexerFallback;
+    /**
+     * Check if indexer is available
+     */
+    isIndexerAvailable(): Promise<boolean>;
+    /**
+     * Get the indexer client for direct access
+     */
+    getIndexerClient(): IndexerClient | undefined;
+    /**
+     * Search agents with filters (indexer only)
+     * @param params - Search parameters
+     * @returns Array of indexed agents
+     */
+    searchAgents(params: AgentSearchParams): Promise<IndexedAgent[]>;
+    /**
+     * Get leaderboard (top agents by sort_key) - indexer only
+     * Uses keyset pagination for scale (millions of agents)
+     * @param options.collection - Optional collection filter
+     * @param options.minTier - Minimum trust tier (0-4)
+     * @param options.limit - Number of results (default: 50)
+     * @param options.cursorSortKey - Cursor for keyset pagination
+     * @returns Array of agents sorted by sort_key DESC
+     */
+    getLeaderboard(options?: {
+        collection?: string;
+        minTier?: number;
+        limit?: number;
+        cursorSortKey?: string;
+    }): Promise<IndexedAgent[]>;
+    /**
+     * Get global statistics - indexer only
+     * @returns Global stats (total agents, feedbacks, etc.)
+     */
+    getGlobalStats(): Promise<GlobalStats>;
+    /**
+     * Get collection statistics - indexer only
+     * @param collection - Collection pubkey string
+     * @returns Collection stats or null if not found
+     */
+    getCollectionStats(collection: string): Promise<CollectionStats | null>;
+    /**
+     * Get feedbacks by endpoint - indexer only
+     * @param endpoint - Endpoint string (e.g., '/api/chat')
+     * @returns Array of feedbacks for this endpoint
+     */
+    getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
+    /**
+     * Get feedbacks by tag - indexer only
+     * @param tag - Tag to search for (in tag1 or tag2)
+     * @returns Array of feedbacks with this tag
+     */
+    getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
+    /**
+     * Get agent by operational wallet - indexer only
+     * @param wallet - Agent wallet pubkey string
+     * @returns Indexed agent or null
+     */
+    getAgentByWallet(wallet: string): Promise<IndexedAgent | null>;
+    /**
+     * Get pending validations for a validator - indexer only
+     * @param validator - Validator pubkey string
+     * @returns Array of pending validation requests
+     */
+    getPendingValidations(validator: string): Promise<IndexedValidation[]>;
+    /**
+     * Get agent reputation from indexer (with on-chain fallback)
+     * @param asset - Agent asset pubkey
+     * @returns Indexed reputation data
+     */
+    getAgentReputationFromIndexer(asset: PublicKey): Promise<IndexedAgentReputation | null>;
+    /**
+     * Get feedbacks from indexer (with on-chain fallback)
+     * @param asset - Agent asset pubkey
+     * @param options - Query options
+     * @returns Array of feedbacks (SolanaFeedback format)
+     */
+    getFeedbacksFromIndexer(asset: PublicKey, options?: {
+        includeRevoked?: boolean;
+        limit?: number;
+        offset?: number;
+    }): Promise<SolanaFeedback[]>;
+    /**
      * Check if SDK has write permissions
      */
     get canWrite(): boolean;
@@ -326,6 +473,7 @@ export declare class SolanaSDK {
         readonly reputationRegistry: PublicKey;
         readonly validationRegistry: PublicKey;
         readonly agentRegistry: PublicKey;
+        readonly atomEngine: PublicKey;
     };
     /**
      * Get registry addresses (for parity with agent0-ts)

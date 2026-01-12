@@ -16,6 +16,12 @@ export declare const TIMEOUTS: {
     readonly ENDPOINT_CRAWLER_DEFAULT: 5000;
 };
 /**
+ * Security: Maximum response sizes to prevent OOM attacks
+ */
+export declare const MAX_SIZES: {
+    readonly IPFS_RESPONSE: number;
+};
+/**
  * Default values
  */
 export declare const DEFAULTS: {

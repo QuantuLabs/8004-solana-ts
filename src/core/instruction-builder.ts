@@ -16,11 +16,12 @@ import {
   SystemProgram,
   SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
-import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
+import { PROGRAM_ID, MPL_CORE_PROGRAM_ID, ATOM_ENGINE_PROGRAM_ID } from './programs.js';
 import {
   IDENTITY_DISCRIMINATORS,
   REPUTATION_DISCRIMINATORS,
   VALIDATION_DISCRIMINATORS,
+  ATOM_ENGINE_DISCRIMINATORS,
 } from './instruction-discriminators.js';
 import { toBigInt } from './utils.js';
 
@@ -37,7 +38,8 @@ export class IdentityInstructionBuilder {
 
   /**
    * Build register instruction (Metaplex Core)
-   * Accounts: config, agent_account, asset (signer), collection, owner (signer), system_program, mpl_core_program
+   * Accounts: registry_config, agent_account, asset (signer), collection,
+   *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
    */
   buildRegister(
     config: PublicKey,
@@ -52,6 +54,13 @@ export class IdentityInstructionBuilder {
       this.serializeString(agentUri),
     ]);
 
+    // Derive user_collection_authority PDA (seeds: ["user_collection_authority"])
+    // This is an optional account but must be included in the accounts list
+    const [userCollectionAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from('user_collection_authority')],
+      this.programId
+    );
+
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
@@ -59,6 +68,7 @@ export class IdentityInstructionBuilder {
         { pubkey: agentAccount, isSigner: false, isWritable: true },
         { pubkey: asset, isSigner: true, isWritable: true },
         { pubkey: collection, isSigner: false, isWritable: true },
+        { pubkey: userCollectionAuthority, isSigner: false, isWritable: false }, // Optional PDA
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -69,7 +79,8 @@ export class IdentityInstructionBuilder {
 
   /**
    * Build setAgentUri instruction (Metaplex Core)
-   * Accounts: config, agent_account, asset, collection, owner (signer), system_program, mpl_core_program
+   * Accounts: registry_config, agent_account, asset, collection,
+   *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
    */
   buildSetAgentUri(
     config: PublicKey,
@@ -84,13 +95,20 @@ export class IdentityInstructionBuilder {
       this.serializeString(newUri),
     ]);
 
+    // Derive user_collection_authority PDA (seeds: ["user_collection_authority"])
+    const [userCollectionAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from('user_collection_authority')],
+      this.programId
+    );
+
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
         { pubkey: config, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: true },
         { pubkey: asset, isSigner: false, isWritable: true },
-        { pubkey: collection, isSigner: false, isWritable: false },
+        { pubkey: collection, isSigner: false, isWritable: true }, // mut for Core CPI
+        { pubkey: userCollectionAuthority, isSigner: false, isWritable: false }, // Optional PDA
         { pubkey: owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -120,7 +138,7 @@ export class IdentityInstructionBuilder {
 
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.setMetadata,
-      keyHash.slice(0, 8),  // [u8; 8] key_hash
+      keyHash.slice(0, 16),  // [u8; 16] key_hash (v1.9 security update)
       this.serializeString(key),
       serializedValue,
       Buffer.from([immutable ? 1 : 0]),  // bool
@@ -152,7 +170,7 @@ export class IdentityInstructionBuilder {
   ): TransactionInstruction {
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.deleteMetadata,
-      keyHash.slice(0, 8),  // [u8; 8] key_hash
+      keyHash.slice(0, 16),  // [u8; 16] key_hash (v1.9 security update)
     ]);
 
     return new TransactionInstruction({
@@ -345,8 +363,12 @@ export class IdentityInstructionBuilder {
     newWallet: PublicKey,
     deadline: bigint,
   ): TransactionInstruction {
+    // Security: Validate deadline is non-negative u64
+    if (deadline < 0n) {
+      throw new Error('Security: deadline must be non-negative');
+    }
     const deadlineBuffer = Buffer.alloc(8);
-    deadlineBuffer.writeBigInt64LE(deadline);
+    deadlineBuffer.writeBigUInt64LE(deadline);
 
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.setAgentWallet,
@@ -397,17 +419,18 @@ export class ReputationInstructionBuilder {
   }
 
   /**
-   * Build giveFeedback instruction - v0.3.0
+   * Build giveFeedback instruction - v0.4.0
    * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
-   * Accounts: client (signer), payer (signer), asset, agent_account, feedback_account, agent_reputation, system_program
+   * Accounts: client (signer), asset, collection, agent_account, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+   * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
    */
   buildGiveFeedback(
     client: PublicKey,
-    payer: PublicKey,
     asset: PublicKey,
+    collection: PublicKey,
     agentAccount: PublicKey,
-    feedbackAccount: PublicKey,
-    agentReputation: PublicKey,
+    atomConfig: PublicKey,
+    atomStats: PublicKey,
     score: number,
     tag1: string,
     tag2: string,
@@ -431,11 +454,13 @@ export class ReputationInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: client, isSigner: true, isWritable: true },
-        { pubkey: payer, isSigner: true, isWritable: true },
         { pubkey: asset, isSigner: false, isWritable: false },
+        { pubkey: collection, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: feedbackAccount, isSigner: false, isWritable: true },
-        { pubkey: agentReputation, isSigner: false, isWritable: true },
+        { pubkey: atomConfig, isSigner: false, isWritable: false },
+        { pubkey: atomStats, isSigner: false, isWritable: true },
+        { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -443,14 +468,16 @@ export class ReputationInstructionBuilder {
   }
 
   /**
-   * Build revokeFeedback instruction - v0.3.0
+   * Build revokeFeedback instruction - v0.4.0
    * Matches: revoke_feedback(feedback_index)
-   * Accounts: client (signer), feedback_account, agent_reputation
+   * Accounts: client (signer), asset, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+   * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
    */
   buildRevokeFeedback(
     client: PublicKey,
-    feedbackAccount: PublicKey,
-    agentReputation: PublicKey,
+    asset: PublicKey,
+    atomConfig: PublicKey,
+    atomStats: PublicKey,
     feedbackIndex: bigint,
   ): TransactionInstruction {
     const data = Buffer.concat([
@@ -461,9 +488,13 @@ export class ReputationInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: client, isSigner: true, isWritable: false },
-        { pubkey: feedbackAccount, isSigner: false, isWritable: true },
-        { pubkey: agentReputation, isSigner: false, isWritable: true },
+        { pubkey: client, isSigner: true, isWritable: true },
+        { pubkey: asset, isSigner: false, isWritable: false },
+        { pubkey: atomConfig, isSigner: false, isWritable: false },
+        { pubkey: atomStats, isSigner: false, isWritable: true },
+        { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
@@ -720,5 +751,45 @@ export class ValidationInstructionBuilder {
     const buf = Buffer.alloc(4);
     buf.writeUInt32LE(value);
     return buf;
+  }
+}
+
+/**
+ * Instruction builder for ATOM Engine
+ * v0.4.0 - Agent Trust On-chain Model
+ * Program: CSx95Vn3gZuRTVnJ9j6ceiT9PEe1J5r1zooMa2dY7Vo3
+ */
+export class AtomInstructionBuilder {
+  private programId: PublicKey;
+
+  constructor() {
+    this.programId = ATOM_ENGINE_PROGRAM_ID;
+  }
+
+  /**
+   * Build initializeStats instruction
+   * Initializes AtomStats PDA for an agent (must be called before any feedback)
+   * Only the agent owner can call this
+   * Accounts: owner (signer), asset, collection, config, stats (created), system_program
+   */
+  buildInitializeStats(
+    owner: PublicKey,
+    asset: PublicKey,
+    collection: PublicKey,
+    config: PublicKey,
+    stats: PublicKey,
+  ): TransactionInstruction {
+    return new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: asset, isSigner: false, isWritable: false },
+        { pubkey: collection, isSigner: false, isWritable: false },
+        { pubkey: config, isSigner: false, isWritable: false },
+        { pubkey: stats, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: ATOM_ENGINE_DISCRIMINATORS.initializeStats,
+    });
   }
 }

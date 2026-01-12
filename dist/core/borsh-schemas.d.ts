@@ -77,6 +77,7 @@ export declare class RegistryConfig {
  * Seeds: ["agent", asset]
  */
 export declare class AgentAccount {
+    collection: Uint8Array;
     owner: Uint8Array;
     asset: Uint8Array;
     bump: number;
@@ -84,6 +85,7 @@ export declare class AgentAccount {
     agent_uri: string;
     nft_name: string;
     constructor(fields: {
+        collection: Uint8Array;
         owner: Uint8Array;
         asset: Uint8Array;
         bump: number;
@@ -93,6 +95,7 @@ export declare class AgentAccount {
     });
     static schema: Schema;
     static deserialize(data: Buffer): AgentAccount;
+    getCollectionPublicKey(): PublicKey;
     getOwnerPublicKey(): PublicKey;
     getAssetPublicKey(): PublicKey;
     /**

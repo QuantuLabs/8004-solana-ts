@@ -1,11 +1,12 @@
 /**
  * Solana SDK for Agent0 - ERC-8004 implementation
- * v0.3.0 - Asset-based identification
+ * v0.4.0 - ATOM Engine integration + Indexer support
  * Provides read and write access to Solana-based agent registries
  *
- * BREAKING CHANGES from v0.2.0:
- * - All methods now use asset (PublicKey) instead of agentId (bigint)
- * - Multi-collection support via RootConfig and RegistryConfig
+ * BREAKING CHANGES from v0.3.0:
+ * - GiveFeedback/RevokeFeedback now use ATOM Engine for reputation tracking
+ * - New ATOM methods: getAtomStats, getTrustTier, getEnrichedSummary
+ * - Optional indexer integration for fast queries
  */
 import bs58 from 'bs58';
 import { SolanaClient, createDevnetClient, UnsupportedRpcError } from './client.js';
@@ -15,12 +16,19 @@ import { getProgramIds } from './programs.js';
 import { createHash } from 'crypto';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
-import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, } from './transaction-builder.js';
+import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getCurrentBaseCollection } from './config-reader.js';
+import { logger } from '../utils/logger.js';
+// ATOM Engine imports (v0.4.0)
+import { AtomStats, TrustTier } from './atom-schemas.js';
+import { getAtomStatsPDA } from './atom-pda.js';
+// Indexer imports (v0.4.0)
+import { IndexerClient, } from './indexer-client.js';
+import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 /**
  * Main SDK class for Solana ERC-8004 implementation
- * v0.3.0 - Asset-based identification
+ * v0.4.0 - ATOM Engine + Indexer support
  * Provides read and write access to agent registries on Solana
  */
 export class SolanaSDK {
@@ -32,8 +40,13 @@ export class SolanaSDK {
     identityTxBuilder;
     reputationTxBuilder;
     validationTxBuilder;
+    atomTxBuilder;
     mintResolver;
     baseCollection;
+    // Indexer (v0.4.0)
+    indexerClient;
+    useIndexer;
+    indexerFallback;
     constructor(config = {}) {
         this.cluster = config.cluster || 'devnet';
         this.programIds = getProgramIds();
@@ -47,11 +60,24 @@ export class SolanaSDK {
             : createDevnetClient();
         // Initialize feedback manager
         this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
-        // Initialize transaction builders (v0.3.0 - no cluster argument)
+        // Initialize transaction builders (v0.4.0)
         const connection = this.client.getConnection();
         this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
         this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer);
         this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
+        this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer);
+        // Initialize indexer client (v0.4.0)
+        if (config.indexerUrl && config.indexerApiKey) {
+            this.indexerClient = new IndexerClient({
+                baseUrl: config.indexerUrl,
+                apiKey: config.indexerApiKey,
+            });
+            this.useIndexer = config.useIndexer ?? true;
+        }
+        else {
+            this.useIndexer = false;
+        }
+        this.indexerFallback = config.indexerFallback ?? true;
     }
     /**
      * Initialize the agent mint resolver and base collection (lazy initialization)
@@ -98,7 +124,7 @@ export class SolanaSDK {
             return AgentAccount.deserialize(data);
         }
         catch (error) {
-            console.error(`Error loading agent ${asset.toBase58()}:`, error);
+            logger.error('Error loading agent', error);
             return null;
         }
     }
@@ -110,8 +136,8 @@ export class SolanaSDK {
      */
     async getMetadata(asset, key) {
         try {
-            // Compute key hash (SHA256(key)[0..8])
-            const keyHash = createHash('sha256').update(key).digest().slice(0, 8);
+            // Compute key hash (SHA256(key)[0..16]) - v1.9 security update
+            const keyHash = createHash('sha256').update(key).digest().slice(0, 16);
             // Derive metadata entry PDA (v0.3.0 - uses asset)
             const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
             // Fetch metadata account
@@ -124,7 +150,7 @@ export class SolanaSDK {
             return entry.getValueString();
         }
         catch (error) {
-            console.error(`Error getting metadata for agent ${asset.toBase58()}, key "${key}":`, error);
+            logger.error(`Error getting metadata for key "${key}"`, error);
             return null;
         }
     }
@@ -140,7 +166,8 @@ export class SolanaSDK {
         try {
             const programId = this.programIds.identityRegistry;
             // 1. Fetch agent accounts filtered by owner (1 RPC call)
-            // v0.3.0: owner is at offset 8 (after discriminator)
+            // AgentAccount layout: discriminator (8) + collection (32) + owner (32)
+            // Owner is at offset 8 + 32 = 40
             const agentAccounts = await this.client.getProgramAccounts(programId, [
                 {
                     memcmp: {
@@ -150,7 +177,7 @@ export class SolanaSDK {
                 },
                 {
                     memcmp: {
-                        offset: 8, // owner is first field after discriminator
+                        offset: 40, // owner is after discriminator (8) + collection (32)
                         bytes: owner.toBase58(),
                     },
                 },
@@ -200,7 +227,7 @@ export class SolanaSDK {
         catch (error) {
             if (error instanceof UnsupportedRpcError)
                 throw error;
-            console.error(`Error getting agents for owner ${owner.toBase58()}:`, error);
+            logger.error('Error getting agents for owner', error);
             return [];
         }
     }
@@ -280,7 +307,7 @@ export class SolanaSDK {
         catch (error) {
             if (error instanceof UnsupportedRpcError)
                 throw error;
-            console.error('Error getting all agents:', error);
+            logger.error('Error getting all agents', error);
             return [];
         }
     }
@@ -429,7 +456,288 @@ export class SolanaSDK {
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
         return await this.feedbackManager.readResponses(asset, idx);
     }
-    // ==================== Write Methods (require signer) - v0.3.0 ====================
+    // ==================== ATOM Engine Methods (v0.4.0) ====================
+    /**
+     * Get ATOM stats for an agent
+     * @param asset - Agent Core asset pubkey
+     * @returns AtomStats account data or null if not found
+     */
+    async getAtomStats(asset) {
+        try {
+            const [atomStatsPDA] = getAtomStatsPDA(asset);
+            const connection = this.client.getConnection();
+            const accountInfo = await connection.getAccountInfo(atomStatsPDA);
+            if (!accountInfo || !accountInfo.data) {
+                return null;
+            }
+            // AtomStats.deserialize handles the 8-byte discriminator internally
+            return AtomStats.deserialize(Buffer.from(accountInfo.data));
+        }
+        catch (error) {
+            logger.error('Error fetching ATOM stats', error);
+            return null;
+        }
+    }
+    /**
+     * Initialize ATOM stats for an agent (write operation) - v0.4.0
+     * Must be called by the agent owner before any feedback can be given
+     * @param asset - Agent Core asset pubkey
+     * @param options - Write options (skipSend, signer)
+     */
+    async initializeAtomStats(asset, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        return await this.atomTxBuilder.initializeStats(asset, options);
+    }
+    /**
+     * Get trust tier for an agent
+     * @param asset - Agent Core asset pubkey
+     * @returns TrustTier enum value (0-4)
+     */
+    async getTrustTier(asset) {
+        const stats = await this.getAtomStats(asset);
+        if (!stats) {
+            return TrustTier.Unrated;
+        }
+        return stats.trust_tier;
+    }
+    /**
+     * Get enriched summary combining agent data with ATOM metrics
+     * @param asset - Agent Core asset pubkey
+     * @returns EnrichedSummary with full reputation data
+     */
+    async getEnrichedSummary(asset) {
+        // Fetch agent, ATOM stats, and base collection in parallel
+        const [agent, atomStats, baseCollection] = await Promise.all([
+            this.loadAgent(asset),
+            this.getAtomStats(asset),
+            this.getBaseCollection(),
+        ]);
+        if (!agent) {
+            return null;
+        }
+        // Get basic summary from feedback manager
+        const summary = await this.feedbackManager.getSummary(asset);
+        // Get collection from AtomStats if available, otherwise use base collection
+        const collection = atomStats
+            ? atomStats.getCollectionPublicKey()
+            : (baseCollection || asset); // fallback to asset if no collection found
+        return {
+            asset,
+            owner: agent.getOwnerPublicKey(),
+            collection,
+            // Basic reputation metrics
+            totalFeedbacks: summary.totalFeedbacks,
+            averageScore: summary.averageScore,
+            positiveCount: summary.positiveCount,
+            negativeCount: summary.negativeCount,
+            // ATOM metrics (from AtomStats or defaults)
+            trustTier: atomStats ? atomStats.trust_tier : TrustTier.Unrated,
+            qualityScore: atomStats?.quality_score ?? 0,
+            confidence: atomStats?.confidence ?? 0,
+            riskScore: atomStats?.risk_score ?? 0,
+            diversityRatio: atomStats?.diversity_ratio ?? 0,
+            uniqueCallers: atomStats?.getUniqueCallersEstimate() ?? 0,
+            emaScoreFast: atomStats?.ema_score_fast ?? 0,
+            emaScoreSlow: atomStats?.ema_score_slow ?? 0,
+            volatility: atomStats?.ema_volatility ?? 0,
+        };
+    }
+    // ==================== Indexer Methods (v0.4.0) ====================
+    /**
+     * Helper: Execute with indexer fallback to on-chain
+     */
+    async withIndexerFallback(indexerFn, onChainFn, operationName) {
+        if (!this.useIndexer || !this.indexerClient) {
+            return onChainFn();
+        }
+        try {
+            return await indexerFn();
+        }
+        catch (error) {
+            if (this.indexerFallback) {
+                const errMsg = error instanceof Error ? error.message : String(error);
+                logger.warn(`Indexer failed for ${operationName}, falling back to on-chain: ${errMsg}`);
+                return onChainFn();
+            }
+            throw error;
+        }
+    }
+    /**
+     * Check if indexer is available
+     */
+    async isIndexerAvailable() {
+        if (!this.indexerClient) {
+            return false;
+        }
+        return this.indexerClient.isAvailable();
+    }
+    /**
+     * Get the indexer client for direct access
+     */
+    getIndexerClient() {
+        return this.indexerClient;
+    }
+    /**
+     * Search agents with filters (indexer only)
+     * @param params - Search parameters
+     * @returns Array of indexed agents
+     */
+    async searchAgents(params) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        // Build query based on params
+        if (params.owner) {
+            return this.indexerClient.getAgentsByOwner(params.owner);
+        }
+        if (params.collection) {
+            return this.indexerClient.getAgentsByCollection(params.collection);
+        }
+        if (params.wallet) {
+            const agent = await this.indexerClient.getAgentByWallet(params.wallet);
+            return agent ? [agent] : [];
+        }
+        // General query with pagination
+        return this.indexerClient.getAgents({
+            limit: params.limit,
+            offset: params.offset,
+            order: params.orderBy,
+        });
+    }
+    /**
+     * Get leaderboard (top agents by sort_key) - indexer only
+     * Uses keyset pagination for scale (millions of agents)
+     * @param options.collection - Optional collection filter
+     * @param options.minTier - Minimum trust tier (0-4)
+     * @param options.limit - Number of results (default: 50)
+     * @param options.cursorSortKey - Cursor for keyset pagination
+     * @returns Array of agents sorted by sort_key DESC
+     */
+    async getLeaderboard(options) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getLeaderboard(options);
+    }
+    /**
+     * Get global statistics - indexer only
+     * @returns Global stats (total agents, feedbacks, etc.)
+     */
+    async getGlobalStats() {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getGlobalStats();
+    }
+    /**
+     * Get collection statistics - indexer only
+     * @param collection - Collection pubkey string
+     * @returns Collection stats or null if not found
+     */
+    async getCollectionStats(collection) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getCollectionStats(collection);
+    }
+    /**
+     * Get feedbacks by endpoint - indexer only
+     * @param endpoint - Endpoint string (e.g., '/api/chat')
+     * @returns Array of feedbacks for this endpoint
+     */
+    async getFeedbacksByEndpoint(endpoint) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getFeedbacksByEndpoint(endpoint);
+    }
+    /**
+     * Get feedbacks by tag - indexer only
+     * @param tag - Tag to search for (in tag1 or tag2)
+     * @returns Array of feedbacks with this tag
+     */
+    async getFeedbacksByTag(tag) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getFeedbacksByTag(tag);
+    }
+    /**
+     * Get agent by operational wallet - indexer only
+     * @param wallet - Agent wallet pubkey string
+     * @returns Indexed agent or null
+     */
+    async getAgentByWallet(wallet) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getAgentByWallet(wallet);
+    }
+    /**
+     * Get pending validations for a validator - indexer only
+     * @param validator - Validator pubkey string
+     * @returns Array of pending validation requests
+     */
+    async getPendingValidations(validator) {
+        if (!this.indexerClient) {
+            throw new Error('Indexer not configured. Provide indexerUrl and indexerApiKey in config.');
+        }
+        return this.indexerClient.getPendingValidations(validator);
+    }
+    /**
+     * Get agent reputation from indexer (with on-chain fallback)
+     * @param asset - Agent asset pubkey
+     * @returns Indexed reputation data
+     */
+    async getAgentReputationFromIndexer(asset) {
+        return this.withIndexerFallback(async () => {
+            if (!this.indexerClient)
+                throw new Error('No indexer');
+            return this.indexerClient.getAgentReputation(asset.toBase58());
+        }, async () => {
+            // Fallback: build from on-chain data
+            const [summary, agent, baseCollection] = await Promise.all([
+                this.feedbackManager.getSummary(asset),
+                this.loadAgent(asset),
+                this.getBaseCollection(),
+            ]);
+            if (!agent)
+                return null;
+            // v0.4.0: Collection not stored in AgentAccount, use base collection
+            const collectionStr = baseCollection?.toBase58() || '';
+            return {
+                asset: asset.toBase58(),
+                owner: agent.getOwnerPublicKey().toBase58(),
+                collection: collectionStr,
+                nft_name: agent.nft_name || null,
+                agent_uri: agent.agent_uri || null,
+                feedback_count: summary.totalFeedbacks,
+                avg_score: summary.averageScore || null,
+                positive_count: summary.positiveCount,
+                negative_count: summary.negativeCount,
+                validation_count: 0, // Not available on-chain easily
+            };
+        }, 'getAgentReputation');
+    }
+    /**
+     * Get feedbacks from indexer (with on-chain fallback)
+     * @param asset - Agent asset pubkey
+     * @param options - Query options
+     * @returns Array of feedbacks (SolanaFeedback format)
+     */
+    async getFeedbacksFromIndexer(asset, options) {
+        return this.withIndexerFallback(async () => {
+            if (!this.indexerClient)
+                throw new Error('No indexer');
+            const indexed = await this.indexerClient.getFeedbacks(asset.toBase58(), options);
+            return indexed.map(indexedFeedbackToSolanaFeedback);
+        }, async () => {
+            return this.feedbackManager.readAllFeedback(asset, options?.includeRevoked ?? false);
+        }, 'getFeedbacks');
+    }
+    // ==================== Write Methods (require signer) - v0.4.0 ====================
     /**
      * Check if SDK has write permissions
      */

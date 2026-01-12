@@ -4,6 +4,7 @@
  * No Anchor dependency - uses @solana/web3.js only
  */
 import { Connection, } from '@solana/web3.js';
+import { logger } from '../utils/logger.js';
 /** Default Solana devnet RPC URL */
 export const SOLANA_DEVNET_RPC = 'https://api.devnet.solana.com';
 /** List of RPC providers that support advanced features like getProgramAccounts with memcmp */
@@ -70,7 +71,7 @@ export class SolanaClient {
             return accountInfo?.data ?? null;
         }
         catch (error) {
-            console.error(`Error fetching account ${address.toBase58()}:`, error);
+            logger.error('Error fetching account', error);
             return null;
         }
     }
@@ -84,7 +85,7 @@ export class SolanaClient {
             return accounts.map((acc) => acc?.data ?? null);
         }
         catch (error) {
-            console.error('Error fetching multiple accounts:', error);
+            logger.error('Error fetching multiple accounts', error);
             return addresses.map(() => null);
         }
     }
@@ -103,7 +104,7 @@ export class SolanaClient {
             }));
         }
         catch (error) {
-            console.error(`Error fetching program accounts for ${programId.toBase58()}:`, error);
+            logger.error('Error fetching program accounts', error);
             return [];
         }
     }
@@ -140,7 +141,7 @@ export class SolanaClient {
             return await this.connection.getAccountInfo(address);
         }
         catch (error) {
-            console.error(`Error fetching account info for ${address.toBase58()}:`, error);
+            logger.error('Error fetching account info', error);
             return null;
         }
     }

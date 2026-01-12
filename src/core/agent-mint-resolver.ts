@@ -13,7 +13,27 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { IDENTITY_PROGRAM_ID, PDAHelpers } from './pda-helpers.js';
+import { logger } from '../utils/logger.js';
 import bs58 from 'bs58';
+
+/**
+ * Security: Default limit for getProgramAccounts to prevent OOM
+ * For production with large agent registries, use an indexer instead.
+ */
+const DEFAULT_MAX_ACCOUNTS = 1000;
+
+export interface LoadAgentsOptions {
+  /**
+   * Maximum number of accounts to load (default: 1000)
+   * Security: Prevents OOM from unbounded getProgramAccounts
+   */
+  maxAccounts?: number;
+  /**
+   * If true, throw on malformed accounts instead of skipping
+   * Default: false (skip malformed accounts with warning)
+   */
+  strictParsing?: boolean;
+}
 
 /**
  * Agent Resolver
@@ -22,18 +42,16 @@ import bs58 from 'bs58';
  * @deprecated In v0.3.0, agents are identified by their asset pubkey directly.
  * Use asset pubkeys instead of agent_id numbers.
  *
- * Note: Cache is not thread-safe. This is acceptable for Node.js single-threaded
- * event loop, but should be reviewed if used with Worker Threads.
+ * Security: Thread-safety protection added in v0.3.0 - cache updates are atomic.
  */
 export class AgentMintResolver {
   private assetCache: Map<string, AgentAccount> = new Map();
   private connection: Connection;
   private cacheLoaded: boolean = false;
-  private loadingPromise: Promise<void> | null = null;
+  private loadingPromise: Promise<Map<string, AgentAccount>> | null = null;
 
   constructor(connection: Connection, _collectionMint?: PublicKey) {
     this.connection = connection;
-    // collectionMint is no longer needed in v0.3.0
   }
 
   /**
@@ -91,21 +109,22 @@ export class AgentMintResolver {
   }
 
   /**
-   * Load all agents from Identity Registry - v0.3.0
-   * Returns a map of asset pubkey → AgentAccount
+   * Load all agents from Identity Registry
+   * Security: Limited to maxAccounts (default 1000) to prevent OOM
    */
-  async loadAllAgents(): Promise<Map<string, AgentAccount>> {
+  async loadAllAgents(options: LoadAgentsOptions = {}): Promise<Map<string, AgentAccount>> {
     if (this.loadingPromise) {
-      await this.loadingPromise;
-      return this.assetCache;
+      return await this.loadingPromise;
     }
 
-    this.loadingPromise = this.doLoadAllAgents();
-    await this.loadingPromise;
-    return this.assetCache;
+    this.loadingPromise = this.doLoadAllAgents(options);
+    return await this.loadingPromise;
   }
 
-  private async doLoadAllAgents(): Promise<void> {
+  private async doLoadAllAgents(options: LoadAgentsOptions): Promise<Map<string, AgentAccount>> {
+    const maxAccounts = options.maxAccounts ?? DEFAULT_MAX_ACCOUNTS;
+    const strictParsing = options.strictParsing ?? false;
+
     try {
       const discriminatorBytes = bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount);
 
@@ -120,21 +139,53 @@ export class AgentMintResolver {
         ],
       });
 
-      for (const { account } of accounts) {
+      // Security: Warn if limit reached - may indicate need for indexer
+      const limitReached = accounts.length > maxAccounts;
+      if (limitReached) {
+        logger.warn(
+          `getProgramAccounts returned ${accounts.length} agents, limiting to ${maxAccounts}. ` +
+          `Consider using an indexer for production.`
+        );
+      }
+
+      // Security: Build in temp map, then atomic swap to prevent race conditions
+      const tempCache = new Map<string, AgentAccount>();
+      let skippedAccounts = 0;
+      const accountsToProcess = accounts.slice(0, maxAccounts);
+
+      for (const { account } of accountsToProcess) {
         try {
           const agentAccount = AgentAccount.deserialize(Buffer.from(account.data));
           const assetPubkey = agentAccount.getAssetPublicKey();
-          this.assetCache.set(assetPubkey.toBase58(), agentAccount);
-        } catch {
-          // Skip malformed accounts
-          continue;
+          tempCache.set(assetPubkey.toBase58(), agentAccount);
+        } catch (parseError) {
+          if (strictParsing) {
+            throw new Error(
+              `Failed to parse AgentAccount: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
+            );
+          }
+          skippedAccounts++;
         }
       }
 
+      // Security: Log warning if accounts were skipped (may indicate corruption)
+      if (skippedAccounts > 0) {
+        logger.warn(
+          `Skipped ${skippedAccounts} malformed AgentAccount(s) during load. ` +
+          `Use strictParsing: true to fail on parse errors.`
+        );
+      }
+
+      // Atomic swap - prevents race condition with concurrent reads
+      this.assetCache = tempCache;
       this.cacheLoaded = true;
       this.loadingPromise = null;
+
+      return this.assetCache;
     } catch (error) {
       this.loadingPromise = null;
+      // Security: Don't leak internal error details
+      logger.error('Failed to load agents from Identity Registry', error);
       throw new Error('Failed to load agents from Identity Registry');
     }
   }

@@ -11,6 +11,7 @@ import {
   AccountInfo,
   Commitment,
 } from '@solana/web3.js';
+import { logger } from '../utils/logger.js';
 
 export type Cluster = 'devnet';
 
@@ -95,7 +96,7 @@ export class SolanaClient {
       const accountInfo = await this.connection.getAccountInfo(address);
       return accountInfo?.data ?? null;
     } catch (error) {
-      console.error(`Error fetching account ${address.toBase58()}:`, error);
+      logger.error('Error fetching account', error);
       return null;
     }
   }
@@ -109,7 +110,7 @@ export class SolanaClient {
       const accounts = await this.connection.getMultipleAccountsInfo(addresses);
       return accounts.map((acc) => acc?.data ?? null);
     } catch (error) {
-      console.error('Error fetching multiple accounts:', error);
+      logger.error('Error fetching multiple accounts', error);
       return addresses.map(() => null);
     }
   }
@@ -132,7 +133,7 @@ export class SolanaClient {
         data: acc.account.data,
       }));
     } catch (error) {
-      console.error(`Error fetching program accounts for ${programId.toBase58()}:`, error);
+      logger.error('Error fetching program accounts', error);
       return [];
     }
   }
@@ -178,7 +179,7 @@ export class SolanaClient {
     try {
       return await this.connection.getAccountInfo(address);
     } catch (error) {
-      console.error(`Error fetching account info for ${address.toBase58()}:`, error);
+      logger.error('Error fetching account info', error);
       return null;
     }
   }
