@@ -1,0 +1,40 @@
+{
+  "name": "CodeAssist Pro",
+  "description": "AI coding assistant specialized in TypeScript, Rust, and Python. Supports code review, refactoring, and documentation generation.",
+  "image": "ipfs://QmYyy.../avatar.png",
+  "external_url": "https://acme.ai/agents/codeassist",
+  "version": "2.1.0",
+  "capabilities": {
+    "mcp": {
+      "version": "1.0",
+      "tools": ["code_review", "refactor", "generate_docs", "run_tests"],
+      "resources": ["file://", "git://"]
+    },
+    "a2a": {
+      "version": "0.1",
+      "skills": ["code-generation", "code-review", "documentation"]
+    }
+  },
+  "endpoints": [
+    { "path": "/api/chat", "method": "POST", "description": "Main chat endpoint" },
+    { "path": "/api/review", "method": "POST", "description": "Code review endpoint" },
+    { "path": "/health", "method": "GET", "description": "Health check" }
+  ],
+  "skills": ["code-generation", "code-review", "debugging"],
+  "domains": ["software-development", "devops"],
+  "model": {
+    "provider": "anthropic",
+    "name": "claude-3-opus",
+    "context_window": 200000
+  },
+  "pricing": {
+    "model": "per-request",
+    "currency": "USD",
+    "price_per_request": 0.01
+  },
+  "attributes": [
+    { "trait_type": "Languages", "value": "TypeScript, Rust, Python" },
+    { "trait_type": "Response Time", "value": "< 2s" },
+    { "trait_type": "Uptime SLA", "value": "99.9%" }
+  ]
+}

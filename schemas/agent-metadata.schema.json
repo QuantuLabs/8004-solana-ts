@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://8004.dev/schemas/agent-metadata.json",
+  "title": "8004 Agent Metadata",
+  "description": "JSON schema for AI agent metadata URI (ERC-8004 compatible)",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Agent display name",
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "description": "Agent description and capabilities"
+    },
+    "image": {
+      "type": "string",
+      "format": "uri",
+      "description": "Agent avatar/logo URL"
+    },
+    "external_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Agent homepage or documentation"
+    },
+    "version": {
+      "type": "string",
+      "description": "Agent version (semver recommended)",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+)?$"
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Agent capabilities and protocols",
+      "properties": {
+        "mcp": {
+          "type": "object",
+          "description": "Model Context Protocol support",
+          "properties": {
+            "version": { "type": "string" },
+            "tools": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "resources": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "a2a": {
+          "type": "object",
+          "description": "Agent-to-Agent protocol support",
+          "properties": {
+            "version": { "type": "string" },
+            "skills": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "endpoints": {
+      "type": "array",
+      "description": "API endpoints this agent exposes",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Endpoint path (e.g., /api/chat)"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "DELETE"]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["path"]
+      }
+    },
+    "skills": {
+      "type": "array",
+      "description": "OASF taxonomy skills",
+      "items": {
+        "type": "string"
+      }
+    },
+    "domains": {
+      "type": "array",
+      "description": "OASF taxonomy domains",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model": {
+      "type": "object",
+      "description": "Underlying AI model info",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Model provider (e.g., openai, anthropic, local)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Model name (e.g., gpt-4, claude-3)"
+        },
+        "context_window": {
+          "type": "integer",
+          "description": "Context window size in tokens"
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "description": "Usage pricing (if applicable)",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": ["free", "per-request", "subscription", "custom"]
+        },
+        "currency": {
+          "type": "string",
+          "default": "USD"
+        },
+        "price_per_request": {
+          "type": "number"
+        }
+      }
+    },
+    "attributes": {
+      "type": "array",
+      "description": "Custom attributes (NFT-style)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "trait_type": { "type": "string" },
+          "value": { "type": ["string", "number", "boolean"] }
+        },
+        "required": ["trait_type", "value"]
+      }
+    }
+  }
+}
