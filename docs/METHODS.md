@@ -40,44 +40,48 @@ const sdk = new SolanaSDK({
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `loadAgent` | `(agentId: bigint) => Promise<AgentAccount \| null>` | Load agent data |
-| `getAgent` | `(agentId: bigint) => Promise<AgentAccount \| null>` | Alias for loadAgent |
-| `agentExists` | `(agentId: bigint) => Promise<boolean>` | Check if agent exists |
-| `getAgentOwner` | `(agentId: bigint) => Promise<PublicKey \| null>` | Get agent owner |
-| `isAgentOwner` | `(agentId, address) => Promise<boolean>` | Check ownership |
-| `getMetadata` | `(agentId, key) => Promise<string \| null>` | Read metadata entry |
+| `loadAgent` | `(asset: PublicKey) => Promise<AgentAccount \| null>` | Load agent data |
+| `getAgent` | `(asset: PublicKey) => Promise<AgentAccount \| null>` | Alias for loadAgent |
+| `agentExists` | `(asset: PublicKey) => Promise<boolean>` | Check if agent exists |
+| `getAgentOwner` | `(asset: PublicKey) => Promise<PublicKey \| null>` | Get agent owner |
+| `isAgentOwner` | `(asset, address) => Promise<boolean>` | Check ownership |
+| `getMetadata` | `(asset, key) => Promise<string \| null>` | Read metadata entry |
 
 ## Agent Write Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `registerAgent` | `(tokenUri?, metadata?) => Promise<TransactionResult>` | Register new agent |
-| `transferAgent` | `(agentId, newOwner) => Promise<TransactionResult>` | Transfer ownership |
-| `setAgentUri` | `(agentId, newUri) => Promise<TransactionResult>` | Update agent URI |
-| `setMetadata` | `(agentId, key, value, immutable?) => Promise<TransactionResult>` | Set/update on-chain metadata |
-| `deleteMetadata` | `(agentId, key) => Promise<TransactionResult>` | Delete mutable metadata |
+| `registerAgent` | `(tokenUri?, collection?) => Promise<TransactionResult>` | Register new agent |
+| `transferAgent` | `(asset, collection, newOwner) => Promise<TransactionResult>` | Transfer ownership |
+| `setAgentUri` | `(asset, collection, newUri) => Promise<TransactionResult>` | Update agent URI |
+| `setMetadata` | `(asset, key, value, immutable?) => Promise<TransactionResult>` | Set/update on-chain metadata |
+| `deleteMetadata` | `(asset, key) => Promise<TransactionResult>` | Delete mutable metadata |
 
 ### On-chain Metadata
 
 Store arbitrary key-value pairs directly on-chain (optional - most data should be in IPFS):
 
 ```typescript
+import { PublicKey } from '@solana/web3.js';
+
+const agentAsset = new PublicKey('YourAgentAssetPubkey...');
+
 // Create metadata (first time: ~0.00319 SOL for rent)
-await sdk.setMetadata(agentId, 'version', '1.0.0');
+await sdk.setMetadata(agentAsset, 'version', '1.0.0');
 
 // Update metadata (same key: ~0.000005 SOL, TX fee only)
-await sdk.setMetadata(agentId, 'version', '2.0.0');
+await sdk.setMetadata(agentAsset, 'version', '2.0.0');
 
 // Read metadata
-const version = await sdk.getMetadata(agentId, 'version');
+const version = await sdk.getMetadata(agentAsset, 'version');
 console.log(version); // "2.0.0"
 
 // Delete metadata (recovers rent to owner)
-await sdk.deleteMetadata(agentId, 'version');
+await sdk.deleteMetadata(agentAsset, 'version');
 
 // Immutable metadata (cannot be modified or deleted)
-await sdk.setMetadata(agentId, 'certification', 'verified', true);
-// await sdk.deleteMetadata(agentId, 'certification'); // Error: MetadataImmutable
+await sdk.setMetadata(agentAsset, 'certification', 'verified', true);
+// await sdk.deleteMetadata(agentAsset, 'certification'); // Error: MetadataImmutable
 ```
 
 **Cost Summary:**
@@ -89,21 +93,33 @@ await sdk.setMetadata(agentId, 'certification', 'verified', true);
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `getSummary` | `(agentId, minScore?, clientFilter?) => Promise<Summary>` | Get reputation summary |
-| `getReputationSummary` | `(agentId) => Promise<{count, averageScore}>` | Simplified stats |
-| `giveFeedback` | `(agentId, feedbackFile) => Promise<TransactionResult>` | Submit feedback |
-| `getFeedback` | `(agentId, client, index) => Promise<Feedback \| null>` | Read feedback |
-| `readFeedback` | `(agentId, client, index) => Promise<Feedback \| null>` | Alias |
-| `revokeFeedback` | `(agentId, index) => Promise<TransactionResult>` | Revoke feedback |
-| `getLastIndex` | `(agentId, client) => Promise<bigint>` | Get feedback count |
-| `appendResponse` | `(agentId, client, index, uri, hash) => Promise<TransactionResult>` | Add response |
+| `getSummary` | `(asset, minScore?, clientFilter?) => Promise<Summary>` | Get reputation summary |
+| `getReputationSummary` | `(asset) => Promise<{count, averageScore}>` | Simplified stats |
+| `giveFeedback` | `(asset, feedbackData) => Promise<TransactionResult>` | Submit feedback |
+| `getFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Read feedback |
+| `readFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Alias |
+| `revokeFeedback` | `(asset, index) => Promise<TransactionResult>` | Revoke feedback |
+| `getLastIndex` | `(asset, client) => Promise<bigint>` | Get feedback count |
+| `appendResponse` | `(asset, index, uri, hash) => Promise<TransactionResult>` | Add response |
+
+### Feedback Data
+
+```typescript
+await sdk.giveFeedback(agentAsset, {
+  score: 85,                                // 0-100
+  tag1: 'helpful',                          // Optional tag
+  tag2: 'accurate',                         // Optional tag
+  feedbackUri: 'ipfs://QmFeedbackDetails',  // Optional detailed feedback
+  feedbackHash: Buffer.alloc(32),           // Optional SHA256 hash
+});
+```
 
 ## Validation Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `requestValidation` | `(agentId, validator, methodId, uri, hash) => Promise<TransactionResult>` | Request validation |
-| `respondToValidation` | `(agentId, requestIndex, score, uri, hash, status) => Promise<TransactionResult>` | Respond |
+| `requestValidation` | `(asset, validator, methodId, uri, hash) => Promise<TransactionResult>` | Request validation |
+| `respondToValidation` | `(asset, requestIndex, score, uri, hash, status) => Promise<TransactionResult>` | Respond |
 
 ## Advanced Queries
 
@@ -112,10 +128,10 @@ await sdk.setMetadata(agentId, 'certification', 'verified', true);
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `getAllAgents` | `(options?) => Promise<AgentWithMetadata[]>` | All agents with metadata |
-| `getAllFeedbacks` | `(includeRevoked?) => Promise<Map<bigint, Feedback[]>>` | All feedbacks grouped by agent |
+| `getAllFeedbacks` | `(includeRevoked?) => Promise<Map<string, Feedback[]>>` | All feedbacks grouped by asset |
 | `getAgentsByOwner` | `(owner: PublicKey) => Promise<AgentAccount[]>` | All agents by owner |
-| `readAllFeedback` | `(agentId, includeRevoked?) => Promise<Feedback[]>` | All feedback for one agent |
-| `getClients` | `(agentId) => Promise<PublicKey[]>` | All clients for one agent |
+| `readAllFeedback` | `(asset, includeRevoked?) => Promise<Feedback[]>` | All feedback for one agent |
+| `getClients` | `(asset) => Promise<PublicKey[]>` | All clients for one agent |
 
 ### getAllAgents Options
 
@@ -131,7 +147,7 @@ const agents = await sdk.getAllAgents();
 // With feedbacks: Get all agents + all feedbacks (4 RPC calls)
 const agentsWithFeedbacks = await sdk.getAllAgents({ includeFeedbacks: true });
 for (const { account, metadata, feedbacks } of agentsWithFeedbacks) {
-  console.log(`Agent #${account.agent_id}: ${feedbacks?.length || 0} feedbacks`);
+  console.log(`Agent ${account.getAssetPublicKey().toBase58().slice(0,8)}...: ${feedbacks?.length || 0} feedbacks`);
 }
 ```
 
@@ -141,9 +157,9 @@ for (const { account, metadata, feedbacks } of agentsWithFeedbacks) {
 // Get ALL feedbacks for ALL agents as a Map (2 RPC calls)
 const feedbacksMap = await sdk.getAllFeedbacks();
 
-// Access feedbacks by agent ID
-const agent83Feedbacks = feedbacksMap.get(83n) || [];
-console.log(`Agent 83 has ${agent83Feedbacks.length} feedbacks`);
+// Access feedbacks by asset (string key)
+const agentFeedbacks = feedbacksMap.get(agentAsset.toBase58()) || [];
+console.log(`Agent has ${agentFeedbacks.length} feedbacks`);
 
 // Include revoked feedbacks
 const allFeedbacks = await sdk.getAllFeedbacks(true);
@@ -253,4 +269,4 @@ console.log(data.name); // "My Agent"
 | Persistence | Pinned (persistent) | Local only | Filecoin deals |
 | Free tier | 1GB free | Unlimited (local) | Varies |
 | Speed | Fast | Fastest | Slower |
-| Status | ✅ Full support | ✅ Full support | ⚠️ Placeholder |
+| Status | Full support | Full support | Placeholder |

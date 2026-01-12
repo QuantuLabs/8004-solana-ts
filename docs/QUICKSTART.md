@@ -85,12 +85,11 @@ const metadataUri = `ipfs://${metadataCid}`;
 // 6. Register on Solana
 const result = await sdk.registerAgent(metadataUri);
 
-// 7. (Optional) Store on-chain metadata
-await sdk.setMetadata(result.agentId, 'token', 'So11111111111111111111111111111111111111112', true); // immutable
-
-console.log('Agent ID:', result.agentId);
-console.log('NFT Mint:', result.asset);
+console.log('Asset:', result.asset.toBase58());
 console.log('Transaction:', result.signature);
+
+// 7. (Optional) Store on-chain metadata
+await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true); // immutable
 ```
 
 See [OASF.md](./OASF.md) for the full list of available skills and domains.
@@ -104,15 +103,15 @@ See [OASF.md](./OASF.md) for the full list of available skills and domains.
 Load your agent to confirm it was registered correctly:
 
 ```typescript
-// Load agent by ID (no wallet needed for reading)
-const readSdk = new SolanaSDK();
-const agent = await readSdk.loadAgent(result.agentId);
+import { PublicKey } from '@solana/web3.js';
 
-console.log('Name:', agent.name);
-console.log('Owner:', agent.owner.toBase58());
-console.log('Endpoints:', agent.endpoints);
-console.log('Skills:', agent.skills);
-console.log('Domains:', agent.domains);
+// Load agent by asset (no wallet needed for reading)
+const readSdk = new SolanaSDK();
+const agent = await readSdk.loadAgent(result.asset);
+
+console.log('Name:', agent.nft_name);
+console.log('Owner:', agent.getOwnerPublicKey().toBase58());
+console.log('URI:', agent.agent_uri);
 ```
 
 You can also view your agent on the explorer a few minutes after registration:
@@ -123,9 +122,9 @@ You can also view your agent on the explorer a few minutes after registration:
 
 ## What's Next?
 
-- **Give Feedback:** `await sdk.giveFeedback(agentId, { score: 85, tag1: 'helpful' })`
-- **Check Reputation:** `await sdk.getSummary(agentId)`
-- **Update URI:** `await sdk.setAgentUri(agentId, 'ipfs://newCid')`
+- **Give Feedback:** `await sdk.giveFeedback(agentAsset, { score: 85, tag1: 'helpful' })`
+- **Check Reputation:** `await sdk.getSummary(agentAsset)`
+- **Update URI:** `await sdk.setAgentUri(agentAsset, collection, 'ipfs://newCid')`
 
 ### Resources
 

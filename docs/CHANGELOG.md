@@ -1,6 +1,34 @@
 # Changelog
 
-## v0.2.1 (Current)
+## v0.4.0 (Current)
+
+**New Features:**
+- ATOM Engine integration (Agent Trust On-chain Model)
+- Indexer client for fast queries via Supabase
+- Collection creation and management
+
+**API Changes:**
+- Simplified `registerAgent(tokenUri?, collection?)` - removed unused metadata parameter
+- All methods now use `asset: PublicKey` instead of `agentId: bigint`
+- `fileUri/fileHash` renamed to `feedbackUri/feedbackHash`
+
+**Program ID (Devnet):**
+- Agent Registry: `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT`
+- ATOM Engine: `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7`
+
+## v0.3.0 - Asset-based API
+
+**Breaking Changes:**
+- `agentId: bigint` replaced with `asset: PublicKey` everywhere
+- Methods now take asset pubkey instead of numeric ID
+- Feedback/reputation methods updated for new PDA structure
+
+**New Features:**
+- Multi-collection support
+- User-created collections (only creator can register agents)
+- On-chain metadata via `setMetadata()` / `getMetadata()`
+
+## v0.2.1
 
 **New Features:**
 - `getAllAgents({ includeFeedbacks: true })` - Fetch all agents with feedbacks in 4 RPC calls
@@ -28,8 +56,6 @@
 - Agent PDA uses Core asset address, not mint
 - Feedback PDA uses global index (no client address in seeds)
 - Response PDA removed client from seeds
-
-**Program ID:** `HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp`
 
 ## v0.1.0 - Initial Release
 
