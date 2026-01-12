@@ -634,9 +634,9 @@ export class IdentityTransactionBuilder {
         collectionPubkey = collectionKeypair.publicKey;
       }
 
-      // Derive PDAs
+      // Derive PDAs - user_collection_authority uses only the string seed (no collection key)
       const [collectionAuthority] = PublicKey.findProgramAddressSync(
-        [Buffer.from('user_collection_authority'), collectionPubkey.toBuffer()],
+        [Buffer.from('user_collection_authority')],
         PROGRAM_ID
       );
       const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
@@ -869,9 +869,9 @@ export class IdentityTransactionBuilder {
         throw new Error('At least one of newName or newUri must be provided');
       }
 
-      // Derive PDAs
+      // Derive PDAs - user_collection_authority uses only the string seed (no collection key)
       const [collectionAuthority] = PublicKey.findProgramAddressSync(
-        [Buffer.from('user_collection_authority'), collection.toBuffer()],
+        [Buffer.from('user_collection_authority')],
         PROGRAM_ID
       );
       const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collection);
