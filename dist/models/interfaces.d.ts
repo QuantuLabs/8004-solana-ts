@@ -9,7 +9,7 @@ import type { EndpointType, TrustModel } from './enums.js';
 export interface Endpoint {
     type: EndpointType;
     value: string;
-    meta?: Record<string, any>;
+    meta?: Record<string, unknown>;
 }
 /**
  * Agent registration file structure
@@ -29,7 +29,7 @@ export interface RegistrationFile {
     operators?: Address[];
     active?: boolean;
     x402support?: boolean;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
     updatedAt?: Timestamp;
     skills?: string[];
     domains?: string[];
@@ -57,7 +57,7 @@ export interface AgentSummary {
     mcpResources: string[];
     active: boolean;
     x402support: boolean;
-    extras: Record<string, any>;
+    extras: Record<string, unknown>;
 }
 /**
  * Feedback data structure
@@ -69,11 +69,11 @@ export interface Feedback {
     score?: number;
     tags: string[];
     text?: string;
-    context?: Record<string, any>;
-    proofOfPayment?: Record<string, any>;
+    context?: Record<string, unknown>;
+    proofOfPayment?: Record<string, unknown>;
     fileURI?: URI;
     createdAt: Timestamp;
-    answers: Array<Record<string, any>>;
+    answers: Array<Record<string, unknown>>;
     isRevoked: boolean;
     capability?: string;
     name?: string;

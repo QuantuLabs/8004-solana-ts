@@ -60,7 +60,7 @@ export class EndpointCrawler {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as Record<string, unknown>;
 
         // Extract capabilities from agentcard
         const result: McpCapabilities = {
@@ -98,11 +98,12 @@ export class EndpointCrawler {
 
       // Extract names from tools
       if (tools && typeof tools === 'object' && 'tools' in tools) {
-        const toolsArray = (tools as any).tools;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolsArray = (tools as Record<string, unknown>).tools as unknown[];
         if (Array.isArray(toolsArray)) {
           for (const tool of toolsArray) {
             if (tool && typeof tool === 'object' && 'name' in tool) {
-              mcpTools.push(tool.name);
+              mcpTools.push(String((tool as Record<string, unknown>).name));
             }
           }
         }
@@ -110,11 +111,12 @@ export class EndpointCrawler {
 
       // Extract names from resources
       if (resources && typeof resources === 'object' && 'resources' in resources) {
-        const resourcesArray = (resources as any).resources;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resourcesArray = (resources as Record<string, unknown>).resources as unknown[];
         if (Array.isArray(resourcesArray)) {
           for (const resource of resourcesArray) {
             if (resource && typeof resource === 'object' && 'name' in resource) {
-              mcpResources.push(resource.name);
+              mcpResources.push(String((resource as Record<string, unknown>).name));
             }
           }
         }
@@ -122,11 +124,12 @@ export class EndpointCrawler {
 
       // Extract names from prompts
       if (prompts && typeof prompts === 'object' && 'prompts' in prompts) {
-        const promptsArray = (prompts as any).prompts;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const promptsArray = (prompts as Record<string, unknown>).prompts as unknown[];
         if (Array.isArray(promptsArray)) {
           for (const prompt of promptsArray) {
             if (prompt && typeof prompt === 'object' && 'name' in prompt) {
-              mcpPrompts.push(prompt.name);
+              mcpPrompts.push(String((prompt as Record<string, unknown>).name));
             }
           }
         }
@@ -193,7 +196,7 @@ export class EndpointCrawler {
   /**
    * Parse Server-Sent Events (SSE) format response
    */
-  private _parseSseResponse(sseText: string): any | null {
+  private _parseSseResponse(sseText: string): unknown | null {
     try {
       // Look for "data:" lines containing JSON
       const lines = sseText.split('\n');
@@ -239,7 +242,7 @@ export class EndpointCrawler {
           });
 
           if (response.ok) {
-            const data = await response.json();
+            const data = (await response.json()) as Record<string, unknown>;
 
             // Extract skills from agentcard
             const skills = this._extractList(data, 'skills');
@@ -263,7 +266,7 @@ export class EndpointCrawler {
   /**
    * Extract a list of strings from nested JSON data
    */
-  private _extractList(data: any, key: string): string[] {
+  private _extractList(data: Record<string, unknown>, key: string): string[] {
     const result: string[] = [];
 
     // Try top-level key
@@ -289,15 +292,17 @@ export class EndpointCrawler {
       const containerKeys = ['capabilities', 'abilities', 'features'];
       for (const containerKey of containerKeys) {
         if (containerKey in data && data[containerKey] && typeof data[containerKey] === 'object') {
-          if (key in data[containerKey] && Array.isArray(data[containerKey][key])) {
-            for (const item of data[containerKey][key]) {
+          const container = data[containerKey] as Record<string, unknown>;
+          if (key in container && Array.isArray(container[key])) {
+            for (const item of container[key] as unknown[]) {
               if (typeof item === 'string') {
                 result.push(item);
               } else if (item && typeof item === 'object') {
+                const itemObj = item as Record<string, unknown>;
                 const nameFields = ['name', 'id', 'identifier', 'title'];
                 for (const nameField of nameFields) {
-                  if (nameField in item && typeof item[nameField] === 'string') {
-                    result.push(item[nameField]);
+                  if (nameField in itemObj && typeof itemObj[nameField] === 'string') {
+                    result.push(itemObj[nameField]);
                     break;
                   }
                 }

@@ -11,7 +11,7 @@ import type { EndpointType, TrustModel } from './enums.js';
 export interface Endpoint {
   type: EndpointType;
   value: string; // endpoint value (URL, name, DID, ENS)
-  meta?: Record<string, any>; // optional metadata
+  meta?: Record<string, unknown>; // optional metadata
 }
 
 /**
@@ -32,7 +32,7 @@ export interface RegistrationFile {
   operators?: Address[]; // from chain (read-only, hydrated)
   active?: boolean; // SDK extension flag (default: true)
   x402support?: boolean; // Binary flag for x402 payment support (default: false)
-  metadata?: Record<string, any>; // arbitrary, SDK-managed
+  metadata?: Record<string, unknown>; // arbitrary, SDK-managed
   updatedAt?: Timestamp;
   // OASF taxonomies - validated against taxonomy files
   skills?: string[]; // e.g. ["natural_language_processing/summarization"]
@@ -62,7 +62,7 @@ export interface AgentSummary {
   mcpResources: string[];
   active: boolean;
   x402support: boolean;
-  extras: Record<string, any>;
+  extras: Record<string, unknown>;
 }
 
 /**
@@ -75,11 +75,11 @@ export interface Feedback {
   score?: number; // 0-100
   tags: string[];
   text?: string;
-  context?: Record<string, any>;
-  proofOfPayment?: Record<string, any>;
+  context?: Record<string, unknown>;
+  proofOfPayment?: Record<string, unknown>;
   fileURI?: URI;
   createdAt: Timestamp;
-  answers: Array<Record<string, any>>;
+  answers: Array<Record<string, unknown>>;
   isRevoked: boolean;
 
   // Off-chain only fields (not stored on blockchain)
