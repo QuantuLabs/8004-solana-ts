@@ -417,7 +417,7 @@ export declare class SolanaSDK {
      * console.log('Collection:', result.collection?.toBase58());
      *
      * // Register agent in user collection
-     * await sdk.registerAgent('ipfs://agent-uri', [], result.collection);
+     * await sdk.registerAgent('ipfs://agent-uri', result.collection);
      * ```
      */
     createCollection(name: string, uri: string, options?: WriteOptions & {
@@ -429,16 +429,12 @@ export declare class SolanaSDK {
     })>;
     /**
      * Register a new agent (write operation) - v0.3.0
-     * @param tokenUri - Optional token URI
-     * @param metadata - Optional metadata entries (key-value pairs)
-     * @param collection - Optional collection pubkey (defaults to base registry)
+     * @param tokenUri - Token URI pointing to agent metadata JSON
+     * @param collection - Optional collection pubkey (defaults to base registry, only creator can register)
      * @param options - Write options (skipSend, signer, assetPubkey)
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
      */
-    registerAgent(tokenUri?: string, metadata?: Array<{
-        key: string;
-        value: string;
-    }>, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
+    registerAgent(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {

@@ -191,7 +191,7 @@ console.log(`Agent registered! Asset: ${result.asset.toBase58()}`);
 // Or register in your own collection
 // Note: Only the collection creator can register agents in their collection
 const myCollection = new PublicKey('YourCollectionPublicKey...');
-const result2 = await sdk.registerAgent(metadataUri, [], myCollection);
+const result2 = await sdk.registerAgent(metadataUri, myCollection);
 ```
 
 **Alternative: Use Web URLs**
