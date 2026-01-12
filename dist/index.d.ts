@@ -1,7 +1,7 @@
 /**
  * 8004-solana-ts SDK
  * TypeScript SDK for ERC-8004 on Solana
- * v0.4.0 - ATOM Engine + Indexer support
+ * v0.4.0 - ATOM Engine + Indexer + User Collections
  * Main entry point - exports public API
  */
 export * from './models/index.js';
@@ -20,7 +20,7 @@ export * from './core/transaction-builder.js';
 export { SolanaClient, UnsupportedRpcError, SOLANA_DEVNET_RPC, RECOMMENDED_RPC_PROVIDERS, createDevnetClient, } from './core/client.js';
 export type { Cluster, SolanaClientConfig } from './core/client.js';
 export { SolanaSDK } from './core/sdk-solana.js';
-export type { SolanaSDKConfig, AgentWithMetadata, EnrichedSummary } from './core/sdk-solana.js';
+export type { SolanaSDKConfig, AgentWithMetadata, EnrichedSummary, CollectionInfo } from './core/sdk-solana.js';
 export type { SolanaFeedback, SolanaAgentSummary } from './core/feedback-manager-solana.js';
 export { validateSkill, validateDomain, getAllSkills, getAllDomains, } from './core/oasf-validator.js';
 export { fetchRegistryConfig, fetchRegistryConfigByPda, getCurrentBaseRegistryPda, } from './core/config-reader.js';
@@ -31,4 +31,5 @@ export type { IndexerClientConfig, IndexedAgent, IndexedFeedback, IndexedAgentRe
 export { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './core/indexer-errors.js';
 export type { AgentSearchParams, FeedbackSearchParams, ExtendedAgentSummary, } from './core/indexer-types.js';
 export { indexedAgentToSimplified, indexedFeedbackToSolanaFeedback, indexedReputationToSummary, indexedReputationToExtendedSummary, } from './core/indexer-types.js';
+export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
 //# sourceMappingURL=index.d.ts.map
