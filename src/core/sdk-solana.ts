@@ -15,7 +15,7 @@ import { SolanaClient, Cluster, createDevnetClient, UnsupportedRpcError } from '
 import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { PDAHelpers } from './pda-helpers.js';
-import { getProgramIds, ATOM_ENGINE_PROGRAM_ID } from './programs.js';
+import { getProgramIds } from './programs.js';
 import { createHash } from 'crypto';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
@@ -34,12 +34,11 @@ import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.j
 import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
 // ATOM Engine imports (v0.4.0)
-import { AtomStats, TrustTier, ATOM_STATS_SCHEMA } from './atom-schemas.js';
+import { AtomStats, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA } from './atom-pda.js';
 // Indexer imports (v0.4.0)
 import {
   IndexerClient,
-  IndexerClientConfig,
   IndexedAgent,
   IndexedFeedback,
   IndexedAgentReputation,
@@ -47,9 +46,8 @@ import {
   CollectionStats,
   GlobalStats,
 } from './indexer-client.js';
-import { IndexerError } from './indexer-errors.js';
-import type { AgentSearchParams, FeedbackSearchParams } from './indexer-types.js';
-import { indexedFeedbackToSolanaFeedback, indexedReputationToSummary } from './indexer-types.js';
+import type { AgentSearchParams } from './indexer-types.js';
+import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import {
   DEFAULT_INDEXER_URL,

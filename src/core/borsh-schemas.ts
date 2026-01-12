@@ -146,7 +146,8 @@ export class RootConfig {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       RootConfig,
       {
@@ -205,7 +206,8 @@ export class RegistryConfig {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       RegistryConfig,
       {
@@ -279,7 +281,8 @@ export class AgentAccount {
     this.nft_name = fields.nft_name;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       AgentAccount,
       {
@@ -396,7 +399,8 @@ export class MetadataEntryPda {
     this.metadata_value = fields.metadata_value;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       MetadataEntryPda,
       {
@@ -431,6 +435,7 @@ export class MetadataEntryPda {
     preValidateBorshLength(accountData, offset, LIMITS.MAX_METADATA_VALUE_LENGTH, 'metadata_value');
 
     // Now safe to deserialize
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData) as any;
 
     // Post-validation backup (defense in depth)
@@ -495,7 +500,8 @@ export class FeedbackAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       FeedbackAccount,
       {
@@ -518,6 +524,7 @@ export class FeedbackAccount {
       throw new Error(`Invalid FeedbackAccount data: expected >= 83 bytes, got ${data.length}`);
     }
     const accountData = data.slice(8);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = deserializeUnchecked(this.schema, FeedbackAccount, accountData) as any;
     return new FeedbackAccount({
       asset: raw.asset,
@@ -558,7 +565,8 @@ export class FeedbackTagsPda {
     this.tag2 = fields.tag2;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       FeedbackTagsPda,
       {
@@ -615,7 +623,8 @@ export class AgentReputationMetadata {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       AgentReputationMetadata,
       {
@@ -654,7 +663,8 @@ export class ResponseIndexAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       ResponseIndexAccount,
       {
@@ -695,7 +705,8 @@ export class ResponseAccount {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       ResponseAccount,
       {
@@ -759,7 +770,8 @@ export class ValidationRequest {
     this.bump = fields.bump;
   }
 
-  static schema: Schema = new Map<any, any>([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static schema: Schema = new Map([
     [
       ValidationRequest,
       {
@@ -785,6 +797,7 @@ export class ValidationRequest {
       throw new Error(`Invalid ValidationRequest data: expected >= 151 bytes, got ${data.length}`);
     }
     const accountData = data.slice(8);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = deserializeUnchecked(this.schema, ValidationRequest, accountData) as any;
     return new ValidationRequest({
       asset: raw.asset,

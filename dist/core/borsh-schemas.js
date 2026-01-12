@@ -113,6 +113,7 @@ export class RootConfig {
         this.authority = fields.authority;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             RootConfig,
@@ -160,6 +161,7 @@ export class RegistryConfig {
         this.base_index = fields.base_index;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             RegistryConfig,
@@ -218,6 +220,7 @@ export class AgentAccount {
         this.agent_uri = fields.agent_uri;
         this.nft_name = fields.nft_name;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             AgentAccount,
@@ -311,6 +314,7 @@ export class MetadataEntryPda {
         this.metadata_key = fields.metadata_key;
         this.metadata_value = fields.metadata_value;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             MetadataEntryPda,
@@ -341,6 +345,7 @@ export class MetadataEntryPda {
         // Pre-validate metadata_value vec length
         preValidateBorshLength(accountData, offset, LIMITS.MAX_METADATA_VALUE_LENGTH, 'metadata_value');
         // Now safe to deserialize
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData);
         // Post-validation backup (defense in depth)
         validateStringLength(raw.metadata_key, LIMITS.MAX_METADATA_KEY_LENGTH, 'metadata_key');
@@ -388,6 +393,7 @@ export class FeedbackAccount {
         this.is_revoked = fields.is_revoked;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             FeedbackAccount,
@@ -410,6 +416,7 @@ export class FeedbackAccount {
             throw new Error(`Invalid FeedbackAccount data: expected >= 83 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = deserializeUnchecked(this.schema, FeedbackAccount, accountData);
         return new FeedbackAccount({
             asset: raw.asset,
@@ -444,6 +451,7 @@ export class FeedbackTagsPda {
         this.tag1 = fields.tag1;
         this.tag2 = fields.tag2;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             FeedbackTagsPda,
@@ -491,6 +499,7 @@ export class AgentReputationMetadata {
         this.next_feedback_index = fields.next_feedback_index;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             AgentReputationMetadata,
@@ -525,6 +534,7 @@ export class ResponseIndexAccount {
         this.next_index = fields.next_index;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             ResponseIndexAccount,
@@ -561,6 +571,7 @@ export class ResponseAccount {
         this.responder = fields.responder;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             ResponseAccount,
@@ -610,6 +621,7 @@ export class ValidationRequest {
         this.has_response = fields.has_response;
         this.bump = fields.bump;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             ValidationRequest,
@@ -635,6 +647,7 @@ export class ValidationRequest {
             throw new Error(`Invalid ValidationRequest data: expected >= 151 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = deserializeUnchecked(this.schema, ValidationRequest, accountData);
         return new ValidationRequest({
             asset: raw.asset,

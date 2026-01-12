@@ -134,7 +134,8 @@ export class AtomStats {
         this.bump = fields.bump;
         this.schema_version = fields.schema_version;
     }
-    // Borsh schema
+    // Borsh schema (borsh library requires Map<any, any>)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             AtomStats,
@@ -314,6 +315,8 @@ export class AtomConfig {
     constructor(fields) {
         Object.assign(this, fields);
     }
+    // Borsh schema (borsh library requires Map<any, any>)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
         [
             AtomConfig,

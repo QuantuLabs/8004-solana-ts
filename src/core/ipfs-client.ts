@@ -105,7 +105,8 @@ export class IPFSClient {
         throw new Error(`Failed to pin to Pinata: HTTP ${response.status} - ${errorText}`);
       }
 
-      const result = (await response.json()) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = (await response.json()) as Record<string, any>;
 
       // v3 API returns CID in data.cid
       const cid = result?.data?.cid || result?.cid || result?.IpfsHash;

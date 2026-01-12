@@ -505,7 +505,7 @@ export class SolanaFeedbackManager {
   /**
    * Helper to fetch and parse feedback file from IPFS/Arweave
    */
-  async fetchFeedbackFile(_uri: string): Promise<any | null> {
+  async fetchFeedbackFile(_uri: string): Promise<unknown | null> {
     if (!this.ipfsClient) {
       logger.warn('IPFS client not configured, cannot fetch feedback file');
       return null;

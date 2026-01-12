@@ -160,7 +160,7 @@ export declare class SolanaFeedbackManager {
     /**
      * Helper to fetch and parse feedback file from IPFS/Arweave
      */
-    fetchFeedbackFile(_uri: string): Promise<any | null>;
+    fetchFeedbackFile(_uri: string): Promise<unknown | null>;
     /**
      * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
      * Much more efficient than calling readAllFeedback() per agent

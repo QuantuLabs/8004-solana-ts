@@ -28,8 +28,6 @@ import {
   AtomInstructionBuilder,
 } from './instruction-builder.js';
 import { fetchRegistryConfigByPda, fetchRootConfig, getCurrentBaseCollection } from './config-reader.js';
-import { AgentReputationMetadata, AgentAccount } from './borsh-schemas.js';
-import { toBigInt } from './utils.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';

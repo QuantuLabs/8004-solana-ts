@@ -43,7 +43,7 @@ export class EndpointCrawler {
                 redirect: 'follow',
             });
             if (response.ok) {
-                const data = await response.json();
+                const data = (await response.json());
                 // Extract capabilities from agentcard
                 const result = {
                     mcpTools: this._extractList(data, 'tools'),
@@ -76,33 +76,36 @@ export class EndpointCrawler {
             const mcpPrompts = [];
             // Extract names from tools
             if (tools && typeof tools === 'object' && 'tools' in tools) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const toolsArray = tools.tools;
                 if (Array.isArray(toolsArray)) {
                     for (const tool of toolsArray) {
                         if (tool && typeof tool === 'object' && 'name' in tool) {
-                            mcpTools.push(tool.name);
+                            mcpTools.push(String(tool.name));
                         }
                     }
                 }
             }
             // Extract names from resources
             if (resources && typeof resources === 'object' && 'resources' in resources) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const resourcesArray = resources.resources;
                 if (Array.isArray(resourcesArray)) {
                     for (const resource of resourcesArray) {
                         if (resource && typeof resource === 'object' && 'name' in resource) {
-                            mcpResources.push(resource.name);
+                            mcpResources.push(String(resource.name));
                         }
                     }
                 }
             }
             // Extract names from prompts
             if (prompts && typeof prompts === 'object' && 'prompts' in prompts) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const promptsArray = prompts.prompts;
                 if (Array.isArray(promptsArray)) {
                     for (const prompt of promptsArray) {
                         if (prompt && typeof prompt === 'object' && 'name' in prompt) {
-                            mcpPrompts.push(prompt.name);
+                            mcpPrompts.push(String(prompt.name));
                         }
                     }
                 }
@@ -206,7 +209,7 @@ export class EndpointCrawler {
                         redirect: 'follow',
                     });
                     if (response.ok) {
-                        const data = await response.json();
+                        const data = (await response.json());
                         // Extract skills from agentcard
                         const skills = this._extractList(data, 'skills');
                         if (skills && skills.length > 0) {
@@ -253,16 +256,18 @@ export class EndpointCrawler {
             const containerKeys = ['capabilities', 'abilities', 'features'];
             for (const containerKey of containerKeys) {
                 if (containerKey in data && data[containerKey] && typeof data[containerKey] === 'object') {
-                    if (key in data[containerKey] && Array.isArray(data[containerKey][key])) {
-                        for (const item of data[containerKey][key]) {
+                    const container = data[containerKey];
+                    if (key in container && Array.isArray(container[key])) {
+                        for (const item of container[key]) {
                             if (typeof item === 'string') {
                                 result.push(item);
                             }
                             else if (item && typeof item === 'object') {
+                                const itemObj = item;
                                 const nameFields = ['name', 'id', 'identifier', 'title'];
                                 for (const nameField of nameFields) {
-                                    if (nameField in item && typeof item[nameField] === 'string') {
-                                        result.push(item[nameField]);
+                                    if (nameField in itemObj && typeof itemObj[nameField] === 'string') {
+                                        result.push(itemObj[nameField]);
                                         break;
                                     }
                                 }
