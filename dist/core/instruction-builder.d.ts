@@ -94,17 +94,17 @@ export declare class ReputationInstructionBuilder {
     /**
      * Build giveFeedback instruction - v0.4.0
      * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
-     * Accounts: client (signer), asset, collection, agent_account, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+     * Accounts: client (signer), agent_account, asset, collection, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
      * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildGiveFeedback(client: PublicKey, asset: PublicKey, collection: PublicKey, agentAccount: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, registryAuthority: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
     /**
      * Build revokeFeedback instruction - v0.4.0
      * Matches: revoke_feedback(feedback_index)
-     * Accounts: client (signer), asset, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+     * Accounts: client (signer), agent_account, asset, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
      * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildRevokeFeedback(client: PublicKey, asset: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, feedbackIndex: bigint): TransactionInstruction;
+    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, registryAuthority: PublicKey, feedbackIndex: bigint): TransactionInstruction;
     /**
      * Build appendResponse instruction - v0.3.0
      * Matches: append_response(feedback_index, response_uri, response_hash)

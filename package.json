@@ -1,6 +1,6 @@
 {
   "name": "8004-solana",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "TypeScript SDK for ERC-8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "test": "jest",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:e2e": "jest --testPathPattern=e2e-solana --testPathIgnorePatterns='[]' --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
