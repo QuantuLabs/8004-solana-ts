@@ -1,83 +1,83 @@
 # Solana SDK E2E Tests
 
-Tests end-to-end complets du SDK Solana contre devnet.
+Full end-to-end tests of the Solana SDK against devnet.
 
-## ⚠️ Note Importante
+## ⚠️ Important Note
 
-Ces tests **NE SONT PAS** dans le repo git. Ils sont dans `/tmp/solana-e2e-tests/` pour des tests locaux uniquement.
+These tests hit real devnet and are intended for local runs. They live in `tests/e2e-solana/`.
 
-## Fichiers de Tests
+## Test Files
 
 ### 1. e2e-full-flow.test.ts
-Test du cycle de vie complet d'un agent:
-- ✅ Enregistrement agent
-- ✅ Mise à jour métadonnées
-- ✅ Donner feedback
-- ✅ Lire réputation
-- ✅ Ajouter réponse
-- ✅ Demander validation
-- ✅ Répondre validation
-- ✅ Révoquer feedback
-- ✅ Requêtes multi-agents
+Tests the full agent lifecycle:
+- ✅ Register agent
+- ✅ Update metadata
+- ✅ Give feedback
+- ✅ Read reputation
+- ✅ Add response
+- ✅ Request validation
+- ✅ Respond to validation
+- ✅ Revoke feedback
+- ✅ Multi-agent queries
 
-**Scénario**: Crée un agent, lui donne du feedback, ajoute une réponse, valide, et révoque.
+**Scenario**: Creates an agent, gives feedback, adds a response, validates, and revokes.
 
 ### 2. e2e-error-scenarios.test.ts
-Test des cas d'erreur et edge cases:
-- ❌ Entités non-existantes
-- ❌ Erreurs de permission (read-only SDK)
-- ❌ Inputs invalides
-- ❌ Edge cases (URIs longs, caractères spéciaux)
-- ❌ Erreurs réseau
-- ⚡ Opérations concurrentes
+Tests error cases and edge cases:
+- ❌ Non-existent entities
+- ❌ Permission errors (read-only SDK)
+- ❌ Invalid inputs
+- ❌ Edge cases (long URIs, special characters)
+- ❌ Network errors
+- ⚡ Concurrent operations
 
 ### 3. e2e-performance.test.ts
-Test de performance et scalabilité:
-- ⏱️  Temps de réponse
-- ⚡ Opérations batch
-- 📊 Grands datasets
-- 🚀 Cache et throughput
-- 💾 Efficacité mémoire
+Performance and scalability tests:
+- ⏱️  Response time
+- ⚡ Batch operations
+- 📊 Large datasets
+- 🚀 Cache and throughput
+- 💾 Memory efficiency
 
-## Prérequis
+## Prerequisites
 
 ```bash
-# 1. Variable d'environnement avec clé privée Solana
-export SOLANA_PRIVATE_KEY='[1,2,3,...]'  # Uint8Array en JSON
+# 1. Environment variable with Solana private key
+export SOLANA_PRIVATE_KEY='[1,2,3,...]'  # Uint8Array JSON
 
-# 2. Balance SOL sur devnet
-# Obtenir des SOL devnet: https://faucet.solana.com/
+# 2. SOL balance on devnet
+# Get devnet SOL: https://faucet.solana.com/
 
-# 3. Programmes déployés sur devnet
-# Les program IDs doivent correspondre à ceux dans src/solana/programs.ts
+# 3. Programs deployed on devnet
+# Program IDs must match those in src/core/programs.ts
 ```
 
-## Exécution
+## Running
 
-### Tous les tests E2E
+### All E2E tests
 ```bash
 cd /Users/true/Documents/Pipeline/CasterCorp/agent0-ts-solana
-npm test /tmp/solana-e2e-tests
+npm test tests/e2e-solana
 ```
 
-### Test spécifique
+### Specific test
 ```bash
-# Cycle complet
-npm test /tmp/solana-e2e-tests/e2e-full-flow.test.ts
+# Full flow
+npm test tests/e2e-solana/e2e-full-flow.test.ts
 
-# Scénarios d'erreur
-npm test /tmp/solana-e2e-tests/e2e-error-scenarios.test.ts
+# Error scenarios
+npm test tests/e2e-solana/e2e-error-scenarios.test.ts
 
 # Performance
-npm test /tmp/solana-e2e-tests/e2e-performance.test.ts
+npm test tests/e2e-solana/e2e-performance.test.ts
 ```
 
-### Avec output détaillé
+### With verbose output
 ```bash
-npm test /tmp/solana-e2e-tests -- --verbose
+npm test tests/e2e-solana -- --verbose
 ```
 
-## Résultats Attendus
+## Expected Results
 
 ### e2e-full-flow.test.ts
 ```
@@ -116,9 +116,9 @@ npm test /tmp/solana-e2e-tests -- --verbose
 ⏱️  Throughput: ~20 req/sec parallel
 ```
 
-## Coûts Estimés (Devnet)
+## Estimated Costs (Devnet)
 
-Chaque test e2e-full-flow consomme environ:
+Each e2e-full-flow test consumes approximately:
 - Register agent: ~0.001 SOL
 - Set metadata: ~0.0005 SOL
 - Set URI: ~0.0005 SOL
@@ -128,71 +128,70 @@ Chaque test e2e-full-flow consomme environ:
 - Respond validation: ~0.0005 SOL
 - Revoke feedback: ~0.0005 SOL
 
-**Total par run**: ~0.007 SOL (~$0.0007 à $0.10/SOL)
+**Total per run**: ~0.007 SOL (~$0.0007 at $0.10/SOL)
 
-Sur devnet c'est gratuit (faucet), mais gardez ces chiffres en tête pour mainnet.
+On devnet it's free (faucet), but keep these numbers in mind for mainnet.
 
 ## Timeouts
 
-Tests configurés avec timeouts généreux pour devnet:
-- Opérations read: 30s
-- Opérations write: 60s
-- Tests performance: 60s
+Tests are configured with generous timeouts for devnet:
+- Read operations: 30s
+- Write operations: 60s
+- Performance tests: 60s
 
-Si devnet est lent, augmentez les timeouts.
+If devnet is slow, increase the timeouts.
 
 ## Debugging
 
-### Voir les logs détaillés
+### See detailed logs
 ```bash
-ANCHOR_LOG=true npm test /tmp/solana-e2e-tests/e2e-full-flow.test.ts
+ANCHOR_LOG=true npm test tests/e2e-solana/e2e-full-flow.test.ts
 ```
 
-### Explorer les transactions
-Copiez les signatures de transaction des logs et consultez:
+### Inspect transactions
+Copy the transaction signatures from the logs and view them at:
 - https://explorer.solana.com/?cluster=devnet
 
-### Vérifier les comptes
+### Check accounts
 ```bash
 solana account <PUBKEY> --url devnet
 ```
 
 ## Maintenance
 
-Ces tests E2E:
-- ✅ Testent contre devnet réel
-- ✅ Créent de vraies transactions
-- ✅ Coûtent du SOL (devnet gratuit)
-- ❌ Ne sont PAS dans git
-- ❌ Ne sont PAS dans CI/CD
-- ⚠️  Peuvent échouer si devnet est down
+These E2E tests:
+- ✅ Run against real devnet
+- ✅ Create real transactions
+- ✅ Cost SOL (free on devnet)
+- ❌ Not suitable for CI/CD
+- ⚠️  May fail if devnet is down
 
-Pour CI/CD, utilisez les tests d'intégration dans `tests/solana/integration.test.ts` qui sont plus légers.
+For CI/CD, use the lighter integration tests in `tests/integration/`.
 
-## Nettoyage
+## Cleanup
 
-Les tests créent des agents et feedbacks sur devnet. Pas besoin de nettoyage spécial car:
-1. C'est devnet (test network)
-2. Les données sont utiles pour tester les read functions
-3. Les comptes peuvent être fermés manuellement si besoin
+These tests create agents and feedbacks on devnet. No special cleanup is needed because:
+1. It is devnet (test network)
+2. The data is useful for testing read functions
+3. Accounts can be closed manually if needed
 
 ## Tips
 
-1. **Balance faible?** → https://faucet.solana.com/
-2. **Devnet lent?** → Augmentez les timeouts
-3. **RPC rate limit?** → Utilisez votre propre RPC URL
-4. **Tests flaky?** → Ajoutez des delays entre opérations
+1. **Low balance?** → https://faucet.solana.com/
+2. **Slow devnet?** → Increase timeouts
+3. **RPC rate limit?** → Use your own RPC URL
+4. **Flaky tests?** → Add delays between operations
 
-## Questions Fréquentes
+## FAQ
 
-**Q: Pourquoi ne pas les commiter dans git?**
-A: Ce sont de vrais tests contre devnet qui coûtent du SOL et prennent du temps. Pas adaptés pour CI/CD.
+**Q: Why are these tests not suited for CI/CD?**
+A: They hit real devnet, cost SOL, and take time to run.
 
-**Q: Comment les exécuter en CI/CD?**
-A: Ne les exécutez pas en CI/CD. Utilisez les tests d'intégration mock dans `tests/solana/`.
+**Q: How do I run them in CI/CD?**
+A: Do not run them in CI/CD. Use the integration tests in `tests/integration/`.
 
-**Q: Puis-je les exécuter contre mainnet?**
-A: Oui mais attention aux coûts! Changez `createDevnetSDK()` en `createMainnetSDK()`.
+**Q: Can I run them against mainnet?**
+A: Yes, but watch the costs. Switch `createDevnetSDK()` to `createMainnetSDK()`.
 
-**Q: Combien de temps prennent-ils?**
-A: Environ 5-10 minutes pour tout exécuter, selon la vitesse de devnet.
+**Q: How long do they take?**
+A: About 5-10 minutes for a full run, depending on devnet speed.

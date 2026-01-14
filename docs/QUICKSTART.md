@@ -35,7 +35,6 @@ Create a new file `register.ts` and run with `npx tsx register.ts`:
 ```typescript
 import { SolanaSDK, IPFSClient, buildRegistrationFileJson, EndpointType } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
-import { readFileSync } from 'fs';
 
 // 1. Setup SDK with your wallet
 const signer = Keypair.fromSecretKey(
@@ -50,8 +49,7 @@ const ipfs = new IPFSClient({
 });
 
 // 3. Upload your agent's avatar image
-const imageBuffer = readFileSync('./my-agent-avatar.png');
-const imageCid = await ipfs.addFile(imageBuffer, 'image/png');
+const imageCid = await ipfs.addFile('./my-agent-avatar.png');
 const imageUri = `ipfs://${imageCid}`;
 
 // 4. Build your agent metadata with capabilities
@@ -122,7 +120,7 @@ You can also view your agent on the explorer a few minutes after registration:
 
 ## What's Next?
 
-- **Give Feedback:** `await sdk.giveFeedback(agentAsset, { score: 85, tag1: 'helpful' })`
+- **Give Feedback:** `await sdk.giveFeedback(agentAsset, { score: 85, tag1: 'helpful', feedbackUri: 'ipfs://QmFeedback', feedbackHash: Buffer.alloc(32) })`
 - **Check Reputation:** `await sdk.getSummary(agentAsset)`
 - **Update URI:** `await sdk.setAgentUri(agentAsset, collection, 'ipfs://newCid')`
 
