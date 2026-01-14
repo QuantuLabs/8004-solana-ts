@@ -1109,6 +1109,7 @@ export class ReputationTransactionBuilder {
       // Derive ATOM Engine PDAs (v0.4.0)
       const [atomConfig] = getAtomConfigPDA();
       const [atomStats] = getAtomStatsPDA(asset);
+      const [registryAuthority] = PDAHelpers.getAtomCpiAuthorityPDA();
 
       // v0.4.0: feedback_index is now tracked per client in events, not on-chain
       // We use a placeholder index that will be assigned by the program
@@ -1116,11 +1117,12 @@ export class ReputationTransactionBuilder {
 
       const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(
         signerPubkey,       // client (signer)
+        agentPda,           // agent_account PDA
         asset,              // Core asset
         collection,         // Collection for ATOM filtering
-        agentPda,           // agent_account
         atomConfig,         // ATOM config PDA
         atomStats,          // ATOM stats PDA
+        registryAuthority,  // registry_authority PDA for CPI signing
         score,
         tag1,
         tag2,
@@ -1179,15 +1181,19 @@ export class ReputationTransactionBuilder {
         throw new Error('signer required when SDK has no signer configured');
       }
 
-      // Derive ATOM Engine PDAs (v0.4.0)
+      // Derive PDAs (v0.4.0)
+      const [agentPda] = PDAHelpers.getAgentPDA(asset);
       const [atomConfig] = getAtomConfigPDA();
       const [atomStats] = getAtomStatsPDA(asset);
+      const [registryAuthority] = PDAHelpers.getAtomCpiAuthorityPDA();
 
       const instruction = this.instructionBuilder.buildRevokeFeedback(
         signerPubkey,
+        agentPda,
         asset,
         atomConfig,
         atomStats,
+        registryAuthority,
         feedbackIndex
       );
 

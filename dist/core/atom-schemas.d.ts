@@ -1,6 +1,6 @@
 /**
  * ATOM Engine Borsh Schemas
- * Agent Trust On-chain Model - v0.4.0
+ * Agent Trust On-chain Model - v0.2.0 (Fortress)
  *
  * These schemas must match exactly the Rust structs in atom-engine program.
  * Seeds:
@@ -27,10 +27,10 @@ export declare function getTrustTierName(tier: TrustTier): string;
 export declare const trustTierToString: typeof getTrustTierName;
 /**
  * AtomStats - Raw reputation metrics for an agent
- * Size: 460 bytes (8 discriminator + 452 data)
+ * Size: 561 bytes (8 discriminator + 553 data)
  * Seeds: ["atom_stats", asset.key()]
  *
- * Layout v3.2:
+ * Layout Fortress (Fortress):
  * - BLOC 0: Identity (64 bytes) - collection + asset
  * - BLOC 1: Core (24 bytes) - slots + count
  * - BLOC 2: Dual-EMA (12 bytes)
@@ -38,7 +38,12 @@ export declare const trustTierToString: typeof getTrustTierName;
  * - BLOC 4: HLL (128 bytes) - 256 registers × 4 bits
  * - BLOC 4b: HLL Salt (8 bytes)
  * - BLOC 5: Burst Detection (196 bytes) - 24×u64 ring + 4×u8
- * - BLOC 6: Output Cache (12 bytes)
+ * - BLOC 5b: MRT Eviction Protection (8 bytes)
+ * - BLOC 5c: Quality Circuit Breaker (6 bytes)
+ * - BLOC 5d: Bypass Tracking (83 bytes)
+ * - BLOC 6: Output Cache (8 bytes)
+ * - BLOC 6b: Tier Vesting (4 bytes) - Fortress
+ * - BLOC 7: Meta (4 bytes)
  */
 export declare class AtomStats {
     collection: Uint8Array;
@@ -65,11 +70,23 @@ export declare class AtomStats {
     updates_since_hll_change: number;
     neg_pressure: number;
     eviction_cursor: number;
+    ring_base_slot: bigint;
+    quality_velocity: number;
+    velocity_epoch: number;
+    freeze_epochs: number;
+    quality_floor: number;
+    bypass_count: number;
+    bypass_score_avg: number;
+    bypass_fingerprints: bigint[];
+    bypass_fp_cursor: number;
     loyalty_score: number;
     quality_score: number;
     risk_score: number;
     diversity_ratio: number;
     trust_tier: number;
+    tier_candidate: number;
+    tier_candidate_epoch: number;
+    tier_confirmed: number;
     flags: number;
     confidence: number;
     bump: number;
@@ -99,11 +116,23 @@ export declare class AtomStats {
         updates_since_hll_change: number;
         neg_pressure: number;
         eviction_cursor: number;
+        ring_base_slot: bigint;
+        quality_velocity: number;
+        velocity_epoch: number;
+        freeze_epochs: number;
+        quality_floor: number;
+        bypass_count: number;
+        bypass_score_avg: number;
+        bypass_fingerprints: bigint[];
+        bypass_fp_cursor: number;
         loyalty_score: number;
         quality_score: number;
         risk_score: number;
         diversity_ratio: number;
         trust_tier: number;
+        tier_candidate: number;
+        tier_candidate_epoch: number;
+        tier_confirmed: number;
         flags: number;
         confidence: number;
         bump: number;

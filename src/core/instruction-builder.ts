@@ -421,16 +421,17 @@ export class ReputationInstructionBuilder {
   /**
    * Build giveFeedback instruction - v0.4.0
    * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
-   * Accounts: client (signer), asset, collection, agent_account, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+   * Accounts: client (signer), agent_account, asset, collection, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
    * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
    */
   buildGiveFeedback(
     client: PublicKey,
+    agentAccount: PublicKey,
     asset: PublicKey,
     collection: PublicKey,
-    agentAccount: PublicKey,
     atomConfig: PublicKey,
     atomStats: PublicKey,
+    registryAuthority: PublicKey,
     score: number,
     tag1: string,
     tag2: string,
@@ -454,13 +455,13 @@ export class ReputationInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: client, isSigner: true, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: collection, isSigner: false, isWritable: false },
-        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: atomConfig, isSigner: false, isWritable: false },
         { pubkey: atomStats, isSigner: false, isWritable: true },
         { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: registryAuthority, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -470,14 +471,16 @@ export class ReputationInstructionBuilder {
   /**
    * Build revokeFeedback instruction - v0.4.0
    * Matches: revoke_feedback(feedback_index)
-   * Accounts: client (signer), asset, atom_config, atom_stats, atom_engine_program, instructions_sysvar, system_program
+   * Accounts: client (signer), agent_account, asset, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
    * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
    */
   buildRevokeFeedback(
     client: PublicKey,
+    agentAccount: PublicKey,
     asset: PublicKey,
     atomConfig: PublicKey,
     atomStats: PublicKey,
+    registryAuthority: PublicKey,
     feedbackIndex: bigint,
   ): TransactionInstruction {
     const data = Buffer.concat([
@@ -489,11 +492,12 @@ export class ReputationInstructionBuilder {
       programId: this.programId,
       keys: [
         { pubkey: client, isSigner: true, isWritable: true },
+        { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: atomConfig, isSigner: false, isWritable: false },
         { pubkey: atomStats, isSigner: false, isWritable: true },
         { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: registryAuthority, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,

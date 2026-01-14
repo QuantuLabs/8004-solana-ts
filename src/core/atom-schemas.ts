@@ -1,6 +1,6 @@
 /**
  * ATOM Engine Borsh Schemas
- * Agent Trust On-chain Model - v0.4.0
+ * Agent Trust On-chain Model - v0.2.0 (Fortress)
  *
  * These schemas must match exactly the Rust structs in atom-engine program.
  * Seeds:
@@ -48,10 +48,10 @@ export const trustTierToString = getTrustTierName;
 
 /**
  * AtomStats - Raw reputation metrics for an agent
- * Size: 460 bytes (8 discriminator + 452 data)
+ * Size: 561 bytes (8 discriminator + 553 data)
  * Seeds: ["atom_stats", asset.key()]
  *
- * Layout v3.2:
+ * Layout Fortress (Fortress):
  * - BLOC 0: Identity (64 bytes) - collection + asset
  * - BLOC 1: Core (24 bytes) - slots + count
  * - BLOC 2: Dual-EMA (12 bytes)
@@ -59,7 +59,12 @@ export const trustTierToString = getTrustTierName;
  * - BLOC 4: HLL (128 bytes) - 256 registers × 4 bits
  * - BLOC 4b: HLL Salt (8 bytes)
  * - BLOC 5: Burst Detection (196 bytes) - 24×u64 ring + 4×u8
- * - BLOC 6: Output Cache (12 bytes)
+ * - BLOC 5b: MRT Eviction Protection (8 bytes)
+ * - BLOC 5c: Quality Circuit Breaker (6 bytes)
+ * - BLOC 5d: Bypass Tracking (83 bytes)
+ * - BLOC 6: Output Cache (8 bytes)
+ * - BLOC 6b: Tier Vesting (4 bytes) - Fortress
+ * - BLOC 7: Meta (4 bytes)
  */
 export class AtomStats {
   // BLOC 0: Identity (64 bytes)
@@ -94,18 +99,40 @@ export class AtomStats {
   hll_salt: bigint; // u64 - Random salt for HLL to prevent cross-agent grinding
 
   // BLOC 5: Burst detection (196 bytes)
-  recent_callers: bigint[]; // 24×u64 - Ring buffer of caller fingerprints (v3.2: reduced from 32)
+  recent_callers: bigint[]; // 24×u64 - Ring buffer of caller fingerprints
   burst_pressure: number; // u8 - Repeat caller pressure (0-255)
   updates_since_hll_change: number; // u8 - Updates since HLL change
-  neg_pressure: number; // u8 - Negative momentum pressure (v2.3)
-  eviction_cursor: number; // u8 - Round Robin eviction cursor (v3.0)
+  neg_pressure: number; // u8 - Negative momentum pressure
+  eviction_cursor: number; // u8 - Round Robin eviction cursor
 
-  // BLOC 6: Output cache (12 bytes)
+  // BLOC 5b: MRT Eviction Protection (8 bytes)
+  ring_base_slot: bigint; // u64 - Slot when current ring buffer window started
+
+  // BLOC 5c: Quality Circuit Breaker (6 bytes)
+  quality_velocity: number; // u16 - Accumulated quality change magnitude this epoch
+  velocity_epoch: number; // u16 - Epoch when velocity tracking started
+  freeze_epochs: number; // u8 - Epochs remaining in quality freeze (0 = not frozen)
+  quality_floor: number; // u8 - Floor quality during freeze (0-100)
+
+  // BLOC 5d: Bypass Tracking (83 bytes)
+  bypass_count: number; // u8 - Number of bypassed writes in current window
+  bypass_score_avg: number; // u8 - Sum of bypassed scores (for averaging when merging)
+  bypass_fingerprints: bigint[]; // 10×u64 - Fingerprints of bypassed entries (for revoke support)
+  bypass_fp_cursor: number; // u8 - Cursor for round-robin in bypass_fingerprints
+
+  // BLOC 6: Output cache (8 bytes)
   loyalty_score: number; // u16 - Cached loyalty score
   quality_score: number; // u16 - Cached quality score (0-10000)
   risk_score: number; // u8 - Risk score (0-100)
   diversity_ratio: number; // u8 - Unique/total ratio (0-255)
   trust_tier: number; // u8 - Trust tier (0-4)
+
+  // BLOC 6b: Tier Vesting (4 bytes) - Fortress
+  tier_candidate: number; // u8 - Tier candidate waiting for promotion (0-4)
+  tier_candidate_epoch: number; // u16 - Epoch when candidature started
+  tier_confirmed: number; // u8 - Confirmed tier after vesting period
+
+  // BLOC 7: Meta (4 bytes)
   flags: number; // u8 - Bit flags
   confidence: number; // u16 - Confidence (0-10000)
   bump: number; // u8 - PDA bump
@@ -130,17 +157,35 @@ export class AtomStats {
     first_score: number;
     last_score: number;
     hll_packed: Uint8Array;
-    hll_salt: bigint; // v3.0
+    hll_salt: bigint;
     recent_callers: bigint[];
     burst_pressure: number;
     updates_since_hll_change: number;
     neg_pressure: number;
-    eviction_cursor: number; // v3.0
+    eviction_cursor: number;
+    // MRT Eviction Protection
+    ring_base_slot: bigint;
+    // Quality Circuit Breaker
+    quality_velocity: number;
+    velocity_epoch: number;
+    freeze_epochs: number;
+    quality_floor: number;
+    // Bypass Tracking
+    bypass_count: number;
+    bypass_score_avg: number;
+    bypass_fingerprints: bigint[];
+    bypass_fp_cursor: number;
+    // Output Cache
     loyalty_score: number;
     quality_score: number;
     risk_score: number;
     diversity_ratio: number;
     trust_tier: number;
+    // Tier Vesting Fortress
+    tier_candidate: number;
+    tier_candidate_epoch: number;
+    tier_confirmed: number;
+    // Meta
     flags: number;
     confidence: number;
     bump: number;
@@ -170,11 +215,29 @@ export class AtomStats {
     this.updates_since_hll_change = fields.updates_since_hll_change;
     this.neg_pressure = fields.neg_pressure;
     this.eviction_cursor = fields.eviction_cursor;
+    // MRT Eviction Protection
+    this.ring_base_slot = fields.ring_base_slot;
+    // Quality Circuit Breaker
+    this.quality_velocity = fields.quality_velocity;
+    this.velocity_epoch = fields.velocity_epoch;
+    this.freeze_epochs = fields.freeze_epochs;
+    this.quality_floor = fields.quality_floor;
+    // Bypass Tracking
+    this.bypass_count = fields.bypass_count;
+    this.bypass_score_avg = fields.bypass_score_avg;
+    this.bypass_fingerprints = fields.bypass_fingerprints;
+    this.bypass_fp_cursor = fields.bypass_fp_cursor;
+    // Output Cache
     this.loyalty_score = fields.loyalty_score;
     this.quality_score = fields.quality_score;
     this.risk_score = fields.risk_score;
     this.diversity_ratio = fields.diversity_ratio;
     this.trust_tier = fields.trust_tier;
+    // Tier Vesting Fortress
+    this.tier_candidate = fields.tier_candidate;
+    this.tier_candidate_epoch = fields.tier_candidate_epoch;
+    this.tier_confirmed = fields.tier_confirmed;
+    // Meta
     this.flags = fields.flags;
     this.confidence = fields.confidence;
     this.bump = fields.bump;
@@ -206,18 +269,36 @@ export class AtomStats {
           ['max_score', 'u8'],
           ['first_score', 'u8'],
           ['last_score', 'u8'],
-          ['hll_packed', [128]], // v3.2: 256 registers × 4 bits = 128 bytes
-          ['hll_salt', 'u64'], // v3.0: Random salt for HLL
-          ['recent_callers', ['u64', 24]], // v3.2: Reduced from 32 to 24 slots
+          ['hll_packed', [128]], // 256 registers × 4 bits = 128 bytes
+          ['hll_salt', 'u64'], // Random salt for HLL
+          ['recent_callers', ['u64', 24]], // Ring buffer of caller fingerprints
           ['burst_pressure', 'u8'],
           ['updates_since_hll_change', 'u8'],
           ['neg_pressure', 'u8'],
-          ['eviction_cursor', 'u8'], // v3.0: Round Robin eviction cursor
+          ['eviction_cursor', 'u8'], // Round Robin eviction cursor
+          // MRT Eviction Protection
+          ['ring_base_slot', 'u64'],
+          // Quality Circuit Breaker
+          ['quality_velocity', 'u16'],
+          ['velocity_epoch', 'u16'],
+          ['freeze_epochs', 'u8'],
+          ['quality_floor', 'u8'],
+          // Bypass Tracking
+          ['bypass_count', 'u8'],
+          ['bypass_score_avg', 'u8'],
+          ['bypass_fingerprints', ['u64', 10]], // 10 fingerprints for revoke support
+          ['bypass_fp_cursor', 'u8'],
+          // Output Cache
           ['loyalty_score', 'u16'],
           ['quality_score', 'u16'],
           ['risk_score', 'u8'],
           ['diversity_ratio', 'u8'],
           ['trust_tier', 'u8'],
+          // Tier Vesting Fortress
+          ['tier_candidate', 'u8'],
+          ['tier_candidate_epoch', 'u16'],
+          ['tier_confirmed', 'u8'],
+          // Meta
           ['flags', 'u8'],
           ['confidence', 'u16'],
           ['bump', 'u8'],

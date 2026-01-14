@@ -69,6 +69,14 @@ export class PDAHelpers {
     // Reputation Module PDAs
     // ============================================================================
     /**
+     * Get ATOM CPI Authority PDA - v0.4.0
+     * Used by agent-registry to sign CPI calls to atom-engine
+     * Seeds: ["atom_cpi_authority"]
+     */
+    static getAtomCpiAuthorityPDA(programId = PROGRAM_ID) {
+        return PublicKey.findProgramAddressSync([Buffer.from('atom_cpi_authority')], programId);
+    }
+    /**
      * Get Feedback Account PDA - v0.3.0
      * Seeds: ["feedback", asset, feedback_index]
      */

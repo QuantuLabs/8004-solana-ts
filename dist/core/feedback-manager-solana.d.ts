@@ -76,44 +76,63 @@ export declare class SolanaFeedbackManager {
     /**
      * 1. getSummary - Get agent reputation summary - v0.4.0
      * @param asset - Agent Core asset pubkey
-     * @param minScore - Optional minimum score filter (client-side)
-     * @param clientFilter - Optional client address filter (client-side)
+     * @param minScore - Optional minimum score filter (requires indexer for filtering)
+     * @param clientFilter - Optional client address filter (requires indexer for filtering)
      * @returns Summary with average score, total feedbacks, and positive/negative counts
      *
-     * v0.4.0: Added positive/negative counts
-     * Security: Fetches metadata and feedbacks in parallel to reduce state drift window
+     * v0.4.0: Uses AtomStats on-chain (primary) with indexer fallback
+     * Note: minScore and clientFilter require indexer for accurate filtering
      */
     getSummary(asset: PublicKey, minScore?: number, clientFilter?: PublicKey): Promise<SolanaAgentSummary>;
     /**
-     * 2. readFeedback - Read single feedback - v0.3.0
+     * Get AtomStats for summary calculation
+     * @internal
+     */
+    private getAtomStatsForSummary;
+    /**
+     * Get summary from indexer (fallback or when filters are needed)
+     * @internal
+     */
+    private getSummaryFromIndexer;
+    /**
+     * 2. readFeedback - Read single feedback - v0.4.0
      * @param asset - Agent Core asset pubkey
-     * @param _client - Client public key (kept for API compatibility, not used in PDA)
+     * @param _client - Client public key (kept for API compatibility)
      * @param feedbackIndex - Feedback index
      * @returns Feedback object or null if not found
+     *
+     * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+     * REQUIRES indexer to be configured
      */
     readFeedback(asset: PublicKey, _client: PublicKey, feedbackIndex: bigint): Promise<SolanaFeedback | null>;
     /**
-     * 3. readAllFeedback - Read all feedbacks for an agent - v0.3.0
+     * 3. readAllFeedback - Read all feedbacks for an agent - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @param includeRevoked - Include revoked feedbacks (default: false)
      * @param options - Query options including maxResults limit
      * @returns Array of feedback objects
      *
-     * v0.3.0: Uses asset (32 bytes) filter instead of agent_id (8 bytes)
-     * Security: Limited to maxResults (default 1000) to prevent OOM
+     * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+     * REQUIRES indexer to be configured
      */
     readAllFeedback(asset: PublicKey, includeRevoked?: boolean, options?: FeedbackQueryOptions): Promise<SolanaFeedback[]>;
     /**
-     * 4. getLastIndex - Get feedback count for a client - v0.3.0
+     * 4. getLastIndex - Get feedback count for a client - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @param client - Client public key
      * @returns Count of feedbacks given by this client
+     *
+     * v0.4.0: Uses indexer for efficient client-scoped query
+     * REQUIRES indexer to be configured
      */
     getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint>;
     /**
-     * 5. getClients - Get all clients who gave feedback to an agent - v0.3.0
+     * 5. getClients - Get all clients who gave feedback to an agent - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @returns Array of unique client public keys
+     *
+     * v0.4.0: Uses indexer for efficient query
+     * REQUIRES indexer to be configured
      */
     getClients(asset: PublicKey): Promise<PublicKey[]>;
     /**
@@ -130,17 +149,6 @@ export declare class SolanaFeedbackManager {
      * @returns Array of response objects
      */
     readResponses(asset: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]>;
-    /**
-     * Helper to fetch FeedbackTagsPda for a feedback - v0.3.0
-     * Returns tag1 and tag2, or empty strings if no tags PDA exists
-     */
-    private fetchFeedbackTags;
-    /**
-     * Helper to map FeedbackAccount to SolanaFeedback interface - v0.4.0
-     * @param feedback - The feedback account data
-     * @param tags - Optional tags from FeedbackTagsPda (fetched separately)
-     */
-    private mapFeedbackAccount;
     /**
      * Read feedbacks from indexer (v0.4.0)
      * Falls back to on-chain if indexer unavailable
@@ -162,13 +170,14 @@ export declare class SolanaFeedbackManager {
      */
     fetchFeedbackFile(_uri: string): Promise<unknown | null>;
     /**
-     * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
-     * Much more efficient than calling readAllFeedback() per agent
+     * Fetch ALL feedbacks for ALL agents - v0.4.0
      * @param includeRevoked - Include revoked feedbacks? default: false
      * @param options - Query options including maxResults limit
      * @returns Map of asset (base58 string) -> SolanaFeedback[]
      *
-     * Security: Limited to maxResults (default 5000) to prevent OOM
+     * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+     * REQUIRES indexer to be configured
+     * Note: For large datasets, consider using indexer APIs directly
      */
     fetchAllFeedbacks(includeRevoked?: boolean, options?: FeedbackQueryOptions): Promise<Map<string, SolanaFeedback[]>>;
 }
