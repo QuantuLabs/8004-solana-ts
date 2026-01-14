@@ -1086,7 +1086,7 @@ export class ReputationTransactionBuilder {
       // Security: Use byte length validation for UTF-8 strings (not character count)
       validateByteLength(tag1, 32, 'tag1');
       validateByteLength(tag2, 32, 'tag2');
-      validateByteLength(endpoint, 200, 'endpoint');
+      validateByteLength(endpoint, 256, 'endpoint');
       validateByteLength(feedbackUri, 200, 'feedbackUri');
       if (feedbackHash.length !== 32) {
         throw new Error('feedbackHash must be 32 bytes');

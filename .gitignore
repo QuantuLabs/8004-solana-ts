@@ -47,3 +47,11 @@ yarn.lock
 .pnp.*
 # Reference docs (agent0-ts implementation reference)
 docs/reference/
+
+# Local check scripts
+check-pda.ts
+check-volatility.ts
+compare-accounts.ts
+test-atom-tier.ts
+test-complete-e2e.ts
+test-e2e-supabase.ts

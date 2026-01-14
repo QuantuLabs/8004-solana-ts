@@ -5,10 +5,10 @@
 
 [![npm](https://img.shields.io/npm/v/8004-solana)](https://www.npmjs.com/package/8004-solana)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana-blue)](https://github.com/QuantuLabs/8004-solana)
+[![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
 [![Solana Programs](https://img.shields.io/badge/Programs-8004--solana-purple)](https://github.com/QuantuLabs/8004-solana)
 
-> **[How to register your first agent in 5 steps](./docs/quickstart.html)**
+> **[How to register your first agent in 5 steps](./docs/QUICKSTART.md)**
 
 ---
 
@@ -50,7 +50,7 @@ const privateKey = JSON.parse(process.env.SOLANA_PRIVATE_KEY!);
 const signer = Keypair.fromSecretKey(Uint8Array.from(privateKey));
 
 // Initialize the SDK with your signer
-// Default cluster is 'devnet', use { cluster: 'mainnet-beta' } for production
+// Default cluster is 'devnet' (programs are deployed on devnet)
 const sdk = new SolanaSDK({ signer });
 ```
 
@@ -82,7 +82,10 @@ const collectionData = buildCollectionMetadataJson({
 });
 
 // 2. Upload metadata to IPFS
-const ipfs = new IPFSClient({ pinataJwt: process.env.PINATA_JWT });
+const ipfs = new IPFSClient({
+  pinataEnabled: true,
+  pinataJwt: process.env.PINATA_JWT,
+});
 const collectionCid = await ipfs.addJson(collectionData);
 
 // 3. Create collection on-chain
@@ -181,6 +184,8 @@ const metadataUri = `ipfs://${metadataCid}`;
 **Step 4: Register on Solana**
 
 ```typescript
+import { PublicKey } from '@solana/web3.js';
+
 const sdk = new SolanaSDK({ signer });
 
 // Register in default collection
@@ -243,8 +248,8 @@ await sdk.giveFeedback(agentAsset, {
   score: 85,                                // Rating out of 100
   tag1: 'helpful',                          // Optional: first tag
   tag2: 'accurate',                         // Optional: second tag
-  feedbackUri: 'ipfs://QmFeedbackDetails',  // Optional: detailed feedback file
-  feedbackHash: Buffer.alloc(32),           // Optional: SHA256 hash of file
+  feedbackUri: 'ipfs://QmFeedbackDetails',  // Required: feedback metadata URI
+  feedbackHash: Buffer.alloc(32),           // Required: 32-byte hash (use zeros if none)
 });
 ```
 
@@ -257,29 +262,36 @@ console.log(`Average Score: ${summary.averageScore}/100`);
 console.log(`Total Feedbacks: ${summary.totalFeedbacks}`);
 console.log(`Next Index: ${summary.nextFeedbackIndex}`);
 
-// Read all individual feedbacks (requires custom RPC)
+// Read all individual feedbacks (requires indexer access)
 const feedbacks = await sdk.readAllFeedback(agentAsset);
 for (const fb of feedbacks) {
   console.log(`Score: ${fb.score}, Client: ${fb.client.toBase58()}`);
 }
 ```
 
-### 7. Bulk Queries (Indexer)
+### 7. Indexer & Bulk Queries
 
 ```typescript
-// Get ALL agents with their feedbacks in just 4 RPC calls
-const agents = await sdk.getAllAgents({ includeFeedbacks: true });
-for (const { account, feedbacks } of agents) {
-  console.log(`Agent ${account.getAssetPublicKey().toBase58().slice(0,8)}...: ${feedbacks?.length || 0} feedbacks`);
-}
-
-// Or get ALL feedbacks separately as a Map (keyed by asset string)
-const feedbacksMap = await sdk.getAllFeedbacks();
-const agentFeedbacks = feedbacksMap.get(agentAsset.toBase58()) || [];
+// Indexer-backed queries (recommended for large reads)
+const leaderboard = await sdk.getLeaderboard({ limit: 10 });
+const stats = await sdk.getGlobalStats();
+const feedbacks = await sdk.getFeedbacksFromIndexer(agentAsset, { limit: 50 });
+console.log(`Top agent: ${leaderboard[0]?.asset}`);
+console.log(`Total agents: ${stats.total_agents}`);
+console.log(`Feedbacks fetched: ${feedbacks.length}`);
 ```
 
-> **Note**: For advanced queries like `getAllAgents()`, `getAllFeedbacks()`, or `readAllFeedback()`, a custom RPC provider is required.
-> Free tiers are available - see [RPC Provider Recommendations](#rpc-provider-recommendations).
+```typescript
+// On-chain bulk queries (requires custom RPC)
+const agents = await sdk.getAllAgents();
+const ownersAgents = await sdk.getAgentsByOwner(ownerWallet);
+console.log(`Agents loaded: ${agents.length}`);
+console.log(`Owned agents: ${ownersAgents.length}`);
+```
+
+> **Note**: The SDK ships with a public indexer by default (override via `indexerUrl` / `indexerApiKey`).
+> Feedback history methods (`readAllFeedback()`, `getAllFeedbacks()`, `getClients()`) require the indexer and will throw if `forceOnChain=true` or `FORCE_ON_CHAIN=true`.
+> In the current release they also trip the advanced-RPC guard, so use a custom RPC if you see `UnsupportedRpcError`.
 
 ---
 
@@ -288,16 +300,16 @@ const agentFeedbacks = feedbacksMap.get(agentAsset.toBase58()) || [];
 - **[API Methods](docs/METHODS.md)** - Full SDK API reference
 - **[Operation Costs](docs/COSTS.md)** - Transaction costs on Solana
 - **[OASF Taxonomies](docs/OASF.md)** - Skills and domains reference
-- **[Changelog](docs/CHANGELOG.md)** - Version history and breaking changes
+- **[Changelog](CHANGELOG.md)** - Version history and breaking changes
 
-**Program ID (Devnet):** `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT`
+**Program IDs (Devnet):** Agent Registry: `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT` | ATOM Engine: `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7`
 
 ---
 
 ## RPC Provider Recommendations
 
 The default Solana devnet RPC works for basic operations but has rate limits.
-For **production use** or **advanced queries** (like `getProgramAccounts`), use a custom RPC provider.
+For **production use** or **advanced on-chain queries** (like `getProgramAccounts`), use a custom RPC provider.
 
 **Good news**: Free tiers are sufficient for most use cases!
 
@@ -316,12 +328,14 @@ For **production use** or **advanced queries** (like `getProgramAccounts`), use 
 | `giveFeedback()` | Works | Works |
 | `getSummary()` | Works | Works |
 | `getAllAgents()` | **Fails** | Works |
-| `getAllFeedbacks()` | **Fails** | Works |
 | `getAgentsByOwner()` | **Fails** | Works |
-| `readAllFeedback()` | **Fails** | Works |
-| `getClients()` | **Fails** | Works |
+| `readAllFeedback()` | **Fails** | Works (requires indexer) |
+| `getAllFeedbacks()` | **Fails** | Works (requires indexer) |
+| `getClients()` | **Fails** | Works (requires indexer) |
 
-**Recommendation**: Start with default RPC. Switch to Helius free tier when you need advanced queries.
+**Indexer note**: `readAllFeedback()`, `getAllFeedbacks()`, and `getClients()` require the indexer in v0.4.x and will not work with `forceOnChain=true`.
+
+**Recommendation**: Start with default RPC. Switch to Helius free tier when you need advanced on-chain queries.
 
 ```typescript
 const sdk = new SolanaSDK({
@@ -339,8 +353,8 @@ const agents = await sdk.getAgentsByOwner(ownerPublicKey);
 
 ```bash
 # Clone repository
-git clone https://github.com/QuantuLabs/8004-solana.git
-cd 8004-solana
+git clone https://github.com/QuantuLabs/8004-solana-ts.git
+cd 8004-solana-ts
 
 # Install dependencies
 npm install
@@ -349,7 +363,7 @@ npm install
 npm run build
 
 # Run tests
-npx tsx test-sdk-full-coverage.ts
+npx tsx tests/test-sdk-full.ts
 
 # Lint
 npm run lint
@@ -432,4 +446,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built for the Solana ecosystem** | v0.4.0
+**Built for the Solana ecosystem** | v0.4.1
