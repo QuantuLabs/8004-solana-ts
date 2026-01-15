@@ -88,6 +88,11 @@ export declare class PDAHelpers {
      */
     static getClientIndexPDA(asset: PublicKey, client: PublicKey, programId?: PublicKey): [PublicKey, number];
     /**
+     * Get ValidationConfig PDA (global validation registry state)
+     * Seeds: ["validation_config"]
+     */
+    static getValidationConfigPDA(programId?: PublicKey): [PublicKey, number];
+    /**
      * Get Validation Request PDA - v0.3.0
      * Seeds: ["validation", asset, validator, nonce]
      */

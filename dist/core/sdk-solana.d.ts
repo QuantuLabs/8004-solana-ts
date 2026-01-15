@@ -12,8 +12,10 @@ import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster } from './client.js';
 import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
-import { AgentAccount } from './borsh-schemas.js';
+import { AgentAccount, ValidationRequest } from './borsh-schemas.js';
 import { TransactionResult, WriteOptions, RegisterAgentOptions, PreparedTransaction } from './transaction-builder.js';
+import type { LivenessOptions, LivenessReport } from '../models/liveness.js';
+import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
 import { AtomStats, TrustTier } from './atom-schemas.js';
 import { IndexerClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, CollectionStats, GlobalStats } from './indexer-client.js';
 import type { AgentSearchParams } from './indexer-types.js';
@@ -96,6 +98,7 @@ export declare class SolanaSDK {
     private readonly cluster;
     private readonly programIds;
     private readonly signer?;
+    private readonly ipfsClient?;
     private readonly identityTxBuilder;
     private readonly reputationTxBuilder;
     private readonly validationTxBuilder;
@@ -148,11 +151,13 @@ export declare class SolanaSDK {
      */
     getAllAgents(options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
     /**
-     * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
+     * Fetch ALL feedbacks for ALL agents (indexer) - v0.4.0
      * More efficient than calling readAllFeedback() per agent
      * @param includeRevoked - Include revoked feedbacks? Default: false
      * @returns Map of asset (base58) -> SolanaFeedback[]
-     * @throws UnsupportedRpcError if using default devnet RPC
+     *
+     * v0.4.0: FeedbackAccount PDAs removed, uses indexer for data access.
+     * Requires indexer to be configured.
      */
     getAllFeedbacks(includeRevoked?: boolean): Promise<Map<string, SolanaFeedback[]>>;
     /**
@@ -216,6 +221,34 @@ export declare class SolanaSDK {
      */
     getCollectionAgents(collection: PublicKey, options?: GetAllAgentsOptions): Promise<AgentWithMetadata[]>;
     /**
+     * Wait for indexer to sync with on-chain events (event-driven architecture)
+     *
+     * The 8004 protocol uses an event-driven architecture where writes happen instantly on-chain
+     * via transaction logs, and the indexer asynchronously processes these events for efficient queries.
+     * This helper waits for the indexer to catch up with recent on-chain activity.
+     *
+     * @param checkFn - Function that returns true when data is synced
+     * @param options - Configuration options
+     * @returns True if synced within timeout, false otherwise
+     *
+     * @example
+     * // Wait for feedback to appear in indexer after giveFeedback()
+     * await sdk.waitForIndexerSync(async () => {
+     *   const feedback = await sdk.readFeedback(asset, client, index);
+     *   return feedback !== null;
+     * });
+     */
+    waitForIndexerSync(checkFn: () => Promise<boolean>, options?: {
+        /** Maximum time to wait in milliseconds (default: 30000) */
+        timeout?: number;
+        /** Initial retry delay in milliseconds (default: 1000) */
+        initialDelay?: number;
+        /** Maximum retry delay in milliseconds (default: 5000) */
+        maxDelay?: number;
+        /** Backoff multiplier (default: 1.5) */
+        backoffMultiplier?: number;
+    }): Promise<boolean>;
+    /**
      * 1. Get agent reputation summary - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param minScore - Optional minimum score filter
@@ -240,11 +273,13 @@ export declare class SolanaSDK {
      */
     getFeedback(asset: PublicKey, clientAddress: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
     /**
-     * 3. Read all feedbacks for an agent - v0.3.0
+     * 3. Read all feedbacks for an agent (indexer) - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @param includeRevoked - Include revoked feedbacks
      * @returns Array of feedback objects
-     * @throws UnsupportedRpcError if using default devnet RPC
+     *
+     * v0.4.0: FeedbackAccount PDAs removed, uses indexer for data access.
+     * Requires indexer to be configured.
      */
     readAllFeedback(asset: PublicKey, includeRevoked?: boolean): Promise<SolanaFeedback[]>;
     /**
@@ -255,10 +290,12 @@ export declare class SolanaSDK {
      */
     getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint>;
     /**
-     * 5. Get all clients who gave feedback - v0.3.0
+     * 5. Get all clients who gave feedback (indexer) - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @returns Array of client public keys
-     * @throws UnsupportedRpcError if using default devnet RPC
+     *
+     * v0.4.0: FeedbackAccount PDAs removed, uses indexer for data access.
+     * Requires indexer to be configured.
      */
     getClients(asset: PublicKey): Promise<PublicKey[]>;
     /**
@@ -428,6 +465,26 @@ export declare class SolanaSDK {
         collection: PublicKey;
     })>;
     /**
+     * Update collection URI (write operation) - v0.4.2
+     * Update metadata URI for a user-owned collection.
+     * Only the collection owner can update. Collection name is immutable.
+     *
+     * @param collection - Collection pubkey to update
+     * @param newUri - New collection URI (max 200 bytes)
+     * @param options - Write options (skipSend, signer)
+     * @returns Transaction result, or PreparedTransaction if skipSend
+     *
+     * @example
+     * ```typescript
+     * // Update collection URI
+     * await sdk.updateCollectionUri(
+     *   collectionPubkey,
+     *   'ipfs://QmNewMetadata...'
+     * );
+     * ```
+     */
+    updateCollectionUri(collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
      * Register a new agent (write operation) - v0.3.0
      *
      * @param tokenUri - Token URI pointing to agent metadata JSON (IPFS, Arweave, or HTTP)
@@ -460,6 +517,16 @@ export declare class SolanaSDK {
      * @param options - Write options (skipSend, signer)
      */
     setAgentUri(asset: PublicKey, collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set agent operational wallet (write operation) - v0.4.2
+     * Configures an operational wallet for the agent with Ed25519 signature verification
+     * @param asset - Agent Core asset pubkey
+     * @param newWallet - New operational wallet public key
+     * @param signature - Ed25519 signature from newWallet (64 bytes)
+     * @param deadline - Unix timestamp deadline (seconds, max 5 minutes in future)
+     * @param options - Write options (skipSend, signer)
+     */
+    setAgentWallet(asset: PublicKey, newWallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set agent metadata (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
@@ -537,6 +604,25 @@ export declare class SolanaSDK {
      */
     respondToValidation(asset: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag?: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
+     * Read validation request (read operation) - v0.4.2
+     * Reads ValidationRequest directly from on-chain (no indexer required)
+     * @param asset - Agent Core asset pubkey
+     * @param validator - Validator public key
+     * @param nonce - Request nonce
+     * @returns ValidationRequest or null if not found
+     */
+    readValidation(asset: PublicKey, validator: PublicKey, nonce: number): Promise<ValidationRequest | null>;
+    /**
+     * Wait for validation request to be available on-chain (with retry)
+     * Useful for handling blockchain finalization delays
+     * @param asset - Agent Core asset pubkey
+     * @param validator - Validator public key
+     * @param nonce - Request nonce
+     * @param timeout - Max wait time in milliseconds (default: 30000)
+     * @returns ValidationRequest or null if timeout
+     */
+    waitForValidation(asset: PublicKey, validator: PublicKey, nonce: number, timeout?: number): Promise<ValidationRequest | null>;
+    /**
      * Transfer agent ownership (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param collection - Collection pubkey for the agent
@@ -544,6 +630,23 @@ export declare class SolanaSDK {
      * @param options - Write options (skipSend, signer)
      */
     transferAgent(asset: PublicKey, collection: PublicKey, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Check endpoint liveness for an agent
+     */
+    isItAlive(asset: PublicKey, options?: LivenessOptions): Promise<LivenessReport>;
+    /**
+     * Sign arbitrary structured data using canonical JSON (RFC 8785)
+     */
+    sign(asset: PublicKey, data: unknown, options?: SignOptions): string;
+    /**
+     * Verify a signed payload against an agent wallet or provided public key
+     */
+    verify(payloadOrUri: string | SignedPayloadV1, asset: PublicKey, publicKey?: PublicKey): Promise<boolean>;
+    private resolveSignedPayloadInput;
+    private fetchJsonFromUri;
+    private normalizeRegistrationEndpoints;
+    private pingEndpoint;
+    private pingHttpEndpoint;
     /**
      * Check if SDK is in read-only mode (no signer configured)
      */

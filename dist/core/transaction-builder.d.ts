@@ -34,6 +34,8 @@ export interface WriteOptions {
 export interface RegisterAgentOptions extends WriteOptions {
     /** Required when skipSend is true - the client generates the asset keypair locally */
     assetPubkey?: PublicKey;
+    /** Skip automatic ATOM stats initialization (default: false). If true, you must call initializeAtomStats() before anyone can give feedback. */
+    skipAtomInit?: boolean;
 }
 /**
  * Result when skipSend is true - contains serialized transaction data

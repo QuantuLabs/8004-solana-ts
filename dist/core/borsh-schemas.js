@@ -277,7 +277,8 @@ export class AgentAccount {
      * @returns PublicKey or null if no wallet is set
      */
     getAgentWalletPublicKey() {
-        if (this.agent_wallet === null) {
+        // Defensive check for both null and undefined (protects against data corruption)
+        if (this.agent_wallet === null || this.agent_wallet === undefined) {
             return null;
         }
         return new PublicKey(this.agent_wallet);
@@ -605,21 +606,15 @@ export class ValidationRequest {
     validator_address; // Pubkey
     nonce; // u32
     request_hash; // [u8; 32]
-    response_hash; // [u8; 32]
     response; // u8 (0-100, 0 = pending)
-    last_update; // i64 as u64 - timestamp of last update
-    has_response; // explicit flag
-    bump;
+    responded_at; // i64 - timestamp of last response (0 if no response yet)
     constructor(fields) {
         this.asset = fields.asset;
         this.validator_address = fields.validator_address;
         this.nonce = fields.nonce;
         this.request_hash = fields.request_hash;
-        this.response_hash = fields.response_hash;
         this.response = fields.response;
-        this.last_update = fields.last_update;
-        this.has_response = fields.has_response;
-        this.bump = fields.bump;
+        this.responded_at = fields.responded_at;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     static schema = new Map([
@@ -632,19 +627,16 @@ export class ValidationRequest {
                     ['validator_address', [32]],
                     ['nonce', 'u32'],
                     ['request_hash', [32]],
-                    ['response_hash', [32]],
                     ['response', 'u8'],
-                    ['last_update', 'u64'],
-                    ['has_response', 'u8'],
-                    ['bump', 'u8'],
+                    ['responded_at', 'u64'], // i64 on-chain, but borsh JS uses u64 for timestamps
                 ],
             },
         ],
     ]);
     static deserialize(data) {
-        // discriminator(8) + asset(32) + validator(32) + nonce(4) + req_hash(32) + resp_hash(32) + response(1) + last_update(8) + has_response(1) + bump(1) = 151 bytes
-        if (data.length < 151) {
-            throw new Error(`Invalid ValidationRequest data: expected >= 151 bytes, got ${data.length}`);
+        // discriminator(8) + asset(32) + validator(32) + nonce(4) + request_hash(32) + response(1) + responded_at(8) = 117 bytes
+        if (data.length < 117) {
+            throw new Error(`Invalid ValidationRequest data: expected >= 117 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -654,11 +646,8 @@ export class ValidationRequest {
             validator_address: raw.validator_address,
             nonce: raw.nonce,
             request_hash: raw.request_hash,
-            response_hash: raw.response_hash,
             response: raw.response,
-            last_update: raw.last_update,
-            has_response: raw.has_response !== 0, // Security: treat any non-zero as true
-            bump: raw.bump,
+            responded_at: raw.responded_at,
         });
     }
     getAssetPublicKey() {
@@ -668,10 +657,16 @@ export class ValidationRequest {
         return new PublicKey(this.validator_address);
     }
     hasResponse() {
-        return this.has_response;
+        return this.responded_at > 0n;
     }
     isPending() {
-        return !this.has_response;
+        return this.responded_at === 0n;
+    }
+    /**
+     * Get last update timestamp (alias for responded_at)
+     */
+    getLastUpdate() {
+        return this.responded_at;
     }
 }
 //# sourceMappingURL=borsh-schemas.js.map

@@ -233,21 +233,15 @@ export declare class ValidationRequest {
     validator_address: Uint8Array;
     nonce: number;
     request_hash: Uint8Array;
-    response_hash: Uint8Array;
     response: number;
-    last_update: bigint;
-    has_response: boolean;
-    bump: number;
+    responded_at: bigint;
     constructor(fields: {
         asset: Uint8Array;
         validator_address: Uint8Array;
         nonce: number;
         request_hash: Uint8Array;
-        response_hash: Uint8Array;
         response: number;
-        last_update: bigint;
-        has_response: boolean;
-        bump: number;
+        responded_at: bigint;
     });
     static schema: Schema;
     static deserialize(data: Buffer): ValidationRequest;
@@ -255,5 +249,9 @@ export declare class ValidationRequest {
     getValidatorPublicKey(): PublicKey;
     hasResponse(): boolean;
     isPending(): boolean;
+    /**
+     * Get last update timestamp (alias for responded_at)
+     */
+    getLastUpdate(): bigint;
 }
 //# sourceMappingURL=borsh-schemas.d.ts.map

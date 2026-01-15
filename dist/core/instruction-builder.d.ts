@@ -74,12 +74,13 @@ export declare class IdentityInstructionBuilder {
      */
     buildUpdateUserRegistryMetadata(collectionAuthority: PublicKey, registryConfig: PublicKey, collection: PublicKey, owner: PublicKey, newName: string | null, newUri: string | null): TransactionInstruction;
     /**
-     * Build setAgentWallet instruction - v0.3.0
-     * Sets the agent wallet metadata with Ed25519 signature verification
-     * Accounts: owner (signer), payer (signer), agent_account, wallet_metadata, asset, instructions_sysvar, system_program
+     * Build setAgentWallet instruction - v0.4.2
+     * Sets the agent wallet with Ed25519 signature verification
+     * Wallet is stored directly in AgentAccount (no separate PDA)
+     * Accounts: owner (signer), agent_account, asset, instructions_sysvar
      * NOTE: Requires Ed25519 signature instruction immediately before in transaction
      */
-    buildSetAgentWallet(owner: PublicKey, payer: PublicKey, agentAccount: PublicKey, walletMetadata: PublicKey, asset: PublicKey, newWallet: PublicKey, deadline: bigint): TransactionInstruction;
+    buildSetAgentWallet(owner: PublicKey, agentAccount: PublicKey, asset: PublicKey, newWallet: PublicKey, deadline: bigint): TransactionInstruction;
     private serializeString;
     private serializeOption;
 }
@@ -131,26 +132,28 @@ export declare class ValidationInstructionBuilder {
     /**
      * Build requestValidation instruction - v0.3.0
      * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
-     * Accounts: root_config, requester (signer), payer (signer), asset, agent_account, validation_request, system_program
+     * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, validator, system_program
      */
-    buildRequestValidation(rootConfig: PublicKey, requester: PublicKey, payer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
+    buildRequestValidation(validationConfig: PublicKey, requester: PublicKey, payer: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
     /**
      * Build respondToValidation instruction - v0.3.0
      * Matches: respond_to_validation(response, response_uri, response_hash, tag)
-     * Accounts: validator (signer), asset, agent_account, validation_request
+     * Accounts: validator (signer), agent_account, asset, validation_request
      */
-    buildRespondToValidation(validator: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
+    buildRespondToValidation(validationConfig: PublicKey, validator: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
     /**
      * Build updateValidation instruction - v0.3.0
      * Same signature as respondToValidation but different discriminator
-     * Accounts: validator (signer), asset, agent_account, validation_request
+     * Accounts: validator (signer), agent_account, asset, validation_request
+     * Note: updateValidation does not use config account
      */
     buildUpdateValidation(validator: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
     /**
      * Build closeValidation instruction - v0.3.0
-     * Accounts: root_config, closer (signer), asset, agent_account, validation_request, rent_receiver
+     * Note: closeValidation does not use any config account
+     * Accounts: closer (signer), asset, agent_account, validation_request, rent_receiver
      */
-    buildCloseValidation(rootConfig: PublicKey, closer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
+    buildCloseValidation(closer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
     private serializeString;
     private serializeU64;
     private serializeU32;
