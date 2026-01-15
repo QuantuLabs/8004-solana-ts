@@ -349,16 +349,15 @@ export class IdentityInstructionBuilder {
   }
 
   /**
-   * Build setAgentWallet instruction - v0.3.0
-   * Sets the agent wallet metadata with Ed25519 signature verification
-   * Accounts: owner (signer), payer (signer), agent_account, wallet_metadata, asset, instructions_sysvar, system_program
+   * Build setAgentWallet instruction - v0.4.2
+   * Sets the agent wallet with Ed25519 signature verification
+   * Wallet is stored directly in AgentAccount (no separate PDA)
+   * Accounts: owner (signer), agent_account, asset, instructions_sysvar
    * NOTE: Requires Ed25519 signature instruction immediately before in transaction
    */
   buildSetAgentWallet(
     owner: PublicKey,
-    payer: PublicKey,
     agentAccount: PublicKey,
-    walletMetadata: PublicKey,
     asset: PublicKey,
     newWallet: PublicKey,
     deadline: bigint,
@@ -379,13 +378,10 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: owner, isSigner: true, isWritable: true },
-        { pubkey: payer, isSigner: true, isWritable: true },
-        { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: walletMetadata, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
         { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
     });
@@ -605,14 +601,14 @@ export class ValidationInstructionBuilder {
   /**
    * Build requestValidation instruction - v0.3.0
    * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
-   * Accounts: root_config, requester (signer), payer (signer), asset, agent_account, validation_request, system_program
+   * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, validator, system_program
    */
   buildRequestValidation(
-    rootConfig: PublicKey,
+    validationConfig: PublicKey,
     requester: PublicKey,
     payer: PublicKey,
-    asset: PublicKey,
     agentAccount: PublicKey,
+    asset: PublicKey,
     validationRequest: PublicKey,
     validatorAddress: PublicKey,
     nonce: number,
@@ -630,12 +626,13 @@ export class ValidationInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: rootConfig, isSigner: false, isWritable: false },
-        { pubkey: requester, isSigner: true, isWritable: false },
+        { pubkey: validationConfig, isSigner: false, isWritable: true },  // validation_config is mut
+        { pubkey: requester, isSigner: true, isWritable: true },    // requester is mut
         { pubkey: payer, isSigner: true, isWritable: true },
-        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
+        { pubkey: validatorAddress, isSigner: false, isWritable: false },  // validator account
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,
@@ -645,12 +642,13 @@ export class ValidationInstructionBuilder {
   /**
    * Build respondToValidation instruction - v0.3.0
    * Matches: respond_to_validation(response, response_uri, response_hash, tag)
-   * Accounts: validator (signer), asset, agent_account, validation_request
+   * Accounts: validator (signer), agent_account, asset, validation_request
    */
   buildRespondToValidation(
+    validationConfig: PublicKey,
     validator: PublicKey,
-    asset: PublicKey,
     agentAccount: PublicKey,
+    asset: PublicKey,
     validationRequest: PublicKey,
     response: number,
     responseUri: string,
@@ -668,9 +666,10 @@ export class ValidationInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: validator, isSigner: true, isWritable: false },
-        { pubkey: asset, isSigner: false, isWritable: false },
+        { pubkey: validationConfig, isSigner: false, isWritable: true },  // validation_config is mut
+        { pubkey: validator, isSigner: true, isWritable: true },     // validator is mut
         { pubkey: agentAccount, isSigner: false, isWritable: false },
+        { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
       ],
       data,
@@ -680,7 +679,8 @@ export class ValidationInstructionBuilder {
   /**
    * Build updateValidation instruction - v0.3.0
    * Same signature as respondToValidation but different discriminator
-   * Accounts: validator (signer), asset, agent_account, validation_request
+   * Accounts: validator (signer), agent_account, asset, validation_request
+   * Note: updateValidation does not use config account
    */
   buildUpdateValidation(
     validator: PublicKey,
@@ -714,10 +714,10 @@ export class ValidationInstructionBuilder {
 
   /**
    * Build closeValidation instruction - v0.3.0
-   * Accounts: root_config, closer (signer), asset, agent_account, validation_request, rent_receiver
+   * Note: closeValidation does not use any config account
+   * Accounts: closer (signer), asset, agent_account, validation_request, rent_receiver
    */
   buildCloseValidation(
-    rootConfig: PublicKey,
     closer: PublicKey,
     asset: PublicKey,
     agentAccount: PublicKey,
@@ -727,7 +727,6 @@ export class ValidationInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: rootConfig, isSigner: false, isWritable: false },
         { pubkey: closer, isSigner: true, isWritable: false },
         { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: agentAccount, isSigner: false, isWritable: false },

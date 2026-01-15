@@ -11,16 +11,19 @@
 import bs58 from 'bs58';
 import { SolanaClient, createDevnetClient, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager-solana.js';
+import { EndpointCrawler } from './endpoint-crawler.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
 import { createHash } from 'crypto';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
-import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
+import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
 import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
+import { buildSignedPayload, canonicalizeSignedPayload, parseSignedPayload, verifySignedPayload, } from '../utils/signing.js';
+import { EndpointType } from '../models/enums.js';
 // ATOM Engine imports (v0.4.0)
 import { AtomStats, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA } from './atom-pda.js';
@@ -40,6 +43,7 @@ export class SolanaSDK {
     cluster;
     programIds;
     signer;
+    ipfsClient;
     identityTxBuilder;
     reputationTxBuilder;
     validationTxBuilder;
@@ -55,6 +59,7 @@ export class SolanaSDK {
         this.cluster = config.cluster || 'devnet';
         this.programIds = getProgramIds();
         this.signer = config.signer;
+        this.ipfsClient = config.ipfsClient;
         // Initialize Solana client (devnet only)
         this.client = config.rpcUrl
             ? new SolanaClient({
@@ -77,6 +82,7 @@ export class SolanaSDK {
             baseUrl: indexerUrl,
             apiKey: indexerApiKey,
         });
+        this.feedbackManager.setIndexerClient(this.indexerClient);
         this.useIndexer = config.useIndexer ?? true;
         this.indexerFallback = config.indexerFallback ?? true;
         // Force on-chain mode (bypass indexer)
@@ -321,14 +327,15 @@ export class SolanaSDK {
         }
     }
     /**
-     * Fetch ALL feedbacks for ALL agents in 2 RPC calls - v0.3.0
+     * Fetch ALL feedbacks for ALL agents (indexer) - v0.4.0
      * More efficient than calling readAllFeedback() per agent
      * @param includeRevoked - Include revoked feedbacks? Default: false
      * @returns Map of asset (base58) -> SolanaFeedback[]
-     * @throws UnsupportedRpcError if using default devnet RPC
+     *
+     * v0.4.0: FeedbackAccount PDAs removed, uses indexer for data access.
+     * Requires indexer to be configured.
      */
     async getAllFeedbacks(includeRevoked = false) {
-        this.client.requireAdvancedQueries('getAllFeedbacks');
         return await this.feedbackManager.fetchAllFeedbacks(includeRevoked);
     }
     /**
@@ -526,6 +533,47 @@ export class SolanaSDK {
             return [];
         }
     }
+    // ==================== Event-Driven Architecture Helpers ====================
+    /**
+     * Wait for indexer to sync with on-chain events (event-driven architecture)
+     *
+     * The 8004 protocol uses an event-driven architecture where writes happen instantly on-chain
+     * via transaction logs, and the indexer asynchronously processes these events for efficient queries.
+     * This helper waits for the indexer to catch up with recent on-chain activity.
+     *
+     * @param checkFn - Function that returns true when data is synced
+     * @param options - Configuration options
+     * @returns True if synced within timeout, false otherwise
+     *
+     * @example
+     * // Wait for feedback to appear in indexer after giveFeedback()
+     * await sdk.waitForIndexerSync(async () => {
+     *   const feedback = await sdk.readFeedback(asset, client, index);
+     *   return feedback !== null;
+     * });
+     */
+    async waitForIndexerSync(checkFn, options) {
+        const timeout = options?.timeout ?? 30000;
+        const initialDelay = options?.initialDelay ?? 1000;
+        const maxDelay = options?.maxDelay ?? 5000;
+        const backoffMultiplier = options?.backoffMultiplier ?? 1.5;
+        const startTime = Date.now();
+        let currentDelay = initialDelay;
+        while (Date.now() - startTime < timeout) {
+            try {
+                if (await checkFn()) {
+                    return true;
+                }
+            }
+            catch (error) {
+                // Continue retrying on errors (indexer might not have data yet)
+            }
+            // Wait before next retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, currentDelay));
+            currentDelay = Math.min(currentDelay * backoffMultiplier, maxDelay);
+        }
+        return false;
+    }
     // ==================== Reputation Methods (v0.3.0 - asset-based) ====================
     /**
      * 1. Get agent reputation summary - v0.3.0
@@ -559,14 +607,15 @@ export class SolanaSDK {
         return this.readFeedback(asset, clientAddress, feedbackIndex);
     }
     /**
-     * 3. Read all feedbacks for an agent - v0.3.0
+     * 3. Read all feedbacks for an agent (indexer) - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @param includeRevoked - Include revoked feedbacks
      * @returns Array of feedback objects
-     * @throws UnsupportedRpcError if using default devnet RPC
+     *
+     * v0.4.0: FeedbackAccount PDAs removed, uses indexer for data access.
+     * Requires indexer to be configured.
      */
     async readAllFeedback(asset, includeRevoked = false) {
-        this.client.requireAdvancedQueries('readAllFeedback');
         return await this.feedbackManager.readAllFeedback(asset, includeRevoked);
     }
     /**
@@ -579,13 +628,14 @@ export class SolanaSDK {
         return await this.feedbackManager.getLastIndex(asset, client);
     }
     /**
-     * 5. Get all clients who gave feedback - v0.3.0
+     * 5. Get all clients who gave feedback (indexer) - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @returns Array of client public keys
-     * @throws UnsupportedRpcError if using default devnet RPC
+     *
+     * v0.4.0: FeedbackAccount PDAs removed, uses indexer for data access.
+     * Requires indexer to be configured.
      */
     async getClients(asset) {
-        this.client.requireAdvancedQueries('getClients');
         return await this.feedbackManager.getClients(asset);
     }
     /**
@@ -944,6 +994,32 @@ export class SolanaSDK {
         return await this.identityTxBuilder.createCollection(name, uri, options);
     }
     /**
+     * Update collection URI (write operation) - v0.4.2
+     * Update metadata URI for a user-owned collection.
+     * Only the collection owner can update. Collection name is immutable.
+     *
+     * @param collection - Collection pubkey to update
+     * @param newUri - New collection URI (max 200 bytes)
+     * @param options - Write options (skipSend, signer)
+     * @returns Transaction result, or PreparedTransaction if skipSend
+     *
+     * @example
+     * ```typescript
+     * // Update collection URI
+     * await sdk.updateCollectionUri(
+     *   collectionPubkey,
+     *   'ipfs://QmNewMetadata...'
+     * );
+     * ```
+     */
+    async updateCollectionUri(collection, newUri, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        // Always pass null for name (immutable)
+        return await this.identityTxBuilder.updateCollectionMetadata(collection, null, newUri, options);
+    }
+    /**
      * Register a new agent (write operation) - v0.3.0
      *
      * @param tokenUri - Token URI pointing to agent metadata JSON (IPFS, Arweave, or HTTP)
@@ -967,7 +1043,31 @@ export class SolanaSDK {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
-        return await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
+        const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
+        // Auto-initialize ATOM stats unless explicitly skipped (v0.4.2)
+        // This allows feedback to be given immediately after registration
+        // Skip if: skipAtomInit=true, skipSend=true, or registration failed
+        const shouldInitAtom = !options?.skipAtomInit && !options?.skipSend && 'success' in result && result.success && !!result.asset;
+        if (shouldInitAtom && result.asset) {
+            try {
+                const atomResult = await this.atomTxBuilder.initializeStats(result.asset, options);
+                if ('success' in atomResult && atomResult.success) {
+                    // Return combined result with both signatures
+                    return {
+                        ...result,
+                        signatures: [result.signature, atomResult.signature],
+                    };
+                }
+                // If ATOM init fails, still return the agent registration (non-blocking)
+                const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
+                console.warn('[8004-sdk] [WARN] Agent registered successfully but ATOM stats initialization failed:', errorMsg);
+            }
+            catch (error) {
+                // Non-blocking: agent is registered even if ATOM init fails
+                console.warn('[8004-sdk] [WARN] Agent registered successfully but ATOM stats initialization failed:', error);
+            }
+        }
+        return result;
     }
     /**
      * Set agent URI (write operation) - v0.3.0
@@ -981,6 +1081,21 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         return await this.identityTxBuilder.setAgentUri(asset, collection, newUri, options);
+    }
+    /**
+     * Set agent operational wallet (write operation) - v0.4.2
+     * Configures an operational wallet for the agent with Ed25519 signature verification
+     * @param asset - Agent Core asset pubkey
+     * @param newWallet - New operational wallet public key
+     * @param signature - Ed25519 signature from newWallet (64 bytes)
+     * @param deadline - Unix timestamp deadline (seconds, max 5 minutes in future)
+     * @param options - Write options (skipSend, signer)
+     */
+    async setAgentWallet(asset, newWallet, signature, deadline, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        return await this.identityTxBuilder.setAgentWallet(asset, newWallet, signature, deadline, options);
     }
     /**
      * Set agent metadata (write operation) - v0.3.0
@@ -1081,6 +1196,63 @@ export class SolanaSDK {
         return await this.validationTxBuilder.respondToValidation(asset, nonce, response, responseUri, responseHash, tag, options);
     }
     /**
+     * Read validation request (read operation) - v0.4.2
+     * Reads ValidationRequest directly from on-chain (no indexer required)
+     * @param asset - Agent Core asset pubkey
+     * @param validator - Validator public key
+     * @param nonce - Request nonce
+     * @returns ValidationRequest or null if not found
+     */
+    async readValidation(asset, validator, nonce) {
+        try {
+            const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce);
+            console.log('[DEBUG] readValidation:');
+            console.log(`  Asset: ${asset.toBase58()}`);
+            console.log(`  Validator: ${validator.toBase58()}`);
+            console.log(`  Nonce: ${nonce}`);
+            console.log(`  Derived PDA: ${validationRequestPda.toBase58()}`);
+            console.log(`  Bump: ${bump}`);
+            const accountData = await this.client.getAccount(validationRequestPda);
+            if (!accountData) {
+                console.log('  [DEBUG] Account not found (null)');
+                return null;
+            }
+            console.log(`  [DEBUG] Account found! Data length: ${accountData.length} bytes`);
+            return ValidationRequest.deserialize(Buffer.from(accountData));
+        }
+        catch (error) {
+            console.error('[ERROR] readValidation failed:', error);
+            logger.error('Error reading validation request:', error);
+            return null;
+        }
+    }
+    /**
+     * Wait for validation request to be available on-chain (with retry)
+     * Useful for handling blockchain finalization delays
+     * @param asset - Agent Core asset pubkey
+     * @param validator - Validator public key
+     * @param nonce - Request nonce
+     * @param timeout - Max wait time in milliseconds (default: 30000)
+     * @returns ValidationRequest or null if timeout
+     */
+    async waitForValidation(asset, validator, nonce, timeout = 30000) {
+        const startTime = Date.now();
+        let attempts = 0;
+        console.log(`[DEBUG] waitForValidation: Waiting up to ${timeout}ms for validation to be available`);
+        while (Date.now() - startTime < timeout) {
+            attempts++;
+            const validation = await this.readValidation(asset, validator, nonce);
+            if (validation !== null) {
+                console.log(`[DEBUG] waitForValidation: Found after ${attempts} attempts (${Date.now() - startTime}ms)`);
+                return validation;
+            }
+            // Wait 1 second before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        console.log(`[DEBUG] waitForValidation: Timeout after ${attempts} attempts (${timeout}ms)`);
+        return null;
+    }
+    /**
      * Transfer agent ownership (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param collection - Collection pubkey for the agent
@@ -1092,6 +1264,272 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         return await this.identityTxBuilder.transferAgent(asset, collection, newOwner, options);
+    }
+    // ==================== Liveness & Signature Methods ====================
+    /**
+     * Check endpoint liveness for an agent
+     */
+    async isItAlive(asset, options = {}) {
+        const agent = await this.loadAgent(asset);
+        if (!agent) {
+            throw new Error('Agent not found');
+        }
+        if (!agent.agent_uri) {
+            throw new Error('Agent has no agent URI');
+        }
+        const timeoutMs = options.timeoutMs ?? 5000;
+        const concurrency = options.concurrency ?? 4;
+        const treatAuthAsAlive = options.treatAuthAsAlive ?? true;
+        const registration = await this.fetchJsonFromUri(agent.agent_uri, timeoutMs);
+        let endpoints = this.normalizeRegistrationEndpoints(registration);
+        if (options.includeTypes?.length) {
+            const includeSet = new Set(options.includeTypes.map((entry) => String(entry)));
+            endpoints = endpoints.filter((endpoint) => includeSet.has(String(endpoint.type)));
+        }
+        const crawler = new EndpointCrawler(timeoutMs);
+        const results = await mapWithConcurrency(endpoints, concurrency, (endpoint) => this.pingEndpoint(endpoint, crawler, { timeoutMs, treatAuthAsAlive }));
+        const liveEndpoints = results.filter((result) => result.ok);
+        const skippedEndpoints = results.filter((result) => result.skipped);
+        const deadEndpoints = results.filter((result) => !result.ok && !result.skipped);
+        const totalPinged = results.length - skippedEndpoints.length;
+        const okCount = liveEndpoints.length;
+        const status = totalPinged === 0 || okCount === 0
+            ? 'not_live'
+            : okCount === totalPinged
+                ? 'live'
+                : 'partially';
+        return {
+            status,
+            okCount,
+            totalPinged,
+            skippedCount: skippedEndpoints.length,
+            results,
+            liveEndpoints,
+            deadEndpoints,
+            skippedEndpoints,
+        };
+    }
+    /**
+     * Sign arbitrary structured data using canonical JSON (RFC 8785)
+     */
+    sign(asset, data, options = {}) {
+        const signer = options.signer ?? this.signer;
+        if (!signer) {
+            throw new Error('No signer configured - SDK is read-only');
+        }
+        const { payload } = buildSignedPayload(asset, data, signer, options);
+        return canonicalizeSignedPayload(payload);
+    }
+    /**
+     * Verify a signed payload against an agent wallet or provided public key
+     */
+    async verify(payloadOrUri, asset, publicKey) {
+        const payload = await this.resolveSignedPayloadInput(payloadOrUri);
+        if (payload.asset !== asset.toBase58()) {
+            return false;
+        }
+        let verifierKey = publicKey;
+        if (!verifierKey) {
+            const agent = await this.loadAgent(asset);
+            if (!agent) {
+                throw new Error('Agent not found');
+            }
+            const agentWallet = agent.getAgentWalletPublicKey();
+            if (!agentWallet) {
+                throw new Error('Agent wallet not configured. Please provide publicKey parameter or set agent wallet using setAgentWallet()');
+            }
+            verifierKey = agentWallet;
+        }
+        return verifySignedPayload(payload, verifierKey);
+    }
+    async resolveSignedPayloadInput(input) {
+        if (typeof input !== 'string') {
+            return parseSignedPayload(input);
+        }
+        const trimmed = input.trim();
+        if (!trimmed) {
+            throw new Error('Signed payload is empty');
+        }
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            return parseSignedPayload(JSON.parse(trimmed));
+        }
+        if (trimmed.startsWith('http://') ||
+            trimmed.startsWith('https://') ||
+            trimmed.startsWith('ipfs://') ||
+            trimmed.startsWith('/ipfs/')) {
+            const payload = await this.fetchJsonFromUri(trimmed, 10000);
+            return parseSignedPayload(payload);
+        }
+        if (trimmed.startsWith('file://')) {
+            const { readFile } = await import('node:fs/promises');
+            const fileUrl = new URL(trimmed);
+            const content = await readFile(fileUrl, 'utf8');
+            return parseSignedPayload(JSON.parse(content));
+        }
+        const { readFile } = await import('node:fs/promises');
+        const content = await readFile(trimmed, 'utf8');
+        return parseSignedPayload(JSON.parse(content));
+    }
+    async fetchJsonFromUri(uri, timeoutMs) {
+        let resolvedUri = uri.trim();
+        if (resolvedUri.startsWith('/ipfs/')) {
+            resolvedUri = `ipfs://${resolvedUri.slice(6)}`;
+        }
+        if (resolvedUri.startsWith('ipfs://')) {
+            if (!this.ipfsClient) {
+                throw new Error('ipfsClient is required to load ipfs:// payloads');
+            }
+            const data = await this.ipfsClient.getJson(resolvedUri);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+                throw new Error('Invalid JSON payload: expected object');
+            }
+            return data;
+        }
+        const response = await fetch(resolvedUri, {
+            signal: AbortSignal.timeout(timeoutMs),
+            redirect: 'follow',
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch JSON: HTTP ${response.status}`);
+        }
+        const data = (await response.json());
+        if (!data || typeof data !== 'object' || Array.isArray(data)) {
+            throw new Error('Invalid JSON payload: expected object');
+        }
+        return data;
+    }
+    normalizeRegistrationEndpoints(raw) {
+        const rawEndpoints = raw.endpoints;
+        if (!Array.isArray(rawEndpoints)) {
+            return [];
+        }
+        const endpoints = [];
+        for (const entry of rawEndpoints) {
+            if (!entry || typeof entry !== 'object') {
+                continue;
+            }
+            const record = entry;
+            if (typeof record.type === 'string' && typeof record.value === 'string') {
+                endpoints.push({
+                    type: record.type,
+                    value: record.value,
+                    meta: typeof record.meta === 'object' && record.meta !== null ? record.meta : undefined,
+                });
+                continue;
+            }
+            const name = typeof record.name === 'string' ? record.name : '';
+            const value = typeof record.endpoint === 'string' ? record.endpoint : '';
+            if (!value) {
+                continue;
+            }
+            const typeMap = {
+                mcp: EndpointType.MCP,
+                a2a: EndpointType.A2A,
+                ens: EndpointType.ENS,
+                did: EndpointType.DID,
+                wallet: EndpointType.WALLET,
+                agentwallet: EndpointType.WALLET,
+                oasf: EndpointType.OASF,
+            };
+            const normalizedType = typeMap[name.toLowerCase()] ?? (name || 'UNKNOWN');
+            const meta = {};
+            for (const [key, valueEntry] of Object.entries(record)) {
+                if (key === 'name' || key === 'endpoint') {
+                    continue;
+                }
+                meta[key] = valueEntry;
+            }
+            endpoints.push({
+                type: normalizedType,
+                value,
+                meta: Object.keys(meta).length ? meta : undefined,
+            });
+        }
+        return endpoints;
+    }
+    async pingEndpoint(endpoint, crawler, options) {
+        const value = endpoint.value;
+        if (typeof value !== 'string' || value.length === 0) {
+            return {
+                type: endpoint.type,
+                endpoint: '',
+                ok: false,
+                reason: 'invalid',
+            };
+        }
+        const isHttp = value.startsWith('http://') || value.startsWith('https://');
+        if (!isHttp) {
+            return {
+                type: endpoint.type,
+                endpoint: value,
+                ok: false,
+                skipped: true,
+                reason: 'non_http',
+            };
+        }
+        if (endpoint.type === EndpointType.MCP) {
+            const start = Date.now();
+            const capabilities = await crawler.fetchMcpCapabilities(value);
+            if (capabilities) {
+                return {
+                    type: endpoint.type,
+                    endpoint: value,
+                    ok: true,
+                    latencyMs: Date.now() - start,
+                };
+            }
+            return this.pingHttpEndpoint(endpoint.type, value, options.timeoutMs, options.treatAuthAsAlive);
+        }
+        if (endpoint.type === EndpointType.A2A) {
+            const start = Date.now();
+            const capabilities = await crawler.fetchA2aCapabilities(value);
+            if (capabilities) {
+                return {
+                    type: endpoint.type,
+                    endpoint: value,
+                    ok: true,
+                    latencyMs: Date.now() - start,
+                };
+            }
+            return this.pingHttpEndpoint(endpoint.type, value, options.timeoutMs, options.treatAuthAsAlive);
+        }
+        return this.pingHttpEndpoint(endpoint.type, value, options.timeoutMs, options.treatAuthAsAlive);
+    }
+    async pingHttpEndpoint(type, endpoint, timeoutMs, treatAuthAsAlive) {
+        const start = Date.now();
+        try {
+            let response = await fetch(endpoint, {
+                method: 'HEAD',
+                redirect: 'follow',
+                signal: AbortSignal.timeout(timeoutMs),
+            });
+            if (response.status === 405) {
+                response = await fetch(endpoint, {
+                    method: 'GET',
+                    redirect: 'follow',
+                    signal: AbortSignal.timeout(timeoutMs),
+                });
+            }
+            const ok = response.ok ||
+                (treatAuthAsAlive && (response.status === 401 || response.status === 402 || response.status === 403));
+            return {
+                type,
+                endpoint,
+                ok,
+                status: response.status,
+                latencyMs: Date.now() - start,
+            };
+        }
+        catch (error) {
+            const reason = error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network';
+            return {
+                type,
+                endpoint,
+                ok: false,
+                latencyMs: Date.now() - start,
+                reason,
+            };
+        }
     }
     // ==================== Utility Methods ====================
     /**
@@ -1161,5 +1599,19 @@ export class SolanaSDK {
     getRpcUrl() {
         return this.client.rpcUrl;
     }
+}
+async function mapWithConcurrency(items, limit, mapper) {
+    const safeLimit = Math.max(1, Math.floor(limit));
+    const results = new Array(items.length);
+    let index = 0;
+    const workers = Array.from({ length: Math.min(safeLimit, items.length) }, async () => {
+        while (index < items.length) {
+            const current = index;
+            index += 1;
+            results[current] = await mapper(items[current]);
+        }
+    });
+    await Promise.all(workers);
+    return results;
 }
 //# sourceMappingURL=sdk-solana.js.map

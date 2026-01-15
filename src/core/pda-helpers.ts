@@ -211,6 +211,14 @@ export class PDAHelpers {
   // ============================================================================
 
   /**
+   * Get ValidationConfig PDA (global validation registry state)
+   * Seeds: ["validation_config"]
+   */
+  static getValidationConfigPDA(programId: PublicKey = PROGRAM_ID): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync([Buffer.from('validation_config')], programId);
+  }
+
+  /**
    * Get Validation Request PDA - v0.3.0
    * Seeds: ["validation", asset, validator, nonce]
    */

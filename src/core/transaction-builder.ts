@@ -60,6 +60,8 @@ export interface WriteOptions {
 export interface RegisterAgentOptions extends WriteOptions {
   /** Required when skipSend is true - the client generates the asset keypair locally */
   assetPubkey?: PublicKey;
+  /** Skip automatic ATOM stats initialization (default: false). If true, you must call initializeAtomStats() before anyone can give feedback. */
+  skipAtomInit?: boolean;
 }
 
 /**
@@ -234,7 +236,6 @@ export class IdentityTransactionBuilder {
 
       return {
         signature: registerSignature,
-        signatures: [registerSignature],
         success: true,
         asset: assetPubkey,
       };
@@ -727,12 +728,10 @@ export class IdentityTransactionBuilder {
       // Build setAgentWallet instruction
       const setWalletInstruction = this.instructionBuilder.buildSetAgentWallet(
         signerPubkey,    // owner
-        signerPubkey,    // payer
-        agentPda,        // agent_account
-        agentPda,        // wallet is stored in agent_account directly in v0.3.0
-        asset,
-        newWallet,
-        deadline
+        agentPda,        // agent_account (writable - agent_wallet field will be modified)
+        asset,           // asset
+        newWallet,       // new_wallet
+        deadline         // deadline
       );
 
       // Transaction: Ed25519 verify MUST be immediately before setAgentWallet
@@ -1437,20 +1436,27 @@ export class ValidationTransactionBuilder {
       }
 
       // Derive PDAs (v0.3.0 - uses asset, not agent_id)
-      const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
+      const [validationConfigPda] = PDAHelpers.getValidationConfigPDA();
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
-      const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(
+      const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(
         asset,
         validatorAddress,
         nonce
       );
 
+      console.log('[DEBUG] requestValidation - Creating validation request:');
+      console.log(`  Asset: ${asset.toBase58()}`);
+      console.log(`  Validator: ${validatorAddress.toBase58()}`);
+      console.log(`  Nonce: ${nonce}`);
+      console.log(`  PDA: ${validationRequestPda.toBase58()}`);
+      console.log(`  Bump: ${bump}`);
+
       const instruction = this.instructionBuilder.buildRequestValidation(
-        rootConfigPda,
+        validationConfigPda,
         signerPubkey,       // requester (must be agent owner)
         signerPubkey,       // payer
+        agentPda,           // agent_account (before asset in v0.4.2)
         asset,              // Core asset
-        agentPda,
         validationRequestPda,
         validatorAddress,
         nonce,
@@ -1524,6 +1530,7 @@ export class ValidationTransactionBuilder {
       }
       validateByteLength(tag, 32, 'tag');
 
+      const [validationConfigPda] = PDAHelpers.getValidationConfigPDA();
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
       const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(
         asset,
@@ -1532,9 +1539,10 @@ export class ValidationTransactionBuilder {
       );
 
       const instruction = this.instructionBuilder.buildRespondToValidation(
+        validationConfigPda,
         signerPubkey,
-        asset,
         agentPda,
+        asset,
         validationRequestPda,
         response,
         responseUri,
@@ -1679,7 +1687,6 @@ export class ValidationTransactionBuilder {
       // Security: Validate nonce range (u32)
       validateNonce(nonce);
 
-      const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
       const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(
         asset,
@@ -1688,7 +1695,6 @@ export class ValidationTransactionBuilder {
       );
 
       const instruction = this.instructionBuilder.buildCloseValidation(
-        rootConfigPda,
         signerPubkey,
         asset,
         agentPda,

@@ -134,7 +134,6 @@ export class IdentityTransactionBuilder {
             const registerSignature = await this.sendWithRetry(registerTransaction, [this.payer, assetKeypair]);
             return {
                 signature: registerSignature,
-                signatures: [registerSignature],
                 success: true,
                 asset: assetPubkey,
             };
@@ -472,10 +471,11 @@ export class IdentityTransactionBuilder {
             });
             // Build setAgentWallet instruction
             const setWalletInstruction = this.instructionBuilder.buildSetAgentWallet(signerPubkey, // owner
-            signerPubkey, // payer
-            agentPda, // agent_account
-            agentPda, // wallet is stored in agent_account directly in v0.3.0
-            asset, newWallet, deadline);
+            agentPda, // agent_account (writable - agent_wallet field will be modified)
+            asset, // asset
+            newWallet, // new_wallet
+            deadline // deadline
+            );
             // Transaction: Ed25519 verify MUST be immediately before setAgentWallet
             const transaction = new Transaction()
                 .add(ed25519Instruction)
@@ -725,7 +725,7 @@ export class ReputationTransactionBuilder {
             // Security: Use byte length validation for UTF-8 strings (not character count)
             validateByteLength(tag1, 32, 'tag1');
             validateByteLength(tag2, 32, 'tag2');
-            validateByteLength(endpoint, 200, 'endpoint');
+            validateByteLength(endpoint, 256, 'endpoint');
             validateByteLength(feedbackUri, 200, 'feedbackUri');
             if (feedbackHash.length !== 32) {
                 throw new Error('feedbackHash must be 32 bytes');
@@ -968,13 +968,20 @@ export class ValidationTransactionBuilder {
                 throw new Error('requestHash must be 32 bytes');
             }
             // Derive PDAs (v0.3.0 - uses asset, not agent_id)
-            const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
+            const [validationConfigPda] = PDAHelpers.getValidationConfigPDA();
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
-            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validatorAddress, nonce);
-            const instruction = this.instructionBuilder.buildRequestValidation(rootConfigPda, signerPubkey, // requester (must be agent owner)
+            const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(asset, validatorAddress, nonce);
+            console.log('[DEBUG] requestValidation - Creating validation request:');
+            console.log(`  Asset: ${asset.toBase58()}`);
+            console.log(`  Validator: ${validatorAddress.toBase58()}`);
+            console.log(`  Nonce: ${nonce}`);
+            console.log(`  PDA: ${validationRequestPda.toBase58()}`);
+            console.log(`  Bump: ${bump}`);
+            const instruction = this.instructionBuilder.buildRequestValidation(validationConfigPda, signerPubkey, // requester (must be agent owner)
             signerPubkey, // payer
+            agentPda, // agent_account (before asset in v0.4.2)
             asset, // Core asset
-            agentPda, validationRequestPda, validatorAddress, nonce, requestUri, requestHash);
+            validationRequestPda, validatorAddress, nonce, requestUri, requestHash);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -1023,10 +1030,11 @@ export class ValidationTransactionBuilder {
                 throw new Error('responseHash must be 32 bytes');
             }
             validateByteLength(tag, 32, 'tag');
+            const [validationConfigPda] = PDAHelpers.getValidationConfigPDA();
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, signerPubkey, // validator
             nonce);
-            const instruction = this.instructionBuilder.buildRespondToValidation(signerPubkey, asset, agentPda, validationRequestPda, response, responseUri, responseHash, tag);
+            const instruction = this.instructionBuilder.buildRespondToValidation(validationConfigPda, signerPubkey, agentPda, asset, validationRequestPda, response, responseUri, responseHash, tag);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -1115,10 +1123,9 @@ export class ValidationTransactionBuilder {
             }
             // Security: Validate nonce range (u32)
             validateNonce(nonce);
-            const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validatorAddress, nonce);
-            const instruction = this.instructionBuilder.buildCloseValidation(rootConfigPda, signerPubkey, asset, agentPda, validationRequestPda, rentReceiver || signerPubkey);
+            const instruction = this.instructionBuilder.buildCloseValidation(signerPubkey, asset, agentPda, validationRequestPda, rentReceiver || signerPubkey);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
