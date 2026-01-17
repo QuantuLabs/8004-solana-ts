@@ -36,6 +36,62 @@ const sdk = new SolanaSDK({
 | `getRpcUrl()` | `string` | Returns current RPC URL |
 | `supportsAdvancedQueries()` | `boolean` | True if RPC supports getProgramAccounts |
 
+## Liveness & Signatures
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `isItAlive` | `(asset: PublicKey, options?) => Promise<LivenessReport>` | Ping all agent endpoints and return live/partial status |
+| `sign` | `(asset: PublicKey, data: unknown, options?) => string` | Sign canonical JSON payload and return a JSON string |
+| `verify` | `(payloadOrUri, asset, publicKey?) => Promise<boolean>` | Verify signed payload from JSON, URI, or file path |
+
+```typescript
+import { Keypair, PublicKey } from '@solana/web3.js';
+
+const signer = Keypair.generate();
+const sdk = new SolanaSDK({ signer });
+
+const asset = new PublicKey('YourAgentAssetPubkey...');
+
+// Liveness
+const report = await sdk.isItAlive(asset);
+console.log(report.status, report.liveEndpoints, report.deadEndpoints);
+
+// Sign arbitrary data (returns canonical JSON string)
+const signed = sdk.sign(asset, {
+  action: 'ping',
+  when: new Date(),
+  payload: { hello: 'world' },
+});
+
+// Verify from JSON string (skip on-chain wallet check with publicKey)
+const ok = await sdk.verify(signed, asset, signer.publicKey);
+console.log(ok); // true
+
+// Verify from a URI or file path
+await sdk.verify('ipfs://QmPayloadCid', asset);
+await sdk.verify('https://example.com/signed-payload.json', asset);
+await sdk.verify('./signed-payload.json', asset);
+```
+
+## Collection Write Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `createCollection` | `(name, uri, options?) => Promise<TransactionResult>` | Create user-owned collection |
+| `updateCollectionUri` | `(collection, newUri, options?) => Promise<TransactionResult>` | Update collection URI (name immutable) |
+
+```typescript
+// Create collection
+const result = await sdk.createCollection('My AI Agents', 'ipfs://QmMeta...');
+const collection = result.collection;
+
+// Register agents in collection
+await sdk.registerAgent('ipfs://QmAgent1...', collection);
+
+// Update URI (name is immutable)
+await sdk.updateCollectionUri(collection, 'ipfs://QmNewMeta...');
+```
+
 ## Agent Read Methods
 
 | Method | Signature | Description |
