@@ -63,22 +63,23 @@ const signed = sdk.sign(agent.asset, {
   action: 'authorize',
   user: 'alice',
   permissions: ['read', 'write'],
-  expiresAt: Date.now() + 3600000,
 });
 
-// signed is a canonical JSON string:
+// Returns canonical JSON:
 // {
-//   "version": 1,
+//   "alg": "ed25519",
 //   "asset": "AgentAssetPubkey...",
-//   "data": { "action": "authorize", "user": "alice", ... },
-//   "timestamp": 1705512345678,
-//   "signature": "base58-ed25519-signature..."
+//   "data": { "action": "authorize", "permissions": ["read","write"], "user": "alice" },
+//   "issuedAt": 1705512345,
+//   "nonce": "randomBase58String",
+//   "sig": "base58Ed25519Signature...",
+//   "v": 1
 // }
 
-// Verify signature (fetches agent wallet from chain)
+// Verify (fetches agent wallet from chain)
 const isValid = await sdk.verify(signed, agent.asset);
 
-// Or verify with known public key (no RPC call)
+// Verify with known public key (no RPC)
 const isValid = await sdk.verify(signed, agent.asset, opWallet.publicKey);
 ```
 
