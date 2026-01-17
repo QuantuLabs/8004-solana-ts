@@ -51,6 +51,15 @@ await sdk.giveFeedback(result.asset, {
   feedbackUri: 'ipfs://QmFeedbackDetails',
   feedbackHash: Buffer.alloc(32),
 });
+
+// Set operational wallet - Option 1: Keypair (simple)
+const operationalWallet = Keypair.generate();
+await sdk.setAgentWallet(result.asset, operationalWallet);
+
+// Set operational wallet - Option 2: Web3 wallet (Phantom, etc.)
+const prepared = sdk.prepareSetAgentWallet(result.asset, walletPubkey);
+const signature = await wallet.signMessage(prepared.message);
+await prepared.complete(signature);
 ```
 
 ### Custom RPC (for advanced queries)
@@ -79,7 +88,8 @@ const allFeedback = await sdk.readAllFeedback(asset);
 | `setAgentUri(asset, collection, uri)` | Update agent URI |
 | `setMetadata(asset, key, value)` | Set on-chain metadata |
 | `getMetadata(asset, key)` | Read metadata value |
-| `setAgentWallet(asset, newWallet)` | Set operational wallet |
+| `setAgentWallet(asset, keypair)` | Set operational wallet (auto-signs) |
+| `prepareSetAgentWallet(asset, pubkey)` | Prepare for web3 wallet (returns `{ message, complete }`) |
 
 ### Reputation
 
@@ -107,6 +117,15 @@ const allFeedback = await sdk.readAllFeedback(asset);
 | `requestValidation(asset, validator, nonce, uri, hash)` | Request validation |
 | `respondToValidation(asset, nonce, response, uri, hash)` | Respond to request |
 | `readValidation(asset, validator, nonce)` | Read validation state |
+
+### Collections
+
+| Method | Description |
+|--------|-------------|
+| `createCollection(name, uri)` | Create user-owned collection |
+| `getCollection(collection)` | Get collection info |
+| `getCollections()` | List all collections (requires advanced RPC) |
+| `getCollectionAgents(collection)` | Get agents in a collection |
 
 ## ATOM Engine Integration
 

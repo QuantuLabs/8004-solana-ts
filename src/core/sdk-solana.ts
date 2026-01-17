@@ -1364,26 +1364,66 @@ export class SolanaSDK {
   }
 
   /**
-   * Set agent operational wallet (write operation) - v0.4.2
-   * Configures an operational wallet for the agent with Ed25519 signature verification
-   * @param asset - Agent Core asset pubkey
-   * @param newWallet - New operational wallet public key
-   * @param signature - Ed25519 signature from newWallet (64 bytes)
-   * @param deadline - Unix timestamp deadline (seconds, max 5 minutes in future)
-   * @param options - Write options (skipSend, signer)
+   * Prepare message for setAgentWallet (for web3 wallets like Phantom, Solflare)
+   * @example
+   * const prepared = sdk.prepareSetAgentWallet(asset, walletPubkey);
+   * const signature = await wallet.signMessage(prepared.message);
+   * await prepared.complete(signature);
    */
-  async setAgentWallet(
+  prepareSetAgentWallet(
     asset: PublicKey,
     newWallet: PublicKey,
-    signature: Uint8Array,
-    deadline: bigint,
     options?: WriteOptions
-  ): Promise<TransactionResult | PreparedTransaction> {
-    if (!options?.skipSend && !this.signer) {
-      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+  ): { message: Uint8Array; complete: (signature: Uint8Array) => Promise<TransactionResult | PreparedTransaction> } {
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
+    const owner = options?.signer ?? this.signer?.publicKey;
+    if (!owner) {
+      throw new Error('Owner required. Configure SDK with signer or provide options.signer.');
     }
 
-    return await this.identityTxBuilder.setAgentWallet(asset, newWallet, signature, deadline, options);
+    const message = Buffer.concat([
+      Buffer.from('8004_WALLET_SET:'),
+      asset.toBuffer(),
+      newWallet.toBuffer(),
+      owner.toBuffer(),
+      Buffer.alloc(8),
+    ]);
+    message.writeBigUInt64LE(deadline, message.length - 8);
+
+    return {
+      message: new Uint8Array(message),
+      complete: (sig) => this.identityTxBuilder.setAgentWallet(asset, newWallet, sig, deadline, options),
+    };
+  }
+
+  /** Set agent wallet - simple version with Keypair (auto-signs) */
+  async setAgentWallet(asset: PublicKey, keypair: Keypair, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+  /** Set agent wallet - advanced version with pre-signed signature */
+  async setAgentWallet(asset: PublicKey, wallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+  async setAgentWallet(
+    asset: PublicKey,
+    walletOrKeypair: PublicKey | Keypair,
+    sigOrOptions?: Uint8Array | WriteOptions,
+    deadline?: bigint,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    // Simple mode: Keypair provided
+    if ('secretKey' in walletOrKeypair) {
+      const keypair = walletOrKeypair;
+      const opts = sigOrOptions as WriteOptions | undefined;
+      const prepared = this.prepareSetAgentWallet(asset, keypair.publicKey, opts);
+      const nacl = await import('tweetnacl');
+      const sig = nacl.default.sign.detached(prepared.message, keypair.secretKey);
+      return prepared.complete(sig);
+    }
+
+    // Advanced mode: PublicKey + signature + deadline
+    const wallet = walletOrKeypair;
+    const signature = sigOrOptions as Uint8Array;
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only.');
+    }
+    return this.identityTxBuilder.setAgentWallet(asset, wallet, signature, deadline!, options);
   }
 
   /**

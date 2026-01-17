@@ -29,6 +29,7 @@ npm-debug.log*
 # Testing
 coverage/
 .nyc_output/
+test-ledger/
 
 # Temporary files
 *.tmp
