@@ -123,9 +123,26 @@ You can also view your agent on the explorer a few minutes after registration:
 
 ## What's Next?
 
-- **Give Feedback:** `await sdk.giveFeedback(agentAsset, { score: 85, tag1: 'helpful', feedbackUri: 'ipfs://QmFeedback', feedbackHash: Buffer.alloc(32) })`
-- **Check Reputation:** `await sdk.getSummary(agentAsset)`
-- **Update URI:** `await sdk.setAgentUri(agentAsset, collection, 'ipfs://newCid')`
+```typescript
+// Give feedback
+await sdk.giveFeedback(agentAsset, {
+  score: 85,
+  tag1: 'helpful',
+  feedbackUri: 'ipfs://QmFeedback',
+  feedbackHash: Buffer.alloc(32)
+});
+
+// Check reputation
+const summary = await sdk.getSummary(agentAsset);
+
+// Set operational wallet (for signing)
+const opWallet = Keypair.generate();
+await sdk.setAgentWallet(agentAsset, opWallet);
+
+// Update URI (get collection from agent)
+const agent = await sdk.loadAgent(agentAsset);
+await sdk.setAgentUri(agentAsset, agent.getCollectionPublicKey(), 'ipfs://newCid');
+```
 
 ### Resources
 
