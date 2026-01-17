@@ -58,11 +58,28 @@ await prepared.complete(signature);
 ### Sign & Verify
 
 ```typescript
-// Sign data with agent's operational wallet
-const signed = sdk.sign(agent.asset, { action: 'ping', timestamp: Date.now() });
+// Sign any data with agent's operational wallet
+const signed = sdk.sign(agent.asset, {
+  action: 'authorize',
+  user: 'alice',
+  permissions: ['read', 'write'],
+  expiresAt: Date.now() + 3600000,
+});
 
-// Verify signature (checks agent wallet on-chain)
+// signed is a canonical JSON string:
+// {
+//   "version": 1,
+//   "asset": "AgentAssetPubkey...",
+//   "data": { "action": "authorize", "user": "alice", ... },
+//   "timestamp": 1705512345678,
+//   "signature": "base58-ed25519-signature..."
+// }
+
+// Verify signature (fetches agent wallet from chain)
 const isValid = await sdk.verify(signed, agent.asset);
+
+// Or verify with known public key (no RPC call)
+const isValid = await sdk.verify(signed, agent.asset, opWallet.publicKey);
 ```
 
 ### Liveness Check
