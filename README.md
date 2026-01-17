@@ -22,8 +22,26 @@ import { Keypair } from '@solana/web3.js';
 const signer = Keypair.fromSecretKey(/* your key */);
 const sdk = new SolanaSDK({ cluster: 'devnet', signer });
 
-// 1. Create a collection (optional - or use base collection)
-const collection = await sdk.createCollection('My AI Agents', 'ipfs://QmCollectionMeta...');
+// 1. Build collection metadata
+import { buildCollectionMetadataJson, IPFSClient } from '8004-solana';
+
+const ipfs = new IPFSClient({ pinataEnabled: true, pinataJwt: process.env.PINATA_JWT });
+
+const collectionMeta = buildCollectionMetadataJson({
+  name: 'My AI Agents',
+  description: 'Production agents for automation',
+  image: 'ipfs://QmLogo...',
+  category: 'automation',
+  tags: ['enterprise', 'api'],
+  project: {
+    name: 'Acme Corp',
+    socials: { website: 'https://acme.ai', x: 'acme_ai' }
+  }
+});
+
+// Upload to IPFS and create collection
+const collectionUri = `ipfs://${await ipfs.addJson(collectionMeta)}`;
+const collection = await sdk.createCollection(collectionMeta.name, collectionUri);
 console.log('Collection:', collection.collection.toBase58());
 
 // 2. Register agent in collection
