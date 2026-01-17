@@ -1,6 +1,16 @@
 # 8004-solana
 
+[![npm](https://img.shields.io/npm/v/8004-solana)](https://www.npmjs.com/package/8004-solana)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
+
 TypeScript SDK for ERC-8004 Agent Registry on Solana.
+
+- **Register agents as NFTs** on Solana blockchain
+- **Manage agent metadata** and endpoints (MCP, A2A)
+- **Submit and query reputation feedback**
+- **Sign & verify** with agent operational wallets
+- **OASF taxonomies** support (skills & domains)
 
 ## Installation
 
@@ -44,8 +54,24 @@ const collectionUri = `ipfs://${await ipfs.addJson(collectionMeta)}`;
 const collection = await sdk.createCollection(collectionMeta.name, collectionUri);
 console.log('Collection:', collection.collection.toBase58());
 
-// 2. Register agent in collection
-const agent = await sdk.registerAgent('ipfs://QmAgentMeta...', collection.collection);
+// 2. Build agent metadata
+import { buildRegistrationFileJson, EndpointType } from '8004-solana';
+
+const agentMeta = buildRegistrationFileJson({
+  name: 'My AI Agent',
+  description: 'Autonomous agent for task automation',
+  image: 'ipfs://QmAgentAvatar...',
+  endpoints: [
+    { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
+    { type: EndpointType.A2A, value: 'https://api.example.com/a2a' },
+  ],
+  skills: ['natural_language_processing/text_generation/text_generation'],
+  domains: ['technology/software_engineering/software_engineering'],
+});
+
+// Upload and register
+const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
+const agent = await sdk.registerAgent(agentUri, collection.collection);
 console.log('Agent:', agent.asset.toBase58());
 
 // 3. Set operational wallet
@@ -132,11 +158,45 @@ The SDK auto-initializes ATOM stats on registration. ATOM provides:
 await sdk.registerAgent('ipfs://...', collection, { skipAtomInit: true });
 ```
 
+## RPC Provider Recommendations
+
+Default Solana devnet RPC works for basic operations. For **production** or **advanced queries** (getAllAgents, getAgentsByOwner), use a custom RPC.
+
+| Provider | Free Tier | Signup |
+|----------|-----------|--------|
+| **Helius** | 100k req/month | [helius.dev](https://helius.dev) |
+| **QuickNode** | 10M credits/month | [quicknode.com](https://quicknode.com) |
+| **Alchemy** | 300M CU/month | [alchemy.com](https://alchemy.com) |
+
+```typescript
+const sdk = new SolanaSDK({
+  rpcUrl: 'https://your-helius-rpc.helius.dev',
+  signer: yourKeypair,
+});
+```
+
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [`quick-start.ts`](examples/quick-start.ts) | Basic read/write with IPFS upload |
+| [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
+| [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
+| [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
+| [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
+
 ## Documentation
 
 - [API Reference](./docs/METHODS.md) - All methods with examples
 - [Quickstart](./docs/QUICKSTART.md) - Step-by-step guide
 - [Costs](./docs/COSTS.md) - Transaction costs
+- [OASF Taxonomies](./docs/OASF.md) - Skills & domains reference
+
+## Community & Support
+
+- **Telegram**: [t.me/sol8004](https://t.me/sol8004)
+- **X (Twitter)**: [x.com/Quantu_AI](https://x.com/Quantu_AI)
+- **8004 Standard**: [eips.ethereum.org/EIPS/eip-8004](https://eips.ethereum.org/EIPS/eip-8004)
 
 ## License
 
