@@ -45,5 +45,3 @@ afterAll(async () => {
 // afterAll(() => {
 //   console.error = originalError;
 // });
-
-export {};

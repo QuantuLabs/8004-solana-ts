@@ -10,6 +10,7 @@
     "build:watch": "tsc --watch",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:e2e": "jest --testPathPattern=e2e-solana --testPathIgnorePatterns='[]' --verbose",
+    "test:e2e:validation": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_PRIVATE_KEY=$(cat ~/.config/solana/id.json) jest --testPathPattern=e2e-validation --testPathIgnorePatterns='[]' --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src",

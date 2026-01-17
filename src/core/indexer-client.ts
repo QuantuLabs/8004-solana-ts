@@ -48,6 +48,7 @@ export interface IndexedAgent {
   risk_score: number; // 0-100
   diversity_ratio: number; // 0-255
   feedback_count: number;
+  raw_avg_score: number; // 0-100 (simple arithmetic mean when ATOM not enabled)
   // Leaderboard
   sort_key: string; // BIGINT as string (for precision)
   // Chain reference
