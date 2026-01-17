@@ -55,6 +55,25 @@ const signature = await wallet.signMessage(prepared.message);
 await prepared.complete(signature);
 ```
 
+### Sign & Verify
+
+```typescript
+// Sign data with agent's operational wallet
+const signed = sdk.sign(agent.asset, { action: 'ping', timestamp: Date.now() });
+
+// Verify signature (checks agent wallet on-chain)
+const isValid = await sdk.verify(signed, agent.asset);
+```
+
+### Liveness Check
+
+```typescript
+// Ping agent endpoints
+const report = await sdk.isItAlive(agent.asset);
+console.log(report.status); // 'alive' | 'partial' | 'dead'
+console.log(report.liveEndpoints, report.deadEndpoints);
+```
+
 ### Read-Only Mode
 
 ```typescript
