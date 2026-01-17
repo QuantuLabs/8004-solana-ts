@@ -206,10 +206,10 @@ describe('E2E: Error Scenarios', () => {
         console.log('Skipping test - no test agent available');
         return;
       }
-      // Score must be 0-100
-      await expect(
-        sdk.giveFeedback(testAgent, { score: 150, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) })
-      ).rejects.toThrow();
+      // Score must be 0-100 - SDK validates and returns error result
+      const result = await sdk.giveFeedback(testAgent, { score: 150, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) }) as { success: boolean; error?: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Score must be between 0 and 100');
     }, 60000);
 
     it('should handle invalid response in respondToValidation', async () => {
@@ -217,10 +217,10 @@ describe('E2E: Error Scenarios', () => {
         console.log('Skipping test - no test agent available');
         return;
       }
-      // Response must be 0 or 1
-      await expect(
-        sdk.respondToValidation(testAgent, 0, 999, 'ipfs://test', Buffer.alloc(32))
-      ).rejects.toThrow();
+      // Response must be 0-100 - SDK validates and returns error result
+      const result = await sdk.respondToValidation(testAgent, 0, 999, 'ipfs://test', Buffer.alloc(32)) as { success: boolean; error?: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Response must be between 0 and 100');
     }, 60000);
 
     it('should handle empty URI', async () => {
@@ -237,10 +237,10 @@ describe('E2E: Error Scenarios', () => {
         console.log('Skipping test - no test agent available');
         return;
       }
-      // Hash must be exactly 32 bytes
-      await expect(
-        sdk.giveFeedback(testAgent, { score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(16) })
-      ).rejects.toThrow();
+      // Hash must be exactly 32 bytes - SDK validates and returns error result
+      const result = await sdk.giveFeedback(testAgent, { score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(16) }) as { success: boolean; error?: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('feedbackHash must be 32 bytes');
     }, 60000);
   });
 
@@ -328,20 +328,13 @@ describe('E2E: Error Scenarios', () => {
     }, 30000);
 
     it('should handle invalid RPC URL gracefully', async () => {
-      // This should fail during initialization or first call
-      // Using invalid protocol to ensure fast failure
-      const invalidSdk = new SolanaSDK({
-        cluster: 'devnet',
-        rpcUrl: 'invalid://not-a-valid-url'
-      });
-
-      try {
-        await invalidSdk.loadAgent(nonExistentAsset);
-        // If it doesn't throw, that's also acceptable
-      } catch (error) {
-        // Expected to throw on invalid URL
-        expect(error).toBeDefined();
-      }
+      // SDK validates URL immediately in constructor
+      expect(() => {
+        new SolanaSDK({
+          cluster: 'devnet',
+          rpcUrl: 'invalid://not-a-valid-url'
+        });
+      }).toThrow('Endpoint URL must start with');
     }, 10000);
   });
 

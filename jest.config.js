@@ -31,4 +31,3 @@ export default {
     'node_modules/(?!(ipfs-http-client)/)',
   ],
 };
-

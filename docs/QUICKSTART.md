@@ -85,6 +85,7 @@ const result = await sdk.registerAgent(metadataUri);
 
 console.log('Asset:', result.asset.toBase58());
 console.log('Transaction:', result.signature);
+// Note: ATOM stats are automatically initialized (allows instant feedback)
 
 // 7. (Optional) Store on-chain metadata
 await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true); // immutable
@@ -92,7 +93,9 @@ await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111
 
 See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
-**Note:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching.
+**Note on ATOM (Reputation Engine):** By default, `registerAgent()` automatically initializes on-chain reputation tracking (ATOM) which costs ~0.002 SOL rent. This enables instant feedback and trust tier calculation. If you prefer to aggregate reputation yourself via the indexer, pass `{ skipAtomInit: true }` to skip ATOM initialization and save the rent cost. See [README](../README.md#55-atom-reputation-engine-optional) for details.
+
+**Note on Metadata:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching.
 
 ---
 
