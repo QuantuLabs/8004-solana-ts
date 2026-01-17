@@ -65,6 +65,7 @@ export const ATOM_ENGINE_DISCRIMINATORS = {
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export const VALIDATION_DISCRIMINATORS = {
+  initializeValidationConfig: Buffer.from([138, 209, 223, 183, 48, 227, 146, 152]),
   requestValidation: Buffer.from([72, 26, 53, 67, 228, 30, 144, 53]),
   respondToValidation: Buffer.from([64, 212, 244, 6, 65, 134, 212, 122]),
   updateValidation: Buffer.from([226, 29, 107, 7, 213, 48, 146, 149]),
