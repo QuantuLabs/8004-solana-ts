@@ -15,25 +15,6 @@ npm install 8004-solana
 
 ## Quick Start
 
-### Read-Only Mode
-
-```typescript
-import { SolanaSDK } from '8004-solana';
-import { PublicKey } from '@solana/web3.js';
-
-const sdk = new SolanaSDK({ cluster: 'devnet' });
-
-// Load agent by asset pubkey
-const asset = new PublicKey('YourAgentAssetPubkey...');
-const agent = await sdk.loadAgent(asset);
-
-// Get reputation summary
-const summary = await sdk.getSummary(asset);
-console.log(`Score: ${summary.averageScore}, Total: ${summary.totalFeedbacks}`);
-```
-
-### Read-Write Mode
-
 ```typescript
 import { SolanaSDK } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
@@ -41,117 +22,66 @@ import { Keypair } from '@solana/web3.js';
 const signer = Keypair.fromSecretKey(/* your key */);
 const sdk = new SolanaSDK({ cluster: 'devnet', signer });
 
-// Register agent
-const result = await sdk.registerAgent('ipfs://QmYourMetadata...');
-console.log(`Asset: ${result.asset.toBase58()}`);
+// 1. Create a collection (optional - or use base collection)
+const collection = await sdk.createCollection('My AI Agents', 'ipfs://QmCollectionMeta...');
+console.log('Collection:', collection.collection.toBase58());
 
-// Give feedback
-await sdk.giveFeedback(result.asset, {
+// 2. Register agent in collection
+const agent = await sdk.registerAgent('ipfs://QmAgentMeta...', collection.collection);
+console.log('Agent:', agent.asset.toBase58());
+
+// 3. Set operational wallet
+const opWallet = Keypair.generate();
+await sdk.setAgentWallet(agent.asset, opWallet);
+
+// 4. Give feedback
+await sdk.giveFeedback(agent.asset, {
   score: 85,
-  feedbackUri: 'ipfs://QmFeedbackDetails',
+  feedbackUri: 'ipfs://QmFeedback...',
   feedbackHash: Buffer.alloc(32),
 });
 
-// Set operational wallet - Option 1: Keypair (simple)
-const operationalWallet = Keypair.generate();
-await sdk.setAgentWallet(result.asset, operationalWallet);
+// 5. Check reputation
+const summary = await sdk.getSummary(agent.asset);
+console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
+```
 
-// Set operational wallet - Option 2: Web3 wallet (Phantom, etc.)
-const prepared = sdk.prepareSetAgentWallet(result.asset, walletPubkey);
+### Web3 Wallet (Phantom, Solflare)
+
+```typescript
+// For setAgentWallet with browser wallets
+const prepared = sdk.prepareSetAgentWallet(agent.asset, walletPubkey);
 const signature = await wallet.signMessage(prepared.message);
 await prepared.complete(signature);
 ```
 
-### Custom RPC (for advanced queries)
+### Read-Only Mode
 
 ```typescript
-const sdk = new SolanaSDK({
-  cluster: 'devnet',
-  signer,
-  rpcUrl: 'https://devnet.helius-rpc.com/?api-key=YOUR_KEY',
-});
+const sdk = new SolanaSDK({ cluster: 'devnet' }); // No signer = read-only
 
-// Now supports getProgramAccounts-based queries
-const agents = await sdk.getAgentsByOwner(signer.publicKey);
-const allFeedback = await sdk.readAllFeedback(asset);
+const agent = await sdk.loadAgent(assetPubkey);
+const summary = await sdk.getSummary(assetPubkey);
 ```
 
-## Core Methods
+## ATOM Engine
 
-### Agent Operations
+The SDK auto-initializes ATOM stats on registration. ATOM provides:
 
-| Method | Description |
-|--------|-------------|
-| `registerAgent(uri?, collection?)` | Register new agent, returns `{ asset, signature }` |
-| `loadAgent(asset)` | Load agent account data |
-| `agentExists(asset)` | Check if agent exists |
-| `setAgentUri(asset, collection, uri)` | Update agent URI |
-| `setMetadata(asset, key, value)` | Set on-chain metadata |
-| `getMetadata(asset, key)` | Read metadata value |
-| `setAgentWallet(asset, keypair)` | Set operational wallet (auto-signs) |
-| `prepareSetAgentWallet(asset, pubkey)` | Prepare for web3 wallet (returns `{ message, complete }`) |
-
-### Reputation
-
-| Method | Description |
-|--------|-------------|
-| `giveFeedback(asset, data)` | Submit feedback (0-100 score) |
-| `getSummary(asset)` | Get reputation summary |
-| `readFeedback(asset, client, index)` | Read specific feedback |
-| `readAllFeedback(asset)` | Read all feedbacks (requires advanced RPC) |
-| `revokeFeedback(asset, index)` | Revoke own feedback |
-| `appendResponse(asset, index, uri, hash)` | Agent responds to feedback |
-
-### Signing & Verification
-
-| Method | Description |
-|--------|-------------|
-| `sign(asset, data)` | Sign data with signer key |
-| `verify(payload, asset, pubkey?)` | Verify signed payload |
-| `isItAlive(asset)` | Check agent endpoint liveness |
-
-### Validation
-
-| Method | Description |
-|--------|-------------|
-| `requestValidation(asset, validator, nonce, uri, hash)` | Request validation |
-| `respondToValidation(asset, nonce, response, uri, hash)` | Respond to request |
-| `readValidation(asset, validator, nonce)` | Read validation state |
-
-### Collections
-
-| Method | Description |
-|--------|-------------|
-| `createCollection(name, uri)` | Create user-owned collection |
-| `getCollection(collection)` | Get collection info |
-| `getCollections()` | List all collections (requires advanced RPC) |
-| `getCollectionAgents(collection)` | Get agents in a collection |
-
-## ATOM Engine Integration
-
-The SDK automatically initializes ATOM stats when registering agents. ATOM Engine provides:
-
-- **Trust Tiers**: Bronze → Silver → Gold → Platinum (8-epoch vesting)
+- **Trust Tiers**: Bronze → Silver → Gold → Platinum
 - **Quality Score**: Weighted average with decay
-- **Sybil Detection**: HyperLogLog-based unique client tracking
-- **Freeze Protection**: Dampened tier changes during inactivity
+- **Sybil Detection**: HyperLogLog client tracking
 
 ```typescript
-// Register with ATOM (default)
-await sdk.registerAgent('ipfs://...');
-
-// Register without ATOM (must init manually later)
-await sdk.registerAgent('ipfs://...', undefined, { skipAtomInit: true });
-
-// Manual ATOM init
-await sdk.initializeAtomStats(asset);
+// Skip ATOM (if you aggregate reputation via indexer)
+await sdk.registerAgent('ipfs://...', collection, { skipAtomInit: true });
 ```
 
 ## Documentation
 
-- [API Reference](./docs/METHODS.md) - Complete method documentation
-- [Costs](./docs/COSTS.md) - Transaction costs breakdown
-- [Quickstart](./docs/QUICKSTART.md) - Getting started guide
+- [API Reference](./docs/METHODS.md) - All methods with examples
+- [Quickstart](./docs/QUICKSTART.md) - Step-by-step guide
+- [Costs](./docs/COSTS.md) - Transaction costs
 
 ## License
 

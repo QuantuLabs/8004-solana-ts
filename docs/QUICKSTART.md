@@ -80,15 +80,21 @@ const metadata = buildRegistrationFileJson({
 const metadataCid = await ipfs.addJson(metadata);
 const metadataUri = `ipfs://${metadataCid}`;
 
-// 6. Register on Solana
-const result = await sdk.registerAgent(metadataUri);
+// 6. (Optional) Create your own collection
+const collection = await sdk.createCollection('My Agent Collection', metadataUri);
+console.log('Collection:', collection.collection.toBase58());
 
-console.log('Asset:', result.asset.toBase58());
-console.log('Transaction:', result.signature);
-// Note: ATOM stats are automatically initialized (allows instant feedback)
+// 7. Register on Solana (in your collection, or omit for base collection)
+const result = await sdk.registerAgent(metadataUri, collection.collection);
+console.log('Agent:', result.asset.toBase58());
 
-// 7. (Optional) Store on-chain metadata
-await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true); // immutable
+// 8. Set operational wallet (for agent signing)
+const opWallet = Keypair.generate();
+await sdk.setAgentWallet(result.asset, opWallet);
+console.log('Operational wallet:', opWallet.publicKey.toBase58());
+
+// 9. (Optional) Store on-chain metadata
+await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true);
 ```
 
 See [OASF.md](./OASF.md) for the full list of available skills and domains.
