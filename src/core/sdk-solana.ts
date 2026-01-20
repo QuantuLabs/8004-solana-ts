@@ -184,20 +184,20 @@ export class SolanaSDK {
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
 
-    // Initialize transaction builders (v0.4.0)
-    const connection = this.client.getConnection();
-    this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
-    this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer);
-    this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
-    this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer);
-
-    // Initialize indexer client (v0.4.1) - always created with defaults
+    // Initialize indexer client first (v0.4.1)
     const indexerUrl = config.indexerUrl ?? DEFAULT_INDEXER_URL;
     const indexerApiKey = config.indexerApiKey ?? DEFAULT_INDEXER_API_KEY;
     this.indexerClient = new IndexerClient({
       baseUrl: indexerUrl,
       apiKey: indexerApiKey,
     });
+
+    // Initialize transaction builders (v0.4.0)
+    const connection = this.client.getConnection();
+    this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
+    this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer, this.indexerClient);
+    this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
+    this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer);
     this.feedbackManager.setIndexerClient(this.indexerClient);
     this.useIndexer = config.useIndexer ?? true;
     this.indexerFallback = config.indexerFallback ?? true;
@@ -826,28 +826,31 @@ export class SolanaSDK {
   }
 
   /**
-   * 6. Get response count for a feedback - v0.3.0
+   * 6. Get response count for a feedback
    * @param asset - Agent Core asset pubkey
+   * @param client - Client public key (who gave the feedback)
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Number of responses
    */
-  async getResponseCount(asset: PublicKey, feedbackIndex: number | bigint): Promise<number> {
+  async getResponseCount(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint): Promise<number> {
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.feedbackManager.getResponseCount(asset, idx);
+    return await this.feedbackManager.getResponseCount(asset, client, idx);
   }
 
   /**
-   * Bonus: Read all responses for a feedback - v0.3.0
+   * Bonus: Read all responses for a feedback
    * @param asset - Agent Core asset pubkey
+   * @param client - Client public key (who gave the feedback)
    * @param feedbackIndex - Feedback index (number or bigint)
    * @returns Array of response objects
    */
   async readResponses(
     asset: PublicKey,
+    client: PublicKey,
     feedbackIndex: number | bigint
   ): Promise<import('./feedback-manager-solana.js').SolanaResponse[]> {
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.feedbackManager.readResponses(asset, idx);
+    return await this.feedbackManager.readResponses(asset, client, idx);
   }
 
   // ==================== ATOM Engine Methods (v0.4.0) ====================
@@ -1226,7 +1229,7 @@ export class SolanaSDK {
    * Agents registered to user collections still use the same reputation system.
    *
    * @param name - Collection name (max 32 bytes)
-   * @param uri - Collection metadata URI (max 200 bytes)
+   * @param uri - Collection metadata URI (max 250 bytes)
    * @param options - Write options (skipSend, signer, collectionPubkey)
    * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
    *
@@ -1258,7 +1261,7 @@ export class SolanaSDK {
    * Only the collection owner can update. Collection name is immutable.
    *
    * @param collection - Collection pubkey to update
-   * @param newUri - New collection URI (max 200 bytes)
+   * @param newUri - New collection URI (max 250 bytes)
    * @param options - Write options (skipSend, signer)
    * @returns Transaction result, or PreparedTransaction if skipSend
    *
@@ -1293,6 +1296,8 @@ export class SolanaSDK {
    *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
    *   - `signer`: PublicKey of the signer (required with skipSend)
    *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
+   *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
+   *     (use enableAtom() to turn it on later, one-way)
    * @returns Transaction result with asset, or PreparedTransaction if skipSend
    *
    * @example
@@ -1315,10 +1320,9 @@ export class SolanaSDK {
 
     const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
 
-    // Auto-initialize ATOM stats unless explicitly skipped (v0.4.2)
-    // This allows feedback to be given immediately after registration
-    // Skip if: skipAtomInit=true, skipSend=true, or registration failed
-    const shouldInitAtom = !options?.skipAtomInit && !options?.skipSend && 'success' in result && result.success && !!result.asset;
+    // Auto-initialize ATOM stats unless ATOM is disabled at creation
+    // Skip if: atomEnabled=false, skipSend=true, or registration failed
+    const shouldInitAtom = options?.atomEnabled !== false && !options?.skipSend && 'success' in result && result.success && !!result.asset;
 
     if (shouldInitAtom && result.asset) {
       try {
@@ -1364,6 +1368,22 @@ export class SolanaSDK {
   }
 
   /**
+   * Enable ATOM for an agent (one-way) - v0.4.4
+   * @param asset - Agent Core asset pubkey
+   * @param options - Write options (skipSend, signer)
+   */
+  async enableAtom(
+    asset: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+
+    return await this.identityTxBuilder.enableAtom(asset, options);
+  }
+
+  /**
    * Prepare message for setAgentWallet (for web3 wallets like Phantom, Solflare)
    * @example
    * const prepared = sdk.prepareSetAgentWallet(asset, walletPubkey);
@@ -1375,7 +1395,7 @@ export class SolanaSDK {
     newWallet: PublicKey,
     options?: WriteOptions
   ): { message: Uint8Array; complete: (signature: Uint8Array) => Promise<TransactionResult | PreparedTransaction> } {
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 240); // 4 minutes (safe margin)
     const owner = options?.signer ?? this.signer?.publicKey;
     if (!owner) {
       throw new Error('Owner required. Configure SDK with signer or provide options.signer.');
@@ -1520,26 +1540,29 @@ export class SolanaSDK {
   }
 
   /**
-   * Append response to feedback (write operation) - v0.3.0
+   * Append response to feedback (write operation) - v0.4.1
    * @param asset - Agent Core asset pubkey
+   * @param client - Client address who gave the feedback
    * @param feedbackIndex - Feedback index (number or bigint)
    * @param responseUri - Response URI
-   * @param responseHash - Response hash
+   * @param responseHash - Response hash (optional for ipfs://)
    * @param options - Write options (skipSend, signer)
    */
   async appendResponse(
     asset: PublicKey,
+    client: PublicKey,
     feedbackIndex: number | bigint,
     responseUri: string,
-    responseHash: Buffer,
+    responseHash?: Buffer,
     options?: WriteOptions
-  ): Promise<(TransactionResult & { responseIndex?: bigint }) | (PreparedTransaction & { responseIndex: bigint })> {
+  ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
     return await this.reputationTxBuilder.appendResponse(
       asset,
+      client,
       idx,
       responseUri,
       responseHash,
@@ -2139,3 +2162,7 @@ async function mapWithConcurrency<T, R>(
   await Promise.all(workers);
   return results;
 }
+
+// Modified:
+// - getResponseCount: Added client parameter
+// - readResponses: Added client parameter

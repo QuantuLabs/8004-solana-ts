@@ -229,18 +229,19 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * 2. readFeedback - Read single feedback - v0.4.0
+   * 2. readFeedback - Read single feedback - v0.4.1
    * @param asset - Agent Core asset pubkey
-   * @param _client - Client public key (kept for API compatibility)
-   * @param feedbackIndex - Feedback index
+   * @param client - Client public key (who gave the feedback)
+   * @param feedbackIndex - Feedback index (per client per agent)
    * @returns Feedback object or null if not found
    *
    * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+   * v0.4.1: Fixed to filter by client (audit finding #1 HIGH)
    * REQUIRES indexer to be configured
    */
   async readFeedback(
     asset: PublicKey,
-    _client: PublicKey,
+    client: PublicKey,
     feedbackIndex: bigint
   ): Promise<SolanaFeedback | null> {
     if (!this.indexerClient) {
@@ -249,13 +250,13 @@ export class SolanaFeedbackManager {
     }
 
     try {
-      // Get all feedbacks for this asset from indexer
-      const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
-        includeRevoked: true,
-      });
+      // Get specific feedback by asset, client, and index (ERC-8004 compliant)
+      const indexed = await this.indexerClient.getFeedback(
+        asset.toBase58(),
+        client.toBase58(),
+        feedbackIndex
+      );
 
-      // Find the specific feedback by index
-      const indexed = feedbacks.find((f) => f.feedback_index === Number(feedbackIndex));
       if (!indexed) {
         return null;
       }
@@ -362,22 +363,29 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * 6. getResponseCount - Get number of responses for a feedback - v0.3.0
+   * 6. getResponseCount - Get number of responses for a feedback - v0.4.1
    * @param asset - Agent Core asset pubkey
+   * @param client - Client public key (who gave the feedback)
    * @param feedbackIndex - Feedback index
    * @returns Number of responses
+   *
+   * v0.4.1: Migrated to indexer (audit finding #3 HIGH)
+   * Response PDAs no longer exist - data is event-only and indexed off-chain
+   * REQUIRES indexer to be configured
    */
-  async getResponseCount(asset: PublicKey, feedbackIndex: bigint): Promise<number> {
+  async getResponseCount(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<number> {
+    if (!this.indexerClient) {
+      logger.error('getResponseCount requires indexer - Response PDAs removed in v0.4.0');
+      throw new Error('Indexer required for getResponseCount in v0.4.1');
+    }
+
     try {
-      const [responseIndexPDA] = PDAHelpers.getResponseIndexPDA(asset, feedbackIndex);
-      const data = await this.client.getAccount(responseIndexPDA);
-
-      if (!data) {
-        return 0;
-      }
-
-      const responseIndex = ResponseIndexAccount.deserialize(data);
-      return Number(responseIndex.next_index);
+      const responses = await this.indexerClient.getFeedbackResponsesFor(
+        asset.toBase58(),
+        client.toBase58(),
+        feedbackIndex
+      );
+      return responses.length;
     } catch (error) {
       logger.error(`Error getting response count for feedback index ${feedbackIndex}`, error);
       return 0;
@@ -385,54 +393,35 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Bonus: Read all responses for a feedback - v0.3.0
+   * Bonus: Read all responses for a feedback - v0.4.1
    * @param asset - Agent Core asset pubkey
+   * @param client - Client public key (who gave the feedback)
    * @param feedbackIndex - Feedback index
    * @returns Array of response objects
+   *
+   * v0.4.1: Migrated to indexer (audit finding #3 HIGH)
+   * Response PDAs no longer exist - data is event-only and indexed off-chain
+   * REQUIRES indexer to be configured
    */
-  async readResponses(asset: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]> {
+  async readResponses(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]> {
+    if (!this.indexerClient) {
+      logger.error('readResponses requires indexer - Response PDAs removed in v0.4.0');
+      throw new Error('Indexer required for readResponses in v0.4.1');
+    }
+
     try {
-      // Get response count first
-      const responseCount = await this.getResponseCount(asset, feedbackIndex);
+      const indexedResponses = await this.indexerClient.getFeedbackResponsesFor(
+        asset.toBase58(),
+        client.toBase58(),
+        feedbackIndex
+      );
 
-      if (responseCount === 0) {
-        return [];
-      }
-
-      // Fetch all responses by deriving PDAs
-      const responsePDAs: PublicKey[] = [];
-      for (let i = 0; i < responseCount; i++) {
-        const [responsePDA] = PDAHelpers.getResponsePDA(asset, feedbackIndex, BigInt(i));
-        responsePDAs.push(responsePDA);
-      }
-
-      // Batch fetch all response accounts
-      const accountsData = await this.client.getMultipleAccounts(responsePDAs);
-
-      const responses: SolanaResponse[] = [];
-      let skipped = 0;
-      for (let i = 0; i < accountsData.length; i++) {
-        const data = accountsData[i];
-        if (data) {
-          try {
-            const response = ResponseAccount.deserialize(data);
-            responses.push({
-              asset,
-              feedbackIndex,
-              responseIndex: BigInt(i),
-              responder: response.getResponderPublicKey(),
-            });
-          } catch {
-            skipped++;
-          }
-        }
-      }
-
-      if (skipped > 0) {
-        logger.warn(`Skipped ${skipped} malformed response account(s)`);
-      }
-
-      return responses;
+      return indexedResponses.map((r, i) => ({
+        asset,
+        feedbackIndex,
+        responseIndex: BigInt(i),
+        responder: new PublicKey(r.responder),
+      }));
     } catch (error) {
       logger.error(`Error reading responses for feedback index ${feedbackIndex}`, error);
       return [];
@@ -570,3 +559,8 @@ export class SolanaFeedbackManager {
     }
   }
 }
+
+// Modified:
+// - readFeedback: Now filters by client parameter
+// - getResponseCount: Migrated to indexer, added client parameter
+// - readResponses: Migrated to indexer, added client parameter
