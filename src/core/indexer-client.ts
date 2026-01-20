@@ -41,6 +41,7 @@ export interface IndexedAgent {
   agent_wallet: string | null;
   collection: string;
   nft_name: string | null;
+  atom_enabled?: boolean;
   // ATOM Stats
   trust_tier: number; // 0-4 (Unrated, Bronze, Silver, Gold, Platinum)
   quality_score: number; // 0-10000
@@ -161,10 +162,12 @@ export interface GlobalStats {
 
 /**
  * Feedback response from `feedback_responses` table
+ * v0.4.1 - Added client_address (audit fix #2)
  */
 export interface IndexedFeedbackResponse {
   id: string;
   asset: string;
+  client_address: string;
   feedback_index: number;
   responder: string;
   response_uri: string | null;
@@ -464,6 +467,25 @@ export class IndexerClient {
   }
 
   /**
+   * Get single feedback by asset, client, and index
+   * v0.4.1 - Added to fix audit finding #1 (HIGH): readFeedback must filter by client
+   */
+  async getFeedback(
+    asset: string,
+    client: string,
+    feedbackIndex: number | bigint
+  ): Promise<IndexedFeedback | null> {
+    const query = this.buildQuery({
+      asset: `eq.${asset}`,
+      client_address: `eq.${client}`,
+      feedback_index: `eq.${feedbackIndex.toString()}`,
+      limit: 1,
+    });
+    const results = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    return results.length > 0 ? results[0] : null;
+  }
+
+  /**
    * Get feedbacks by client
    */
   async getFeedbacksByClient(client: string): Promise<IndexedFeedback[]> {
@@ -492,6 +514,19 @@ export class IndexerClient {
       order: 'created_at.desc',
     });
     return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+  }
+
+  async getLastFeedbackIndex(asset: string, client: string): Promise<number> {
+    const query = this.buildQuery({
+      asset: `eq.${asset}`,
+      client_address: `eq.${client}`,
+      select: 'feedback_index',
+      order: 'feedback_index.desc',
+      limit: 1,
+    });
+
+    const results = await this.request<Array<{ feedback_index: number }>>(`/feedbacks${query}`);
+    return results.length > 0 ? results[0].feedback_index : -1;
   }
 
   // ============================================================================
@@ -627,4 +662,26 @@ export class IndexerClient {
     });
     return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
   }
+
+  /**
+   * Get responses for a specific feedback (asset + client + index)
+   */
+  async getFeedbackResponsesFor(
+    asset: string,
+    client: string,
+    feedbackIndex: number | bigint
+  ): Promise<IndexedFeedbackResponse[]> {
+    const query = this.buildQuery({
+      asset: `eq.${asset}`,
+      client_address: `eq.${client}`,
+      feedback_index: `eq.${feedbackIndex.toString()}`,
+      order: 'created_at.asc',
+    });
+    return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+  }
 }
+
+// Modified:
+// - IndexedFeedbackResponse: Added client_address field
+// - Added getFeedback method to query by asset, client, and feedbackIndex
+// - Added getFeedbackResponsesFor method to query responses for specific feedback
