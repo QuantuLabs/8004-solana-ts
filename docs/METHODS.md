@@ -108,6 +108,7 @@ await sdk.updateCollectionUri(collection, 'ipfs://QmNewMeta...');
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `registerAgent` | `(tokenUri?, collection?) => Promise<TransactionResult>` | Register new agent |
+| `enableAtom` | `(asset) => Promise<TransactionResult>` | Enable ATOM one-way for an existing agent |
 | `transferAgent` | `(asset, collection, newOwner) => Promise<TransactionResult>` | Transfer ownership |
 | `setAgentUri` | `(asset, collection, newUri) => Promise<TransactionResult>` | Update agent URI |
 | `setMetadata` | `(asset, key, value, immutable?) => Promise<TransactionResult>` | Set/update on-chain metadata |
@@ -174,8 +175,92 @@ await sdk.giveFeedback(agentAsset, {
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `requestValidation` | `(asset, validator, methodId, uri, hash) => Promise<TransactionResult>` | Request validation |
-| `respondToValidation` | `(asset, requestIndex, score, uri, hash, status) => Promise<TransactionResult>` | Respond |
+| `requestValidation` | `(asset, validator, nonce, uri, hash) => Promise<TransactionResult>` | Request validation |
+| `respondToValidation` | `(asset, nonce, score, uri, hash, tag?) => Promise<TransactionResult>` | Respond to validation |
+| `readValidation` | `(asset, validator, nonce) => Promise<Validation \| null>` | Read validation from indexer |
+| `waitForValidation` | `(asset, validator, nonce, options?) => Promise<Validation>` | Wait for validation response |
+| `getPendingValidations` | `(validator) => Promise<Validation[]>` | Get pending validations for validator |
+
+```typescript
+// Request validation
+const nonce = Date.now();
+await sdk.requestValidation(agentAsset, validatorPubkey, nonce, 'ipfs://QmRequest...', requestHash);
+
+// Respond to validation (as validator)
+await sdk.respondToValidation(agentAsset, nonce, 85, 'ipfs://QmResponse...', responseHash, 'audit-v1');
+
+// Wait for response with timeout
+const validation = await sdk.waitForValidation(agentAsset, validatorPubkey, nonce, {
+  timeout: 60000,
+  waitForResponse: true,
+});
+```
+
+## ATOM Engine Methods
+
+ATOM (Agent Trust On-chain Model) provides reputation scoring with sybil resistance.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `getAtomStats` | `(asset) => Promise<AtomStats \| null>` | Get ATOM stats (quality score, confidence, etc.) |
+| `getTrustTier` | `(asset) => Promise<TrustTier>` | Get trust tier (0-4: Unrated → Platinum) |
+| `initializeAtomStats` | `(asset) => Promise<TransactionResult>` | Initialize ATOM stats account |
+| `getEnrichedSummary` | `(asset) => Promise<EnrichedSummary>` | Get combined ATOM + feedback stats |
+
+```typescript
+// Get ATOM stats
+const stats = await sdk.getAtomStats(agentAsset);
+console.log(`Quality: ${stats.qualityScore}, Confidence: ${stats.confidence}`);
+
+// Get trust tier
+const tier = await sdk.getTrustTier(agentAsset);
+// TrustTier: 0=Unrated, 1=Bronze, 2=Silver, 3=Gold, 4=Platinum
+```
+
+## Agent Wallet Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `setAgentWallet` | `(asset, keypair) => Promise<TransactionResult>` | Set operational wallet |
+| `prepareSetAgentWallet` | `(asset, pubkey) => PreparedWalletTx` | Prepare for browser wallet signing |
+| `getAgentByWallet` | `(wallet) => Promise<AgentAccount \| null>` | Find agent by wallet address |
+
+```typescript
+// Set wallet with keypair
+await sdk.setAgentWallet(agentAsset, operationalKeypair);
+
+// For browser wallets (Phantom, Solflare)
+const prepared = sdk.prepareSetAgentWallet(agentAsset, walletPubkey);
+const signature = await wallet.signMessage(prepared.message);
+await prepared.complete(signature);
+
+// Find agent by wallet
+const agent = await sdk.getAgentByWallet(walletPubkey);
+```
+
+## Indexer Query Methods
+
+These methods query the indexer for aggregated data.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `searchAgents` | `(query, options?) => Promise<Agent[]>` | Search agents by name/description |
+| `getLeaderboard` | `(options?) => Promise<LeaderboardEntry[]>` | Get top agents by reputation |
+| `getGlobalStats` | `() => Promise<GlobalStats>` | Get global registry statistics |
+| `getCollectionStats` | `(collection) => Promise<CollectionStats>` | Get collection statistics |
+| `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
+
+```typescript
+// Search agents
+const results = await sdk.searchAgents('trading bot', { limit: 20 });
+
+// Get leaderboard
+const top = await sdk.getLeaderboard({ minTier: 2, limit: 50 });
+
+// Get global stats
+const stats = await sdk.getGlobalStats();
+console.log(`Total agents: ${stats.totalAgents}, Platinum: ${stats.platinumAgents}`);
+```
 
 ## Advanced Queries
 

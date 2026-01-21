@@ -1,6 +1,6 @@
 {
   "name": "8004-solana",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "TypeScript SDK for ERC-8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
@@ -9,8 +9,18 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
-    "test:e2e": "jest --testPathPattern=e2e-solana --testPathIgnorePatterns='[]' --verbose",
-    "test:e2e:validation": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_PRIVATE_KEY=$(cat ~/.config/solana/id.json) jest --testPathPattern=e2e-validation --testPathIgnorePatterns='[]' --verbose",
+    "test:e2e": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest --testPathPattern=e2e-solana --testPathIgnorePatterns='[]' --verbose --runInBand",
+    "test:e2e:identity": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/01-identity-complete.test.ts --verbose",
+    "test:e2e:reputation": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/02-reputation-complete.test.ts --verbose",
+    "test:e2e:validation": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/03-validation-complete.test.ts --verbose",
+    "test:e2e:atom": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/04-atom-engine-complete.test.ts --verbose",
+    "test:e2e:security": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/05-security-attacks.test.ts --verbose",
+    "test:e2e:indexer": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/06-indexer-api.test.ts --verbose",
+    "test:e2e:all": "npm run test:e2e:identity && npm run test:e2e:reputation && npm run test:e2e:validation && npm run test:e2e:atom && npm run test:e2e:security && npm run test:e2e:indexer",
+    "test:e2e:devnet": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/e2e-devnet-funded.test.ts --verbose --runInBand",
+    "test:wallets:create": "npx tsx scripts/test-wallet-manager.ts create",
+    "test:wallets:recover": "npx tsx scripts/test-wallet-manager.ts recover",
+    "test:wallets:status": "npx tsx scripts/test-wallet-manager.ts status",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src",
@@ -52,7 +62,8 @@
     "@solana/web3.js": "^1.95.0",
     "borsh": "^0.7.0",
     "bs58": "^6.0.0",
-    "ipfs-http-client": "^60.0.1"
+    "ipfs-http-client": "^60.0.1",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
@@ -65,7 +76,7 @@
     "prettier": "^3.1.1",
     "ts-jest": "^29.1.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"

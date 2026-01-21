@@ -147,15 +147,22 @@ const summary = await sdk.getSummary(assetPubkey);
 
 ## ATOM Engine
 
-The SDK auto-initializes ATOM stats on registration. ATOM provides:
+The SDK auto-initializes ATOM stats on registration (atomEnabled: true by default). ATOM provides:
 
 - **Trust Tiers**: Bronze → Silver → Gold → Platinum
 - **Quality Score**: Weighted average with decay
 - **Sybil Detection**: HyperLogLog client tracking
 
 ```typescript
-// Skip ATOM (if you aggregate reputation via indexer)
-await sdk.registerAgent('ipfs://...', collection, { skipAtomInit: true });
+// Disable ATOM at creation (if you aggregate reputation via indexer)
+await sdk.registerAgent('ipfs://...', collection, { atomEnabled: false });
+```
+
+If you opt out at creation, you can later enable ATOM (one-way) and initialize stats:
+
+```typescript
+await sdk.enableAtom(asset);
+await sdk.initializeAtomStats(asset);
 ```
 
 ## RPC Provider Recommendations

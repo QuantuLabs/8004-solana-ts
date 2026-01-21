@@ -96,7 +96,7 @@ export declare class PDAHelpers {
      * Get Validation Request PDA - v0.3.0
      * Seeds: ["validation", asset, validator, nonce]
      */
-    static getValidationRequestPDA(asset: PublicKey, validator: PublicKey, nonce: number, programId?: PublicKey): [PublicKey, number];
+    static getValidationRequestPDA(asset: PublicKey, validator: PublicKey, nonce: number | bigint, programId?: PublicKey): [PublicKey, number];
 }
 /**
  * Helper to convert bytes32 to string

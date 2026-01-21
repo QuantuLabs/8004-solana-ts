@@ -591,6 +591,25 @@ export class IndexerClient {
     return this.request<IndexedValidation[]>(`/validations${query}`);
   }
 
+  /**
+   * Get a specific validation by asset, validator, and nonce
+   * Returns full validation data including URIs (not available on-chain)
+   */
+  async getValidation(
+    asset: string,
+    validator: string,
+    nonce: number | bigint
+  ): Promise<IndexedValidation | null> {
+    const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+    const query = this.buildQuery({
+      asset: `eq.${asset}`,
+      validator: `eq.${validator}`,
+      nonce: `eq.${nonceNum}`,
+    });
+    const result = await this.request<IndexedValidation[]>(`/validations${query}`);
+    return result.length > 0 ? result[0] : null;
+  }
+
   // ============================================================================
   // Stats (Views)
   // ============================================================================

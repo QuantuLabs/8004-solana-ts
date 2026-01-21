@@ -24,6 +24,17 @@ export declare class IdentityInstructionBuilder {
      */
     buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
     /**
+     * Build register_with_options instruction (Metaplex Core)
+     * Accounts: registry_config, agent_account, asset (signer), collection,
+     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     */
+    buildRegisterWithOptions(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri: string, atomEnabled: boolean): TransactionInstruction;
+    /**
+     * Build enable_atom instruction (one-way)
+     * Accounts: agent_account, asset, owner (signer)
+     */
+    buildEnableAtom(agentAccount: PublicKey, asset: PublicKey, owner: PublicKey): TransactionInstruction;
+    /**
      * Build setAgentUri instruction (Metaplex Core)
      * Accounts: registry_config, agent_account, asset, collection,
      *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
@@ -95,23 +106,23 @@ export declare class ReputationInstructionBuilder {
     /**
      * Build giveFeedback instruction - v0.4.0
      * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
-     * Accounts: client (signer), agent_account, asset, collection, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
+     * Accounts: client (signer), agent_account, asset, collection, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
      * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, registryAuthority: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
     /**
      * Build revokeFeedback instruction - v0.4.0
      * Matches: revoke_feedback(feedback_index)
-     * Accounts: client (signer), agent_account, asset, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
+     * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
      * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey, atomStats: PublicKey, registryAuthority: PublicKey, feedbackIndex: bigint): TransactionInstruction;
+    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, feedbackIndex: bigint): TransactionInstruction;
     /**
-     * Build appendResponse instruction - v0.3.0
-     * Matches: append_response(feedback_index, response_uri, response_hash)
-     * Accounts: responder (signer), payer (signer), asset, feedback_account, response_index, response_account, system_program
+     * Build appendResponse instruction - v0.4.1
+     * Matches: append_response(asset_key, client_address, feedback_index, response_uri, response_hash)
+     * Accounts: responder (signer), agent_account, asset
      */
-    buildAppendResponse(responder: PublicKey, payer: PublicKey, asset: PublicKey, feedbackAccount: PublicKey, responseIndex: PublicKey, responseAccount: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
+    buildAppendResponse(responder: PublicKey, agentAccount: PublicKey, asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
     /**
      * Build setFeedbackTags instruction - v0.3.0
      * Matches: set_feedback_tags(feedback_index, tag1, tag2)
@@ -136,11 +147,11 @@ export declare class ValidationInstructionBuilder {
      */
     buildRequestValidation(validationConfig: PublicKey, requester: PublicKey, payer: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
     /**
-     * Build respondToValidation instruction - v0.3.0
-     * Matches: respond_to_validation(response, response_uri, response_hash, tag)
+     * Build respondToValidation instruction - v0.5.0 (OOM fix)
+     * Matches: respond_to_validation(asset_key, validator_address, nonce, response, response_uri, response_hash, tag)
      * Accounts: validator (signer), agent_account, asset, validation_request
      */
-    buildRespondToValidation(validationConfig: PublicKey, validator: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
+    buildRespondToValidation(validationConfig: PublicKey, validator: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
     /**
      * Build updateValidation instruction - v0.3.0
      * Same signature as respondToValidation but different discriminator
@@ -161,7 +172,7 @@ export declare class ValidationInstructionBuilder {
 /**
  * Instruction builder for ATOM Engine
  * v0.4.0 - Agent Trust On-chain Model
- * Program: B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7
+ * Program: 6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf
  */
 export declare class AtomInstructionBuilder {
     private programId;
@@ -173,5 +184,40 @@ export declare class AtomInstructionBuilder {
      * Accounts: owner (signer), asset, collection, config, stats (created), system_program
      */
     buildInitializeStats(owner: PublicKey, asset: PublicKey, collection: PublicKey, config: PublicKey, stats: PublicKey): TransactionInstruction;
+    /**
+     * Build initializeConfig instruction
+     * Initializes global AtomConfig PDA (one-time setup by authority)
+     * Accounts: authority (signer), config (created), program_data, system_program
+     * Data: agent_registry_program (Pubkey)
+     */
+    buildInitializeConfig(authority: PublicKey, config: PublicKey, programData: PublicKey, agentRegistryProgram: PublicKey): TransactionInstruction;
+    /**
+     * Build updateConfig instruction
+     * Updates global AtomConfig parameters (authority only)
+     * Accounts: authority (signer), config
+     * @param params - Optional config params (only provided fields are updated)
+     */
+    buildUpdateConfig(authority: PublicKey, config: PublicKey, params: UpdateAtomConfigParams): TransactionInstruction;
+}
+/**
+ * Parameters for updating ATOM config
+ * All fields are optional - only provided fields will be updated
+ */
+export interface UpdateAtomConfigParams {
+    alphaFast?: number;
+    alphaSlow?: number;
+    alphaVolatility?: number;
+    alphaArrival?: number;
+    weightSybil?: number;
+    weightBurst?: number;
+    weightStagnation?: number;
+    weightShock?: number;
+    weightVolatility?: number;
+    weightArrival?: number;
+    diversityThreshold?: number;
+    burstThreshold?: number;
+    shockThreshold?: number;
+    volatilityThreshold?: number;
+    paused?: boolean;
 }
 //# sourceMappingURL=instruction-builder.d.ts.map

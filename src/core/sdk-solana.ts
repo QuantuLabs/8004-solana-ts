@@ -27,8 +27,10 @@ import {
   AtomTransactionBuilder,
   TransactionResult,
   WriteOptions,
+  GiveFeedbackOptions,
   RegisterAgentOptions,
   PreparedTransaction,
+  UpdateAtomConfigParams,
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.js';
@@ -45,8 +47,8 @@ import { EndpointType } from '../models/enums.js';
 import type { EndpointPingResult, LivenessOptions, LivenessReport } from '../models/liveness.js';
 import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
 // ATOM Engine imports (v0.4.0)
-import { AtomStats, TrustTier } from './atom-schemas.js';
-import { getAtomStatsPDA } from './atom-pda.js';
+import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
+import { getAtomStatsPDA, getAtomConfigPDA } from './atom-pda.js';
 // Indexer imports (v0.4.0)
 import {
   IndexerClient,
@@ -141,6 +143,42 @@ export interface CollectionInfo {
   registryType: 'BASE' | 'USER';
   authority: PublicKey;
   baseIndex: number;
+}
+
+/**
+ * Normalized validation data for user-friendly access
+ * Combines on-chain data with computed properties
+ * Note: URIs are only available in events/indexer, not on-chain
+ */
+export interface NormalizedValidation {
+  /** Agent asset pubkey (base58) */
+  asset: string;
+  /** Validator pubkey (base58) */
+  validator: string;
+  /** Request nonce */
+  nonce: number;
+  /** Response score (0-100) - alias for 'response' field */
+  score: number;
+  /** Raw response value from on-chain (0-100) */
+  response: number;
+  /** Whether validator has responded (computed from responded_at > 0) */
+  responded: boolean;
+  /** Timestamp of response (0 if pending) */
+  responded_at: bigint;
+  /** Request hash (hex string) */
+  request_hash: string;
+  // URIs are NOT stored on-chain - only in events/indexer
+  // Use indexer.getValidations() for full data including URIs
+}
+
+/**
+ * Options for waitForValidation
+ */
+export interface WaitForValidationOptions {
+  /** Max wait time in milliseconds (default: 30000) */
+  timeout?: number;
+  /** Wait for response (responded_at > 0) instead of just account creation (default: false) */
+  waitForResponse?: boolean;
 }
 
 /**
@@ -894,6 +932,60 @@ export class SolanaSDK {
     return await this.atomTxBuilder.initializeStats(asset, options);
   }
 
+  // ==================== ATOM Config Methods (Authority Only) ====================
+
+  /**
+   * Get global ATOM config - v0.4.x
+   * @returns AtomConfig or null if not initialized
+   */
+  async getAtomConfig(): Promise<AtomConfig | null> {
+    try {
+      const [atomConfigPDA] = getAtomConfigPDA();
+      const connection = this.client.getConnection();
+      const accountInfo = await connection.getAccountInfo(atomConfigPDA);
+
+      if (!accountInfo || !accountInfo.data) {
+        return null;
+      }
+
+      return AtomConfig.deserialize(Buffer.from(accountInfo.data));
+    } catch (error) {
+      logger.error('Error fetching ATOM config', error);
+      return null;
+    }
+  }
+
+  /**
+   * Initialize global ATOM config (authority only) - v0.4.x
+   * One-time setup by program authority
+   * @param agentRegistryProgram - Optional agent registry program ID override
+   * @param options - Write options (skipSend, signer)
+   */
+  async initializeAtomConfig(
+    agentRegistryProgram?: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+    return await this.atomTxBuilder.initializeConfig(agentRegistryProgram, options);
+  }
+
+  /**
+   * Update global ATOM config parameters (authority only) - v0.4.x
+   * @param params - Config parameters to update (only provided fields are changed)
+   * @param options - Write options (skipSend, signer)
+   */
+  async updateAtomConfig(
+    params: UpdateAtomConfigParams,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+    return await this.atomTxBuilder.updateConfig(params, options);
+  }
+
   /**
    * Get trust tier for an agent
    * @param asset - Agent Core asset pubkey
@@ -1386,16 +1478,25 @@ export class SolanaSDK {
   /**
    * Prepare message for setAgentWallet (for web3 wallets like Phantom, Solflare)
    * @example
-   * const prepared = sdk.prepareSetAgentWallet(asset, walletPubkey);
+   * const prepared = await sdk.prepareSetAgentWallet(asset, walletPubkey);
    * const signature = await wallet.signMessage(prepared.message);
    * await prepared.complete(signature);
    */
-  prepareSetAgentWallet(
+  async prepareSetAgentWallet(
     asset: PublicKey,
     newWallet: PublicKey,
     options?: WriteOptions
-  ): { message: Uint8Array; complete: (signature: Uint8Array) => Promise<TransactionResult | PreparedTransaction> } {
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 240); // 4 minutes (safe margin)
+  ): Promise<{ message: Uint8Array; complete: (signature: Uint8Array) => Promise<TransactionResult | PreparedTransaction> }> {
+    // Get on-chain clock to avoid client/validator time skew
+    const slot = await this.getSolanaClient().getConnection().getSlot();
+    const blockTime = await this.getSolanaClient().getConnection().getBlockTime(slot);
+
+    if (!blockTime) {
+      throw new Error('Failed to fetch validator clock time');
+    }
+
+    // Use validator time + 60 seconds (safe margin within 5min window)
+    const deadline = BigInt(blockTime + 60);
     const owner = options?.signer ?? this.signer?.publicKey;
     if (!owner) {
       throw new Error('Owner required. Configure SDK with signer or provide options.signer.');
@@ -1431,7 +1532,7 @@ export class SolanaSDK {
     if ('secretKey' in walletOrKeypair) {
       const keypair = walletOrKeypair;
       const opts = sigOrOptions as WriteOptions | undefined;
-      const prepared = this.prepareSetAgentWallet(asset, keypair.publicKey, opts);
+      const prepared = await this.prepareSetAgentWallet(asset, keypair.publicKey, opts);
       const nacl = await import('tweetnacl');
       const sig = nacl.default.sign.detached(prepared.message, keypair.secretKey);
       return prepared.complete(sig);
@@ -1491,7 +1592,7 @@ export class SolanaSDK {
    * Give feedback to an agent (write operation) - v0.3.0
    * @param asset - Agent Core asset pubkey
    * @param feedbackFile - Feedback data object
-   * @param options - Write options (skipSend, signer)
+   * @param options - Write options (skipSend, signer, feedbackIndex)
    */
   async giveFeedback(
     asset: PublicKey,
@@ -1503,7 +1604,7 @@ export class SolanaSDK {
       feedbackUri: string;
       feedbackHash: Buffer;
     },
-    options?: WriteOptions
+    options?: GiveFeedbackOptions
   ): Promise<(TransactionResult & { feedbackIndex?: bigint }) | (PreparedTransaction & { feedbackIndex: bigint })> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
@@ -1574,24 +1675,27 @@ export class SolanaSDK {
    * Request validation (write operation) - v0.3.0
    * @param asset - Agent Core asset pubkey
    * @param validator - Validator public key
-   * @param nonce - Request nonce (unique per agent-validator pair)
    * @param requestUri - Request URI (IPFS/Arweave)
-   * @param requestHash - Request hash (32 bytes)
-   * @param options - Write options (skipSend, signer)
+   * @param options - Write options (skipSend, signer, nonce, requestHash)
+   *   - nonce: Auto-generated if not provided (timestamp-based)
+   *   - requestHash: Optional, defaults to zeros (acceptable for IPFS URIs)
    */
   async requestValidation(
     asset: PublicKey,
     validator: PublicKey,
-    nonce: number,
     requestUri: string,
-    requestHash: Buffer,
-    options?: WriteOptions
-  ): Promise<TransactionResult | PreparedTransaction> {
+    options?: WriteOptions & { nonce?: number; requestHash?: Buffer }
+  ): Promise<(TransactionResult & { nonce?: bigint }) | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
 
-    return await this.validationTxBuilder.requestValidation(
+    // Auto-generate nonce if not provided (timestamp-based, fits in u32)
+    const nonce = options?.nonce ?? (Date.now() % 0xFFFFFFFF);
+    // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
+    const requestHash = options?.requestHash ?? this.computeUriHash(requestUri);
+
+    const result = await this.validationTxBuilder.requestValidation(
       asset,
       validator,
       nonce,
@@ -1599,35 +1703,44 @@ export class SolanaSDK {
       requestHash,
       options
     );
+
+    // Add nonce to result for use in respondToValidation
+    if ('success' in result) {
+      return { ...result, nonce: BigInt(nonce) };
+    }
+    return result;
   }
 
   /**
    * Respond to validation request (write operation) - v0.3.0
    * @param asset - Agent Core asset pubkey
-   * @param nonce - Request nonce
-   * @param response - Response score (0-100)
+   * @param nonce - Request nonce (from requestValidation result)
+   * @param score - Response score (0-100)
    * @param responseUri - Response URI (IPFS/Arweave)
-   * @param responseHash - Response hash (32 bytes)
-   * @param tag - Response tag (max 32 bytes)
-   * @param options - Write options (skipSend, signer)
+   * @param options - Write options (skipSend, signer, responseHash, tag)
+   *   - responseHash: Optional, defaults to zeros (acceptable for IPFS URIs)
+   *   - tag: Optional response tag (max 32 bytes)
    */
   async respondToValidation(
     asset: PublicKey,
-    nonce: number,
-    response: number,
+    nonce: number | bigint,
+    score: number,
     responseUri: string,
-    responseHash: Buffer,
-    tag: string = '',
-    options?: WriteOptions
+    options?: WriteOptions & { responseHash?: Buffer; tag?: string }
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
 
+    const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+    // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
+    const responseHash = options?.responseHash ?? this.computeUriHash(responseUri);
+    const tag = options?.tag ?? '';
+
     return await this.validationTxBuilder.respondToValidation(
       asset,
-      nonce,
-      response,
+      nonceNum,
+      score,
       responseUri,
       responseHash,
       tag,
@@ -1638,37 +1751,40 @@ export class SolanaSDK {
   /**
    * Read validation request (read operation) - v0.4.2
    * Reads ValidationRequest directly from on-chain (no indexer required)
+   * Returns normalized data with user-friendly properties
    * @param asset - Agent Core asset pubkey
    * @param validator - Validator public key
-   * @param nonce - Request nonce
-   * @returns ValidationRequest or null if not found
+   * @param nonce - Request nonce (number or bigint)
+   * @returns NormalizedValidation or null if not found
    */
   async readValidation(
     asset: PublicKey,
     validator: PublicKey,
-    nonce: number
-  ): Promise<ValidationRequest | null> {
+    nonce: number | bigint
+  ): Promise<NormalizedValidation | null> {
     try {
-      const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce);
-
-      console.log('[DEBUG] readValidation:');
-      console.log(`  Asset: ${asset.toBase58()}`);
-      console.log(`  Validator: ${validator.toBase58()}`);
-      console.log(`  Nonce: ${nonce}`);
-      console.log(`  Derived PDA: ${validationRequestPda.toBase58()}`);
-      console.log(`  Bump: ${bump}`);
+      const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce);
 
       const accountData = await this.client.getAccount(validationRequestPda);
 
       if (!accountData) {
-        console.log('  [DEBUG] Account not found (null)');
         return null;
       }
 
-      console.log(`  [DEBUG] Account found! Data length: ${accountData.length} bytes`);
-      return ValidationRequest.deserialize(Buffer.from(accountData));
+      const raw = ValidationRequest.deserialize(Buffer.from(accountData));
+
+      // Convert to normalized format
+      return {
+        asset: new PublicKey(raw.asset).toBase58(),
+        validator: new PublicKey(raw.validator_address).toBase58(),
+        nonce: raw.nonce,
+        score: raw.response,
+        response: raw.response,
+        responded: raw.responded_at > BigInt(0),
+        responded_at: raw.responded_at,
+        request_hash: Buffer.from(raw.request_hash).toString('hex'),
+      };
     } catch (error) {
-      console.error('[ERROR] readValidation failed:', error);
       logger.error('Error reading validation request:', error);
       return null;
     }
@@ -1679,27 +1795,29 @@ export class SolanaSDK {
    * Useful for handling blockchain finalization delays
    * @param asset - Agent Core asset pubkey
    * @param validator - Validator public key
-   * @param nonce - Request nonce
-   * @param timeout - Max wait time in milliseconds (default: 30000)
-   * @returns ValidationRequest or null if timeout
+   * @param nonce - Request nonce (number or bigint)
+   * @param options - Wait options (timeout, waitForResponse)
+   * @returns NormalizedValidation or null if timeout
    */
   async waitForValidation(
     asset: PublicKey,
     validator: PublicKey,
-    nonce: number,
-    timeout: number = 30000
-  ): Promise<ValidationRequest | null> {
+    nonce: number | bigint,
+    options?: WaitForValidationOptions
+  ): Promise<NormalizedValidation | null> {
+    const timeout = options?.timeout ?? 30000;
+    const waitForResponse = options?.waitForResponse ?? false;
     const startTime = Date.now();
-    let attempts = 0;
-
-    console.log(`[DEBUG] waitForValidation: Waiting up to ${timeout}ms for validation to be available`);
 
     while (Date.now() - startTime < timeout) {
-      attempts++;
       const validation = await this.readValidation(asset, validator, nonce);
 
       if (validation !== null) {
-        console.log(`[DEBUG] waitForValidation: Found after ${attempts} attempts (${Date.now() - startTime}ms)`);
+        // If waitForResponse, keep waiting until responded_at > 0
+        if (waitForResponse && !validation.responded) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
         return validation;
       }
 
@@ -1707,7 +1825,6 @@ export class SolanaSDK {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    console.log(`[DEBUG] waitForValidation: Timeout after ${attempts} attempts (${timeout}ms)`);
     return null;
   }
 
@@ -1729,6 +1846,24 @@ export class SolanaSDK {
     }
 
     return await this.identityTxBuilder.transferAgent(asset, collection, newOwner, options);
+  }
+
+  /**
+   * Sync agent owner after external NFT transfer (write operation)
+   * Call this after the Core NFT was transferred outside of the SDK
+   * to update the AgentAccount's owner field
+   * @param asset - Agent Core asset pubkey
+   * @param options - Write options (skipSend, signer)
+   */
+  async syncOwner(
+    asset: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+
+    return await this.identityTxBuilder.syncOwner(asset, options);
   }
 
   // ==================== Liveness & Signature Methods ====================
@@ -2139,6 +2274,48 @@ export class SolanaSDK {
    */
   getRpcUrl(): string {
     return this.client.rpcUrl;
+  }
+
+  // ==================== Hash Utilities ====================
+
+  /**
+   * Compute SHA-256 hash from data (string or Buffer)
+   * Use this for feedback, validation, and response hashes
+   * @param data - String or Buffer to hash
+   * @returns 32-byte SHA-256 hash as Buffer
+   *
+   * @example
+   * const feedbackHash = SolanaSDK.computeHash('My feedback content');
+   * const dataHash = SolanaSDK.computeHash(Buffer.from(jsonData));
+   */
+  static computeHash(data: string | Buffer): Buffer {
+    return createHash('sha256').update(data).digest();
+  }
+
+  /**
+   * Compute hash for a URI
+   * - IPFS/Arweave URIs: zeros (CID already contains content hash)
+   * - Other URIs: SHA-256 of the URI string
+   * @param uri - URI to hash
+   * @returns 32-byte hash as Buffer
+   *
+   * @example
+   * const hash = SolanaSDK.computeUriHash('https://example.com/data.json');
+   * // For IPFS, returns zeros since CID is already a hash
+   * const ipfsHash = SolanaSDK.computeUriHash('ipfs://Qm...');
+   */
+  static computeUriHash(uri: string): Buffer {
+    // IPFS and Arweave URIs contain content-addressable hashes
+    if (uri.startsWith('ipfs://') || uri.startsWith('ar://')) {
+      return Buffer.alloc(32);
+    }
+    // For other URIs, compute SHA-256 hash of the URI itself
+    return createHash('sha256').update(uri).digest();
+  }
+
+  // Instance method that calls the static one
+  private computeUriHash(uri: string): Buffer {
+    return SolanaSDK.computeUriHash(uri);
   }
 }
 

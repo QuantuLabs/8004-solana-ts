@@ -36,7 +36,8 @@
 
 ### ATOM Reputation Engine (100%)
 - ✅ Auto-initialization with `registerAgent()`
-- ✅ Opt-out via `skipAtomInit` option
+- ✅ Opt-out via `atomEnabled: false` option
+- ✅ One-way opt-in after creation via `enableAtom()`
 - ✅ On-chain aggregated stats (count, average, tier)
 - ✅ Instant reads (no indexer lag)
 
@@ -129,7 +130,7 @@ This script tests the ENTIRE SDK against devnet:
 
 2. **ATOM Auto-Init** - ENHANCED
    - Now automatic in `registerAgent()`
-   - Opt-out with `skipAtomInit: true`
+   - Opt-out with `atomEnabled: false`
    - Documented benefits vs indexer aggregation
 
 3. **Graceful Test Skips** - IMPROVED

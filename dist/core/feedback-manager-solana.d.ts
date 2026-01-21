@@ -95,16 +95,17 @@ export declare class SolanaFeedbackManager {
      */
     private getSummaryFromIndexer;
     /**
-     * 2. readFeedback - Read single feedback - v0.4.0
+     * 2. readFeedback - Read single feedback - v0.4.1
      * @param asset - Agent Core asset pubkey
-     * @param _client - Client public key (kept for API compatibility)
-     * @param feedbackIndex - Feedback index
+     * @param client - Client public key (who gave the feedback)
+     * @param feedbackIndex - Feedback index (per client per agent)
      * @returns Feedback object or null if not found
      *
      * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+     * v0.4.1: Fixed to filter by client (audit finding #1 HIGH)
      * REQUIRES indexer to be configured
      */
-    readFeedback(asset: PublicKey, _client: PublicKey, feedbackIndex: bigint): Promise<SolanaFeedback | null>;
+    readFeedback(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<SolanaFeedback | null>;
     /**
      * 3. readAllFeedback - Read all feedbacks for an agent - v0.4.0
      * @param asset - Agent Core asset pubkey
@@ -136,19 +137,29 @@ export declare class SolanaFeedbackManager {
      */
     getClients(asset: PublicKey): Promise<PublicKey[]>;
     /**
-     * 6. getResponseCount - Get number of responses for a feedback - v0.3.0
+     * 6. getResponseCount - Get number of responses for a feedback - v0.4.1
      * @param asset - Agent Core asset pubkey
+     * @param client - Client public key (who gave the feedback)
      * @param feedbackIndex - Feedback index
      * @returns Number of responses
+     *
+     * v0.4.1: Migrated to indexer (audit finding #3 HIGH)
+     * Response PDAs no longer exist - data is event-only and indexed off-chain
+     * REQUIRES indexer to be configured
      */
-    getResponseCount(asset: PublicKey, feedbackIndex: bigint): Promise<number>;
+    getResponseCount(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<number>;
     /**
-     * Bonus: Read all responses for a feedback - v0.3.0
+     * Bonus: Read all responses for a feedback - v0.4.1
      * @param asset - Agent Core asset pubkey
+     * @param client - Client public key (who gave the feedback)
      * @param feedbackIndex - Feedback index
      * @returns Array of response objects
+     *
+     * v0.4.1: Migrated to indexer (audit finding #3 HIGH)
+     * Response PDAs no longer exist - data is event-only and indexed off-chain
+     * REQUIRES indexer to be configured
      */
-    readResponses(asset: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]>;
+    readResponses(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]>;
     /**
      * Read feedbacks from indexer (v0.4.0)
      * Falls back to on-chain if indexer unavailable

@@ -81,6 +81,7 @@ export declare class AgentAccount {
     owner: Uint8Array;
     asset: Uint8Array;
     bump: number;
+    atom_enabled: number;
     agent_wallet: Uint8Array | null;
     agent_uri: string;
     nft_name: string;
@@ -89,6 +90,7 @@ export declare class AgentAccount {
         owner: Uint8Array;
         asset: Uint8Array;
         bump: number;
+        atom_enabled: number;
         agent_wallet: Uint8Array | null;
         agent_uri: string;
         nft_name: string;
@@ -103,6 +105,7 @@ export declare class AgentAccount {
      * @returns PublicKey or null if no wallet is set
      */
     getAgentWalletPublicKey(): PublicKey | null;
+    isAtomEnabled(): boolean;
     /**
      * Check if agent has an operational wallet configured
      */

@@ -225,11 +225,13 @@ export class PDAHelpers {
   static getValidationRequestPDA(
     asset: PublicKey,
     validator: PublicKey,
-    nonce: number,
+    nonce: number | bigint,
     programId: PublicKey = PROGRAM_ID
   ): [PublicKey, number] {
     const nonceBuffer = Buffer.alloc(4);
-    nonceBuffer.writeUInt32LE(nonce);
+    // Convert bigint to number if needed (safe for u32 range)
+    const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+    nonceBuffer.writeUInt32LE(nonceNum);
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('validation'), asset.toBuffer(), validator.toBuffer(), nonceBuffer],

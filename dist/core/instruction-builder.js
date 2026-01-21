@@ -51,6 +51,49 @@ export class IdentityInstructionBuilder {
         });
     }
     /**
+     * Build register_with_options instruction (Metaplex Core)
+     * Accounts: registry_config, agent_account, asset (signer), collection,
+     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     */
+    buildRegisterWithOptions(config, agentAccount, asset, collection, owner, agentUri, atomEnabled) {
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.registerWithOptions,
+            this.serializeString(agentUri),
+            Buffer.from([atomEnabled ? 1 : 0]),
+        ]);
+        const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: config, isSigner: false, isWritable: true },
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: true, isWritable: true },
+                { pubkey: collection, isSigner: false, isWritable: true },
+                { pubkey: userCollectionAuthority, isSigner: false, isWritable: false },
+                { pubkey: owner, isSigner: true, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build enable_atom instruction (one-way)
+     * Accounts: agent_account, asset, owner (signer)
+     */
+    buildEnableAtom(agentAccount, asset, owner) {
+        const data = IDENTITY_DISCRIMINATORS.enableAtom;
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: owner, isSigner: true, isWritable: false },
+            ],
+            data,
+        });
+    }
+    /**
      * Build setAgentUri instruction (Metaplex Core)
      * Accounts: registry_config, agent_account, asset, collection,
      *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
@@ -302,7 +345,7 @@ export class ReputationInstructionBuilder {
     /**
      * Build giveFeedback instruction - v0.4.0
      * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
-     * Accounts: client (signer), agent_account, asset, collection, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
+     * Accounts: client (signer), agent_account, asset, collection, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
      * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
     buildGiveFeedback(client, agentAccount, asset, collection, atomConfig, atomStats, registryAuthority, score, tag1, tag2, endpoint, feedbackUri, feedbackHash, feedbackIndex) {
@@ -316,26 +359,30 @@ export class ReputationInstructionBuilder {
             feedbackHash,
             this.serializeU64(feedbackIndex),
         ]);
+        const hasAtomAccounts = !!(atomConfig && atomStats && registryAuthority);
+        if ((atomConfig || atomStats || registryAuthority) && !hasAtomAccounts) {
+            throw new Error('ATOM accounts must be all provided or all omitted');
+        }
+        const keys = [
+            { pubkey: client, isSigner: true, isWritable: true },
+            { pubkey: agentAccount, isSigner: false, isWritable: false },
+            { pubkey: asset, isSigner: false, isWritable: false },
+            { pubkey: collection, isSigner: false, isWritable: false },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ];
+        if (hasAtomAccounts) {
+            keys.push({ pubkey: atomConfig, isSigner: false, isWritable: false }, { pubkey: atomStats, isSigner: false, isWritable: true }, { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false }, { pubkey: registryAuthority, isSigner: false, isWritable: false });
+        }
         return new TransactionInstruction({
             programId: this.programId,
-            keys: [
-                { pubkey: client, isSigner: true, isWritable: true },
-                { pubkey: agentAccount, isSigner: false, isWritable: false },
-                { pubkey: asset, isSigner: false, isWritable: false },
-                { pubkey: collection, isSigner: false, isWritable: false },
-                { pubkey: atomConfig, isSigner: false, isWritable: false },
-                { pubkey: atomStats, isSigner: false, isWritable: true },
-                { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false },
-                { pubkey: registryAuthority, isSigner: false, isWritable: false },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            ],
+            keys,
             data,
         });
     }
     /**
      * Build revokeFeedback instruction - v0.4.0
      * Matches: revoke_feedback(feedback_index)
-     * Accounts: client (signer), agent_account, asset, atom_config, atom_stats, atom_engine_program, registry_authority, system_program
+     * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
      * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
     buildRevokeFeedback(client, agentAccount, asset, atomConfig, atomStats, registryAuthority, feedbackIndex) {
@@ -343,29 +390,35 @@ export class ReputationInstructionBuilder {
             REPUTATION_DISCRIMINATORS.revokeFeedback,
             this.serializeU64(feedbackIndex),
         ]);
+        const hasAtomAccounts = !!(atomConfig && atomStats && registryAuthority);
+        if ((atomConfig || atomStats || registryAuthority) && !hasAtomAccounts) {
+            throw new Error('ATOM accounts must be all provided or all omitted');
+        }
+        const keys = [
+            { pubkey: client, isSigner: true, isWritable: true },
+            { pubkey: agentAccount, isSigner: false, isWritable: false },
+            { pubkey: asset, isSigner: false, isWritable: false },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ];
+        if (hasAtomAccounts) {
+            keys.push({ pubkey: atomConfig, isSigner: false, isWritable: false }, { pubkey: atomStats, isSigner: false, isWritable: true }, { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false }, { pubkey: registryAuthority, isSigner: false, isWritable: false });
+        }
         return new TransactionInstruction({
             programId: this.programId,
-            keys: [
-                { pubkey: client, isSigner: true, isWritable: true },
-                { pubkey: agentAccount, isSigner: false, isWritable: false },
-                { pubkey: asset, isSigner: false, isWritable: false },
-                { pubkey: atomConfig, isSigner: false, isWritable: false },
-                { pubkey: atomStats, isSigner: false, isWritable: true },
-                { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false },
-                { pubkey: registryAuthority, isSigner: false, isWritable: false },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            ],
+            keys,
             data,
         });
     }
     /**
-     * Build appendResponse instruction - v0.3.0
-     * Matches: append_response(feedback_index, response_uri, response_hash)
-     * Accounts: responder (signer), payer (signer), asset, feedback_account, response_index, response_account, system_program
+     * Build appendResponse instruction - v0.4.1
+     * Matches: append_response(asset_key, client_address, feedback_index, response_uri, response_hash)
+     * Accounts: responder (signer), agent_account, asset
      */
-    buildAppendResponse(responder, payer, asset, feedbackAccount, responseIndex, responseAccount, feedbackIndex, responseUri, responseHash) {
+    buildAppendResponse(responder, agentAccount, asset, client, feedbackIndex, responseUri, responseHash) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.appendResponse,
+            asset.toBuffer(),
+            client.toBuffer(),
             this.serializeU64(feedbackIndex),
             this.serializeString(responseUri),
             responseHash,
@@ -374,12 +427,8 @@ export class ReputationInstructionBuilder {
             programId: this.programId,
             keys: [
                 { pubkey: responder, isSigner: true, isWritable: false },
-                { pubkey: payer, isSigner: true, isWritable: true },
+                { pubkey: agentAccount, isSigner: false, isWritable: false },
                 { pubkey: asset, isSigner: false, isWritable: false },
-                { pubkey: feedbackAccount, isSigner: false, isWritable: false },
-                { pubkey: responseIndex, isSigner: false, isWritable: true },
-                { pubkey: responseAccount, isSigner: false, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
             data,
         });
@@ -436,10 +485,12 @@ export class ValidationInstructionBuilder {
      * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, validator, system_program
      */
     buildRequestValidation(validationConfig, requester, payer, agentAccount, asset, validationRequest, validatorAddress, nonce, requestUri, requestHash) {
+        // v0.5.0: Pass asset_key to avoid .key() allocations in seeds (OOM fix)
         const data = Buffer.concat([
             VALIDATION_DISCRIMINATORS.requestValidation,
-            validatorAddress.toBuffer(),
-            this.serializeU32(nonce),
+            asset.toBuffer(), // asset_key: Pubkey (32 bytes)
+            validatorAddress.toBuffer(), // validator_address: Pubkey (32 bytes)
+            this.serializeU32(nonce), // nonce: u32 (4 bytes)
             this.serializeString(requestUri),
             requestHash,
         ]);
@@ -459,14 +510,20 @@ export class ValidationInstructionBuilder {
         });
     }
     /**
-     * Build respondToValidation instruction - v0.3.0
-     * Matches: respond_to_validation(response, response_uri, response_hash, tag)
+     * Build respondToValidation instruction - v0.5.0 (OOM fix)
+     * Matches: respond_to_validation(asset_key, validator_address, nonce, response, response_uri, response_hash, tag)
      * Accounts: validator (signer), agent_account, asset, validation_request
      */
-    buildRespondToValidation(validationConfig, validator, agentAccount, asset, validationRequest, response, responseUri, responseHash, tag) {
+    buildRespondToValidation(validationConfig, validator, agentAccount, asset, validationRequest, nonce, response, responseUri, responseHash, tag) {
+        // v0.5.0: Pass asset_key and validator_address to avoid .key() allocations in seeds
+        const nonceBuffer = Buffer.alloc(4);
+        nonceBuffer.writeUInt32LE(nonce, 0);
         const data = Buffer.concat([
             VALIDATION_DISCRIMINATORS.respondToValidation,
-            Buffer.from([response]),
+            asset.toBuffer(), // asset_key: Pubkey
+            validator.toBuffer(), // validator_address: Pubkey
+            nonceBuffer, // nonce: u32
+            Buffer.from([response]), // response: u8
             this.serializeString(responseUri),
             responseHash,
             this.serializeString(tag),
@@ -546,7 +603,7 @@ export class ValidationInstructionBuilder {
 /**
  * Instruction builder for ATOM Engine
  * v0.4.0 - Agent Trust On-chain Model
- * Program: B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7
+ * Program: 6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf
  */
 export class AtomInstructionBuilder {
     programId;
@@ -571,6 +628,85 @@ export class AtomInstructionBuilder {
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
             data: ATOM_ENGINE_DISCRIMINATORS.initializeStats,
+        });
+    }
+    /**
+     * Build initializeConfig instruction
+     * Initializes global AtomConfig PDA (one-time setup by authority)
+     * Accounts: authority (signer), config (created), program_data, system_program
+     * Data: agent_registry_program (Pubkey)
+     */
+    buildInitializeConfig(authority, config, programData, agentRegistryProgram) {
+        // Serialize instruction data: discriminator (8 bytes) + agent_registry_program (32 bytes)
+        const data = Buffer.concat([
+            ATOM_ENGINE_DISCRIMINATORS.initializeConfig,
+            agentRegistryProgram.toBuffer(),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: authority, isSigner: true, isWritable: true },
+                { pubkey: config, isSigner: false, isWritable: true },
+                { pubkey: programData, isSigner: false, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build updateConfig instruction
+     * Updates global AtomConfig parameters (authority only)
+     * Accounts: authority (signer), config
+     * @param params - Optional config params (only provided fields are updated)
+     */
+    buildUpdateConfig(authority, config, params) {
+        // Serialize optional params - use Option encoding (1 byte flag + value)
+        const buffers = [ATOM_ENGINE_DISCRIMINATORS.updateConfig];
+        // Helper to serialize Option<T>
+        const optU16 = (val) => {
+            if (val === undefined)
+                return Buffer.from([0]); // None
+            const buf = Buffer.alloc(3);
+            buf.writeUInt8(1, 0); // Some
+            buf.writeUInt16LE(val, 1);
+            return buf;
+        };
+        const optU8 = (val) => {
+            if (val === undefined)
+                return Buffer.from([0]); // None
+            return Buffer.from([1, val]); // Some + value
+        };
+        const optBool = (val) => {
+            if (val === undefined)
+                return Buffer.from([0]); // None
+            return Buffer.from([1, val ? 1 : 0]); // Some + bool
+        };
+        // EMA Parameters (u16)
+        buffers.push(optU16(params.alphaFast));
+        buffers.push(optU16(params.alphaSlow));
+        buffers.push(optU16(params.alphaVolatility));
+        buffers.push(optU16(params.alphaArrival));
+        // Risk Weights (u8)
+        buffers.push(optU8(params.weightSybil));
+        buffers.push(optU8(params.weightBurst));
+        buffers.push(optU8(params.weightStagnation));
+        buffers.push(optU8(params.weightShock));
+        buffers.push(optU8(params.weightVolatility));
+        buffers.push(optU8(params.weightArrival));
+        // Thresholds
+        buffers.push(optU8(params.diversityThreshold));
+        buffers.push(optU8(params.burstThreshold));
+        buffers.push(optU16(params.shockThreshold));
+        buffers.push(optU16(params.volatilityThreshold));
+        // Paused flag
+        buffers.push(optBool(params.paused));
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: authority, isSigner: true, isWritable: false },
+                { pubkey: config, isSigner: false, isWritable: true },
+            ],
+            data: Buffer.concat(buffers),
         });
     }
 }

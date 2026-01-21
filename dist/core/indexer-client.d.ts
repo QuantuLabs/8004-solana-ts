@@ -26,12 +26,14 @@ export interface IndexedAgent {
     agent_wallet: string | null;
     collection: string;
     nft_name: string | null;
+    atom_enabled?: boolean;
     trust_tier: number;
     quality_score: number;
     confidence: number;
     risk_score: number;
     diversity_ratio: number;
     feedback_count: number;
+    raw_avg_score: number;
     sort_key: string;
     block_slot: number;
     tx_signature: string;
@@ -135,10 +137,12 @@ export interface GlobalStats {
 }
 /**
  * Feedback response from `feedback_responses` table
+ * v0.4.1 - Added client_address (audit fix #2)
  */
 export interface IndexedFeedbackResponse {
     id: string;
     asset: string;
+    client_address: string;
     feedback_index: number;
     responder: string;
     response_uri: string | null;
@@ -229,6 +233,11 @@ export declare class IndexerClient {
         offset?: number;
     }): Promise<IndexedFeedback[]>;
     /**
+     * Get single feedback by asset, client, and index
+     * v0.4.1 - Added to fix audit finding #1 (HIGH): readFeedback must filter by client
+     */
+    getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
+    /**
      * Get feedbacks by client
      */
     getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
@@ -240,6 +249,7 @@ export declare class IndexerClient {
      * Get feedbacks by endpoint
      */
     getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
+    getLastFeedbackIndex(asset: string, client: string): Promise<number>;
     /**
      * Get all metadata for an agent
      */
@@ -261,6 +271,11 @@ export declare class IndexerClient {
      */
     getPendingValidations(validator: string): Promise<IndexedValidation[]>;
     /**
+     * Get a specific validation by asset, validator, and nonce
+     * Returns full validation data including URIs (not available on-chain)
+     */
+    getValidation(asset: string, validator: string, nonce: number | bigint): Promise<IndexedValidation | null>;
+    /**
      * Get stats for a specific collection
      */
     getCollectionStats(collection: string): Promise<CollectionStats | null>;
@@ -281,5 +296,9 @@ export declare class IndexerClient {
      * Get responses for an agent's feedbacks
      */
     getFeedbackResponses(asset: string): Promise<IndexedFeedbackResponse[]>;
+    /**
+     * Get responses for a specific feedback (asset + client + index)
+     */
+    getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedbackResponse[]>;
 }
 //# sourceMappingURL=indexer-client.d.ts.map
