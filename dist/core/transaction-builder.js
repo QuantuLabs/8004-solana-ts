@@ -11,7 +11,9 @@ import { PublicKey, Transaction, TransactionInstruction, Keypair, sendAndConfirm
 import { PDAHelpers, PROGRAM_ID } from './pda-helpers.js';
 import { createHash } from 'crypto';
 import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, AtomInstructionBuilder, } from './instruction-builder.js';
-import { fetchRegistryConfigByPda, fetchRootConfig, getCurrentBaseCollection } from './config-reader.js';
+import { getProgramIds } from './programs.js';
+import { AgentAccount } from './borsh-schemas.js';
+import { fetchRegistryConfigByPda, fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
@@ -58,7 +60,7 @@ export class IdentityTransactionBuilder {
      * @param agentUri - Optional agent URI
      * @param metadata - Optional metadata entries (key-value pairs)
      * @param collection - Optional collection pubkey (defaults to base registry collection)
-     * @param options - Write options (skipSend, signer, assetPubkey)
+     * @param options - Write options (skipSend, signer, assetPubkey, atomEnabled)
      * @returns Transaction result with asset and all signatures
      */
     async registerAgent(agentUri, collection, options) {
@@ -108,8 +110,9 @@ export class IdentityTransactionBuilder {
             // Derive PDAs (v0.3.0 - uses asset, not agent_id)
             const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
             const [agentPda] = PDAHelpers.getAgentPDA(assetPubkey);
-            // Build register instruction
-            const registerInstruction = this.instructionBuilder.buildRegister(registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '');
+            const registerInstruction = options?.atomEnabled === false
+                ? this.instructionBuilder.buildRegisterWithOptions(registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '', false)
+                : this.instructionBuilder.buildRegister(registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '');
             // Create transaction with increased compute budget
             const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
                 units: 400_000,
@@ -157,6 +160,8 @@ export class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     async setAgentUri(asset, collection, newUri, options) {
+        // Pre-validate BEFORE try block so errors can be thrown
+        validateByteLength(newUri, 250, 'newUri');
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
@@ -195,6 +200,14 @@ export class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     async setMetadata(asset, key, value, immutable = false, options) {
+        // Pre-validate BEFORE try block so errors can be thrown
+        // Reserved key check
+        if (key === 'agentWallet') {
+            throw new Error('Key "agentWallet" is reserved. Use setAgentWallet() instead.');
+        }
+        // Key and value length validation (must match Rust constants)
+        validateByteLength(key, 32, 'key');
+        validateByteLength(value, 250, 'value');
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
@@ -324,6 +337,38 @@ export class IdentityTransactionBuilder {
                 return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
             }
             // Normal mode: send transaction
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Enable ATOM for an agent (one-way) - v0.4.4
+     * @param asset - Agent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    async enableAtom(asset, options) {
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const instruction = this.instructionBuilder.buildEnableAtom(agentPda, asset, signerPubkey);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }
@@ -692,10 +737,12 @@ export class IdentityTransactionBuilder {
 export class ReputationTransactionBuilder {
     connection;
     payer;
+    indexerClient;
     instructionBuilder;
-    constructor(connection, payer) {
+    constructor(connection, payer, indexerClient) {
         this.connection = connection;
         this.payer = payer;
+        this.indexerClient = indexerClient;
         this.instructionBuilder = new ReputationInstructionBuilder();
     }
     /**
@@ -736,19 +783,29 @@ export class ReputationTransactionBuilder {
             if (!agentInfo) {
                 throw new Error('Agent not found');
             }
-            // v0.4.0: Get collection from RootConfig (base collection)
-            // In v0.3.0+, all agents use the base collection unless using user registries
-            const collection = await getCurrentBaseCollection(this.connection);
-            if (!collection) {
-                throw new Error('Registry not initialized: base collection not found');
+            const agentAccount = AgentAccount.deserialize(agentInfo.data);
+            const collection = agentAccount.getCollectionPublicKey();
+            const atomEnabled = agentAccount.isAtomEnabled();
+            const atomConfig = atomEnabled ? getAtomConfigPDA()[0] : null;
+            const atomStats = atomEnabled ? getAtomStatsPDA(asset)[0] : null;
+            const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA()[0] : null;
+            // Use manual feedbackIndex if provided (for testing), otherwise get from indexer
+            let feedbackIndex;
+            if (options?.feedbackIndex !== undefined) {
+                feedbackIndex = options.feedbackIndex;
             }
-            // Derive ATOM Engine PDAs (v0.4.0)
-            const [atomConfig] = getAtomConfigPDA();
-            const [atomStats] = getAtomStatsPDA(asset);
-            const [registryAuthority] = PDAHelpers.getAtomCpiAuthorityPDA();
-            // v0.4.0: feedback_index is now tracked per client in events, not on-chain
-            // We use a placeholder index that will be assigned by the program
-            const feedbackIndex = BigInt(0);
+            else if (this.indexerClient) {
+                try {
+                    const lastIndex = await this.indexerClient.getLastFeedbackIndex(asset.toBase58(), signerPubkey.toBase58());
+                    feedbackIndex = BigInt(lastIndex + 1);
+                }
+                catch (error) {
+                    throw new Error(`Failed to get feedback index from indexer: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+            else {
+                throw new Error('Indexer client required for feedback_index calculation. Use options.feedbackIndex for manual index.');
+            }
             const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, // client (signer)
             agentPda, // agent_account PDA
             asset, // Core asset
@@ -795,9 +852,15 @@ export class ReputationTransactionBuilder {
             }
             // Derive PDAs (v0.4.0)
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
-            const [atomConfig] = getAtomConfigPDA();
-            const [atomStats] = getAtomStatsPDA(asset);
-            const [registryAuthority] = PDAHelpers.getAtomCpiAuthorityPDA();
+            const agentInfo = await this.connection.getAccountInfo(agentPda);
+            if (!agentInfo) {
+                throw new Error('Agent not found');
+            }
+            const agentAccount = AgentAccount.deserialize(agentInfo.data);
+            const atomEnabled = agentAccount.isAtomEnabled();
+            const atomConfig = atomEnabled ? getAtomConfigPDA()[0] : null;
+            const atomStats = atomEnabled ? getAtomStatsPDA(asset)[0] : null;
+            const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA()[0] : null;
             const instruction = this.instructionBuilder.buildRevokeFeedback(signerPubkey, agentPda, asset, atomConfig, atomStats, registryAuthority, feedbackIndex);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -823,55 +886,40 @@ export class ReputationTransactionBuilder {
     /**
      * Append response to feedback - v0.3.0
      * @param asset - Agent Core asset
+     * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index
      * @param responseUri - Response URI
-     * @param responseHash - Response hash
+     * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    async appendResponse(asset, feedbackIndex, responseUri, responseHash, options) {
+    async appendResponse(asset, client, feedbackIndex, responseUri, responseHash, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            // Security: Use byte length validation for UTF-8 strings
-            validateByteLength(responseUri, 200, 'responseUri');
-            if (responseHash.length !== 32) {
+            validateByteLength(responseUri, 250, 'responseUri');
+            if (!responseHash) {
+                if (!responseUri.startsWith('ipfs://')) {
+                    throw new Error('responseHash is required unless responseUri is ipfs://');
+                }
+            }
+            else if (responseHash.length !== 32) {
                 throw new Error('responseHash must be 32 bytes');
             }
-            // v0.3.0: Derive PDAs using asset
-            const [feedbackPda] = PDAHelpers.getFeedbackPDA(asset, feedbackIndex);
-            const [responseIndexPda] = PDAHelpers.getResponseIndexPDA(asset, feedbackIndex);
-            // Fetch current response index
-            let responseIndexValue = BigInt(0);
-            const responseIndexInfo = await this.connection.getAccountInfo(responseIndexPda);
-            if (responseIndexInfo) {
-                // Skip discriminator (8 bytes), then read next_index(8) + bump(1) = 9 bytes minimum
-                const data = responseIndexInfo.data.slice(8);
-                // Security: Validate buffer size before reading
-                if (data.length < 8) {
-                    throw new Error(`Invalid ResponseIndex data: expected >= 8 bytes, got ${data.length}`);
-                }
-                responseIndexValue = data.readBigUInt64LE(0); // next_index is first field after discriminator
-            }
-            const [responsePda] = PDAHelpers.getResponsePDA(asset, feedbackIndex, responseIndexValue);
-            const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, // responder
-            signerPubkey, // payer
-            asset, // Core asset
-            feedbackPda, responseIndexPda, responsePda, feedbackIndex, responseUri, responseHash);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const hash = responseHash ?? Buffer.alloc(32);
+            const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, agentPda, asset, client, feedbackIndex, responseUri, hash);
             const transaction = new Transaction().add(instruction);
-            // If skipSend, return serialized transaction
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-                const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-                return { ...prepared, responseIndex: responseIndexValue };
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
             }
-            // Normal mode: send transaction
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }
             const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
-            return { signature, success: true, responseIndex: responseIndexValue };
+            return { signature, success: true };
         }
         catch (error) {
             return {
@@ -889,47 +937,14 @@ export class ReputationTransactionBuilder {
      * @param tag1 - First tag (max 32 bytes)
      * @param tag2 - Second tag (max 32 bytes)
      * @param options - Write options (skipSend, signer)
+     * @deprecated Not supported on-chain in current program
      */
     async setFeedbackTags(asset, feedbackIndex, tag1, tag2, options) {
-        try {
-            const signerPubkey = options?.signer || this.payer?.publicKey;
-            if (!signerPubkey) {
-                throw new Error('signer required when SDK has no signer configured');
-            }
-            // Validate inputs - Security: Use byte length validation for UTF-8 strings
-            validateByteLength(tag1, 32, 'tag1');
-            validateByteLength(tag2, 32, 'tag2');
-            if (!tag1 && !tag2) {
-                throw new Error('At least one tag must be provided');
-            }
-            // Derive PDAs (v0.3.0 - uses asset)
-            const [feedbackPda] = PDAHelpers.getFeedbackPDA(asset, feedbackIndex);
-            const [feedbackTagsPda] = PDAHelpers.getFeedbackTagsPDA(asset, feedbackIndex);
-            const instruction = this.instructionBuilder.buildSetFeedbackTags(signerPubkey, // client
-            signerPubkey, // payer
-            feedbackPda, // feedback_account
-            feedbackTagsPda, // feedback_tags
-            feedbackIndex, tag1, tag2);
-            const transaction = new Transaction().add(instruction);
-            // If skipSend, return serialized transaction
-            if (options?.skipSend) {
-                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-            }
-            // Normal mode: send transaction
-            if (!this.payer) {
-                throw new Error('No signer configured - SDK is read-only');
-            }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
-            return { signature, success: true };
-        }
-        catch (error) {
-            return {
-                signature: '',
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
+        return {
+            signature: '',
+            success: false,
+            error: 'setFeedbackTags is not supported on-chain in this program',
+        };
     }
 }
 /**
@@ -963,7 +978,7 @@ export class ValidationTransactionBuilder {
             // Security: Validate nonce range (u32)
             validateNonce(nonce);
             // Security: Use byte length validation for UTF-8 strings
-            validateByteLength(requestUri, 200, 'requestUri');
+            validateByteLength(requestUri, 250, 'requestUri');
             if (requestHash.length !== 32) {
                 throw new Error('requestHash must be 32 bytes');
             }
@@ -1025,7 +1040,7 @@ export class ValidationTransactionBuilder {
             // Security: Validate nonce range (u32)
             validateNonce(nonce);
             // Security: Use byte length validation for UTF-8 strings
-            validateByteLength(responseUri, 200, 'responseUri');
+            validateByteLength(responseUri, 250, 'responseUri');
             if (responseHash.length !== 32) {
                 throw new Error('responseHash must be 32 bytes');
             }
@@ -1034,7 +1049,7 @@ export class ValidationTransactionBuilder {
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, signerPubkey, // validator
             nonce);
-            const instruction = this.instructionBuilder.buildRespondToValidation(validationConfigPda, signerPubkey, agentPda, asset, validationRequestPda, response, responseUri, responseHash, tag);
+            const instruction = this.instructionBuilder.buildRespondToValidation(validationConfigPda, signerPubkey, agentPda, asset, validationRequestPda, nonce, response, responseUri, responseHash, tag);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
@@ -1065,47 +1080,14 @@ export class ValidationTransactionBuilder {
      * @param responseHash - Response hash
      * @param tag - Response tag
      * @param options - Write options (skipSend, signer)
+     * @deprecated Not supported on-chain in current program
      */
     async updateValidation(asset, nonce, response, responseUri, responseHash, tag, options) {
-        try {
-            const signerPubkey = options?.signer || this.payer?.publicKey;
-            if (!signerPubkey) {
-                throw new Error('signer required when SDK has no signer configured');
-            }
-            if (response < 0 || response > 100) {
-                throw new Error('Response must be between 0 and 100');
-            }
-            // Security: Validate nonce range (u32)
-            validateNonce(nonce);
-            // Security: Use byte length validation for UTF-8 strings
-            validateByteLength(responseUri, 200, 'responseUri');
-            if (responseHash.length !== 32) {
-                throw new Error('responseHash must be 32 bytes');
-            }
-            validateByteLength(tag, 32, 'tag');
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
-            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, signerPubkey, nonce);
-            const instruction = this.instructionBuilder.buildUpdateValidation(signerPubkey, asset, agentPda, validationRequestPda, response, responseUri, responseHash, tag);
-            const transaction = new Transaction().add(instruction);
-            // If skipSend, return serialized transaction
-            if (options?.skipSend) {
-                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-            }
-            // Normal mode: send transaction
-            if (!this.payer) {
-                throw new Error('No signer configured - SDK is read-only');
-            }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
-            return { signature, success: true };
-        }
-        catch (error) {
-            return {
-                signature: '',
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
+        return {
+            signature: '',
+            success: false,
+            error: 'updateValidation is not supported on-chain in this program',
+        };
     }
     /**
      * Close validation request to recover rent - v0.3.0
@@ -1114,38 +1096,14 @@ export class ValidationTransactionBuilder {
      * @param nonce - Request nonce
      * @param rentReceiver - Address to receive rent (defaults to signer)
      * @param options - Write options (skipSend, signer)
+     * @deprecated Not supported on-chain in current program
      */
     async closeValidation(asset, validatorAddress, nonce, rentReceiver, options) {
-        try {
-            const signerPubkey = options?.signer || this.payer?.publicKey;
-            if (!signerPubkey) {
-                throw new Error('signer required when SDK has no signer configured');
-            }
-            // Security: Validate nonce range (u32)
-            validateNonce(nonce);
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
-            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validatorAddress, nonce);
-            const instruction = this.instructionBuilder.buildCloseValidation(signerPubkey, asset, agentPda, validationRequestPda, rentReceiver || signerPubkey);
-            const transaction = new Transaction().add(instruction);
-            // If skipSend, return serialized transaction
-            if (options?.skipSend) {
-                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-            }
-            // Normal mode: send transaction
-            if (!this.payer) {
-                throw new Error('No signer configured - SDK is read-only');
-            }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
-            return { signature, success: true };
-        }
-        catch (error) {
-            return {
-                signature: '',
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
+        return {
+            signature: '',
+            success: false,
+            error: 'closeValidation is not supported on-chain in this program',
+        };
     }
 }
 /**
@@ -1173,11 +1131,14 @@ export class AtomTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            // Get collection from RootConfig
-            const collection = await getCurrentBaseCollection(this.connection);
-            if (!collection) {
-                throw new Error('Registry not initialized: base collection not found');
+            // Get collection from AgentAccount (supports user registries)
+            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const agentInfo = await this.connection.getAccountInfo(agentPda);
+            if (!agentInfo) {
+                throw new Error('Agent not found');
             }
+            const agentAccount = AgentAccount.deserialize(agentInfo.data);
+            const collection = agentAccount.getCollectionPublicKey();
             // Derive ATOM Engine PDAs
             const [atomConfig] = getAtomConfigPDA();
             const [atomStats] = getAtomStatsPDA(asset);
@@ -1189,6 +1150,78 @@ export class AtomTransactionBuilder {
                 return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
             }
             // Normal mode: send transaction
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Initialize global ATOM config - v0.4.x
+     * One-time setup by program authority
+     * @param agentRegistryProgram - Optional agent registry program ID override
+     * @param options - Write options
+     */
+    async initializeConfig(agentRegistryProgram, options) {
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            // Derive ATOM Engine config PDA
+            const [atomConfig] = getAtomConfigPDA();
+            // Get program data PDA (for authority verification)
+            const programIds = getProgramIds();
+            const [programData] = PublicKey.findProgramAddressSync([programIds.atomEngine.toBuffer()], new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111'));
+            const registryProgram = agentRegistryProgram || programIds.agentRegistry;
+            const instruction = this.instructionBuilder.buildInitializeConfig(signerPubkey, atomConfig, programData, registryProgram);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Update global ATOM config parameters - v0.4.x
+     * Authority only
+     * @param params - Config parameters to update (only provided fields are changed)
+     * @param options - Write options
+     */
+    async updateConfig(params, options) {
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            // Derive ATOM Engine config PDA
+            const [atomConfig] = getAtomConfigPDA();
+            const instruction = this.instructionBuilder.buildUpdateConfig(signerPubkey, atomConfig, params);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }

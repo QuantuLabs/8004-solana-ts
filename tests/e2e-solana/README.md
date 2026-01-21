@@ -1,197 +1,116 @@
-# Solana SDK E2E Tests
+# E2E Tests - 8004 Solana SDK
 
-Full end-to-end tests of the Solana SDK against devnet.
+**Complete E2E test suite for the 8004 Solana Agent Registry SDK**
 
-## ⚠️ Important Note
+---
 
-These tests hit real devnet and are intended for local runs. They live in `tests/e2e-solana/`.
+## Overview
+
+This directory contains comprehensive End-to-End (E2E) tests covering **100% of on-chain instructions** plus security and indexer API tests.
+
+### Test Coverage Summary
+
+| Module | File | Instructions Covered | Tests |
+|--------|------|---------------------|-------|
+| **Identity** | `01-identity-complete.test.ts` | 15/15 (100%) | ~60 |
+| **Reputation** | `02-reputation-complete.test.ts` | 3/3 (100%) | ~35 |
+| **Validation** | `03-validation-complete.test.ts` | 3/3 (100%) | ~30 |
+| **ATOM Engine** | `04-atom-engine-complete.test.ts` | 6/6 (100%) | ~40 |
+| **Security** | `05-security-attacks.test.ts` | N/A | 13+ |
+| **Indexer API** | `06-indexer-api.test.ts` | N/A | 11 |
+| **TOTAL** | **6 files** | **27/27 (100%)** | **~189** |
+
+---
+
+## Running Tests
+
+### Prerequisites
+
+1. **Localnet running** with deployed programs:
+   ```bash
+   cd /path/to/8004-solana
+   solana-test-validator &
+   anchor deploy --provider.cluster localnet
+   ```
+
+2. **Environment variables**:
+   ```bash
+   export SOLANA_RPC_URL=http://127.0.0.1:8899
+   export INDEXER_URL=https://your-indexer-url.com
+   ```
+
+### Run All Tests
+
+```bash
+cd /path/to/agent0-ts-solana
+
+# Run all E2E tests sequentially
+npm run test:e2e:all
+
+# Or run all in parallel (faster)
+npm run test:e2e
+```
+
+### Run Individual Test Suites
+
+```bash
+# Identity module (15 instructions)
+npm run test:e2e:identity
+
+# Reputation module (3 instructions)
+npm run test:e2e:reputation
+
+# Validation module (3 instructions)
+npm run test:e2e:validation
+
+# ATOM Engine module (6 instructions)
+npm run test:e2e:atom
+
+# Security attacks (13 tests)
+npm run test:e2e:security
+
+# Indexer API (11 methods)
+npm run test:e2e:indexer
+```
+
+---
 
 ## Test Files
 
-### 1. e2e-full-flow.test.ts
-Tests the full agent lifecycle:
-- ✅ Register agent
-- ✅ Update metadata
-- ✅ Give feedback
-- ✅ Read reputation
-- ✅ Add response
-- ✅ Request validation
-- ✅ Respond to validation
-- ✅ Revoke feedback
-- ✅ Multi-agent queries
+### 01-identity-complete.test.ts
+**Coverage**: 15 instructions
 
-**Scenario**: Creates an agent, gives feedback, adds a response, validates, and revokes.
+Instructions: initialize, create_base_registry, rotate_base_registry, create_user_registry, update_user_registry_metadata, register, register_with_options, enable_atom, set_agent_uri, set_metadata_pda, delete_metadata_pda, set_agent_wallet, sync_owner, owner_of, transfer_agent
 
-### 2. e2e-error-scenarios.test.ts
-Tests error cases and edge cases:
-- ❌ Non-existent entities
-- ❌ Permission errors (read-only SDK)
-- ❌ Invalid inputs
-- ❌ Edge cases (long URIs, special characters)
-- ❌ Network errors
-- ⚡ Concurrent operations
+### 02-reputation-complete.test.ts
+**Coverage**: 3 instructions
 
-### 3. e2e-performance.test.ts
-Performance and scalability tests:
-- ⏱️  Response time
-- ⚡ Batch operations
-- 📊 Large datasets
-- 🚀 Cache and throughput
-- 💾 Memory efficiency
+Instructions: give_feedback, revoke_feedback, append_response
 
-## Prerequisites
+### 03-validation-complete.test.ts
+**Coverage**: 3 instructions
 
-```bash
-# 1. Environment variable with Solana private key
-export SOLANA_PRIVATE_KEY='[1,2,3,...]'  # Uint8Array JSON
+Instructions: initialize_validation_config, request_validation, respond_to_validation
 
-# 2. SOL balance on devnet
-# Get devnet SOL: https://faucet.solana.com/
+### 04-atom-engine-complete.test.ts
+**Coverage**: 6 instructions
 
-# 3. Programs deployed on devnet
-# Program IDs must match those in src/core/programs.ts
-```
+Instructions: initialize_config, update_config, initialize_stats, update_stats, get_summary, revoke_stats
 
-## Running
+### 05-security-attacks.test.ts
+**Coverage**: 13+ security tests
 
-### All E2E tests
-```bash
-cd /Users/true/Documents/Pipeline/CasterCorp/agent0-ts-solana
-npm test tests/e2e-solana
-```
+Tests: Ed25519 attacks (3), CPI bypass (3), Immutability (3), Validation integrity (1), Fake accounts (3), Bonus tests (8+)
 
-### Specific test
-```bash
-# Full flow
-npm test tests/e2e-solana/e2e-full-flow.test.ts
+### 06-indexer-api.test.ts
+**Coverage**: 11 methods
 
-# Error scenarios
-npm test tests/e2e-solana/e2e-error-scenarios.test.ts
+Methods: isIndexerAvailable, searchAgents, getLeaderboard, getGlobalStats, getCollectionStats, getFeedbacksByEndpoint, getFeedbacksByTag, getAgentByWallet, getPendingValidations, getAgentReputationFromIndexer, getFeedbacksFromIndexer
 
-# Performance
-npm test tests/e2e-solana/e2e-performance.test.ts
-```
+---
 
-### With verbose output
-```bash
-npm test tests/e2e-solana -- --verbose
-```
+## Test Results
 
-## Expected Results
+Expected: ✅ **100% pass rate (27/27 instructions, ~189 tests)**
 
-### e2e-full-flow.test.ts
-```
-✅ Agent registered with ID: 123
-✅ Agent loaded successfully
-✅ Metadata set
-✅ URI updated
-✅ Feedback given with index: 0
-✅ Feedback loaded (score: 85)
-✅ Reputation summary (average: 85, total: 1)
-✅ Response appended
-✅ Response count: 1
-✅ Validation requested (nonce: 0)
-✅ Validation response sent
-✅ Feedback revoked
-✅ Revoked feedback excluded from default listing
-```
-
-### e2e-error-scenarios.test.ts
-```
-✅ Non-existent entities return null/empty
-✅ Read-only SDK throws on write operations
-✅ Invalid inputs rejected
-✅ Edge cases handled gracefully
-✅ Network errors caught
-✅ Concurrent operations work
-```
-
-### e2e-performance.test.ts
-```
-⏱️  loadAgent: ~500ms
-⏱️  getSummary: ~200ms (cached)
-⏱️  5 agents in parallel: ~1500ms
-⏱️  Read all feedbacks: ~800ms
-⏱️  Throughput: ~5 req/sec sequential
-⏱️  Throughput: ~20 req/sec parallel
-```
-
-## Estimated Costs (Devnet)
-
-Each e2e-full-flow test consumes approximately:
-- Register agent: ~0.001 SOL
-- Set metadata: ~0.0005 SOL
-- Set URI: ~0.0005 SOL
-- Give feedback: ~0.002 SOL
-- Append response: ~0.001 SOL
-- Request validation: ~0.001 SOL
-- Respond validation: ~0.0005 SOL
-- Revoke feedback: ~0.0005 SOL
-
-**Total per run**: ~0.007 SOL (~$0.0007 at $0.10/SOL)
-
-On devnet it's free (faucet), but keep these numbers in mind for mainnet.
-
-## Timeouts
-
-Tests are configured with generous timeouts for devnet:
-- Read operations: 30s
-- Write operations: 60s
-- Performance tests: 60s
-
-If devnet is slow, increase the timeouts.
-
-## Debugging
-
-### See detailed logs
-```bash
-ANCHOR_LOG=true npm test tests/e2e-solana/e2e-full-flow.test.ts
-```
-
-### Inspect transactions
-Copy the transaction signatures from the logs and view them at:
-- https://explorer.solana.com/?cluster=devnet
-
-### Check accounts
-```bash
-solana account <PUBKEY> --url devnet
-```
-
-## Maintenance
-
-These E2E tests:
-- ✅ Run against real devnet
-- ✅ Create real transactions
-- ✅ Cost SOL (free on devnet)
-- ❌ Not suitable for CI/CD
-- ⚠️  May fail if devnet is down
-
-For CI/CD, use the lighter integration tests in `tests/integration/`.
-
-## Cleanup
-
-These tests create agents and feedbacks on devnet. No special cleanup is needed because:
-1. It is devnet (test network)
-2. The data is useful for testing read functions
-3. Accounts can be closed manually if needed
-
-## Tips
-
-1. **Low balance?** → https://faucet.solana.com/
-2. **Slow devnet?** → Increase timeouts
-3. **RPC rate limit?** → Use your own RPC URL
-4. **Flaky tests?** → Add delays between operations
-
-## FAQ
-
-**Q: Why are these tests not suited for CI/CD?**
-A: They hit real devnet, cost SOL, and take time to run.
-
-**Q: How do I run them in CI/CD?**
-A: Do not run them in CI/CD. Use the integration tests in `tests/integration/`.
-
-**Q: Can I run them against mainnet?**
-A: Yes, but watch the costs. Switch `createDevnetSDK()` to `createMainnetSDK()`.
-
-**Q: How long do they take?**
-A: About 5-10 minutes for a full run, depending on devnet speed.
+See `TEST_COVERAGE_ANALYSIS.md` for detailed coverage comparison with MCP tests.

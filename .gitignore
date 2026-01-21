@@ -46,6 +46,14 @@ test-ledger/
 package-lock.json
 yarn.lock
 .pnp.*
+
+# Compiled JS (keep TS sources)
+examples/*.js
+tests/**/*.js
+scripts/*.js
+
+# Test wallets (contains private keys)
+.test-wallets.json
 # Reference docs (agent0-ts implementation reference)
 docs/reference/
 
@@ -56,3 +64,4 @@ compare-accounts.ts
 test-atom-tier.ts
 test-complete-e2e.ts
 test-e2e-supabase.ts
+.test-wallets.json

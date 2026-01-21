@@ -18,6 +18,8 @@ export declare function matchesDiscriminator(data: Buffer, expected: Buffer): bo
 export declare const IDENTITY_DISCRIMINATORS: {
     readonly initialize: Buffer<ArrayBuffer>;
     readonly register: Buffer<ArrayBuffer>;
+    readonly registerWithOptions: Buffer<ArrayBuffer>;
+    readonly enableAtom: Buffer<ArrayBuffer>;
     readonly registerEmpty: Buffer<ArrayBuffer>;
     readonly setMetadata: Buffer<ArrayBuffer>;
     readonly deleteMetadata: Buffer<ArrayBuffer>;
@@ -46,6 +48,8 @@ export declare const REPUTATION_DISCRIMINATORS: {
  * v0.4.0 - For atom-engine program CPI and direct calls
  */
 export declare const ATOM_ENGINE_DISCRIMINATORS: {
+    readonly initializeConfig: Buffer<ArrayBuffer>;
+    readonly updateConfig: Buffer<ArrayBuffer>;
     readonly initializeStats: Buffer<ArrayBuffer>;
     readonly updateStats: Buffer<ArrayBuffer>;
     readonly revokeStats: Buffer<ArrayBuffer>;
@@ -56,6 +60,7 @@ export declare const ATOM_ENGINE_DISCRIMINATORS: {
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
  */
 export declare const VALIDATION_DISCRIMINATORS: {
+    readonly initializeValidationConfig: Buffer<ArrayBuffer>;
     readonly requestValidation: Buffer<ArrayBuffer>;
     readonly respondToValidation: Buffer<ArrayBuffer>;
     readonly updateValidation: Buffer<ArrayBuffer>;
@@ -77,5 +82,7 @@ export declare const ACCOUNT_DISCRIMINATORS: {
     readonly ResponseIndexAccount: Buffer<ArrayBuffer>;
     readonly ResponseAccount: Buffer<ArrayBuffer>;
     readonly ValidationRequest: Buffer<ArrayBuffer>;
+    readonly AtomStats: Buffer<ArrayBuffer>;
+    readonly AtomConfig: Buffer<ArrayBuffer>;
 };
 //# sourceMappingURL=instruction-discriminators.d.ts.map

@@ -116,15 +116,15 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
     }, 30000);
   });
 
-  describe('1b. ATOM Optional Mode (skipAtomInit)', () => {
+  describe('1b. ATOM Optional Mode (atomEnabled=false)', () => {
     let atomOptOutAsset: PublicKey;
 
-    it('should register agent without ATOM (skipAtomInit: true)', async () => {
+    it('should register agent without ATOM (atomEnabled: false)', async () => {
       const tokenUri = `ipfs://QmNoAtom${Date.now()}`;
 
-      console.log('\n📝 Registering agent with skipAtomInit: true...');
+      console.log('\n📝 Registering agent with atomEnabled: false...');
       const result = await sdk.registerAgent(tokenUri, undefined, {
-        skipAtomInit: true,
+        atomEnabled: false,
       });
 
       expect(result).toHaveProperty('success');
@@ -151,6 +151,19 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       console.log(`✅ ATOM stats not initialized (as expected)`);
     }, 30000);
+
+    it('should enable ATOM one-way before initializing stats', async () => {
+      console.log('\n🧲 Enabling ATOM one-way...');
+
+      const result = await sdk.enableAtom(atomOptOutAsset);
+
+      expect(result).toHaveProperty('signature');
+      expect(result).toHaveProperty('success');
+      expect(result.success).toBe(true);
+
+      console.log(`✅ ATOM enabled`);
+      console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
+    }, 60000);
 
     it('should manually initialize ATOM stats later', async () => {
       console.log('\n🔧 Manually initializing ATOM stats...');

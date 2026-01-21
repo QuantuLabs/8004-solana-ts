@@ -23,6 +23,8 @@ export function matchesDiscriminator(data: Buffer, expected: Buffer): boolean {
 export const IDENTITY_DISCRIMINATORS = {
   initialize: Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]),
   register: Buffer.from([211, 124, 67, 15, 211, 194, 178, 240]),
+  registerWithOptions: Buffer.from([177, 175, 96, 41, 59, 166, 13, 6]),
+  enableAtom: Buffer.from([202, 27, 88, 88, 150, 1, 240, 97]),
   registerEmpty: Buffer.from([89, 129, 72, 185, 119, 80, 140, 126]),
   setMetadata: Buffer.from([236, 60, 23, 48, 138, 69, 196, 153]),
   deleteMetadata: Buffer.from([228, 190, 195, 255, 61, 221, 26, 152]),
@@ -54,6 +56,8 @@ export const REPUTATION_DISCRIMINATORS = {
  * v0.4.0 - For atom-engine program CPI and direct calls
  */
 export const ATOM_ENGINE_DISCRIMINATORS = {
+  initializeConfig: Buffer.from([208, 127, 21, 1, 194, 190, 196, 70]),
+  updateConfig: Buffer.from([29, 158, 252, 191, 10, 83, 219, 99]),
   initializeStats: Buffer.from([144, 201, 117, 76, 127, 118, 176, 16]),
   updateStats: Buffer.from([145, 138, 9, 150, 178, 31, 158, 244]),
   revokeStats: Buffer.from([86, 178, 106, 195, 51, 236, 38, 104]),
@@ -93,4 +97,8 @@ export const ACCOUNT_DISCRIMINATORS = {
 
   // Validation Registry accounts
   ValidationRequest: Buffer.from([130, 174, 153, 111, 74, 241, 40, 140]),
+
+  // ATOM Engine accounts
+  AtomStats: Buffer.from([56, 69, 179, 48, 35, 229, 171, 236]),
+  AtomConfig: Buffer.from([156, 210, 241, 155, 72, 182, 4, 63]),
 } as const;

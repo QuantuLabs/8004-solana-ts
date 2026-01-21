@@ -258,6 +258,7 @@ export class SolanaFeedbackManager {
       );
 
       if (!indexed) {
+        logger.warn(`Feedback index ${feedbackIndex} not yet indexed. It may take a few seconds for the indexer to process new transactions. Try again shortly.`);
         return null;
       }
 
@@ -403,7 +404,11 @@ export class SolanaFeedbackManager {
    * Response PDAs no longer exist - data is event-only and indexed off-chain
    * REQUIRES indexer to be configured
    */
-  async readResponses(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]> {
+  async readResponses(
+    asset: PublicKey,
+    client: PublicKey,
+    feedbackIndex: bigint
+  ): Promise<SolanaResponse[]> {
     if (!this.indexerClient) {
       logger.error('readResponses requires indexer - Response PDAs removed in v0.4.0');
       throw new Error('Indexer required for readResponses in v0.4.1');
@@ -415,6 +420,10 @@ export class SolanaFeedbackManager {
         client.toBase58(),
         feedbackIndex
       );
+
+      if (indexedResponses.length === 0) {
+        logger.debug(`No responses found for feedback index ${feedbackIndex}. If recently submitted, the indexer may not have processed it yet.`);
+      }
 
       return indexedResponses.map((r, i) => ({
         asset,

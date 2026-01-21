@@ -208,14 +208,16 @@ export class AgentAccount {
     owner; // Pubkey - cached from Core asset
     asset; // Pubkey - unique identifier (Metaplex Core asset)
     bump;
+    atom_enabled; // bool (u8) - ATOM Engine enabled
     agent_wallet; // Option<Pubkey> - operational wallet (Ed25519 verified)
-    agent_uri; // max 200 bytes
+    agent_uri; // max 250 bytes
     nft_name; // max 32 bytes
     constructor(fields) {
         this.collection = fields.collection;
         this.owner = fields.owner;
         this.asset = fields.asset;
         this.bump = fields.bump;
+        this.atom_enabled = fields.atom_enabled;
         this.agent_wallet = fields.agent_wallet;
         this.agent_uri = fields.agent_uri;
         this.nft_name = fields.nft_name;
@@ -231,6 +233,7 @@ export class AgentAccount {
                     ['owner', [32]],
                     ['asset', [32]],
                     ['bump', 'u8'],
+                    ['atom_enabled', 'u8'],
                     ['agent_wallet', { kind: 'option', type: [32] }], // Option<Pubkey>
                     ['agent_uri', 'string'],
                     ['nft_name', 'string'],
@@ -239,15 +242,15 @@ export class AgentAccount {
         ],
     ]);
     static deserialize(data) {
-        // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + agent_wallet option tag(1) = 106 bytes minimum
-        // With Some(wallet): 106 + 32 = 138 bytes minimum
-        if (data.length < 106) {
-            throw new Error(`Invalid AgentAccount data: expected >= 106 bytes, got ${data.length}`);
+        // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet option tag(1) = 107 bytes minimum
+        // With Some(wallet): 107 + 32 = 139 bytes minimum
+        if (data.length < 107) {
+            throw new Error(`Invalid AgentAccount data: expected >= 107 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
         // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
-        // Layout: collection(32) + owner(32) + asset(32) + bump(1) + agent_wallet(Option) + agent_uri(String) + nft_name(String)
-        let offset = 32 + 32 + 32 + 1; // = 97, at agent_wallet Option tag
+        // Layout: collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet(Option) + agent_uri(String) + nft_name(String)
+        let offset = 32 + 32 + 32 + 1 + 1; // = 98, at agent_wallet Option tag
         // Pre-validate Option<Pubkey>
         const optionResult = preValidateBorshOption(accountData, offset, 32);
         offset += optionResult.consumedBytes;
@@ -282,6 +285,9 @@ export class AgentAccount {
             return null;
         }
         return new PublicKey(this.agent_wallet);
+    }
+    isAtomEnabled() {
+        return this.atom_enabled !== 0;
     }
     /**
      * Check if agent has an operational wallet configured

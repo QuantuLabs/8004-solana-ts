@@ -12,11 +12,11 @@ import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster } from './client.js';
 import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
-import { AgentAccount, ValidationRequest } from './borsh-schemas.js';
-import { TransactionResult, WriteOptions, RegisterAgentOptions, PreparedTransaction } from './transaction-builder.js';
+import { AgentAccount } from './borsh-schemas.js';
+import { TransactionResult, WriteOptions, GiveFeedbackOptions, RegisterAgentOptions, PreparedTransaction, UpdateAtomConfigParams } from './transaction-builder.js';
 import type { LivenessOptions, LivenessReport } from '../models/liveness.js';
 import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
-import { AtomStats, TrustTier } from './atom-schemas.js';
+import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { IndexerClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, CollectionStats, GlobalStats } from './indexer-client.js';
 import type { AgentSearchParams } from './indexer-types.js';
 export interface SolanaSDKConfig {
@@ -86,6 +86,38 @@ export interface CollectionInfo {
     registryType: 'BASE' | 'USER';
     authority: PublicKey;
     baseIndex: number;
+}
+/**
+ * Normalized validation data for user-friendly access
+ * Combines on-chain data with computed properties
+ * Note: URIs are only available in events/indexer, not on-chain
+ */
+export interface NormalizedValidation {
+    /** Agent asset pubkey (base58) */
+    asset: string;
+    /** Validator pubkey (base58) */
+    validator: string;
+    /** Request nonce */
+    nonce: number;
+    /** Response score (0-100) - alias for 'response' field */
+    score: number;
+    /** Raw response value from on-chain (0-100) */
+    response: number;
+    /** Whether validator has responded (computed from responded_at > 0) */
+    responded: boolean;
+    /** Timestamp of response (0 if pending) */
+    responded_at: bigint;
+    /** Request hash (hex string) */
+    request_hash: string;
+}
+/**
+ * Options for waitForValidation
+ */
+export interface WaitForValidationOptions {
+    /** Max wait time in milliseconds (default: 30000) */
+    timeout?: number;
+    /** Wait for response (responded_at > 0) instead of just account creation (default: false) */
+    waitForResponse?: boolean;
 }
 /**
  * Main SDK class for Solana ERC-8004 implementation
@@ -299,19 +331,21 @@ export declare class SolanaSDK {
      */
     getClients(asset: PublicKey): Promise<PublicKey[]>;
     /**
-     * 6. Get response count for a feedback - v0.3.0
+     * 6. Get response count for a feedback
      * @param asset - Agent Core asset pubkey
+     * @param client - Client public key (who gave the feedback)
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Number of responses
      */
-    getResponseCount(asset: PublicKey, feedbackIndex: number | bigint): Promise<number>;
+    getResponseCount(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint): Promise<number>;
     /**
-     * Bonus: Read all responses for a feedback - v0.3.0
+     * Bonus: Read all responses for a feedback
      * @param asset - Agent Core asset pubkey
+     * @param client - Client public key (who gave the feedback)
      * @param feedbackIndex - Feedback index (number or bigint)
      * @returns Array of response objects
      */
-    readResponses(asset: PublicKey, feedbackIndex: number | bigint): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
+    readResponses(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint): Promise<import('./feedback-manager-solana.js').SolanaResponse[]>;
     /**
      * Get ATOM stats for an agent
      * @param asset - Agent Core asset pubkey
@@ -325,6 +359,24 @@ export declare class SolanaSDK {
      * @param options - Write options (skipSend, signer)
      */
     initializeAtomStats(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Get global ATOM config - v0.4.x
+     * @returns AtomConfig or null if not initialized
+     */
+    getAtomConfig(): Promise<AtomConfig | null>;
+    /**
+     * Initialize global ATOM config (authority only) - v0.4.x
+     * One-time setup by program authority
+     * @param agentRegistryProgram - Optional agent registry program ID override
+     * @param options - Write options (skipSend, signer)
+     */
+    initializeAtomConfig(agentRegistryProgram?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Update global ATOM config parameters (authority only) - v0.4.x
+     * @param params - Config parameters to update (only provided fields are changed)
+     * @param options - Write options (skipSend, signer)
+     */
+    updateAtomConfig(params: UpdateAtomConfigParams, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Get trust tier for an agent
      * @param asset - Agent Core asset pubkey
@@ -443,7 +495,7 @@ export declare class SolanaSDK {
      * Agents registered to user collections still use the same reputation system.
      *
      * @param name - Collection name (max 32 bytes)
-     * @param uri - Collection metadata URI (max 200 bytes)
+     * @param uri - Collection metadata URI (max 250 bytes)
      * @param options - Write options (skipSend, signer, collectionPubkey)
      * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
      *
@@ -470,7 +522,7 @@ export declare class SolanaSDK {
      * Only the collection owner can update. Collection name is immutable.
      *
      * @param collection - Collection pubkey to update
-     * @param newUri - New collection URI (max 200 bytes)
+     * @param newUri - New collection URI (max 250 bytes)
      * @param options - Write options (skipSend, signer)
      * @returns Transaction result, or PreparedTransaction if skipSend
      *
@@ -493,6 +545,8 @@ export declare class SolanaSDK {
      *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
      *   - `signer`: PublicKey of the signer (required with skipSend)
      *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
+     *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
+     *     (use enableAtom() to turn it on later, one-way)
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
      *
      * @example
@@ -518,15 +572,26 @@ export declare class SolanaSDK {
      */
     setAgentUri(asset: PublicKey, collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set agent operational wallet (write operation) - v0.4.2
-     * Configures an operational wallet for the agent with Ed25519 signature verification
+     * Enable ATOM for an agent (one-way) - v0.4.4
      * @param asset - Agent Core asset pubkey
-     * @param newWallet - New operational wallet public key
-     * @param signature - Ed25519 signature from newWallet (64 bytes)
-     * @param deadline - Unix timestamp deadline (seconds, max 5 minutes in future)
      * @param options - Write options (skipSend, signer)
      */
-    setAgentWallet(asset: PublicKey, newWallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    enableAtom(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Prepare message for setAgentWallet (for web3 wallets like Phantom, Solflare)
+     * @example
+     * const prepared = await sdk.prepareSetAgentWallet(asset, walletPubkey);
+     * const signature = await wallet.signMessage(prepared.message);
+     * await prepared.complete(signature);
+     */
+    prepareSetAgentWallet(asset: PublicKey, newWallet: PublicKey, options?: WriteOptions): Promise<{
+        message: Uint8Array;
+        complete: (signature: Uint8Array) => Promise<TransactionResult | PreparedTransaction>;
+    }>;
+    /** Set agent wallet - simple version with Keypair (auto-signs) */
+    setAgentWallet(asset: PublicKey, keypair: Keypair, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /** Set agent wallet - advanced version with pre-signed signature */
+    setAgentWallet(asset: PublicKey, wallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set agent metadata (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
@@ -548,7 +613,7 @@ export declare class SolanaSDK {
      * Give feedback to an agent (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param feedbackFile - Feedback data object
-     * @param options - Write options (skipSend, signer)
+     * @param options - Write options (skipSend, signer, feedbackIndex)
      */
     giveFeedback(asset: PublicKey, feedbackFile: {
         score: number;
@@ -557,7 +622,7 @@ export declare class SolanaSDK {
         endpoint?: string;
         feedbackUri: string;
         feedbackHash: Buffer;
-    }, options?: WriteOptions): Promise<(TransactionResult & {
+    }, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;
@@ -570,58 +635,64 @@ export declare class SolanaSDK {
      */
     revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Append response to feedback (write operation) - v0.3.0
+     * Append response to feedback (write operation) - v0.4.1
      * @param asset - Agent Core asset pubkey
+     * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index (number or bigint)
      * @param responseUri - Response URI
-     * @param responseHash - Response hash
+     * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(asset: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
-        responseIndex?: bigint;
-    }) | (PreparedTransaction & {
-        responseIndex: bigint;
-    })>;
+    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Request validation (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param validator - Validator public key
-     * @param nonce - Request nonce (unique per agent-validator pair)
      * @param requestUri - Request URI (IPFS/Arweave)
-     * @param requestHash - Request hash (32 bytes)
-     * @param options - Write options (skipSend, signer)
+     * @param options - Write options (skipSend, signer, nonce, requestHash)
+     *   - nonce: Auto-generated if not provided (timestamp-based)
+     *   - requestHash: Optional, defaults to zeros (acceptable for IPFS URIs)
      */
-    requestValidation(asset: PublicKey, validator: PublicKey, nonce: number, requestUri: string, requestHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    requestValidation(asset: PublicKey, validator: PublicKey, requestUri: string, options?: WriteOptions & {
+        nonce?: number;
+        requestHash?: Buffer;
+    }): Promise<(TransactionResult & {
+        nonce?: bigint;
+    }) | PreparedTransaction>;
     /**
      * Respond to validation request (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
-     * @param nonce - Request nonce
-     * @param response - Response score (0-100)
+     * @param nonce - Request nonce (from requestValidation result)
+     * @param score - Response score (0-100)
      * @param responseUri - Response URI (IPFS/Arweave)
-     * @param responseHash - Response hash (32 bytes)
-     * @param tag - Response tag (max 32 bytes)
-     * @param options - Write options (skipSend, signer)
+     * @param options - Write options (skipSend, signer, responseHash, tag)
+     *   - responseHash: Optional, defaults to zeros (acceptable for IPFS URIs)
+     *   - tag: Optional response tag (max 32 bytes)
      */
-    respondToValidation(asset: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag?: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    respondToValidation(asset: PublicKey, nonce: number | bigint, score: number, responseUri: string, options?: WriteOptions & {
+        responseHash?: Buffer;
+        tag?: string;
+    }): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Read validation request (read operation) - v0.4.2
      * Reads ValidationRequest directly from on-chain (no indexer required)
+     * Returns normalized data with user-friendly properties
      * @param asset - Agent Core asset pubkey
      * @param validator - Validator public key
-     * @param nonce - Request nonce
-     * @returns ValidationRequest or null if not found
+     * @param nonce - Request nonce (number or bigint)
+     * @returns NormalizedValidation or null if not found
      */
-    readValidation(asset: PublicKey, validator: PublicKey, nonce: number): Promise<ValidationRequest | null>;
+    readValidation(asset: PublicKey, validator: PublicKey, nonce: number | bigint): Promise<NormalizedValidation | null>;
     /**
      * Wait for validation request to be available on-chain (with retry)
      * Useful for handling blockchain finalization delays
      * @param asset - Agent Core asset pubkey
      * @param validator - Validator public key
-     * @param nonce - Request nonce
-     * @param timeout - Max wait time in milliseconds (default: 30000)
-     * @returns ValidationRequest or null if timeout
+     * @param nonce - Request nonce (number or bigint)
+     * @param options - Wait options (timeout, waitForResponse)
+     * @returns NormalizedValidation or null if timeout
      */
-    waitForValidation(asset: PublicKey, validator: PublicKey, nonce: number, timeout?: number): Promise<ValidationRequest | null>;
+    waitForValidation(asset: PublicKey, validator: PublicKey, nonce: number | bigint, options?: WaitForValidationOptions): Promise<NormalizedValidation | null>;
     /**
      * Transfer agent ownership (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
@@ -630,6 +701,14 @@ export declare class SolanaSDK {
      * @param options - Write options (skipSend, signer)
      */
     transferAgent(asset: PublicKey, collection: PublicKey, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Sync agent owner after external NFT transfer (write operation)
+     * Call this after the Core NFT was transferred outside of the SDK
+     * to update the AgentAccount's owner field
+     * @param asset - Agent Core asset pubkey
+     * @param options - Write options (skipSend, signer)
+     */
+    syncOwner(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Check endpoint liveness for an agent
      */
@@ -696,5 +775,30 @@ export declare class SolanaSDK {
      * Get the current RPC URL being used
      */
     getRpcUrl(): string;
+    /**
+     * Compute SHA-256 hash from data (string or Buffer)
+     * Use this for feedback, validation, and response hashes
+     * @param data - String or Buffer to hash
+     * @returns 32-byte SHA-256 hash as Buffer
+     *
+     * @example
+     * const feedbackHash = SolanaSDK.computeHash('My feedback content');
+     * const dataHash = SolanaSDK.computeHash(Buffer.from(jsonData));
+     */
+    static computeHash(data: string | Buffer): Buffer;
+    /**
+     * Compute hash for a URI
+     * - IPFS/Arweave URIs: zeros (CID already contains content hash)
+     * - Other URIs: SHA-256 of the URI string
+     * @param uri - URI to hash
+     * @returns 32-byte hash as Buffer
+     *
+     * @example
+     * const hash = SolanaSDK.computeUriHash('https://example.com/data.json');
+     * // For IPFS, returns zeros since CID is already a hash
+     * const ipfsHash = SolanaSDK.computeUriHash('ipfs://Qm...');
+     */
+    static computeUriHash(uri: string): Buffer;
+    private computeUriHash;
 }
 //# sourceMappingURL=sdk-solana.d.ts.map

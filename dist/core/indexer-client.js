@@ -228,6 +228,20 @@ export class IndexerClient {
         return this.request(`/feedbacks${query}`);
     }
     /**
+     * Get single feedback by asset, client, and index
+     * v0.4.1 - Added to fix audit finding #1 (HIGH): readFeedback must filter by client
+     */
+    async getFeedback(asset, client, feedbackIndex) {
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            client_address: `eq.${client}`,
+            feedback_index: `eq.${feedbackIndex.toString()}`,
+            limit: 1,
+        });
+        const results = await this.request(`/feedbacks${query}`);
+        return results.length > 0 ? results[0] : null;
+    }
+    /**
      * Get feedbacks by client
      */
     async getFeedbacksByClient(client) {
@@ -254,6 +268,17 @@ export class IndexerClient {
             order: 'created_at.desc',
         });
         return this.request(`/feedbacks${query}`);
+    }
+    async getLastFeedbackIndex(asset, client) {
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            client_address: `eq.${client}`,
+            select: 'feedback_index',
+            order: 'feedback_index.desc',
+            limit: 1,
+        });
+        const results = await this.request(`/feedbacks${query}`);
+        return results.length > 0 ? results[0].feedback_index : -1;
     }
     // ============================================================================
     // Metadata
@@ -309,6 +334,20 @@ export class IndexerClient {
             order: 'created_at.desc',
         });
         return this.request(`/validations${query}`);
+    }
+    /**
+     * Get a specific validation by asset, validator, and nonce
+     * Returns full validation data including URIs (not available on-chain)
+     */
+    async getValidation(asset, validator, nonce) {
+        const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            validator: `eq.${validator}`,
+            nonce: `eq.${nonceNum}`,
+        });
+        const result = await this.request(`/validations${query}`);
+        return result.length > 0 ? result[0] : null;
     }
     // ============================================================================
     // Stats (Views)
@@ -368,5 +407,21 @@ export class IndexerClient {
         });
         return this.request(`/feedback_responses${query}`);
     }
+    /**
+     * Get responses for a specific feedback (asset + client + index)
+     */
+    async getFeedbackResponsesFor(asset, client, feedbackIndex) {
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            client_address: `eq.${client}`,
+            feedback_index: `eq.${feedbackIndex.toString()}`,
+            order: 'created_at.asc',
+        });
+        return this.request(`/feedback_responses${query}`);
+    }
 }
+// Modified:
+// - IndexedFeedbackResponse: Added client_address field
+// - Added getFeedback method to query by asset, client, and feedbackIndex
+// - Added getFeedbackResponsesFor method to query responses for specific feedback
 //# sourceMappingURL=indexer-client.js.map

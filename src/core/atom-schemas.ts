@@ -315,7 +315,67 @@ export class AtomStats {
   static deserialize(data: Buffer): AtomStats {
     // Skip 8-byte Anchor discriminator
     const dataWithoutDiscriminator = data.slice(8);
-    return deserializeUnchecked(AtomStats.schema, AtomStats, dataWithoutDiscriminator);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = deserializeUnchecked(AtomStats.schema, AtomStats, dataWithoutDiscriminator) as any;
+
+    // Ensure u64 fields are proper BigInt (borsh-js may return BN or other types)
+    const toBigInt = (val: unknown): bigint => {
+      if (typeof val === 'bigint') return val;
+      if (typeof val === 'number') return BigInt(val);
+      if (val && typeof (val as { toString: () => string }).toString === 'function') {
+        return BigInt((val as { toString: () => string }).toString());
+      }
+      return BigInt(0);
+    };
+
+    // Create new instance with properly typed fields
+    return new AtomStats({
+      collection: raw.collection,
+      asset: raw.asset,
+      first_feedback_slot: toBigInt(raw.first_feedback_slot),
+      last_feedback_slot: toBigInt(raw.last_feedback_slot),
+      feedback_count: toBigInt(raw.feedback_count),
+      ema_score_fast: raw.ema_score_fast,
+      ema_score_slow: raw.ema_score_slow,
+      ema_volatility: raw.ema_volatility,
+      ema_arrival_log: raw.ema_arrival_log,
+      peak_ema: raw.peak_ema,
+      max_drawdown: raw.max_drawdown,
+      epoch_count: raw.epoch_count,
+      current_epoch: raw.current_epoch,
+      min_score: raw.min_score,
+      max_score: raw.max_score,
+      first_score: raw.first_score,
+      last_score: raw.last_score,
+      hll_packed: raw.hll_packed,
+      hll_salt: toBigInt(raw.hll_salt),
+      recent_callers: (raw.recent_callers || []).map((c: unknown) => toBigInt(c)),
+      burst_pressure: raw.burst_pressure,
+      updates_since_hll_change: raw.updates_since_hll_change,
+      neg_pressure: raw.neg_pressure,
+      eviction_cursor: raw.eviction_cursor,
+      bypass_fingerprints: (raw.bypass_fingerprints || []).map((f: unknown) => toBigInt(f)),
+      bypass_fp_cursor: raw.bypass_fp_cursor,
+      bypass_score_avg: raw.bypass_score_avg,
+      bypass_count: raw.bypass_count,
+      ring_base_slot: toBigInt(raw.ring_base_slot),
+      quality_score: raw.quality_score,
+      quality_floor: raw.quality_floor,
+      quality_velocity: raw.quality_velocity,
+      velocity_epoch: raw.velocity_epoch,
+      confidence: raw.confidence,
+      risk_score: raw.risk_score,
+      loyalty_score: raw.loyalty_score,
+      diversity_ratio: raw.diversity_ratio,
+      trust_tier: raw.trust_tier,
+      tier_candidate: raw.tier_candidate,
+      tier_candidate_epoch: raw.tier_candidate_epoch,
+      tier_confirmed: raw.tier_confirmed,
+      freeze_epochs: raw.freeze_epochs,
+      schema_version: raw.schema_version,
+      flags: raw.flags,
+      bump: raw.bump,
+    });
   }
 
   // Helper methods

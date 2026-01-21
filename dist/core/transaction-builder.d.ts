@@ -8,6 +8,8 @@
  * - Multi-collection support via RootConfig
  */
 import { PublicKey, Transaction, Connection, Keypair, TransactionSignature } from '@solana/web3.js';
+import { UpdateAtomConfigParams } from './instruction-builder.js';
+export type { UpdateAtomConfigParams };
 export interface TransactionResult {
     signature: TransactionSignature;
     success: boolean;
@@ -29,13 +31,21 @@ export interface WriteOptions {
     feePayer?: PublicKey;
 }
 /**
+ * Extended options for giveFeedback
+ * Allows manual feedbackIndex for testing without indexer
+ */
+export interface GiveFeedbackOptions extends WriteOptions {
+    /** Manual feedback index - bypasses indexer lookup (for testing) */
+    feedbackIndex?: bigint;
+}
+/**
  * Extended options for registerAgent (requires assetPubkey when skipSend is true)
  */
 export interface RegisterAgentOptions extends WriteOptions {
     /** Required when skipSend is true - the client generates the asset keypair locally */
     assetPubkey?: PublicKey;
-    /** Skip automatic ATOM stats initialization (default: false). If true, you must call initializeAtomStats() before anyone can give feedback. */
-    skipAtomInit?: boolean;
+    /** Explicitly disable ATOM at creation (default: true = enabled). */
+    atomEnabled?: boolean;
 }
 /**
  * Result when skipSend is true - contains serialized transaction data
@@ -77,7 +87,7 @@ export declare class IdentityTransactionBuilder {
      * @param agentUri - Optional agent URI
      * @param metadata - Optional metadata entries (key-value pairs)
      * @param collection - Optional collection pubkey (defaults to base registry collection)
-     * @param options - Write options (skipSend, signer, assetPubkey)
+     * @param options - Write options (skipSend, signer, assetPubkey, atomEnabled)
      * @returns Transaction result with asset and all signatures
      */
     registerAgent(agentUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
@@ -126,6 +136,12 @@ export declare class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     syncOwner(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Enable ATOM for an agent (one-way) - v0.4.4
+     * @param asset - Agent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    enableAtom(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Create a user-owned collection - v0.3.0
      * Allows users to create their own 8004 asset collections for horizontal scaling
@@ -200,8 +216,9 @@ export declare class IdentityTransactionBuilder {
 export declare class ReputationTransactionBuilder {
     private connection;
     private payer?;
+    private indexerClient?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined);
+    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: any | undefined);
     /**
      * Give feedback - v0.4.0
      * @param asset - Agent Core asset
@@ -216,7 +233,7 @@ export declare class ReputationTransactionBuilder {
      * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
      * Feedbacks are no longer stored on-chain individually.
      */
-    giveFeedback(asset: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
+    giveFeedback(asset: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;
@@ -233,16 +250,13 @@ export declare class ReputationTransactionBuilder {
     /**
      * Append response to feedback - v0.3.0
      * @param asset - Agent Core asset
+     * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index
      * @param responseUri - Response URI
-     * @param responseHash - Response hash
+     * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(asset: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer, options?: WriteOptions): Promise<(TransactionResult & {
-        responseIndex?: bigint;
-    }) | (PreparedTransaction & {
-        responseIndex: bigint;
-    })>;
+    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set feedback tags (optional, creates FeedbackTagsPda) - v0.3.0
      * Creates a separate PDA for tags to save -42% cost when tags not needed
@@ -251,6 +265,7 @@ export declare class ReputationTransactionBuilder {
      * @param tag1 - First tag (max 32 bytes)
      * @param tag2 - Second tag (max 32 bytes)
      * @param options - Write options (skipSend, signer)
+     * @deprecated Not supported on-chain in current program
      */
     setFeedbackTags(asset: PublicKey, feedbackIndex: bigint, tag1: string, tag2: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
@@ -293,6 +308,7 @@ export declare class ValidationTransactionBuilder {
      * @param responseHash - Response hash
      * @param tag - Response tag
      * @param options - Write options (skipSend, signer)
+     * @deprecated Not supported on-chain in current program
      */
     updateValidation(asset: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
@@ -302,6 +318,7 @@ export declare class ValidationTransactionBuilder {
      * @param nonce - Request nonce
      * @param rentReceiver - Address to receive rent (defaults to signer)
      * @param options - Write options (skipSend, signer)
+     * @deprecated Not supported on-chain in current program
      */
     closeValidation(asset: PublicKey, validatorAddress: PublicKey, nonce: number, rentReceiver?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
@@ -321,5 +338,19 @@ export declare class AtomTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     initializeStats(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Initialize global ATOM config - v0.4.x
+     * One-time setup by program authority
+     * @param agentRegistryProgram - Optional agent registry program ID override
+     * @param options - Write options
+     */
+    initializeConfig(agentRegistryProgram?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Update global ATOM config parameters - v0.4.x
+     * Authority only
+     * @param params - Config parameters to update (only provided fields are changed)
+     * @param options - Write options
+     */
+    updateConfig(params: UpdateAtomConfigParams, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 //# sourceMappingURL=transaction-builder.d.ts.map
