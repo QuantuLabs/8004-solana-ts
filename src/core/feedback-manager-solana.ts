@@ -12,8 +12,6 @@ import { PublicKey } from '@solana/web3.js';
 import type { SolanaClient } from './client.js';
 import type { IPFSClient } from './ipfs-client.js';
 import type { IndexerClient, IndexedFeedback } from './indexer-client.js';
-import { PDAHelpers } from './pda-helpers.js';
-import { ResponseIndexAccount, ResponseAccount } from './borsh-schemas.js';
 import { AtomStats } from './atom-schemas.js';
 import { getAtomStatsPDA } from './atom-pda.js';
 import { logger } from '../utils/logger.js';

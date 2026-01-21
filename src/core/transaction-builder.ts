@@ -37,6 +37,7 @@ import { fetchRegistryConfigByPda, fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
+import type { IndexerClient } from './indexer-client.js';
 
 export interface TransactionResult {
   signature: TransactionSignature;
@@ -1126,7 +1127,8 @@ export class ReputationTransactionBuilder {
   constructor(
     private connection: Connection,
     private payer?: Keypair,
-    private indexerClient?: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private indexerClient?: IndexerClient
   ) {
     this.instructionBuilder = new ReputationInstructionBuilder();
   }
@@ -1407,11 +1409,11 @@ export class ReputationTransactionBuilder {
    * @deprecated Not supported on-chain in current program
    */
   async setFeedbackTags(
-    asset: PublicKey,
-    feedbackIndex: bigint,
-    tag1: string,
-    tag2: string,
-    options?: WriteOptions
+    _asset: PublicKey,
+    _feedbackIndex: bigint,
+    _tag1: string,
+    _tag2: string,
+    _options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     return {
       signature: '',
@@ -1623,13 +1625,13 @@ export class ValidationTransactionBuilder {
    * @deprecated Not supported on-chain in current program
    */
   async updateValidation(
-    asset: PublicKey,
-    nonce: number,
-    response: number,
-    responseUri: string,
-    responseHash: Buffer,
-    tag: string,
-    options?: WriteOptions
+    _asset: PublicKey,
+    _nonce: number,
+    _response: number,
+    _responseUri: string,
+    _responseHash: Buffer,
+    _tag: string,
+    _options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     return {
       signature: '',
@@ -1648,11 +1650,11 @@ export class ValidationTransactionBuilder {
    * @deprecated Not supported on-chain in current program
    */
   async closeValidation(
-    asset: PublicKey,
-    validatorAddress: PublicKey,
-    nonce: number,
-    rentReceiver?: PublicKey,
-    options?: WriteOptions
+    _asset: PublicKey,
+    _validatorAddress: PublicKey,
+    _nonce: number,
+    _rentReceiver?: PublicKey,
+    _options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     return {
       signature: '',

@@ -10,6 +10,7 @@
 import { PublicKey, Transaction, Connection, Keypair, TransactionSignature } from '@solana/web3.js';
 import { UpdateAtomConfigParams } from './instruction-builder.js';
 export type { UpdateAtomConfigParams };
+import type { IndexerClient } from './indexer-client.js';
 export interface TransactionResult {
     signature: TransactionSignature;
     success: boolean;
@@ -218,7 +219,7 @@ export declare class ReputationTransactionBuilder {
     private payer?;
     private indexerClient?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: any | undefined);
+    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: IndexerClient | undefined);
     /**
      * Give feedback - v0.4.0
      * @param asset - Agent Core asset
@@ -267,7 +268,7 @@ export declare class ReputationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      * @deprecated Not supported on-chain in current program
      */
-    setFeedbackTags(asset: PublicKey, feedbackIndex: bigint, tag1: string, tag2: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    setFeedbackTags(_asset: PublicKey, _feedbackIndex: bigint, _tag1: string, _tag2: string, _options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 /**
  * Transaction builder for Validation Registry operations
@@ -310,7 +311,7 @@ export declare class ValidationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      * @deprecated Not supported on-chain in current program
      */
-    updateValidation(asset: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    updateValidation(_asset: PublicKey, _nonce: number, _response: number, _responseUri: string, _responseHash: Buffer, _tag: string, _options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Close validation request to recover rent - v0.3.0
      * @param asset - Agent Core asset
@@ -320,7 +321,7 @@ export declare class ValidationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      * @deprecated Not supported on-chain in current program
      */
-    closeValidation(asset: PublicKey, validatorAddress: PublicKey, nonce: number, rentReceiver?: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    closeValidation(_asset: PublicKey, _validatorAddress: PublicKey, _nonce: number, _rentReceiver?: PublicKey, _options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 /**
  * Transaction builder for ATOM Engine operations
