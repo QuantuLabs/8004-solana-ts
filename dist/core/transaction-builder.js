@@ -739,7 +739,9 @@ export class ReputationTransactionBuilder {
     payer;
     indexerClient;
     instructionBuilder;
-    constructor(connection, payer, indexerClient) {
+    constructor(connection, payer, 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    indexerClient) {
         this.connection = connection;
         this.payer = payer;
         this.indexerClient = indexerClient;
@@ -939,7 +941,7 @@ export class ReputationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      * @deprecated Not supported on-chain in current program
      */
-    async setFeedbackTags(asset, feedbackIndex, tag1, tag2, options) {
+    async setFeedbackTags(_asset, _feedbackIndex, _tag1, _tag2, _options) {
         return {
             signature: '',
             success: false,
@@ -1082,7 +1084,7 @@ export class ValidationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      * @deprecated Not supported on-chain in current program
      */
-    async updateValidation(asset, nonce, response, responseUri, responseHash, tag, options) {
+    async updateValidation(_asset, _nonce, _response, _responseUri, _responseHash, _tag, _options) {
         return {
             signature: '',
             success: false,
@@ -1098,7 +1100,7 @@ export class ValidationTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      * @deprecated Not supported on-chain in current program
      */
-    async closeValidation(asset, validatorAddress, nonce, rentReceiver, options) {
+    async closeValidation(_asset, _validatorAddress, _nonce, _rentReceiver, _options) {
         return {
             signature: '',
             success: false,
