@@ -101,7 +101,7 @@ describe('E2E: Validation System', () => {
         agentAsset,
         signer.publicKey,
         validationNonce,
-        30000
+        { timeout: 30000 }
       );
 
       if (!validation) {
@@ -158,12 +158,12 @@ describe('E2E: Validation System', () => {
 
       console.log(`\n🔍 Reading validation request (after response)...`);
 
-      // Use waitForValidation with extended timeout
+      // Use waitForValidation with extended timeout and wait for response
       const validation = await sdk.waitForValidation(
         agentAsset,
         signer.publicKey,
         validationNonce,
-        30000
+        { timeout: 30000, waitForResponse: true }
       );
 
       if (!validation) {
