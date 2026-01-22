@@ -1,8 +1,9 @@
 /**
  * Signing helpers for canonical JSON payloads
+ * Browser-compatible - uses cross-platform crypto utilities
  */
-import { randomBytes } from 'crypto';
 import { ed25519 } from '@noble/curves/ed25519';
+import { getRandomBytes } from './crypto-utils.js';
 import bs58 from 'bs58';
 import { PublicKey } from '@solana/web3.js';
 import { canonicalizeJson } from './canonical-json.js';
@@ -75,7 +76,7 @@ export function normalizeSignData(input, seen = new Set()) {
     throw new Error('Unsupported data type in signed data');
 }
 export function createNonce(bytes = 16) {
-    return bs58.encode(randomBytes(bytes));
+    return bs58.encode(getRandomBytes(bytes));
 }
 export function buildSignedPayload(asset, data, signer, options = {}) {
     const nonce = options.nonce ?? createNonce();

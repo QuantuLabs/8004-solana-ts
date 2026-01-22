@@ -10,7 +10,7 @@ import type { RegistrationFile } from '../models/interfaces.js';
 import { IPFS_GATEWAYS, TIMEOUTS, MAX_SIZES } from '../utils/constants.js';
 import { buildRegistrationFileJson } from '../utils/registration-file-builder.js';
 import { logger } from '../utils/logger.js';
-import { createHash } from 'crypto';
+import { sha256 } from '../utils/crypto-utils.js';
 import bs58 from 'bs58';
 
 /**
@@ -212,7 +212,10 @@ export class IPFSClient {
       );
     }
 
-    const fs = await import('fs');
+    // Dynamic import to avoid bundler resolution
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const fsModule = 'fs';
+    const fs = await (Function('m', 'return import(m)')(fsModule) as Promise<typeof import('fs')>);
     const data = fs.readFileSync(filepath, 'utf-8');
 
     if (this.provider === 'pinata') {
@@ -245,8 +248,9 @@ export class IPFSClient {
    * Verify content hash matches CIDv0 (Qm... = SHA256 multihash)
    * Security: Ensures content integrity from potentially malicious gateways
    * Note: CIDv1 verification requires multiformats library, skipped for now
+   * Browser-compatible (async for WebCrypto support)
    */
-  private verifyCidV0(cid: string, content: Uint8Array): boolean {
+  private async verifyCidV0(cid: string, content: Uint8Array): Promise<boolean> {
     if (!cid.startsWith('Qm')) {
       // CIDv1 - would need multiformats library for proper verification
       // For now, log warning and accept (defense in depth, not sole protection)
@@ -256,7 +260,7 @@ export class IPFSClient {
 
     // CIDv0: Qm... is base58btc encoded multihash (0x12 0x20 + SHA256)
     // We verify the SHA256 hash matches
-    const hash = createHash('sha256').update(content).digest();
+    const hash = await sha256(content);
 
     // Decode base58 CID to get the expected hash
     // CIDv0 format: 0x12 (sha256) + 0x20 (32 bytes) + hash
@@ -268,7 +272,7 @@ export class IPFSClient {
         return true;
       }
       const expectedHash = decoded.slice(2);
-      const matches = Buffer.compare(hash, Buffer.from(expectedHash)) === 0;
+      const matches = Buffer.compare(Buffer.from(hash), Buffer.from(expectedHash)) === 0;
       if (!matches) {
         logger.error('Security: IPFS content hash mismatch - possible tampering');
       }
@@ -423,7 +427,7 @@ export class IPFSClient {
       }
 
       // Security: Verify content hash matches CID (CIDv0 only for now)
-      const hashValid = this.verifyCidV0(cidOnly, result);
+      const hashValid = await this.verifyCidV0(cidOnly, result);
       if (!hashValid) {
         throw new Error('Security: IPFS content hash verification failed');
       }
@@ -456,7 +460,7 @@ export class IPFSClient {
       }
 
       // Security: Local IPFS node already verifies hashes, but we verify anyway
-      const hashValid = this.verifyCidV0(cidOnly, result);
+      const hashValid = await this.verifyCidV0(cidOnly, result);
       if (!hashValid) {
         throw new Error('Security: IPFS content hash verification failed');
       }

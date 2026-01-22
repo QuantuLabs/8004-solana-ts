@@ -1,52 +1,9 @@
 /**
  * OASF taxonomy validation utilities
- * Requires Node.js 18+
+ * Browser-compatible - uses inlined taxonomy data
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-interface SkillsData {
-  skills: Record<string, unknown>;
-}
-
-interface DomainsData {
-  domains: Record<string, unknown>;
-}
-
-// Get __dirname equivalent for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Try multiple paths to find the JSON files (works in both src and dist)
-function findTaxonomyFile(filename: string): string {
-  const possiblePaths = [
-    join(process.cwd(), 'src', 'taxonomies', filename),
-    join(process.cwd(), 'dist', 'taxonomies', filename),
-    join(__dirname, '..', 'taxonomies', filename),
-    join(__dirname, 'taxonomies', filename),
-  ];
-
-  for (const p of possiblePaths) {
-    if (existsSync(p)) {
-      return p;
-    }
-  }
-
-  throw new Error(`Could not find taxonomy file: ${filename}`);
-}
-
-// Load JSON files at module initialization
-let allSkills: SkillsData = { skills: {} };
-let allDomains: DomainsData = { domains: {} };
-
-try {
-  allSkills = JSON.parse(readFileSync(findTaxonomyFile('all_skills.json'), 'utf-8'));
-  allDomains = JSON.parse(readFileSync(findTaxonomyFile('all_domains.json'), 'utf-8'));
-} catch {
-  // Silently fail if files not found (for testing environments)
-}
+import { ALL_SKILLS, ALL_DOMAINS, isValidSkill, isValidDomain } from './oasf-data.js';
 
 /**
  * Validate if a skill slug exists in the OASF taxonomy
@@ -54,8 +11,7 @@ try {
  * @returns True if the skill exists in the taxonomy, False otherwise
  */
 export function validateSkill(slug: string): boolean {
-  const skills = allSkills.skills || {};
-  return slug in skills;
+  return isValidSkill(slug);
 }
 
 /**
@@ -64,8 +20,7 @@ export function validateSkill(slug: string): boolean {
  * @returns True if the domain exists in the taxonomy, False otherwise
  */
 export function validateDomain(slug: string): boolean {
-  const domains = allDomains.domains || {};
-  return slug in domains;
+  return isValidDomain(slug);
 }
 
 /**
@@ -73,7 +28,7 @@ export function validateDomain(slug: string): boolean {
  * @returns Array of all valid skill slugs
  */
 export function getAllSkills(): string[] {
-  return Object.keys(allSkills.skills || {});
+  return [...ALL_SKILLS];
 }
 
 /**
@@ -81,5 +36,5 @@ export function getAllSkills(): string[] {
  * @returns Array of all valid domain slugs
  */
 export function getAllDomains(): string[] {
-  return Object.keys(allDomains.domains || {});
+  return [...ALL_DOMAINS];
 }

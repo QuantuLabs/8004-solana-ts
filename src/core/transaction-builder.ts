@@ -1,6 +1,7 @@
 /**
  * Transaction builder for ERC-8004 Solana programs
  * v0.3.0 - Asset-based identification
+ * Browser-compatible - uses cross-platform crypto utilities
  * Handles transaction creation, signing, and sending without Anchor
  *
  * BREAKING CHANGES from v0.2.0:
@@ -20,7 +21,8 @@ import {
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import { PDAHelpers, PROGRAM_ID } from './pda-helpers.js';
-import { createHash } from 'crypto';
+import { sha256 } from '../utils/crypto-utils.js';
+import { writeBigUInt64LE } from '../utils/buffer-utils.js';
 import {
   IdentityInstructionBuilder,
   ReputationInstructionBuilder,
@@ -373,7 +375,8 @@ export class IdentityTransactionBuilder {
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
 
       // Compute key hash (SHA256(key)[0..16]) - v1.9 security update
-      const keyHash = createHash('sha256').update(key).digest().slice(0, 16);
+      const keyHashFull = await sha256(key);
+      const keyHash = Buffer.from(keyHashFull.slice(0, 16));
 
       // Derive metadata entry PDA (v0.3.0 - uses asset, not agent_id)
       const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
@@ -439,7 +442,8 @@ export class IdentityTransactionBuilder {
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
 
       // Compute key hash (SHA256(key)[0..16]) - v1.9 security update
-      const keyHash = createHash('sha256').update(key).digest().slice(0, 16);
+      const keyHashFull = await sha256(key);
+      const keyHash = Buffer.from(keyHashFull.slice(0, 16));
 
       // Derive metadata entry PDA (v0.3.0 - uses asset, not agent_id)
       const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
@@ -654,9 +658,9 @@ export class IdentityTransactionBuilder {
         throw new Error('signer required when SDK has no signer configured');
       }
 
-      // Validate inputs
+      // Validate inputs (MAX_URI_LENGTH = 250 per program)
       validateByteLength(collectionName, 32, 'collectionName');
-      validateByteLength(collectionUri, 200, 'collectionUri');
+      validateByteLength(collectionUri, 250, 'collectionUri');
 
       // Determine collection keypair
       let collectionPubkey: PublicKey;
@@ -756,11 +760,7 @@ export class IdentityTransactionBuilder {
         asset.toBuffer(),
         newWallet.toBuffer(),
         signerPubkey.toBuffer(),
-        (() => {
-          const buf = Buffer.alloc(8);
-          buf.writeBigUInt64LE(deadline); // Security: use unsigned for u64 deadline
-          return buf;
-        })(),
+        writeBigUInt64LE(deadline), // Security: use unsigned for u64 deadline
       ]);
 
       // Derive PDAs
@@ -865,15 +865,13 @@ export class IdentityTransactionBuilder {
     deadline: bigint
   ): Buffer {
     const messagePrefix = Buffer.from('8004_WALLET_SET:');
-    const deadlineBuffer = Buffer.alloc(8);
-    deadlineBuffer.writeBigUInt64LE(deadline); // Security: use unsigned for u64 deadline
 
     return Buffer.concat([
       messagePrefix,
       asset.toBuffer(),
       newWallet.toBuffer(),
       owner.toBuffer(),
-      deadlineBuffer,
+      writeBigUInt64LE(deadline), // Security: use unsigned for u64 deadline
     ]);
   }
 
@@ -897,12 +895,12 @@ export class IdentityTransactionBuilder {
         throw new Error('signer required when SDK has no signer configured');
       }
 
-      // Validate inputs if provided
+      // Validate inputs if provided (MAX_URI_LENGTH = 250 per program)
       if (newName !== null) {
         validateByteLength(newName, 32, 'newName');
       }
       if (newUri !== null) {
-        validateByteLength(newUri, 200, 'newUri');
+        validateByteLength(newUri, 250, 'newUri');
       }
       if (newName === null && newUri === null) {
         throw new Error('At least one of newName or newUri must be provided');
@@ -1168,10 +1166,11 @@ export class ReputationTransactionBuilder {
         throw new Error('Score must be between 0 and 100');
       }
       // Security: Use byte length validation for UTF-8 strings (not character count)
+      // MAX_URI_LENGTH = 250 per program
       validateByteLength(tag1, 32, 'tag1');
       validateByteLength(tag2, 32, 'tag2');
       validateByteLength(endpoint, 256, 'endpoint');
-      validateByteLength(feedbackUri, 200, 'feedbackUri');
+      validateByteLength(feedbackUri, 250, 'feedbackUri');
       if (feedbackHash.length !== 32) {
         throw new Error('feedbackHash must be 32 bytes');
       }

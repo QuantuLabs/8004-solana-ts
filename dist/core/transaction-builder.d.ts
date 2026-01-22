@@ -1,6 +1,7 @@
 /**
  * Transaction builder for ERC-8004 Solana programs
  * v0.3.0 - Asset-based identification
+ * Browser-compatible - uses cross-platform crypto utilities
  * Handles transaction creation, signing, and sending without Anchor
  *
  * BREAKING CHANGES from v0.2.0:

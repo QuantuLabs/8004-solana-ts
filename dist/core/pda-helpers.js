@@ -1,6 +1,7 @@
 /**
  * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
  * v0.3.0 - Asset-based identification
+ * Browser-compatible - uses cross-platform buffer utilities
  *
  * BREAKING CHANGES from v0.2.0:
  * - agent_id (u64) replaced by asset (Pubkey) in all PDA seeds
@@ -9,6 +10,7 @@
  */
 import { PublicKey } from '@solana/web3.js';
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';
+import { writeBigUInt64LE, writeUInt32LE } from '../utils/buffer-utils.js';
 // Re-export for convenience
 export { PROGRAM_ID, MPL_CORE_PROGRAM_ID };
 /**
@@ -81,8 +83,7 @@ export class PDAHelpers {
      * Seeds: ["feedback", asset, feedback_index]
      */
     static getFeedbackPDA(asset, feedbackIndex, programId = PROGRAM_ID) {
-        const feedbackIndexBuffer = Buffer.alloc(8);
-        feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
+        const feedbackIndexBuffer = writeBigUInt64LE(BigInt(feedbackIndex));
         return PublicKey.findProgramAddressSync([Buffer.from('feedback'), asset.toBuffer(), feedbackIndexBuffer], programId);
     }
     /**
@@ -90,8 +91,7 @@ export class PDAHelpers {
      * Seeds: ["feedback_tags", asset, feedback_index]
      */
     static getFeedbackTagsPDA(asset, feedbackIndex, programId = PROGRAM_ID) {
-        const feedbackIndexBuffer = Buffer.alloc(8);
-        feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
+        const feedbackIndexBuffer = writeBigUInt64LE(BigInt(feedbackIndex));
         return PublicKey.findProgramAddressSync([Buffer.from('feedback_tags'), asset.toBuffer(), feedbackIndexBuffer], programId);
     }
     /**
@@ -106,10 +106,8 @@ export class PDAHelpers {
      * Seeds: ["response", asset, feedback_index, response_index]
      */
     static getResponsePDA(asset, feedbackIndex, responseIndex, programId = PROGRAM_ID) {
-        const feedbackIndexBuffer = Buffer.alloc(8);
-        feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
-        const responseIndexBuffer = Buffer.alloc(8);
-        responseIndexBuffer.writeBigUInt64LE(BigInt(responseIndex));
+        const feedbackIndexBuffer = writeBigUInt64LE(BigInt(feedbackIndex));
+        const responseIndexBuffer = writeBigUInt64LE(BigInt(responseIndex));
         return PublicKey.findProgramAddressSync([Buffer.from('response'), asset.toBuffer(), feedbackIndexBuffer, responseIndexBuffer], programId);
     }
     /**
@@ -117,8 +115,7 @@ export class PDAHelpers {
      * Seeds: ["response_index", asset, feedback_index]
      */
     static getResponseIndexPDA(asset, feedbackIndex, programId = PROGRAM_ID) {
-        const feedbackIndexBuffer = Buffer.alloc(8);
-        feedbackIndexBuffer.writeBigUInt64LE(BigInt(feedbackIndex));
+        const feedbackIndexBuffer = writeBigUInt64LE(BigInt(feedbackIndex));
         return PublicKey.findProgramAddressSync([Buffer.from('response_index'), asset.toBuffer(), feedbackIndexBuffer], programId);
     }
     /**
@@ -143,10 +140,9 @@ export class PDAHelpers {
      * Seeds: ["validation", asset, validator, nonce]
      */
     static getValidationRequestPDA(asset, validator, nonce, programId = PROGRAM_ID) {
-        const nonceBuffer = Buffer.alloc(4);
         // Convert bigint to number if needed (safe for u32 range)
         const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
-        nonceBuffer.writeUInt32LE(nonceNum);
+        const nonceBuffer = writeUInt32LE(nonceNum);
         return PublicKey.findProgramAddressSync([Buffer.from('validation'), asset.toBuffer(), validator.toBuffer(), nonceBuffer], programId);
     }
 }

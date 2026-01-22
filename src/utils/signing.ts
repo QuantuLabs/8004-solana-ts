@@ -1,9 +1,10 @@
 /**
  * Signing helpers for canonical JSON payloads
+ * Browser-compatible - uses cross-platform crypto utilities
  */
 
-import { randomBytes } from 'crypto';
 import { ed25519 } from '@noble/curves/ed25519';
+import { getRandomBytes } from './crypto-utils.js';
 import bs58 from 'bs58';
 import { PublicKey } from '@solana/web3.js';
 import type { Keypair } from '@solana/web3.js';
@@ -94,7 +95,7 @@ export function normalizeSignData(input: unknown, seen: Set<object> = new Set())
 }
 
 export function createNonce(bytes: number = 16): string {
-  return bs58.encode(randomBytes(bytes));
+  return bs58.encode(getRandomBytes(bytes));
 }
 
 export function buildSignedPayload(

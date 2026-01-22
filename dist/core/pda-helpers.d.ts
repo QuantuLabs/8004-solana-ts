@@ -1,6 +1,7 @@
 /**
  * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
  * v0.3.0 - Asset-based identification
+ * Browser-compatible - uses cross-platform buffer utilities
  *
  * BREAKING CHANGES from v0.2.0:
  * - agent_id (u64) replaced by asset (Pubkey) in all PDA seeds

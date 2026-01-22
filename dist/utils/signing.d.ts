@@ -1,5 +1,6 @@
 /**
  * Signing helpers for canonical JSON payloads
+ * Browser-compatible - uses cross-platform crypto utilities
  */
 import { PublicKey } from '@solana/web3.js';
 import type { Keypair } from '@solana/web3.js';

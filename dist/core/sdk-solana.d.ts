@@ -778,27 +778,29 @@ export declare class SolanaSDK {
     /**
      * Compute SHA-256 hash from data (string or Buffer)
      * Use this for feedback, validation, and response hashes
+     * Browser-compatible (async for WebCrypto support)
      * @param data - String or Buffer to hash
      * @returns 32-byte SHA-256 hash as Buffer
      *
      * @example
-     * const feedbackHash = SolanaSDK.computeHash('My feedback content');
-     * const dataHash = SolanaSDK.computeHash(Buffer.from(jsonData));
+     * const feedbackHash = await SolanaSDK.computeHash('My feedback content');
+     * const dataHash = await SolanaSDK.computeHash(Buffer.from(jsonData));
      */
-    static computeHash(data: string | Buffer): Buffer;
+    static computeHash(data: string | Buffer): Promise<Buffer>;
     /**
      * Compute hash for a URI
      * - IPFS/Arweave URIs: zeros (CID already contains content hash)
      * - Other URIs: SHA-256 of the URI string
+     * Browser-compatible (async for WebCrypto support)
      * @param uri - URI to hash
      * @returns 32-byte hash as Buffer
      *
      * @example
-     * const hash = SolanaSDK.computeUriHash('https://example.com/data.json');
+     * const hash = await SolanaSDK.computeUriHash('https://example.com/data.json');
      * // For IPFS, returns zeros since CID is already a hash
-     * const ipfsHash = SolanaSDK.computeUriHash('ipfs://Qm...');
+     * const ipfsHash = await SolanaSDK.computeUriHash('ipfs://Qm...');
      */
-    static computeUriHash(uri: string): Buffer;
+    static computeUriHash(uri: string): Promise<Buffer>;
     private computeUriHash;
 }
 //# sourceMappingURL=sdk-solana.d.ts.map

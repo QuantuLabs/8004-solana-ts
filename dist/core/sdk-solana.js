@@ -15,7 +15,7 @@ import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import { EndpointCrawler } from './endpoint-crawler.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIds } from './programs.js';
-import { createHash } from 'crypto';
+import { sha256 } from '../utils/crypto-utils.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
 import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, } from './transaction-builder.js';
@@ -153,7 +153,8 @@ export class SolanaSDK {
     async getMetadata(asset, key) {
         try {
             // Compute key hash (SHA256(key)[0..16]) - v1.9 security update
-            const keyHash = createHash('sha256').update(key).digest().slice(0, 16);
+            const keyHashFull = await sha256(key);
+            const keyHash = Buffer.from(keyHashFull.slice(0, 16));
             // Derive metadata entry PDA (v0.3.0 - uses asset)
             const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
             // Fetch metadata account
@@ -1275,7 +1276,7 @@ export class SolanaSDK {
         // Auto-generate nonce if not provided (timestamp-based, fits in u32)
         const nonce = options?.nonce ?? (Date.now() % 0xFFFFFFFF);
         // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
-        const requestHash = options?.requestHash ?? this.computeUriHash(requestUri);
+        const requestHash = options?.requestHash ?? await this.computeUriHash(requestUri);
         const result = await this.validationTxBuilder.requestValidation(asset, validator, nonce, requestUri, requestHash, options);
         // Add nonce to result for use in respondToValidation
         if ('success' in result) {
@@ -1299,7 +1300,7 @@ export class SolanaSDK {
         }
         const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
         // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
-        const responseHash = options?.responseHash ?? this.computeUriHash(responseUri);
+        const responseHash = options?.responseHash ?? await this.computeUriHash(responseUri);
         const tag = options?.tag ?? '';
         return await this.validationTxBuilder.respondToValidation(asset, nonceNum, score, responseUri, responseHash, tag, options);
     }
@@ -1486,13 +1487,20 @@ export class SolanaSDK {
             const payload = await this.fetchJsonFromUri(trimmed, 10000);
             return parseSignedPayload(payload);
         }
+        // File system operations are Node.js only
+        if (typeof process === 'undefined' || !process.versions?.node) {
+            throw new Error('Loading signed payloads from file paths is only available in Node.js. ' +
+                'In browser, pass the JSON string directly or use http/ipfs URIs.');
+        }
+        // Dynamic import to avoid bundler resolution
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval
+        const fsModule = 'fs/promises';
+        const { readFile } = await Function('m', 'return import(m)')(fsModule);
         if (trimmed.startsWith('file://')) {
-            const { readFile } = await import('node:fs/promises');
             const fileUrl = new URL(trimmed);
             const content = await readFile(fileUrl, 'utf8');
             return parseSignedPayload(JSON.parse(content));
         }
-        const { readFile } = await import('node:fs/promises');
         const content = await readFile(trimmed, 'utf8');
         return parseSignedPayload(JSON.parse(content));
     }
@@ -1729,35 +1737,40 @@ export class SolanaSDK {
     /**
      * Compute SHA-256 hash from data (string or Buffer)
      * Use this for feedback, validation, and response hashes
+     * Browser-compatible (async for WebCrypto support)
      * @param data - String or Buffer to hash
      * @returns 32-byte SHA-256 hash as Buffer
      *
      * @example
-     * const feedbackHash = SolanaSDK.computeHash('My feedback content');
-     * const dataHash = SolanaSDK.computeHash(Buffer.from(jsonData));
+     * const feedbackHash = await SolanaSDK.computeHash('My feedback content');
+     * const dataHash = await SolanaSDK.computeHash(Buffer.from(jsonData));
      */
-    static computeHash(data) {
-        return createHash('sha256').update(data).digest();
+    static async computeHash(data) {
+        const input = typeof data === 'string' ? data : new Uint8Array(data);
+        const hash = await sha256(input);
+        return Buffer.from(hash);
     }
     /**
      * Compute hash for a URI
      * - IPFS/Arweave URIs: zeros (CID already contains content hash)
      * - Other URIs: SHA-256 of the URI string
+     * Browser-compatible (async for WebCrypto support)
      * @param uri - URI to hash
      * @returns 32-byte hash as Buffer
      *
      * @example
-     * const hash = SolanaSDK.computeUriHash('https://example.com/data.json');
+     * const hash = await SolanaSDK.computeUriHash('https://example.com/data.json');
      * // For IPFS, returns zeros since CID is already a hash
-     * const ipfsHash = SolanaSDK.computeUriHash('ipfs://Qm...');
+     * const ipfsHash = await SolanaSDK.computeUriHash('ipfs://Qm...');
      */
-    static computeUriHash(uri) {
+    static async computeUriHash(uri) {
         // IPFS and Arweave URIs contain content-addressable hashes
         if (uri.startsWith('ipfs://') || uri.startsWith('ar://')) {
             return Buffer.alloc(32);
         }
         // For other URIs, compute SHA-256 hash of the URI itself
-        return createHash('sha256').update(uri).digest();
+        const hash = await sha256(uri);
+        return Buffer.from(hash);
     }
     // Instance method that calls the static one
     computeUriHash(uri) {

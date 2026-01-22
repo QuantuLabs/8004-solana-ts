@@ -35,6 +35,8 @@ export interface IndexedAgent {
     feedback_count: number;
     raw_avg_score: number;
     sort_key: string;
+    global_id?: number;
+    global_id_formatted?: string;
     block_slot: number;
     tx_signature: string;
     created_at: string;
