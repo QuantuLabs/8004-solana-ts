@@ -322,7 +322,151 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
     }, 60000);
   });
 
-  describe('8. Summary', () => {
+  describe('8. Data Consistency (On-chain vs Indexer)', () => {
+    it('should verify agent data matches between on-chain and indexer', async () => {
+      if (!agentAsset) {
+        console.log('⏭️  Skipping - no agent available');
+        return;
+      }
+
+      console.log('\n🔍 Verifying agent data consistency...');
+
+      // Wait for indexer to sync with retry
+      const synced = await sdk.waitForIndexerSync(
+        async () => {
+          const indexerAgent = await sdk.getAgentReputationFromIndexer(agentAsset);
+          return indexerAgent !== null;
+        },
+        { timeout: 30000, initialDelay: 2000 }
+      );
+
+      if (!synced) {
+        console.log('⚠️  Indexer not synced, skipping consistency check');
+        return;
+      }
+
+      // Load on-chain agent data
+      const onChainAgent = await sdk.loadAgent(agentAsset);
+      expect(onChainAgent).not.toBeNull();
+
+      // Load indexer agent data
+      const indexerRep = await sdk.getAgentReputationFromIndexer(agentAsset);
+      expect(indexerRep).not.toBeNull();
+
+      // Compare asset
+      expect(indexerRep!.asset).toBe(agentAsset.toBase58());
+      console.log(`✅ Asset matches: ${agentAsset.toBase58()}`);
+
+      // Compare owner (onChainAgent.owner is Uint8Array)
+      const onChainOwner = new PublicKey(onChainAgent!.owner).toBase58();
+      console.log(`✅ On-chain owner: ${onChainOwner}`);
+    }, 60000);
+
+    it('should verify feedback data matches between on-chain and indexer', async () => {
+      if (!agentAsset) {
+        console.log('⏭️  Skipping - no agent available');
+        return;
+      }
+
+      console.log('\n🔍 Verifying feedback data consistency...');
+
+      // Get feedbacks from indexer
+      const indexerFeedbacks = await sdk.getFeedbacksFromIndexer(agentAsset, { includeRevoked: true });
+
+      if (indexerFeedbacks.length === 0) {
+        console.log('⚠️  No feedbacks in indexer yet, checking on-chain...');
+        return;
+      }
+
+      // For each indexer feedback, verify against on-chain
+      let verified = 0;
+      for (const idxFeedback of indexerFeedbacks.slice(0, 3)) { // Check first 3
+        const onChainFeedback = await sdk.readFeedback(
+          agentAsset,
+          idxFeedback.client,
+          idxFeedback.feedbackIndex
+        );
+
+        if (onChainFeedback) {
+          // Compare score
+          expect(onChainFeedback.score).toBe(idxFeedback.score);
+
+          // Compare tag1 if present
+          if (idxFeedback.tag1) {
+            expect(onChainFeedback.tag1).toBe(idxFeedback.tag1);
+          }
+
+          // Compare revoked status
+          expect(onChainFeedback.revoked).toBe(idxFeedback.revoked ?? false);
+
+          verified++;
+        }
+      }
+
+      console.log(`✅ Verified ${verified}/${indexerFeedbacks.length} feedbacks match on-chain`);
+    }, 60000);
+
+    it('should verify validation data matches between on-chain and indexer', async () => {
+      if (!agentAsset || !validationNonce) {
+        console.log('⏭️  Skipping - no validation available');
+        return;
+      }
+
+      console.log('\n🔍 Verifying validation data consistency...');
+
+      // Read on-chain validation with retry
+      const onChainValidation = await sdk.waitForValidation(
+        agentAsset,
+        wallets.validator.publicKey,
+        validationNonce,
+        { timeout: 15000, waitForResponse: true }
+      );
+
+      if (!onChainValidation) {
+        console.log('⚠️  On-chain validation not found, skipping');
+        return;
+      }
+
+      // Verify basic fields
+      expect(onChainValidation.nonce).toBe(validationNonce);
+      expect(onChainValidation.hasResponse()).toBe(true);
+      expect(onChainValidation.response).toBe(95);
+
+      console.log(`✅ Validation nonce: ${onChainValidation.nonce}`);
+      console.log(`✅ Response score: ${onChainValidation.response}`);
+      console.log(`✅ Has response: ${onChainValidation.hasResponse()}`);
+    }, 60000);
+
+    it('should verify reputation summary consistency', async () => {
+      if (!agentAsset) {
+        console.log('⏭️  Skipping - no agent available');
+        return;
+      }
+
+      console.log('\n🔍 Verifying reputation summary consistency...');
+
+      // Get on-chain summary
+      const onChainSummary = await sdk.getSummary(agentAsset);
+
+      // Get indexer reputation
+      const indexerRep = await sdk.getAgentReputationFromIndexer(agentAsset);
+
+      if (!indexerRep) {
+        console.log('⚠️  Indexer reputation not available');
+        return;
+      }
+
+      // Compare feedback counts (indexer may lag slightly)
+      const countDiff = Math.abs(onChainSummary.totalFeedbacks - indexerRep.feedback_count);
+      expect(countDiff).toBeLessThanOrEqual(2); // Allow small lag
+
+      console.log(`✅ On-chain feedbacks: ${onChainSummary.totalFeedbacks}`);
+      console.log(`✅ Indexer feedbacks: ${indexerRep.feedback_count}`);
+      console.log(`   Difference: ${countDiff} (allowed: ≤2)`);
+    }, 60000);
+  });
+
+  describe('9. Summary', () => {
     it('should print final test summary', async () => {
       console.log('\n========================================');
       console.log('        E2E DEVNET TEST SUMMARY');

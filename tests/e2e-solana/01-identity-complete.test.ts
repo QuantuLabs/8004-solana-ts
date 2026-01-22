@@ -278,21 +278,18 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       console.log('     Signature:', result.signature);
     }, 30000);
 
-    it('should reject URI > 200 bytes', async () => {
-      const longUri = 'ipfs://' + 'a'.repeat(194); // Total 201 bytes
-      const result = await sdk.setAgentUri(agent, collection, longUri);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('UriTooLong');
+    it('should reject URI > 250 bytes', async () => {
+      const longUri = 'ipfs://' + 'a'.repeat(244); // Total 251 bytes
+      await expect(sdk.setAgentUri(agent, collection, longUri)).rejects.toThrow(/250/);
       console.log('[OK] URI length validation working');
     }, 30000);
 
-    it('should accept URI = 200 bytes', async () => {
-      const uri200 = 'ipfs://' + 'b'.repeat(193); // Exact 200 bytes
-      const result = await sdk.setAgentUri(agent, collection, uri200);
+    it('should accept URI = 250 bytes', async () => {
+      const uri250 = 'ipfs://' + 'b'.repeat(243); // Exact 250 bytes
+      const result = await sdk.setAgentUri(agent, collection, uri250);
 
       expect(result.success).toBe(true);
-      console.log('[OK] Max URI length (200 bytes) accepted');
+      console.log('[OK] Max URI length (250 bytes) accepted');
     }, 30000);
   });
 

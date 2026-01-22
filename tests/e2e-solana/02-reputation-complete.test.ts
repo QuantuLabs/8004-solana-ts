@@ -277,35 +277,35 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
     });
 
     describe('Boundary Tests - URI Length', () => {
-      it('should accept URI = 200 bytes (maximum)', async () => {
-        const uri200 = 'ipfs://' + 'b'.repeat(193); // Total 200 bytes
+      it('should accept URI = 250 bytes (maximum)', async () => {
+        const uri250 = 'ipfs://' + 'b'.repeat(243); // Total 250 bytes
         const result = await clientSdk.giveFeedback(
           agent,
           {
             score: 80,
             tag1: 'uri-max',
-            feedbackUri: uri200,
-            feedbackHash: createFeedbackHash(uri200),
+            feedbackUri: uri250,
+            feedbackHash: createFeedbackHash(uri250),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
         expect(result.success).toBe(true);
       });
 
-      it('should reject URI > 200 bytes', async () => {
-        const uri201 = 'ipfs://' + 'b'.repeat(194); // Total 201 bytes
+      it('should reject URI > 250 bytes', async () => {
+        const uri251 = 'ipfs://' + 'b'.repeat(244); // Total 251 bytes
         const result = await clientSdk.giveFeedback(
           agent,
           {
             score: 80,
             tag1: 'uri-toolong',
-            feedbackUri: uri201,
-            feedbackHash: createFeedbackHash(uri201),
+            feedbackUri: uri251,
+            feedbackHash: createFeedbackHash(uri251),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
         expect(result.success).toBe(false);
-        expect(result.error).toContain('200 bytes');
+        expect(result.error).toMatch(/250/);
       });
     });
 
@@ -767,4 +767,4 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 // - Covers revoke_feedback with soft-fail behavior and stats updates
 // - Covers append_response with ERC-8004 client field verification
 // - Includes cross-wallet operations and multiple responder scenarios
-// - All constraint boundaries tested (score 0-100, tag ≤32 bytes, URI ≤200 bytes)
+// - All constraint boundaries tested (score 0-100, tag ≤32 bytes, URI ≤250 bytes)

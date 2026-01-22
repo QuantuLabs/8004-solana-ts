@@ -459,7 +459,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
         agentAsset,
         signer.publicKey,
         validationNonce,
-        30000 // 30 second timeout
+        { timeout: 30000, waitForResponse: true }
       );
 
       expect(validationReq).not.toBeNull();

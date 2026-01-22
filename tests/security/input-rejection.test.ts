@@ -39,10 +39,10 @@ describe('Input Validation', () => {
   });
 
   describe('String length constraints', () => {
-    it('should enforce URI max length (200 bytes)', () => {
-      const MAX_URI_LENGTH = 200;
-      const validUri = 'a'.repeat(200);
-      const invalidUri = 'a'.repeat(201);
+    it('should enforce URI max length (250 bytes)', () => {
+      const MAX_URI_LENGTH = 250;
+      const validUri = 'a'.repeat(250);
+      const invalidUri = 'a'.repeat(251);
 
       expect(validUri.length).toBeLessThanOrEqual(MAX_URI_LENGTH);
       expect(invalidUri.length).toBeGreaterThan(MAX_URI_LENGTH);
