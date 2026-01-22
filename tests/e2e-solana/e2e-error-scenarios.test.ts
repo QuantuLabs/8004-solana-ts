@@ -185,7 +185,7 @@ describe('E2E: Error Scenarios', () => {
       }
       const validator = Keypair.generate().publicKey;
       await expect(
-        sdkReadOnly.requestValidation(testAgent, validator, 0, 'ipfs://test', Buffer.alloc(32))
+        sdkReadOnly.requestValidation(testAgent, validator, 'ipfs://test', { nonce: 0, requestHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
 
@@ -195,7 +195,7 @@ describe('E2E: Error Scenarios', () => {
         return;
       }
       await expect(
-        sdkReadOnly.respondToValidation(testAgent, 0, 1, 'ipfs://test', Buffer.alloc(32))
+        sdkReadOnly.respondToValidation(testAgent, 0, 1, 'ipfs://test', { responseHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
   });

@@ -411,11 +411,14 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       const requestUri = `ipfs://QmRequest${Date.now()}`;
       const requestHash = Buffer.alloc(32, 3); // Mock hash
       const nonce = Math.floor(Math.random() * 1000000);
-      const result = await sdk.requestValidation(agentAsset, validator, nonce, requestUri, requestHash);
+      const result = await sdk.requestValidation(agentAsset, validator, requestUri, {
+        nonce,
+        requestHash,
+      });
 
       expect(result).toHaveProperty('signature');
 
-      validationNonce = nonce;
+      validationNonce = (result as { nonce?: bigint }).nonce ? Number((result as { nonce?: bigint }).nonce) : nonce;
       console.log(`✅ Validation requested with nonce: ${validationNonce}`);
       console.log(`📋 Transaction: ${(result as { signature: string }).signature}`);
     }, 60000);

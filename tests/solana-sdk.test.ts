@@ -158,14 +158,14 @@ describe('SolanaSDK', () => {
       const asset = Keypair.generate().publicKey;
       const validator = new PublicKey('11111111111111111111111111111111');
       await expect(
-        sdkReadOnly.requestValidation(asset, validator, 0, 'ipfs://QmRequest', Buffer.alloc(32))
+        sdkReadOnly.requestValidation(asset, validator, 'ipfs://QmRequest', { nonce: 0, requestHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
 
     it('respondToValidation should throw without signer', async () => {
       const asset = Keypair.generate().publicKey;
       await expect(
-        sdkReadOnly.respondToValidation(asset, 0, 1, 'ipfs://QmResponse', Buffer.alloc(32))
+        sdkReadOnly.respondToValidation(asset, 0, 1, 'ipfs://QmResponse', { responseHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
   });
