@@ -71,9 +71,8 @@ describe('E2E: Validation System', () => {
       const result = await sdk.requestValidation(
         agentAsset,
         validator,
-        validationNonce,
         requestUri,
-        requestHash
+        { nonce: validationNonce, requestHash }
       );
 
       expect(result).toHaveProperty('signature');
@@ -138,7 +137,7 @@ describe('E2E: Validation System', () => {
         validationNonce,
         response,
         responseUri,
-        responseHash
+        { responseHash }
       );
 
       expect(result).toHaveProperty('signature');

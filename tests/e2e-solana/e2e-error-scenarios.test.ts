@@ -104,10 +104,11 @@ describe('E2E: Error Scenarios', () => {
       }
     }, 30000);
 
-    it('should return 0 for non-existent client last index', async () => {
+    it('should return -1 for non-existent client last index', async () => {
       const randomClient = Keypair.generate().publicKey;
+      // -1n means no feedbacks found (next index would be 0)
       const lastIndex = await sdk.getLastIndex(nonExistentAsset, randomClient);
-      expect(lastIndex).toBe(0n);
+      expect(lastIndex).toBe(-1n);
     }, 30000);
 
     it('should return 0 for non-existent feedback response count', async () => {
@@ -246,12 +247,14 @@ describe('E2E: Error Scenarios', () => {
 
   describe('Edge cases', () => {
     it('should handle very long URIs', async () => {
-      const longUri = 'ipfs://' + 'a'.repeat(200);
+      // URI limit is 250 bytes, test with 251
+      const longUri = 'ipfs://' + 'a'.repeat(244); // 7 + 244 = 251 bytes
 
       // The SDK returns a TransactionResult with success=false instead of throwing
       const result = await sdk.registerAgent(longUri) as { success?: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
+      expect(result.error).toMatch(/250/); // Should mention 250 byte limit
     }, 60000);
 
     it('should handle special characters in metadata', async () => {
