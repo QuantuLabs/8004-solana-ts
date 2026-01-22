@@ -1,46 +1,15 @@
 /**
  * OASF taxonomy validation utilities
- * Requires Node.js 18+
+ * Browser-compatible - uses inlined taxonomy data
  */
-import { readFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-// Get __dirname equivalent for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-// Try multiple paths to find the JSON files (works in both src and dist)
-function findTaxonomyFile(filename) {
-    const possiblePaths = [
-        join(process.cwd(), 'src', 'taxonomies', filename),
-        join(process.cwd(), 'dist', 'taxonomies', filename),
-        join(__dirname, '..', 'taxonomies', filename),
-        join(__dirname, 'taxonomies', filename),
-    ];
-    for (const p of possiblePaths) {
-        if (existsSync(p)) {
-            return p;
-        }
-    }
-    throw new Error(`Could not find taxonomy file: ${filename}`);
-}
-// Load JSON files at module initialization
-let allSkills = { skills: {} };
-let allDomains = { domains: {} };
-try {
-    allSkills = JSON.parse(readFileSync(findTaxonomyFile('all_skills.json'), 'utf-8'));
-    allDomains = JSON.parse(readFileSync(findTaxonomyFile('all_domains.json'), 'utf-8'));
-}
-catch {
-    // Silently fail if files not found (for testing environments)
-}
+import { ALL_SKILLS, ALL_DOMAINS, isValidSkill, isValidDomain } from './oasf-data.js';
 /**
  * Validate if a skill slug exists in the OASF taxonomy
  * @param slug The skill slug to validate (e.g., "natural_language_processing/summarization")
  * @returns True if the skill exists in the taxonomy, False otherwise
  */
 export function validateSkill(slug) {
-    const skills = allSkills.skills || {};
-    return slug in skills;
+    return isValidSkill(slug);
 }
 /**
  * Validate if a domain slug exists in the OASF taxonomy
@@ -48,21 +17,20 @@ export function validateSkill(slug) {
  * @returns True if the domain exists in the taxonomy, False otherwise
  */
 export function validateDomain(slug) {
-    const domains = allDomains.domains || {};
-    return slug in domains;
+    return isValidDomain(slug);
 }
 /**
  * Get all available OASF skill slugs
  * @returns Array of all valid skill slugs
  */
 export function getAllSkills() {
-    return Object.keys(allSkills.skills || {});
+    return [...ALL_SKILLS];
 }
 /**
  * Get all available OASF domain slugs
  * @returns Array of all valid domain slugs
  */
 export function getAllDomains() {
-    return Object.keys(allDomains.domains || {});
+    return [...ALL_DOMAINS];
 }
 //# sourceMappingURL=oasf-validator.js.map

@@ -1,6 +1,6 @@
 /**
  * OASF taxonomy validation utilities
- * Requires Node.js 18+
+ * Browser-compatible - uses inlined taxonomy data
  */
 /**
  * Validate if a skill slug exists in the OASF taxonomy

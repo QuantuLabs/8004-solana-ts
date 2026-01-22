@@ -278,7 +278,11 @@ export class IndexerClient {
             limit: 1,
         });
         const results = await this.request(`/feedbacks${query}`);
-        return results.length > 0 ? results[0].feedback_index : -1;
+        if (results.length === 0)
+            return -1;
+        // Handle BIGINT returned as string from Supabase to avoid string concatenation bugs
+        const rawIndex = results[0].feedback_index;
+        return typeof rawIndex === 'string' ? parseInt(rawIndex, 10) : rawIndex;
     }
     // ============================================================================
     // Metadata

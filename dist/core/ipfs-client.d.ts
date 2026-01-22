@@ -57,6 +57,7 @@ export declare class IPFSClient {
      * Verify content hash matches CIDv0 (Qm... = SHA256 multihash)
      * Security: Ensures content integrity from potentially malicious gateways
      * Note: CIDv1 verification requires multiformats library, skipped for now
+     * Browser-compatible (async for WebCrypto support)
      */
     private verifyCidV0;
     /**

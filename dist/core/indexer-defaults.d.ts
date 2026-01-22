@@ -1,6 +1,7 @@
 /**
  * Default Indexer Configuration
  * Public anon key for read-only access to Supabase indexer
+ * Browser-compatible - guards process.env access
  *
  * Override via environment variables:
  * - INDEXER_URL: Custom Supabase REST API URL

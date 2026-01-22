@@ -303,13 +303,17 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * 4. getLastIndex - Get feedback count for a client - v0.4.0
+   * 4. getLastIndex - Get the last feedback index for a client - v0.4.0
    * @param asset - Agent Core asset pubkey
    * @param client - Client public key
-   * @returns Count of feedbacks given by this client
+   * @returns Last feedback index (-1 if no feedbacks, so next index = lastIndex + 1)
    *
    * v0.4.0: Uses indexer for efficient client-scoped query
    * REQUIRES indexer to be configured
+   *
+   * Semantics: Returns MAX index, not COUNT. Consistent with IndexerClient.getLastFeedbackIndex()
+   * - No feedbacks → returns -1n (next index = 0)
+   * - 3 feedbacks (0,1,2) → returns 2n (next index = 3)
    */
   async getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint> {
     if (!this.indexerClient) {
@@ -323,10 +327,13 @@ export class SolanaFeedbackManager {
         includeRevoked: true,
       });
       const clientFeedbacks = feedbacks.filter((f) => f.client_address === client.toBase58());
-      return BigInt(clientFeedbacks.length);
+      // Return the actual max feedback_index, not count-1 (indices may have gaps)
+      return clientFeedbacks.length > 0
+        ? BigInt(Math.max(...clientFeedbacks.map(f => Number(f.feedback_index))))
+        : BigInt(-1);
     } catch (error) {
       logger.error(`Error getting last index for client`, error);
-      return BigInt(0);
+      return BigInt(-1);
     }
   }
 

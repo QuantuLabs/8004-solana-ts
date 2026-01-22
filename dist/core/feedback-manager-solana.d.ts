@@ -118,13 +118,17 @@ export declare class SolanaFeedbackManager {
      */
     readAllFeedback(asset: PublicKey, includeRevoked?: boolean, options?: FeedbackQueryOptions): Promise<SolanaFeedback[]>;
     /**
-     * 4. getLastIndex - Get feedback count for a client - v0.4.0
+     * 4. getLastIndex - Get the last feedback index for a client - v0.4.0
      * @param asset - Agent Core asset pubkey
      * @param client - Client public key
-     * @returns Count of feedbacks given by this client
+     * @returns Last feedback index (-1 if no feedbacks, so next index = lastIndex + 1)
      *
      * v0.4.0: Uses indexer for efficient client-scoped query
      * REQUIRES indexer to be configured
+     *
+     * Semantics: Returns MAX index, not COUNT. Consistent with IndexerClient.getLastFeedbackIndex()
+     * - No feedbacks → returns -1n (next index = 0)
+     * - 3 feedbacks (0,1,2) → returns 2n (next index = 3)
      */
     getLastIndex(asset: PublicKey, client: PublicKey): Promise<bigint>;
     /**

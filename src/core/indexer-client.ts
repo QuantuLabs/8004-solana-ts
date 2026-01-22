@@ -52,6 +52,9 @@ export interface IndexedAgent {
   raw_avg_score: number; // 0-100 (simple arithmetic mean when ATOM not enabled)
   // Leaderboard
   sort_key: string; // BIGINT as string (for precision)
+  // Global Agent ID (cosmetic, from indexer materialized view)
+  global_id?: number; // Sequential ID based on registration order
+  global_id_formatted?: string; // e.g., "#042"
   // Chain reference
   block_slot: number;
   tx_signature: string;
@@ -525,8 +528,11 @@ export class IndexerClient {
       limit: 1,
     });
 
-    const results = await this.request<Array<{ feedback_index: number }>>(`/feedbacks${query}`);
-    return results.length > 0 ? results[0].feedback_index : -1;
+    const results = await this.request<Array<{ feedback_index: number | string }>>(`/feedbacks${query}`);
+    if (results.length === 0) return -1;
+    // Handle BIGINT returned as string from Supabase to avoid string concatenation bugs
+    const rawIndex = results[0].feedback_index;
+    return typeof rawIndex === 'string' ? parseInt(rawIndex, 10) : rawIndex;
   }
 
   // ============================================================================
