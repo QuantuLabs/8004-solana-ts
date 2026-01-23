@@ -69,6 +69,7 @@ const agentMeta = buildRegistrationFileJson({
   domains: ['technology/software_engineering/software_engineering'],
 });
 
+// Note: `_uri:` keys are reserved for indexer-derived metadata and ignored on-chain.
 // Upload and register
 const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
 const agent = await sdk.registerAgent(agentUri, collection.collection);
