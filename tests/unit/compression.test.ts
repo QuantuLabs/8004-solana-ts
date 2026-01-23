@@ -59,13 +59,16 @@ describe('Compression Utilities', () => {
       expect(result).toBe(plainText);
     });
 
-    it('should handle legacy base64 without prefix', async () => {
+    it('should NOT decode legacy base64 without prefix (security fix)', async () => {
       // Plain string encoded as base64 (no prefix)
+      // Security: We no longer decode base64 without our prefix to prevent
+      // misinterpreting plain text that looks like base64
       const original = 'legacy value';
       const base64 = Buffer.from(original).toString('base64');
 
       const result = await decompressBase64Value(base64);
-      expect(result).toBe(original);
+      // Should return base64 string as-is since it doesn't have our prefix
+      expect(result).toBe(base64);
     });
 
     it('should handle JSON-like strings', async () => {
