@@ -1052,20 +1052,25 @@ export class SolanaSDK {
   /**
    * Helper: Execute with indexer fallback to on-chain
    * Used internally when forceRpc='false' (force indexer mode)
+   * @param noFallback - If true, throws instead of falling back to on-chain
    */
   private async withIndexerFallback<T>(
     indexerFn: () => Promise<T>,
     onChainFn: () => Promise<T>,
-    operationName: string
+    operationName: string,
+    noFallback?: boolean
   ): Promise<T> {
     if (!this.useIndexer) {
+      if (noFallback) {
+        throw new Error(`Indexer not available for ${operationName}`);
+      }
       return onChainFn();
     }
 
     try {
       return await indexerFn();
     } catch (error: unknown) {
-      if (this.indexerFallback) {
+      if (this.indexerFallback && !noFallback) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logger.warn(`Indexer failed for ${operationName}, falling back to on-chain: ${errMsg}`);
         return onChainFn();
@@ -1245,10 +1250,13 @@ export class SolanaSDK {
   /**
    * Get agent reputation from indexer (with on-chain fallback)
    * @param asset - Agent asset pubkey
+   * @param options - Query options
+   * @param options.noFallback - If true, throws instead of falling back to on-chain (useful for waitForIndexerSync)
    * @returns Indexed reputation data
    */
   async getAgentReputationFromIndexer(
-    asset: PublicKey
+    asset: PublicKey,
+    options?: { noFallback?: boolean }
   ): Promise<IndexedAgentReputation | null> {
     return this.withIndexerFallback(
       async () => {
@@ -1280,7 +1288,8 @@ export class SolanaSDK {
           validation_count: 0, // Not available on-chain easily
         };
       },
-      'getAgentReputation'
+      'getAgentReputation',
+      options?.noFallback
     );
   }
 
@@ -1288,11 +1297,12 @@ export class SolanaSDK {
    * Get feedbacks from indexer (with on-chain fallback)
    * @param asset - Agent asset pubkey
    * @param options - Query options
+   * @param options.noFallback - If true, throws instead of falling back to on-chain
    * @returns Array of feedbacks (SolanaFeedback format)
    */
   async getFeedbacksFromIndexer(
     asset: PublicKey,
-    options?: { includeRevoked?: boolean; limit?: number; offset?: number }
+    options?: { includeRevoked?: boolean; limit?: number; offset?: number; noFallback?: boolean }
   ): Promise<SolanaFeedback[]> {
     return this.withIndexerFallback(
       async () => {
@@ -1303,7 +1313,8 @@ export class SolanaSDK {
       async () => {
         return this.feedbackManager.readAllFeedback(asset, options?.includeRevoked ?? false);
       },
-      'getFeedbacks'
+      'getFeedbacks',
+      options?.noFallback
     );
   }
 
