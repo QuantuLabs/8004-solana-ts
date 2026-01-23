@@ -154,8 +154,16 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
     }, 60000);
 
     it('should read the feedback', async () => {
-      // Wait for indexer to sync (devnet can be slow)
-      await new Promise(r => setTimeout(r, 8000));
+      // Wait for indexer to sync with proper polling
+      const synced = await sdk.waitForIndexerSync(
+        async () => {
+          const f = await sdk.readFeedback(agentAsset, wallets.client1.publicKey, feedbackIndex);
+          return f !== null;
+        },
+        { timeout: 30000, interval: 2000 }
+      );
+
+      expect(synced).toBe(true);
 
       const feedback = await sdk.readFeedback(
         agentAsset,
