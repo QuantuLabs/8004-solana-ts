@@ -67,3 +67,4 @@ test-e2e-supabase.ts
 .test-wallets.json
 tests/e2e-browser/.next/
 scripts/*.ts
+.test-wallets/
