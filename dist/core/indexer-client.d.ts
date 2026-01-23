@@ -251,7 +251,7 @@ export declare class IndexerClient {
      * Get feedbacks by endpoint
      */
     getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
-    getLastFeedbackIndex(asset: string, client: string): Promise<number>;
+    getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
     /**
      * Get all metadata for an agent
      * Values are automatically decompressed if stored with ZSTD

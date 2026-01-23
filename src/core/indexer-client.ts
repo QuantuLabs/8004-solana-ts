@@ -520,7 +520,7 @@ export class IndexerClient {
     return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
   }
 
-  async getLastFeedbackIndex(asset: string, client: string): Promise<number> {
+  async getLastFeedbackIndex(asset: string, client: string): Promise<bigint> {
     const query = this.buildQuery({
       asset: `eq.${asset}`,
       client_address: `eq.${client}`,
@@ -530,10 +530,10 @@ export class IndexerClient {
     });
 
     const results = await this.request<Array<{ feedback_index: number | string }>>(`/feedbacks${query}`);
-    if (results.length === 0) return -1;
-    // Handle BIGINT returned as string from Supabase to avoid string concatenation bugs
+    if (results.length === 0) return -1n;
+    // Handle BIGINT returned as string from Supabase - use BigInt for precision
     const rawIndex = results[0].feedback_index;
-    return typeof rawIndex === 'string' ? parseInt(rawIndex, 10) : rawIndex;
+    return typeof rawIndex === 'string' ? BigInt(rawIndex) : BigInt(rawIndex);
   }
 
   // ============================================================================

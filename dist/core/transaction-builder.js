@@ -798,7 +798,7 @@ export class ReputationTransactionBuilder {
             else if (this.indexerClient) {
                 try {
                     const lastIndex = await this.indexerClient.getLastFeedbackIndex(asset.toBase58(), signerPubkey.toBase58());
-                    feedbackIndex = BigInt(lastIndex + 1);
+                    feedbackIndex = lastIndex + 1n;
                 }
                 catch (error) {
                     throw new Error(`Failed to get feedback index from indexer: ${error instanceof Error ? error.message : String(error)}`);
