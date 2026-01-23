@@ -224,9 +224,13 @@ export class SolanaFeedbackManager {
                 includeRevoked: true,
             });
             const clientFeedbacks = feedbacks.filter((f) => f.client_address === client.toBase58());
-            // Return the actual max feedback_index, not count-1 (indices may have gaps)
+            // Return the actual max feedback_index using safe BigInt comparison
+            // (Number() loses precision for indices > 2^53)
             return clientFeedbacks.length > 0
-                ? BigInt(Math.max(...clientFeedbacks.map(f => Number(f.feedback_index))))
+                ? clientFeedbacks.reduce((max, f) => {
+                    const idx = BigInt(f.feedback_index);
+                    return idx > max ? idx : max;
+                }, BigInt(-1))
                 : BigInt(-1);
         }
         catch (error) {

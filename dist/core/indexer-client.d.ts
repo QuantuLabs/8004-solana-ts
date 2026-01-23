@@ -254,12 +254,19 @@ export declare class IndexerClient {
     getLastFeedbackIndex(asset: string, client: string): Promise<number>;
     /**
      * Get all metadata for an agent
+     * Values are automatically decompressed if stored with ZSTD
      */
     getMetadata(asset: string): Promise<IndexedMetadata[]>;
     /**
      * Get specific metadata entry by key
+     * Value is automatically decompressed if stored with ZSTD
      */
     getMetadataByKey(asset: string, key: string): Promise<IndexedMetadata | null>;
+    /**
+     * Decompress metadata values (handles ZSTD compression)
+     * @internal
+     */
+    private decompressMetadataValues;
     /**
      * Get validations for an agent
      */
