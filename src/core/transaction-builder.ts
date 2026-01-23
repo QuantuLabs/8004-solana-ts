@@ -1166,10 +1166,10 @@ export class ReputationTransactionBuilder {
         throw new Error('Score must be between 0 and 100');
       }
       // Security: Use byte length validation for UTF-8 strings (not character count)
-      // MAX_URI_LENGTH = 250 per program
+      // Program limits: tag1/tag2=32, endpoint=250, feedbackUri=250
       validateByteLength(tag1, 32, 'tag1');
       validateByteLength(tag2, 32, 'tag2');
-      validateByteLength(endpoint, 256, 'endpoint');
+      validateByteLength(endpoint, 250, 'endpoint');
       validateByteLength(feedbackUri, 250, 'feedbackUri');
       if (feedbackHash.length !== 32) {
         throw new Error('feedbackHash must be 32 bytes');
