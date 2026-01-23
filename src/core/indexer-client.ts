@@ -11,6 +11,7 @@ import {
   IndexerRateLimitError,
   IndexerUnauthorizedError,
 } from './indexer-errors.js';
+import { decompressBase64Value } from '../utils/compression.js';
 
 /**
  * Configuration for IndexerClient
@@ -541,14 +542,17 @@ export class IndexerClient {
 
   /**
    * Get all metadata for an agent
+   * Values are automatically decompressed if stored with ZSTD
    */
   async getMetadata(asset: string): Promise<IndexedMetadata[]> {
     const query = this.buildQuery({ asset: `eq.${asset}` });
-    return this.request<IndexedMetadata[]>(`/metadata${query}`);
+    const result = await this.request<IndexedMetadata[]>(`/metadata${query}`);
+    return this.decompressMetadataValues(result);
   }
 
   /**
    * Get specific metadata entry by key
+   * Value is automatically decompressed if stored with ZSTD
    */
   async getMetadataByKey(asset: string, key: string): Promise<IndexedMetadata | null> {
     const query = this.buildQuery({
@@ -556,7 +560,30 @@ export class IndexerClient {
       key: `eq.${key}`,
     });
     const result = await this.request<IndexedMetadata[]>(`/metadata${query}`);
-    return result.length > 0 ? result[0] : null;
+    if (result.length === 0) return null;
+    const decompressed = await this.decompressMetadataValues(result);
+    return decompressed[0];
+  }
+
+  /**
+   * Decompress metadata values (handles ZSTD compression)
+   * @internal
+   */
+  private async decompressMetadataValues(metadata: IndexedMetadata[]): Promise<IndexedMetadata[]> {
+    return Promise.all(metadata.map(async (m) => {
+      try {
+        // Value comes as base64 from Supabase PostgREST (BYTEA encoding)
+        // or as plain string from local API
+        const decompressedValue = m.value
+          ? await decompressBase64Value(m.value)
+          : '';
+        return { ...m, value: decompressedValue };
+      } catch {
+        // If decompression fails, return original value
+        // (might be legacy uncompressed data or already decoded)
+        return m;
+      }
+    }));
   }
 
   // ============================================================================
