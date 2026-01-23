@@ -2025,7 +2025,7 @@ export class SolanaSDK {
     return parseSignedPayload(JSON.parse(content));
   }
 
-  private async fetchJsonFromUri(uri: string, timeoutMs: number): Promise<Record<string, unknown>> {
+  private async fetchJsonFromUri(uri: string, timeoutMs: number, maxBytes: number = 256 * 1024): Promise<Record<string, unknown>> {
     let resolvedUri = uri.trim();
     if (resolvedUri.startsWith('/ipfs/')) {
       resolvedUri = `ipfs://${resolvedUri.slice(6)}`;
@@ -2042,6 +2042,11 @@ export class SolanaSDK {
       return data;
     }
 
+    // SSRF protection: block private/internal hosts
+    if (!this.isAllowedUri(resolvedUri)) {
+      throw new Error('URI blocked: internal/private host not allowed');
+    }
+
     const response = await fetch(resolvedUri, {
       signal: AbortSignal.timeout(timeoutMs),
       redirect: 'follow',
@@ -2051,12 +2056,44 @@ export class SolanaSDK {
       throw new Error(`Failed to fetch JSON: HTTP ${response.status}`);
     }
 
-    const data = (await response.json()) as unknown;
+    // Size limit protection
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > maxBytes) {
+      throw new Error(`Response too large: ${contentLength} bytes (max: ${maxBytes})`);
+    }
+
+    const text = await response.text();
+    if (text.length > maxBytes) {
+      throw new Error(`Response too large: ${text.length} bytes (max: ${maxBytes})`);
+    }
+
+    const data = JSON.parse(text) as unknown;
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       throw new Error('Invalid JSON payload: expected object');
     }
 
     return data as Record<string, unknown>;
+  }
+
+  private isAllowedUri(uri: string): boolean {
+    try {
+      const url = new URL(uri);
+      const hostname = url.hostname.toLowerCase();
+
+      // Block common internal hostnames
+      const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'metadata.google.internal', '169.254.169.254'];
+      if (blockedHosts.includes(hostname)) return false;
+
+      // Block private IP ranges
+      const privatePatterns = [/^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./, /^169\.254\./, /^127\./, /^0\./];
+      for (const pattern of privatePatterns) {
+        if (pattern.test(hostname)) return false;
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private normalizeRegistrationEndpoints(raw: Record<string, unknown>): Endpoint[] {
