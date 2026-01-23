@@ -429,12 +429,12 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
 
       // Verify basic fields
       expect(onChainValidation.nonce).toBe(validationNonce);
-      expect(onChainValidation.hasResponse()).toBe(true);
+      expect(onChainValidation.responded).toBe(true);
       expect(onChainValidation.response).toBe(95);
 
       console.log(`✅ Validation nonce: ${onChainValidation.nonce}`);
       console.log(`✅ Response score: ${onChainValidation.response}`);
-      console.log(`✅ Has response: ${onChainValidation.hasResponse()}`);
+      console.log(`✅ Has response: ${onChainValidation.responded}`);
     }, 60000);
 
     it('should verify reputation summary consistency', async () => {
