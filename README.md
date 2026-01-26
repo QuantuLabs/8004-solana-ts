@@ -79,11 +79,13 @@ console.log('Agent:', agent.asset.toBase58());
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(agent.asset, opWallet);
 
-// 4. Give feedback
+// 4. Give feedback (v0.5.0+)
 await sdk.giveFeedback(agent.asset, {
-  score: 85,
+  score: 85,                          // 0-100, optional (null = inferred from tag)
+  value: 15000n,                      // i64: raw metric (e.g., profit in cents)
+  valueDecimals: 2,                   // 0-6: decimal precision
+  tag1: 'x402-resource-delivered',    // standardized tag (see FEEDBACK.md)
   feedbackUri: 'ipfs://QmFeedback...',
-  feedbackHash: Buffer.alloc(32),
 });
 
 // 5. Check reputation
@@ -146,6 +148,34 @@ const agent = await sdk.loadAgent(assetPubkey);
 const summary = await sdk.getSummary(assetPubkey);
 ```
 
+## Feedback System (v0.5.0+)
+
+The feedback system supports rich metrics for cross-chain compatibility:
+
+```typescript
+// Basic feedback with score
+await sdk.giveFeedback(agent.asset, { score: 85 });
+
+// Advanced: PnL tracking (finance use case)
+await sdk.giveFeedback(agent.asset, {
+  score: 90,
+  value: -1500n,        // Loss of $15.00
+  valueDecimals: 2,     // 2 decimal places (cents)
+  tag1: 'x402-payment-verified',
+  tag2: 'usd',
+});
+
+// Optional score: let ATOM infer from tag
+await sdk.giveFeedback(agent.asset, {
+  score: null,          // Will use tag-based default
+  value: 250000n,       // 250ms latency
+  valueDecimals: 0,
+  tag1: 'performance',  // Infers score=50
+});
+```
+
+See [FEEDBACK.md](./docs/FEEDBACK.md) for standardized tags and advanced patterns.
+
 ## ATOM Engine
 
 The SDK auto-initializes ATOM stats on registration (atomEnabled: true by default). ATOM provides:
@@ -196,6 +226,7 @@ const sdk = new SolanaSDK({
 ## Documentation
 
 - [API Reference](./docs/METHODS.md) - All methods with examples
+- [Feedback Guide](./docs/FEEDBACK.md) - Tags, value/decimals, advanced patterns
 - [Quickstart](./docs/QUICKSTART.md) - Step-by-step guide
 - [Costs](./docs/COSTS.md) - Transaction costs
 - [OASF Taxonomies](./docs/OASF.md) - Skills & domains reference
