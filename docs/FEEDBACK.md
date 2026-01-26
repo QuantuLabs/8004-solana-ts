@@ -37,16 +37,16 @@ As defined in the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-80
 | tag1 | Purpose | value | ATOM auto-score |
 |------|---------|-------|-----------------|
 | `starred` | Quality rating | 0-100 | ✅ Direct |
-| `reachable` | Endpoint reachable | 0 or 1 | ✅ Binary (0→0, 1→100) |
 | `ownerVerified` | Owner verification | 0 or 1 | ✅ Binary (0→0, 1→100) |
 | `uptime` | Endpoint uptime | % | ✅ Direct |
 | `successRate` | Success rate | % | ✅ Direct |
+| `reachable` | Endpoint reachable | 0 or 1 | ❌ Use `uptime` for aggregate |
 | `responseTime` | Response time | ms | ❌ Provide explicit score |
 | `blocktimeFreshness` | Block delay | blocks | ❌ Provide explicit score |
 | `revenues` | Cumulative revenues | USD | ❌ Provide explicit score |
 | `tradingYield` | Yield/APY | % | ❌ Provide explicit score |
 
-> Tags marked ❌ require an explicit `score` for ATOM processing. Their `value` is stored but not auto-normalized (context-dependent).
+> Tags marked ❌ require an explicit `score` for ATOM processing. Their `value` is stored but not auto-normalized (context-dependent or unreliable as single measurement).
 
 ### Examples
 
