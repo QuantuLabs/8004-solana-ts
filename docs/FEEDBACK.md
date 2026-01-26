@@ -2,6 +2,8 @@
 
 The ERC-8004 feedback system enables rich reputation tracking with standardized tags and raw metrics.
 
+> **Solana Constraints**: This SDK uses `i64` for value (vs `int128` on EVM) and `0-6` for valueDecimals (vs `0-18` on EVM). Tags are optional by design so ecosystems can evolve their own taxonomies.
+
 ## Quick Reference
 
 ```typescript
@@ -10,7 +12,7 @@ await sdk.giveFeedback(agent.asset, {
   value: 15000n,                  // i64: raw metric value
   valueDecimals: 2,               // 0-6: decimal precision
   tag1: 'revenues',               // primary category (ERC-8004 standard)
-  tag2: 'monthly',                // secondary qualifier
+  tag2: 'month',                  // secondary qualifier (day/week/month/year)
   endpoint: '/api/v1/generate',   // endpoint called (max 250 bytes)
   feedbackUri: 'ipfs://Qm...',    // detailed feedback file
   feedbackHash: Buffer.alloc(32), // SHA-256 of feedback content
@@ -57,9 +59,9 @@ await sdk.giveFeedback(agent.asset, {
   tag1: 'starred',
 });
 
-// Response time tracking
+// Response time tracking (explicit score required)
 await sdk.giveFeedback(agent.asset, {
-  score: null,          // Let ATOM infer
+  score: 95,            // Fast response = high score
   value: 250n,          // 250ms
   valueDecimals: 0,
   tag1: 'responseTime',
@@ -72,7 +74,7 @@ await sdk.giveFeedback(agent.asset, {
   value: 15000n,        // $150.00
   valueDecimals: 2,
   tag1: 'revenues',
-  tag2: 'weekly',
+  tag2: 'week',
 });
 
 // Trading yield
@@ -81,7 +83,7 @@ await sdk.giveFeedback(agent.asset, {
   value: 1250n,         // 12.50%
   valueDecimals: 2,
   tag1: 'tradingYield',
-  tag2: '30d',          // 30-day period
+  tag2: 'month',
 });
 
 // Uptime monitoring
@@ -90,7 +92,7 @@ await sdk.giveFeedback(agent.asset, {
   value: 9975n,         // 99.75%
   valueDecimals: 2,
   tag1: 'uptime',
-  tag2: 'monthly',
+  tag2: 'month',
 });
 ```
 
@@ -160,7 +162,7 @@ For detailed feedback, upload a JSON file to IPFS:
   "value": 15000,
   "valueDecimals": 2,
   "tag1": "revenues",
-  "tag2": "weekly",
+  "tag2": "week",
   "endpoint": "/api/v1/generate",
   "details": {
     "requestId": "req_abc123",

@@ -162,7 +162,7 @@ await sdk.giveFeedback(agent.asset, {
   value: 15000n,        // $150.00
   valueDecimals: 2,
   tag1: 'revenues',
-  tag2: 'weekly',
+  tag2: 'week',
 });
 
 // Uptime tracking (auto-normalized to score)
