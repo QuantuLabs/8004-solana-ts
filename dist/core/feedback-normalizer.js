@@ -46,22 +46,13 @@ export function normalizeToScore(tag, value, decimals) {
         case 'reachable':
         case 'ownerverified':
             return value === 0n ? 0 : 100;
-        // Response time: lower is better (0ms=100, 1000ms+=0)
+        // Context-dependent tags: cannot normalize reliably
+        // Caller should provide explicit score if ATOM processing is desired
         case 'responsetime':
-            return Math.max(0, Math.min(100, Math.round(100 - raw / 10)));
-        // Block freshness: lower is better (0 blocks=100, 10+ blocks=0)
         case 'blocktimefreshness':
-            return Math.max(0, Math.min(100, Math.round(100 - raw * 10)));
-        // Yield: percentage, capped at 100
-        case 'tradingyield':
-            return Math.min(100, Math.max(0, Math.round(raw)));
-        // Revenues: positive = good, map logarithmically
-        // $0=50, $100=70, $1000=80, $10000=90, $100000+=100
         case 'revenues':
-            if (raw <= 0)
-                return 50;
-            const logScore = 50 + Math.log10(raw) * 12.5;
-            return Math.min(100, Math.max(50, Math.round(logScore)));
+        case 'tradingyield':
+            return null;
         default:
             return null;
     }

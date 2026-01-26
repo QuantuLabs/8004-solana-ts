@@ -34,19 +34,19 @@ await sdk.giveFeedback(agent.asset, {
 
 As defined in the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004):
 
-| tag1 | Purpose | value | ATOM score formula |
-|------|---------|-------|-------------------|
-| `starred` | Quality rating | 0-100 | Direct: `value` |
-| `reachable` | Endpoint reachable | 0 or 1 | Binary: `0→0, 1→100` |
-| `ownerVerified` | Owner verification | 0 or 1 | Binary: `0→0, 1→100` |
-| `uptime` | Endpoint uptime | % | Direct: `value` |
-| `successRate` | Success rate | % | Direct: `value` |
-| `responseTime` | Response time | ms | Inverse: `100 - value/10` |
-| `blocktimeFreshness` | Block delay | blocks | Inverse: `100 - value*10` |
-| `revenues` | Cumulative revenues | USD | Log: `50 + log10(value)*12.5` |
-| `tradingYield` | Yield/APY | % | Direct: `value` (capped 100) |
+| tag1 | Purpose | value | ATOM auto-score |
+|------|---------|-------|-----------------|
+| `starred` | Quality rating | 0-100 | ✅ Direct |
+| `reachable` | Endpoint reachable | 0 or 1 | ✅ Binary (0→0, 1→100) |
+| `ownerVerified` | Owner verification | 0 or 1 | ✅ Binary (0→0, 1→100) |
+| `uptime` | Endpoint uptime | % | ✅ Direct |
+| `successRate` | Success rate | % | ✅ Direct |
+| `responseTime` | Response time | ms | ❌ Provide explicit score |
+| `blocktimeFreshness` | Block delay | blocks | ❌ Provide explicit score |
+| `revenues` | Cumulative revenues | USD | ❌ Provide explicit score |
+| `tradingYield` | Yield/APY | % | ❌ Provide explicit score |
 
-> Note: Tags are case-insensitive. `tag2` is for qualifiers (e.g., time periods).
+> Tags marked ❌ require an explicit `score` for ATOM processing. Their `value` is stored but not auto-normalized (context-dependent).
 
 ### Examples
 
