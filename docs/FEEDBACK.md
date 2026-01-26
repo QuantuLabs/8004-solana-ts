@@ -1,6 +1,6 @@
 # Feedback System Guide
 
-The ERC-8004 feedback system enables rich reputation tracking with standardized tags, raw metrics, and cross-chain compatibility.
+The ERC-8004 feedback system enables rich reputation tracking with standardized tags and raw metrics.
 
 ## Quick Reference
 
@@ -9,8 +9,8 @@ await sdk.giveFeedback(agent.asset, {
   score: 85,                      // 0-100, optional (null = inferred from tag)
   value: 15000n,                  // i64: raw metric value
   valueDecimals: 2,               // 0-6: decimal precision
-  tag1: 'x402-resource-delivered', // primary category
-  tag2: 'exact-svm',              // secondary qualifier
+  tag1: 'revenues',               // primary category (ERC-8004 standard)
+  tag2: 'monthly',                // secondary qualifier
   endpoint: '/api/v1/generate',   // endpoint called (max 250 bytes)
   feedbackUri: 'ipfs://Qm...',    // detailed feedback file
   feedbackHash: Buffer.alloc(32), // SHA-256 of feedback content
@@ -30,76 +30,69 @@ await sdk.giveFeedback(agent.asset, {
 | `feedbackUri` | `string` | IPFS/HTTP link to detailed feedback |
 | `feedbackHash` | `Buffer` | SHA-256 hash for integrity verification |
 
-## Standardized Tags
+## ERC-8004 Standardized Tags
 
-### x402 Payment Protocol
+As defined in the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004):
 
-For agents using the x402 payment standard:
+| tag1 | Purpose | value interpretation |
+|------|---------|---------------------|
+| `starred` | Quality rating | score 0-100 |
+| `reachable` | Endpoint reachable | binary (0 or 1) |
+| `ownerVerified` | Endpoint owned by agent owner | binary (0 or 1) |
+| `uptime` | Endpoint uptime | percentage (0-100) |
+| `successRate` | Endpoint success rate | percentage (0-100) |
+| `responseTime` | Response time | milliseconds |
+| `blocktimeFreshness` | Average block delay | blocks |
+| `revenues` | Cumulative revenues | USD (use valueDecimals=2) |
+| `tradingYield` | Yield/APY | percentage, use tag2 for period |
 
-| Tag | Score Default | Description |
-|-----|---------------|-------------|
-| `x402-resource-delivered` | 80 | Payment verified, resource delivered |
-| `x402-payment-verified` | 85 | Payment confirmed on-chain |
-| `x402-good-payer` | 75 | Client paid promptly |
-| `x402-bad-payer` | 15 | Payment failed or disputed |
+> Note: `tag1` and `tag2` are left to developers' discretion for maximum on-chain composability. The above are standard suggestions.
 
-```typescript
-// After x402 payment settlement
-await sdk.giveFeedback(agent.asset, {
-  score: null,  // Uses tag default (80)
-  value: 5000n, // $50.00 payment
-  valueDecimals: 2,
-  tag1: 'x402-resource-delivered',
-  tag2: 'exact-svm',  // Solana payment
-});
-```
-
-### Performance Metrics
-
-| Tag | Score Default | Use Case |
-|-----|---------------|----------|
-| `performance` | 50 | Generic performance tracking |
-| `latency` | 50 | Response time metrics |
-| `throughput` | 50 | Requests/second metrics |
-| `uptime` | 75 | Availability tracking |
+### Examples
 
 ```typescript
-// Track API latency
-await sdk.giveFeedback(agent.asset, {
-  score: null,
-  value: 250n,        // 250ms response time
-  valueDecimals: 0,
-  tag1: 'latency',
-  tag2: 'p99',
-});
-```
-
-### Financial Metrics
-
-| Tag | Score Default | Use Case |
-|-----|---------------|----------|
-| `pnl` | 50 | Profit and loss tracking |
-| `roi` | 50 | Return on investment |
-| `yield` | 60 | Yield/APY metrics |
-
-```typescript
-// Trading agent PnL
+// Quality rating
 await sdk.giveFeedback(agent.asset, {
   score: 85,
-  value: -150000n,    // -$1,500.00 loss
+  tag1: 'starred',
+});
+
+// Response time tracking
+await sdk.giveFeedback(agent.asset, {
+  score: null,          // Let ATOM infer
+  value: 250n,          // 250ms
+  valueDecimals: 0,
+  tag1: 'responseTime',
+  endpoint: '/api/generate',
+});
+
+// Revenue tracking
+await sdk.giveFeedback(agent.asset, {
+  score: 90,
+  value: 15000n,        // $150.00
   valueDecimals: 2,
-  tag1: 'pnl',
+  tag1: 'revenues',
   tag2: 'weekly',
 });
+
+// Trading yield
+await sdk.giveFeedback(agent.asset, {
+  score: 75,
+  value: 1250n,         // 12.50%
+  valueDecimals: 2,
+  tag1: 'tradingYield',
+  tag2: '30d',          // 30-day period
+});
+
+// Uptime monitoring
+await sdk.giveFeedback(agent.asset, {
+  score: null,
+  value: 9975n,         // 99.75%
+  valueDecimals: 2,
+  tag1: 'uptime',
+  tag2: 'monthly',
+});
 ```
-
-### Quality Ratings
-
-| Tag | Score Default | Use Case |
-|-----|---------------|----------|
-| `quality` | 50 | Generic quality score |
-| `accuracy` | 50 | Model/prediction accuracy |
-| `relevance` | 50 | Content relevance |
 
 ## Value & Decimals Patterns
 
@@ -109,19 +102,19 @@ await sdk.giveFeedback(agent.asset, {
 { value: 9977n, valueDecimals: 2 }
 ```
 
-### Microseconds (6 decimals)
+### Percentages (2 decimals)
 ```typescript
-// 9.977000 seconds
-{ value: 9977000n, valueDecimals: 6 }
+// 99.75% uptime
+{ value: 9975n, valueDecimals: 2 }
 ```
 
-### Integer counts (0 decimals)
+### Milliseconds (0 decimals)
 ```typescript
-// 1,500 requests processed
-{ value: 1500n, valueDecimals: 0 }
+// 250ms response time
+{ value: 250n, valueDecimals: 0 }
 ```
 
-### Negative values
+### Negative values (PnL)
 ```typescript
 // -$15.00 loss
 { value: -1500n, valueDecimals: 2 }
@@ -140,21 +133,17 @@ await sdk.giveFeedback(agent.asset, {
 
 When `score` is `null` or `undefined`, ATOM will:
 
-1. Look up the `tag1` in the standardized tag registry
-2. Use the tag's default score (if found)
+1. Look up the `tag1` in the tag registry
+2. Use the tag's default score (if defined)
 3. Fall back to 50 (neutral) for unknown tags
 
 ```typescript
-// Score inferred from tag (x402-resource-delivered = 80)
+// Score inferred from tag
 await sdk.giveFeedback(agent.asset, {
   score: null,
-  tag1: 'x402-resource-delivered',
-});
-
-// Unknown tag = score defaults to 50
-await sdk.giveFeedback(agent.asset, {
-  score: null,
-  tag1: 'custom-metric',
+  tag1: 'uptime',
+  value: 9999n,
+  valueDecimals: 2,
 });
 ```
 
@@ -164,33 +153,24 @@ For detailed feedback, upload a JSON file to IPFS:
 
 ```json
 {
-  "version": "1.0",
   "agent": "AgentAssetPubkey...",
   "client": "ClientPubkey...",
   "timestamp": "2026-01-26T14:00:00Z",
   "score": 85,
   "value": 15000,
   "valueDecimals": 2,
-  "tag1": "x402-resource-delivered",
-  "tag2": "exact-svm",
+  "tag1": "revenues",
+  "tag2": "weekly",
   "endpoint": "/api/v1/generate",
   "details": {
     "requestId": "req_abc123",
     "duration": 1250,
-    "tokens": 500,
-    "model": "gpt-4"
-  },
-  "proofOfPayment": {
-    "txHash": "5abc...",
-    "fromAddress": "Client...",
-    "toAddress": "Agent...",
-    "amount": 15000,
-    "chainId": "solana:devnet"
+    "tokens": 500
   }
 }
 ```
 
-Then reference it in the feedback:
+Then reference it:
 
 ```typescript
 const feedbackContent = JSON.stringify(feedbackJson);
@@ -201,7 +181,7 @@ await sdk.giveFeedback(agent.asset, {
   score: 85,
   value: 15000n,
   valueDecimals: 2,
-  tag1: 'x402-resource-delivered',
+  tag1: 'revenues',
   feedbackUri: `ipfs://${cid}`,
   feedbackHash,
 });
@@ -212,8 +192,8 @@ await sdk.giveFeedback(agent.asset, {
 ```typescript
 // Read single feedback
 const feedback = await sdk.readFeedback(agent.asset, clientAddress, 0);
-console.log(feedback.score);        // 85 or null
-console.log(feedback.value);        // 15000n
+console.log(feedback.score);         // 85 or null
+console.log(feedback.value);         // 15000n
 console.log(feedback.valueDecimals); // 2
 
 // List all feedbacks
@@ -225,23 +205,10 @@ console.log(summary.averageScore);
 console.log(summary.totalFeedbacks);
 ```
 
-## Cross-Chain Compatibility
-
-The feedback signature is compatible with EVM chains (ERC-8004):
-
-| Solana | EVM | Notes |
-|--------|-----|-------|
-| `value: i64` | `value: int256` | Solana uses i64, EVM uses int256 |
-| `valueDecimals: u8` | `valueDecimals: uint8` | 0-6 range on both |
-| `score: Option<u8>` | `score: uint8 (255=null)` | 255 means "no score" on EVM |
-
-The indexer normalizes these differences for cross-chain queries.
-
 ## Best Practices
 
-1. **Use standardized tags** when possible for consistent ATOM scoring
+1. **Use ERC-8004 standard tags** when applicable for interoperability
 2. **Include value/valueDecimals** for quantitative metrics
 3. **Set score explicitly** when you have a clear quality assessment
 4. **Use null score** for pure metric tracking without quality judgment
 5. **Upload feedbackUri** for detailed audit trails
-6. **Hash sensitive data** before including in feedbackUri
