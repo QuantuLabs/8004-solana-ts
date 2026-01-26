@@ -165,12 +165,12 @@ await sdk.giveFeedback(agent.asset, {
   tag2: 'weekly',
 });
 
-// Response time (optional score - ATOM infers from tag)
+// Uptime tracking (auto-normalized to score)
 await sdk.giveFeedback(agent.asset, {
-  score: null,
-  value: 250n,          // 250ms
-  valueDecimals: 0,
-  tag1: 'responseTime',
+  score: null,          // Auto: 99.5% → score 100
+  value: 9950n,         // 99.50%
+  valueDecimals: 2,
+  tag1: 'uptime',
 });
 ```
 
