@@ -34,19 +34,19 @@ await sdk.giveFeedback(agent.asset, {
 
 As defined in the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004):
 
-| tag1 | Purpose | value interpretation |
-|------|---------|---------------------|
-| `starred` | Quality rating | score 0-100 |
-| `reachable` | Endpoint reachable | binary (0 or 1) |
-| `ownerVerified` | Endpoint owned by agent owner | binary (0 or 1) |
-| `uptime` | Endpoint uptime | percentage (0-100) |
-| `successRate` | Endpoint success rate | percentage (0-100) |
-| `responseTime` | Response time | milliseconds |
-| `blocktimeFreshness` | Average block delay | blocks |
-| `revenues` | Cumulative revenues | USD (use valueDecimals=2) |
-| `tradingYield` | Yield/APY | percentage, use tag2 for period |
+| tag1 | Purpose | value | ATOM score formula |
+|------|---------|-------|-------------------|
+| `starred` | Quality rating | 0-100 | Direct: `value` |
+| `reachable` | Endpoint reachable | 0 or 1 | Binary: `0→0, 1→100` |
+| `ownerVerified` | Owner verification | 0 or 1 | Binary: `0→0, 1→100` |
+| `uptime` | Endpoint uptime | % | Direct: `value` |
+| `successRate` | Success rate | % | Direct: `value` |
+| `responseTime` | Response time | ms | Inverse: `100 - value/10` |
+| `blocktimeFreshness` | Block delay | blocks | Inverse: `100 - value*10` |
+| `revenues` | Cumulative revenues | USD | Log: `50 + log10(value)*12.5` |
+| `tradingYield` | Yield/APY | % | Direct: `value` (capped 100) |
 
-> Note: `tag1` and `tag2` are left to developers' discretion for maximum on-chain composability. The above are standard suggestions.
+> Note: Tags are case-insensitive. `tag2` is for qualifiers (e.g., time periods).
 
 ### Examples
 
