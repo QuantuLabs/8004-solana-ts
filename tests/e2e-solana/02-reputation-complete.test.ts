@@ -106,6 +106,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 85n,
             score: 85,
             tag1: 'integration-test',
             feedbackUri,
@@ -142,6 +143,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 75n,
             score: 75,
             tag1: 'atom-test',
             feedbackUri: atomFeedbackUri,
@@ -176,6 +178,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           noAtomAgent,
           {
+            value: 90n,
             score: 90,
             tag1: 'noatom-test',
             feedbackUri: noAtomFeedbackUri,
@@ -199,6 +202,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 0n,
             score: 0,
             tag1: 'score-min',
             feedbackUri: uri0,
@@ -214,6 +218,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 100n,
             score: 100,
             tag1: 'score-max',
             feedbackUri: uri100,
@@ -229,6 +234,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 101n,
             score: 101,
             tag1: 'score-invalid',
             feedbackUri: uri101,
@@ -248,6 +254,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 80n,
             score: 80,
             tag1: tag32,
             feedbackUri: uriTag32,
@@ -264,6 +271,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 80n,
             score: 80,
             tag1: tag33,
             feedbackUri: uriTag33,
@@ -282,6 +290,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 80n,
             score: 80,
             tag1: 'uri-max',
             feedbackUri: uri250,
@@ -297,6 +306,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 80n,
             score: 80,
             tag1: 'uri-toolong',
             feedbackUri: uri251,
@@ -315,6 +325,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await sdk.giveFeedback(
           agent,
           {
+            value: 95n,
             score: 95,
             tag1: 'self-feedback',
             feedbackUri: selfUri,
@@ -332,6 +343,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           fakeAgent,
           {
+            value: 80n,
             score: 80,
             tag1: 'fake-agent',
             feedbackUri: fakeUri,
@@ -350,6 +362,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           agent,
           {
+            value: 88n,
             score: 88,
             tag1: 'event-test',
             feedbackUri,
@@ -392,6 +405,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       const result = await clientSdk.giveFeedback(
         agent,
         {
+          value: 70n,
           score: 70,
           tag1: 'revoke-test',
           feedbackUri: revUri,
@@ -433,7 +447,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
-            score: 65,
+            value: 65n,
+          score: 65,
             tag1: 'atom-revoke',
             feedbackUri: atomRevokeUri,
             feedbackHash: createFeedbackHash(atomRevokeUri),
@@ -476,7 +491,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
-            score: 60,
+            value: 60n,
+          score: 60,
             tag1: 'double-revoke',
             feedbackUri: doubleRevokeUri,
             feedbackHash: createFeedbackHash(doubleRevokeUri),
@@ -506,7 +522,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
-            score: 55,
+            value: 55n,
+          score: 55,
             tag1: 'unauthorized-revoke',
             feedbackUri: unauthUri,
             feedbackHash: createFeedbackHash(unauthUri),
@@ -557,6 +574,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       const result = await clientSdk.giveFeedback(
         agent,
         {
+          value: 92n,
           score: 92,
           tag1: 'response-test',
           feedbackUri: responseTestUri,
@@ -603,7 +621,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
-            score: 78,
+            value: 78n,
+          score: 78,
             tag1: 'multi-response',
             feedbackUri: multiRespUri,
             feedbackHash: createFeedbackHash(multiRespUri),
@@ -712,7 +731,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
-            score: 82,
+            value: 82n,
+          score: 82,
             tag1: 'public-response',
             feedbackUri: publicRespUri,
             feedbackHash: createFeedbackHash(publicRespUri),

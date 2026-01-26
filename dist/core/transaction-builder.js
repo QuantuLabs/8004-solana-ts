@@ -19,6 +19,34 @@ import { fetchRegistryConfigByPda, fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
+import { resolveScore } from './feedback-normalizer.js';
+const I64_MIN = -(2n ** 63n);
+const I64_MAX = 2n ** 63n - 1n;
+/**
+ * Validate and convert value to BigInt
+ */
+function validateValue(value) {
+    if (typeof value === 'bigint') {
+        if (value < I64_MIN || value > I64_MAX) {
+            throw new Error(`value ${value} exceeds i64 range`);
+        }
+        return value;
+    }
+    if (!Number.isFinite(value)) {
+        throw new Error('value must be finite');
+    }
+    if (!Number.isInteger(value)) {
+        throw new Error('value must be an integer');
+    }
+    if (value > Number.MAX_SAFE_INTEGER || value < Number.MIN_SAFE_INTEGER) {
+        throw new Error(`value ${value} exceeds safe integer range, use bigint`);
+    }
+    const bigVal = BigInt(value);
+    if (bigVal < I64_MIN || bigVal > I64_MAX) {
+        throw new Error(`value ${bigVal} exceeds i64 range`);
+    }
+    return bigVal;
+}
 /**
  * Serialize a transaction for later signing and sending
  * @param transaction - The transaction to serialize
@@ -746,39 +774,38 @@ export class ReputationTransactionBuilder {
         this.instructionBuilder = new ReputationInstructionBuilder();
     }
     /**
-     * Give feedback - v0.4.0
+     * Give feedback - v0.5.0
      * @param asset - Agent Core asset
-     * @param score - Feedback score (0-100)
-     * @param tag1 - First tag
-     * @param tag2 - Second tag
-     * @param endpoint - API endpoint being reviewed
-     * @param feedbackUri - Feedback URI (IPFS/Arweave)
-     * @param feedbackHash - Feedback hash (32 bytes)
-     * @param options - Write options (skipSend, signer)
-     *
-     * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
-     * Feedbacks are no longer stored on-chain individually.
+     * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
+     * @param options - Write options (skipSend, signer, feedbackIndex)
      */
-    async giveFeedback(asset, score, tag1, tag2, endpoint, feedbackUri, feedbackHash, options) {
+    async giveFeedback(asset, params, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            // Validate inputs
-            if (score < 0 || score > 100) {
-                throw new Error('Score must be between 0 and 100');
+            const valueDecimals = params.valueDecimals ?? 0;
+            if (!Number.isInteger(valueDecimals) || valueDecimals < 0 || valueDecimals > 6) {
+                throw new Error('valueDecimals must be integer 0-6');
             }
-            // Security: Use byte length validation for UTF-8 strings (not character count)
-            // MAX_URI_LENGTH = 250 per program
-            validateByteLength(tag1, 32, 'tag1');
-            validateByteLength(tag2, 32, 'tag2');
-            validateByteLength(endpoint, 256, 'endpoint');
-            validateByteLength(feedbackUri, 250, 'feedbackUri');
-            if (feedbackHash.length !== 32) {
+            const valueBigInt = validateValue(params.value);
+            if (params.score !== undefined && (!Number.isInteger(params.score) || params.score < 0 || params.score > 100)) {
+                throw new Error('score must be integer 0-100');
+            }
+            const resolvedScore = resolveScore({
+                tag1: params.tag1,
+                value: valueBigInt,
+                valueDecimals,
+                score: params.score,
+            });
+            validateByteLength(params.tag1 ?? '', 32, 'tag1');
+            validateByteLength(params.tag2 ?? '', 32, 'tag2');
+            validateByteLength(params.endpoint ?? '', 250, 'endpoint');
+            validateByteLength(params.feedbackUri, 250, 'feedbackUri');
+            if (params.feedbackHash.length !== 32) {
                 throw new Error('feedbackHash must be 32 bytes');
             }
-            // Derive agent PDA
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const agentInfo = await this.connection.getAccountInfo(agentPda);
             if (!agentInfo) {
@@ -790,7 +817,6 @@ export class ReputationTransactionBuilder {
             const atomConfig = atomEnabled ? getAtomConfigPDA()[0] : null;
             const atomStats = atomEnabled ? getAtomStatsPDA(asset)[0] : null;
             const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA()[0] : null;
-            // Use manual feedbackIndex if provided (for testing), otherwise get from indexer
             let feedbackIndex;
             if (options?.feedbackIndex !== undefined) {
                 feedbackIndex = options.feedbackIndex;
@@ -807,22 +833,13 @@ export class ReputationTransactionBuilder {
             else {
                 throw new Error('Indexer client required for feedback_index calculation. Use options.feedbackIndex for manual index.');
             }
-            const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, // client (signer)
-            agentPda, // agent_account PDA
-            asset, // Core asset
-            collection, // Collection for ATOM filtering
-            atomConfig, // ATOM config PDA
-            atomStats, // ATOM stats PDA
-            registryAuthority, // registry_authority PDA for CPI signing
-            score, tag1, tag2, endpoint, feedbackUri, feedbackHash, feedbackIndex);
+            const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, agentPda, asset, collection, atomConfig, atomStats, registryAuthority, valueBigInt, valueDecimals, resolvedScore, params.feedbackHash, feedbackIndex, params.tag1 ?? '', params.tag2 ?? '', params.endpoint ?? '', params.feedbackUri);
             const transaction = new Transaction().add(giveFeedbackInstruction);
-            // If skipSend, return serialized transaction
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
                 const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
                 return { ...prepared, feedbackIndex };
             }
-            // Normal mode: send transaction
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }

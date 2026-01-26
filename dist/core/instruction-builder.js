@@ -332,9 +332,12 @@ export class IdentityInstructionBuilder {
         return Buffer.concat([Buffer.from([1]), serializer(value)]); // Some
     }
 }
+// i64 bounds for validation
+const I64_MIN = -(2n ** 63n);
+const I64_MAX = 2n ** 63n - 1n;
 /**
  * Instruction builder for Reputation Registry
- * v0.3.0 - agent_id removed, uses asset for PDA derivation
+ * v0.5.0 - value/valueDecimals support (EVM compatibility)
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export class ReputationInstructionBuilder {
@@ -343,21 +346,34 @@ export class ReputationInstructionBuilder {
         this.programId = PROGRAM_ID;
     }
     /**
-     * Build giveFeedback instruction - v0.4.0
-     * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
+     * Build giveFeedback instruction - v0.5.0
+     * Matches: give_feedback(value, value_decimals, score, feedback_hash, feedback_index, tag1, tag2, endpoint, feedback_uri)
      * Accounts: client (signer), agent_account, asset, collection, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
-     * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildGiveFeedback(client, agentAccount, asset, collection, atomConfig, atomStats, registryAuthority, score, tag1, tag2, endpoint, feedbackUri, feedbackHash, feedbackIndex) {
+    buildGiveFeedback(client, agentAccount, asset, collection, atomConfig, atomStats, registryAuthority, value, valueDecimals, score, feedbackHash, feedbackIndex, tag1, tag2, endpoint, feedbackUri) {
+        if (typeof value !== 'bigint') {
+            throw new Error(`value must be bigint, got ${typeof value}. Use BigInt(n) or validateValue().`);
+        }
+        if (!Number.isInteger(valueDecimals) || valueDecimals < 0 || valueDecimals > 6) {
+            throw new Error('valueDecimals must be integer 0-6');
+        }
+        if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) {
+            throw new Error('score must be integer 0-100 or null');
+        }
+        if (value < I64_MIN || value > I64_MAX) {
+            throw new Error(`value ${value} exceeds i64 range`);
+        }
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.giveFeedback,
-            Buffer.from([score]),
+            this.serializeI64(value),
+            Buffer.from([valueDecimals]),
+            this.serializeOptionU8(score),
+            feedbackHash,
+            this.serializeU64(feedbackIndex),
             this.serializeString(tag1),
             this.serializeString(tag2),
             this.serializeString(endpoint),
             this.serializeString(feedbackUri),
-            feedbackHash,
-            this.serializeU64(feedbackIndex),
         ]);
         const hasAtomAccounts = !!(atomConfig && atomStats && registryAuthority);
         if ((atomConfig || atomStats || registryAuthority) && !hasAtomAccounts) {
@@ -378,6 +394,20 @@ export class ReputationInstructionBuilder {
             keys,
             data,
         });
+    }
+    serializeI64(value) {
+        if (value < I64_MIN || value > I64_MAX) {
+            throw new Error(`Value ${value} exceeds i64 range`);
+        }
+        const buf = Buffer.alloc(8);
+        buf.writeBigInt64LE(value);
+        return buf;
+    }
+    serializeOptionU8(value) {
+        if (value === null) {
+            return Buffer.from([0]);
+        }
+        return Buffer.from([1, value]);
     }
     /**
      * Build revokeFeedback instruction - v0.4.0

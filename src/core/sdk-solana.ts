@@ -1601,37 +1601,21 @@ export class SolanaSDK {
   }
 
   /**
-   * Give feedback to an agent (write operation) - v0.3.0
+   * Give feedback to an agent (write operation) - v0.5.0
    * @param asset - Agent Core asset pubkey
-   * @param feedbackFile - Feedback data object
+   * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
    * @param options - Write options (skipSend, signer, feedbackIndex)
    */
   async giveFeedback(
     asset: PublicKey,
-    feedbackFile: {
-      score: number;
-      tag1?: string;
-      tag2?: string;
-      endpoint?: string;
-      feedbackUri: string;
-      feedbackHash: Buffer;
-    },
+    params: import('../models/interfaces.js').GiveFeedbackParams,
     options?: GiveFeedbackOptions
   ): Promise<(TransactionResult & { feedbackIndex?: bigint }) | (PreparedTransaction & { feedbackIndex: bigint })> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
 
-    return await this.reputationTxBuilder.giveFeedback(
-      asset,
-      feedbackFile.score,
-      feedbackFile.tag1 || '',
-      feedbackFile.tag2 || '',
-      feedbackFile.endpoint || '',
-      feedbackFile.feedbackUri,
-      feedbackFile.feedbackHash,
-      options
-    );
+    return await this.reputationTxBuilder.giveFeedback(asset, params, options);
   }
 
   /**

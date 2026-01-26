@@ -97,19 +97,20 @@ export declare class IdentityInstructionBuilder {
 }
 /**
  * Instruction builder for Reputation Registry
- * v0.3.0 - agent_id removed, uses asset for PDA derivation
+ * v0.5.0 - value/valueDecimals support (EVM compatibility)
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
  */
 export declare class ReputationInstructionBuilder {
     private programId;
     constructor();
     /**
-     * Build giveFeedback instruction - v0.4.0
-     * Matches: give_feedback(score, tag1, tag2, endpoint, feedback_uri, feedback_hash, feedback_index)
+     * Build giveFeedback instruction - v0.5.0
+     * Matches: give_feedback(value, value_decimals, score, feedback_hash, feedback_index, tag1, tag2, endpoint, feedback_uri)
      * Accounts: client (signer), agent_account, asset, collection, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
-     * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, feedbackIndex: bigint): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, value: bigint, valueDecimals: number, score: number | null, feedbackHash: Buffer, feedbackIndex: bigint, tag1: string, tag2: string, endpoint: string, feedbackUri: string): TransactionInstruction;
+    private serializeI64;
+    private serializeOptionU8;
     /**
      * Build revokeFeedback instruction - v0.4.0
      * Matches: revoke_feedback(feedback_index)

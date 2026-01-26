@@ -140,6 +140,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
 
       console.log('\n⭐ Giving feedback...');
       const result = await clientSdk.giveFeedback(agentAsset, {
+        value: 85n,
         score: 85,
         tag1: 'devnet-test',
         feedbackUri,
@@ -311,6 +312,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       console.log(`\n🔄 Giving second feedback from client2 to agent: ${agentAsset.toBase58()}`);
       const feedbackUri = `ipfs://client2_feedback_${Date.now()}`;
       const result = await client2Sdk.giveFeedback(agentAsset, {
+        value: 90n,
         score: 90,
         tag1: 'multi-client-test',
         feedbackUri,
@@ -340,6 +342,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       // Now give feedback again - should get index 1
       const feedbackUri1 = `ipfs://client1_second_${Date.now()}`;
       const result1 = await clientSdk.giveFeedback(agentAsset, {
+        value: 75n,
         score: 75,
         tag1: 'index-test-1',
         feedbackUri: feedbackUri1,
@@ -379,6 +382,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       // Give third feedback from same client - should get index 2
       const feedbackUri2 = `ipfs://client1_third_${Date.now()}`;
       const result2 = await clientSdk.giveFeedback(agentAsset, {
+        value: 95n,
         score: 95,
         tag1: 'index-test-2',
         feedbackUri: feedbackUri2,

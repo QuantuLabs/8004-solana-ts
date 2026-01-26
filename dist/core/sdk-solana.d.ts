@@ -392,6 +392,7 @@ export declare class SolanaSDK {
     /**
      * Helper: Execute with indexer fallback to on-chain
      * Used internally when forceRpc='false' (force indexer mode)
+     * @param noFallback - If true, throws instead of falling back to on-chain
      */
     private withIndexerFallback;
     /**
@@ -471,19 +472,25 @@ export declare class SolanaSDK {
     /**
      * Get agent reputation from indexer (with on-chain fallback)
      * @param asset - Agent asset pubkey
+     * @param options - Query options
+     * @param options.noFallback - If true, throws instead of falling back to on-chain (useful for waitForIndexerSync)
      * @returns Indexed reputation data
      */
-    getAgentReputationFromIndexer(asset: PublicKey): Promise<IndexedAgentReputation | null>;
+    getAgentReputationFromIndexer(asset: PublicKey, options?: {
+        noFallback?: boolean;
+    }): Promise<IndexedAgentReputation | null>;
     /**
      * Get feedbacks from indexer (with on-chain fallback)
      * @param asset - Agent asset pubkey
      * @param options - Query options
+     * @param options.noFallback - If true, throws instead of falling back to on-chain
      * @returns Array of feedbacks (SolanaFeedback format)
      */
     getFeedbacksFromIndexer(asset: PublicKey, options?: {
         includeRevoked?: boolean;
         limit?: number;
         offset?: number;
+        noFallback?: boolean;
     }): Promise<SolanaFeedback[]>;
     /**
      * Check if SDK has write permissions
@@ -610,19 +617,12 @@ export declare class SolanaSDK {
      */
     deleteMetadata(asset: PublicKey, key: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Give feedback to an agent (write operation) - v0.3.0
+     * Give feedback to an agent (write operation) - v0.5.0
      * @param asset - Agent Core asset pubkey
-     * @param feedbackFile - Feedback data object
+     * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
      * @param options - Write options (skipSend, signer, feedbackIndex)
      */
-    giveFeedback(asset: PublicKey, feedbackFile: {
-        score: number;
-        tag1?: string;
-        tag2?: string;
-        endpoint?: string;
-        feedbackUri: string;
-        feedbackHash: Buffer;
-    }, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
+    giveFeedback(asset: PublicKey, params: import('../models/interfaces.js').GiveFeedbackParams, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;
@@ -723,6 +723,7 @@ export declare class SolanaSDK {
     verify(payloadOrUri: string | SignedPayloadV1, asset: PublicKey, publicKey?: PublicKey): Promise<boolean>;
     private resolveSignedPayloadInput;
     private fetchJsonFromUri;
+    private isAllowedUri;
     private normalizeRegistrationEndpoints;
     private pingEndpoint;
     private pingHttpEndpoint;

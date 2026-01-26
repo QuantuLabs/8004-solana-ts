@@ -133,6 +133,7 @@ describe('SolanaSDK', () => {
       const asset = Keypair.generate().publicKey;
       await expect(
         sdkReadOnly.giveFeedback(asset, {
+          value: 85n,
           score: 85,
           feedbackUri: 'ipfs://QmTest',
           feedbackHash: Buffer.alloc(32),

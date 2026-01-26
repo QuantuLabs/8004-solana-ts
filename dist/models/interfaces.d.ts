@@ -89,6 +89,31 @@ export type FeedbackIdTuple = [AgentId, Address, number];
  */
 export type FeedbackId = string;
 /**
+ * Parameters for giveFeedback - v0.5.0+
+ */
+export interface GiveFeedbackParams {
+    /**
+     * Raw metric value (e.g., 9977 for 99.77%) - supports negative for yields/PnL
+     * Must be integer. Use bigint for values > Number.MAX_SAFE_INTEGER (9007199254740991)
+     * Range: i64 (-9223372036854775808 to 9223372036854775807)
+     */
+    value: bigint | number;
+    /** Decimal precision (e.g., 2 for 99.77%) - integer 0-6, default 0 */
+    valueDecimals?: number;
+    /** Direct 0-100 score (optional, integer) - takes priority over tag normalization */
+    score?: number;
+    /** Category tag 1 (max 32 UTF-8 bytes) - case-insensitive for ATOM tags */
+    tag1?: string;
+    /** Category tag 2 (max 32 UTF-8 bytes) */
+    tag2?: string;
+    /** Endpoint used (max 250 UTF-8 bytes) */
+    endpoint?: string;
+    /** URI to detailed feedback file (max 250 UTF-8 bytes) */
+    feedbackUri: string;
+    /** SHA-256 hash of feedback content (32 bytes) */
+    feedbackHash: Buffer;
+}
+/**
  * Parameters for agent search
  */
 export interface SearchParams {
