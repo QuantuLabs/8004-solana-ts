@@ -90,6 +90,7 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
     // Give feedback for testing
     const feedbackUri = `ipfs://feedback_${Date.now()}`;
     const feedbackResult = await clientSdk.giveFeedback(agent, {
+      value: 85n,
       score: 85,
       tag1: 'indexer-test',
       feedbackUri,
@@ -329,6 +330,7 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
       // Give feedback with specific endpoint (using tag1 since endpoint field may not be set)
       const endpointUri = `ipfs://endpoint_${Date.now()}`;
       await clientSdk.giveFeedback(agent, {
+        value: 80n,
         score: 80,
         tag1: 'endpoint-test',
         endpoint: endpoint,
@@ -371,6 +373,7 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
       // Give feedback with specific tag
       const tagUri = `ipfs://tag_${Date.now()}`;
       await clientSdk.giveFeedback(agent, {
+        value: 78n,
         score: 78,
         tag1: tag,
         feedbackUri: tagUri,
@@ -629,6 +632,7 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
       // Give feedback and then revoke it
       const revokeUri = `ipfs://revoke_${Date.now()}`;
       const feedbackResult = await clientSdk.giveFeedback(agent, {
+        value: 70n,
         score: 70,
         tag1: 'to-revoke',
         feedbackUri: revokeUri,

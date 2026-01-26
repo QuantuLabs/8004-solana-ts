@@ -218,6 +218,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
         const result = await attackerSdk.giveFeedback(
           agent,
           {
+            value: 75n,
             score: 75,
             tag1: 'cpi-test',
             feedbackUri,
@@ -395,6 +396,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
         const result = await attackerSdk.giveFeedback(
           fakeAgent,
           {
+            value: 80n,
             score: 80,
             tag1: 'fake-agent',
             feedbackUri,
@@ -433,6 +435,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
         const result = await sdk.giveFeedback(
           agent,
           {
+            value: 90n,
             score: 90,
             tag1: 'self-feedback',
             feedbackUri,
@@ -469,6 +472,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
           const result = await attackerSdk.giveFeedback(
             agent,
             {
+              value: 101n,
               score: 101, // Invalid score
               tag1: 'invalid-score',
               feedbackUri,
@@ -549,6 +553,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
           const result = await attackerSdk.giveFeedback(
             agent,
             {
+              value: 75n,
               score: 75,
               tag1: longTag,
               feedbackUri,

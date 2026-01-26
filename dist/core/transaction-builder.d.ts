@@ -12,6 +12,7 @@ import { PublicKey, Transaction, Connection, Keypair, TransactionSignature } fro
 import { UpdateAtomConfigParams } from './instruction-builder.js';
 export type { UpdateAtomConfigParams };
 import type { IndexerClient } from './indexer-client.js';
+import type { GiveFeedbackParams } from '../models/interfaces.js';
 export interface TransactionResult {
     signature: TransactionSignature;
     success: boolean;
@@ -222,20 +223,12 @@ export declare class ReputationTransactionBuilder {
     private instructionBuilder;
     constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: IndexerClient | undefined);
     /**
-     * Give feedback - v0.4.0
+     * Give feedback - v0.5.0
      * @param asset - Agent Core asset
-     * @param score - Feedback score (0-100)
-     * @param tag1 - First tag
-     * @param tag2 - Second tag
-     * @param endpoint - API endpoint being reviewed
-     * @param feedbackUri - Feedback URI (IPFS/Arweave)
-     * @param feedbackHash - Feedback hash (32 bytes)
-     * @param options - Write options (skipSend, signer)
-     *
-     * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
-     * Feedbacks are no longer stored on-chain individually.
+     * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
+     * @param options - Write options (skipSend, signer, feedbackIndex)
      */
-    giveFeedback(asset: PublicKey, score: number, tag1: string, tag2: string, endpoint: string, feedbackUri: string, feedbackHash: Buffer, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
+    giveFeedback(asset: PublicKey, params: GiveFeedbackParams, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;
     }) | (PreparedTransaction & {
         feedbackIndex: bigint;

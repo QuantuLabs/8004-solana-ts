@@ -797,16 +797,20 @@ export class SolanaSDK {
     /**
      * Helper: Execute with indexer fallback to on-chain
      * Used internally when forceRpc='false' (force indexer mode)
+     * @param noFallback - If true, throws instead of falling back to on-chain
      */
-    async withIndexerFallback(indexerFn, onChainFn, operationName) {
+    async withIndexerFallback(indexerFn, onChainFn, operationName, noFallback) {
         if (!this.useIndexer) {
+            if (noFallback) {
+                throw new Error(`Indexer not available for ${operationName}`);
+            }
             return onChainFn();
         }
         try {
             return await indexerFn();
         }
         catch (error) {
-            if (this.indexerFallback) {
+            if (this.indexerFallback && !noFallback) {
                 const errMsg = error instanceof Error ? error.message : String(error);
                 logger.warn(`Indexer failed for ${operationName}, falling back to on-chain: ${errMsg}`);
                 return onChainFn();
@@ -959,9 +963,11 @@ export class SolanaSDK {
     /**
      * Get agent reputation from indexer (with on-chain fallback)
      * @param asset - Agent asset pubkey
+     * @param options - Query options
+     * @param options.noFallback - If true, throws instead of falling back to on-chain (useful for waitForIndexerSync)
      * @returns Indexed reputation data
      */
-    async getAgentReputationFromIndexer(asset) {
+    async getAgentReputationFromIndexer(asset, options) {
         return this.withIndexerFallback(async () => {
             if (!this.indexerClient)
                 throw new Error('No indexer');
@@ -989,12 +995,13 @@ export class SolanaSDK {
                 negative_count: summary.negativeCount,
                 validation_count: 0, // Not available on-chain easily
             };
-        }, 'getAgentReputation');
+        }, 'getAgentReputation', options?.noFallback);
     }
     /**
      * Get feedbacks from indexer (with on-chain fallback)
      * @param asset - Agent asset pubkey
      * @param options - Query options
+     * @param options.noFallback - If true, throws instead of falling back to on-chain
      * @returns Array of feedbacks (SolanaFeedback format)
      */
     async getFeedbacksFromIndexer(asset, options) {
@@ -1005,7 +1012,7 @@ export class SolanaSDK {
             return indexed.map(indexedFeedbackToSolanaFeedback);
         }, async () => {
             return this.feedbackManager.readAllFeedback(asset, options?.includeRevoked ?? false);
-        }, 'getFeedbacks');
+        }, 'getFeedbacks', options?.noFallback);
     }
     // ==================== Write Methods (require signer) - v0.4.0 ====================
     /**
@@ -1220,16 +1227,16 @@ export class SolanaSDK {
         return await this.identityTxBuilder.deleteMetadata(asset, key, options);
     }
     /**
-     * Give feedback to an agent (write operation) - v0.3.0
+     * Give feedback to an agent (write operation) - v0.5.0
      * @param asset - Agent Core asset pubkey
-     * @param feedbackFile - Feedback data object
+     * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
      * @param options - Write options (skipSend, signer, feedbackIndex)
      */
-    async giveFeedback(asset, feedbackFile, options) {
+    async giveFeedback(asset, params, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
-        return await this.reputationTxBuilder.giveFeedback(asset, feedbackFile.score, feedbackFile.tag1 || '', feedbackFile.tag2 || '', feedbackFile.endpoint || '', feedbackFile.feedbackUri, feedbackFile.feedbackHash, options);
+        return await this.reputationTxBuilder.giveFeedback(asset, params, options);
     }
     /**
      * Revoke feedback (write operation) - v0.3.0
@@ -1504,7 +1511,7 @@ export class SolanaSDK {
         const content = await readFile(trimmed, 'utf8');
         return parseSignedPayload(JSON.parse(content));
     }
-    async fetchJsonFromUri(uri, timeoutMs) {
+    async fetchJsonFromUri(uri, timeoutMs, maxBytes = 256 * 1024) {
         let resolvedUri = uri.trim();
         if (resolvedUri.startsWith('/ipfs/')) {
             resolvedUri = `ipfs://${resolvedUri.slice(6)}`;
@@ -1519,6 +1526,10 @@ export class SolanaSDK {
             }
             return data;
         }
+        // SSRF protection: block private/internal hosts
+        if (!this.isAllowedUri(resolvedUri)) {
+            throw new Error('URI blocked: internal/private host not allowed');
+        }
         const response = await fetch(resolvedUri, {
             signal: AbortSignal.timeout(timeoutMs),
             redirect: 'follow',
@@ -1526,11 +1537,40 @@ export class SolanaSDK {
         if (!response.ok) {
             throw new Error(`Failed to fetch JSON: HTTP ${response.status}`);
         }
-        const data = (await response.json());
+        // Size limit protection
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength, 10) > maxBytes) {
+            throw new Error(`Response too large: ${contentLength} bytes (max: ${maxBytes})`);
+        }
+        const text = await response.text();
+        if (text.length > maxBytes) {
+            throw new Error(`Response too large: ${text.length} bytes (max: ${maxBytes})`);
+        }
+        const data = JSON.parse(text);
         if (!data || typeof data !== 'object' || Array.isArray(data)) {
             throw new Error('Invalid JSON payload: expected object');
         }
         return data;
+    }
+    isAllowedUri(uri) {
+        try {
+            const url = new URL(uri);
+            const hostname = url.hostname.toLowerCase();
+            // Block common internal hostnames
+            const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'metadata.google.internal', '169.254.169.254'];
+            if (blockedHosts.includes(hostname))
+                return false;
+            // Block private IP ranges
+            const privatePatterns = [/^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./, /^169\.254\./, /^127\./, /^0\./];
+            for (const pattern of privatePatterns) {
+                if (pattern.test(hostname))
+                    return false;
+            }
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
     normalizeRegistrationEndpoints(raw) {
         const rawEndpoints = raw.endpoints;

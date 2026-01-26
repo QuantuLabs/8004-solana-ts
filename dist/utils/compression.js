@@ -66,39 +66,42 @@ export async function decompressFromStorage(data) {
  * Decompress a value from PostgREST/Supabase or local API
  *
  * Handles multiple formats:
- * - Base64 encoded BYTEA (Supabase PostgREST)
+ * - Base64 encoded BYTEA with compression prefix (Supabase PostgREST)
  * - Plain text (local API, already decompressed)
- * - Hex encoded BYTEA (some PostgREST configs)
  *
- * @param value - Value from API (base64, hex, or plain text)
+ * Security: Only treats data as base64 if it has our compression prefix (0x00 or 0x01)
+ * to avoid misinterpreting plain text that happens to look like base64.
+ *
+ * @param value - Value from API (base64 or plain text)
  * @returns Decompressed string
  */
 export async function decompressBase64Value(value) {
     if (!value)
         return '';
-    // Check if it looks like base64 (only contains base64 chars and is reasonable length)
-    const isLikelyBase64 = /^[A-Za-z0-9+/]+=*$/.test(value) && value.length >= 2;
-    // Check if it starts with our compression prefix when decoded
-    if (isLikelyBase64) {
-        try {
-            const buffer = Buffer.from(value, 'base64');
-            // Check if first byte is our prefix (0x00 or 0x01)
-            if (buffer.length > 0 && (buffer[0] === PREFIX_RAW || buffer[0] === PREFIX_ZSTD)) {
-                const decompressed = await decompressFromStorage(buffer);
-                return decompressed.toString('utf8');
-            }
-            // Might be legacy base64 without prefix, try to decode as UTF-8
-            const decoded = buffer.toString('utf8');
-            // If it decodes to valid UTF-8 text, return it
-            if (decoded && !decoded.includes('\ufffd')) {
-                return decoded;
-            }
-        }
-        catch {
-            // Base64 decode or decompression failed, fall through
+    // Minimum length for valid base64-encoded prefixed data:
+    // prefix(1) + content(1+) = 2+ bytes = 4+ base64 chars (due to padding)
+    // Using 4 as minimum to avoid false positives on short strings like "AA", "AB"
+    if (value.length < 4) {
+        return value;
+    }
+    // Check if it looks like base64 (only contains base64 chars)
+    const isLikelyBase64 = /^[A-Za-z0-9+/]+=*$/.test(value);
+    if (!isLikelyBase64) {
+        return value;
+    }
+    try {
+        const buffer = Buffer.from(value, 'base64');
+        // ONLY process as base64 if first byte is our compression prefix
+        // This prevents misinterpreting random text that decodes to valid base64
+        if (buffer.length > 1 && (buffer[0] === PREFIX_RAW || buffer[0] === PREFIX_ZSTD)) {
+            const decompressed = await decompressFromStorage(buffer);
+            return decompressed.toString('utf8');
         }
     }
-    // Already plain text or unknown format, return as-is
+    catch {
+        // Base64 decode or decompression failed, fall through
+    }
+    // Not our prefixed format - return as-is (plain text)
     return value;
 }
 /**

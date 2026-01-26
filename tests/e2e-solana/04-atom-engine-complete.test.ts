@@ -324,6 +324,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           emaAgent,
           {
+            value: 80n,
             score: 80,
             tag1: 'ema-test',
             feedbackUri: emaUri,
@@ -361,6 +362,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           await clientSdk.giveFeedback(
             tierAgent,
             {
+              value: BigInt(85 + (i % 16)),
               score: 85 + (i % 16), // High scores (max 100)
               tag1: `tier-test-${i}`,
               feedbackUri: tierUri,
@@ -403,15 +405,15 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         });
 
         const hll1Uri = `ipfs://hll1_${Date.now()}`;
-        await clientSdk.giveFeedback(hllAgent, { score: 75, tag1: 'hll1', feedbackUri: hll1Uri, feedbackHash: createFeedbackHash(hll1Uri) });
+        await clientSdk.giveFeedback(hllAgent, { value: 75n, score: 75, tag1: 'hll1', feedbackUri: hll1Uri, feedbackHash: createFeedbackHash(hll1Uri) });
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const hll2Uri = `ipfs://hll2_${Date.now()}`;
-        await client2Sdk.giveFeedback(hllAgent, { score: 80, tag1: 'hll2', feedbackUri: hll2Uri, feedbackHash: createFeedbackHash(hll2Uri) });
+        await client2Sdk.giveFeedback(hllAgent, { value: 80n, score: 80, tag1: 'hll2', feedbackUri: hll2Uri, feedbackHash: createFeedbackHash(hll2Uri) });
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const hll3Uri = `ipfs://hll3_${Date.now()}`;
-        await client3Sdk.giveFeedback(hllAgent, { score: 85, tag1: 'hll3', feedbackUri: hll3Uri, feedbackHash: createFeedbackHash(hll3Uri) });
+        await client3Sdk.giveFeedback(hllAgent, { value: 85n, score: 85, tag1: 'hll3', feedbackUri: hll3Uri, feedbackHash: createFeedbackHash(hll3Uri) });
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         // Verify unique client count (HLL estimate)
@@ -440,6 +442,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           await clientSdk.giveFeedback(
             ringAgent,
             {
+              value: BigInt(70 + i * 5),
               score: 70 + i * 5,
               tag1: `ring-${i}`,
               feedbackUri: ringUri,
@@ -477,6 +480,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           atomEnabledAgent,
           {
+            value: 77n,
             score: 77,
             tag1: 'cpi-test',
             feedbackUri: cpiUri,
@@ -533,6 +537,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         await clientSdk.giveFeedback(
           atomEnabledAgent,
           {
+            value: 88n,
             score: 88,
             tag1: 'summary-test',
             feedbackUri: summaryUri,
@@ -562,6 +567,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         const result = await clientSdk.giveFeedback(
           atomEnabledAgent,
           {
+            value: 72n,
             score: 72,
             tag1: 'cpi-read',
             feedbackUri: cpiReadUri,
@@ -601,6 +607,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       const feedbackResult = await clientSdk.giveFeedback(
         revokableAgent,
         {
+          value: 65n,
           score: 65,
           tag1: 'revoke-test',
           feedbackUri: revokeUri,
@@ -653,6 +660,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           await clientSdk.giveFeedback(
             revokableAgent,
             {
+              value: BigInt(70 + (i % 20)),
               score: 70 + (i % 20),
               tag1: `fillbuffer-${i}`,
               feedbackUri: fillUri,
@@ -689,6 +697,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         const feedbackResult = await clientSdk.giveFeedback(
           revokableAgent,
           {
+            value: 68n,
             score: 68,
             tag1: 'cpi-revoke-test',
             feedbackUri: cpiRevokeUri,
@@ -735,6 +744,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       const feedback1 = await clientSdk.giveFeedback(
         lifecycleAgent,
         {
+          value: 80n,
           score: 80,
           tag1: 'lifecycle-1',
           feedbackUri: lc1Uri,
@@ -754,6 +764,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       const feedback2 = await clientSdk.giveFeedback(
         lifecycleAgent,
         {
+          value: 90n,
           score: 90,
           tag1: 'lifecycle-2',
           feedbackUri: lc2Uri,

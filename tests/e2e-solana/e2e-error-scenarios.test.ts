@@ -155,7 +155,7 @@ describe('E2E: Error Scenarios', () => {
         return;
       }
       await expect(
-        sdkReadOnly.giveFeedback(testAgent, { score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) })
+        sdkReadOnly.giveFeedback(testAgent, { value: 85n, score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
 
@@ -208,7 +208,7 @@ describe('E2E: Error Scenarios', () => {
         return;
       }
       // Score must be 0-100 - SDK validates and returns error result
-      const result = await sdk.giveFeedback(testAgent, { score: 150, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) }) as { success: boolean; error?: string };
+      const result = await sdk.giveFeedback(testAgent, { value: 150n, score: 150, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) }) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toContain('Score must be between 0 and 100');
     }, 60000);
@@ -239,7 +239,7 @@ describe('E2E: Error Scenarios', () => {
         return;
       }
       // Hash must be exactly 32 bytes - SDK validates and returns error result
-      const result = await sdk.giveFeedback(testAgent, { score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(16) }) as { success: boolean; error?: string };
+      const result = await sdk.giveFeedback(testAgent, { value: 85n, score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(16) }) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toContain('feedbackHash must be 32 bytes');
     }, 60000);

@@ -228,6 +228,7 @@ async function main() {
     console.log('  Target owner:', otherAgent.owner);
     try {
       const result = await sdk.giveFeedback(targetAsset, {
+        value: 85n,
         score: 85,
         tag1: 'test',
         tag2: 'sdk',

@@ -239,6 +239,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       // Use clientSdk (different wallet) to give feedback (self-feedback not allowed)
       const result = await clientSdk.giveFeedback(agentAsset, {
+        value: BigInt(score),
         score,
         feedbackUri,
         feedbackHash,

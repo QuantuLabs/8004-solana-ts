@@ -20,11 +20,13 @@ export declare function decompressFromStorage(data: Buffer): Promise<Buffer>;
  * Decompress a value from PostgREST/Supabase or local API
  *
  * Handles multiple formats:
- * - Base64 encoded BYTEA (Supabase PostgREST)
+ * - Base64 encoded BYTEA with compression prefix (Supabase PostgREST)
  * - Plain text (local API, already decompressed)
- * - Hex encoded BYTEA (some PostgREST configs)
  *
- * @param value - Value from API (base64, hex, or plain text)
+ * Security: Only treats data as base64 if it has our compression prefix (0x00 or 0x01)
+ * to avoid misinterpreting plain text that happens to look like base64.
+ *
+ * @param value - Value from API (base64 or plain text)
  * @returns Decompressed string
  */
 export declare function decompressBase64Value(value: string): Promise<string>;
