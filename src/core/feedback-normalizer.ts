@@ -54,13 +54,13 @@ export function normalizeToScore(
     case 'successrate':
       return Math.min(100, Math.max(0, Math.round(raw)));
 
-    // Binary flags (0 or 1) → 0 or 100
-    case 'reachable':
+    // Binary flag: ownerVerified is objective (cryptographically verified or not)
     case 'ownerverified':
       return value === 0n ? 0 : 100;
 
     // Context-dependent tags: cannot normalize reliably
     // Caller should provide explicit score if ATOM processing is desired
+    case 'reachable':      // Single ping unreliable, use uptime for aggregate
     case 'responsetime':
     case 'blocktimefreshness':
     case 'revenues':
