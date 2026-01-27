@@ -1,5 +1,5 @@
 /**
- * Manual instruction builder for ERC-8004 Solana programs
+ * Manual instruction builder for 8004 Solana programs
  * v0.3.0 - Asset-based identification
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
@@ -659,37 +659,23 @@ export class ReputationInstructionBuilder {
   }
 
   /**
-   * Build setFeedbackTags instruction - v0.3.0
-   * Matches: set_feedback_tags(feedback_index, tag1, tag2)
-   * Accounts: client (signer), payer (signer), feedback_account, feedback_tags, system_program
+   * @deprecated Removed on-chain in v0.5.0 - tags are now included in give_feedback instruction
+   * This method will throw an error when called.
    */
   buildSetFeedbackTags(
-    client: PublicKey,
-    payer: PublicKey,
-    feedbackAccount: PublicKey,
-    feedbackTags: PublicKey,
-    feedbackIndex: bigint,
-    tag1: string,
-    tag2: string,
+    _client: PublicKey,
+    _payer: PublicKey,
+    _feedbackAccount: PublicKey,
+    _feedbackTags: PublicKey,
+    _feedbackIndex: bigint,
+    _tag1: string,
+    _tag2: string,
   ): TransactionInstruction {
-    const data = Buffer.concat([
-      REPUTATION_DISCRIMINATORS.setFeedbackTags,
-      this.serializeU64(feedbackIndex),
-      this.serializeString(tag1),
-      this.serializeString(tag2),
-    ]);
-
-    return new TransactionInstruction({
-      programId: this.programId,
-      keys: [
-        { pubkey: client, isSigner: true, isWritable: false },
-        { pubkey: payer, isSigner: true, isWritable: true },
-        { pubkey: feedbackAccount, isSigner: false, isWritable: false },
-        { pubkey: feedbackTags, isSigner: false, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      data,
-    });
+    throw new Error(
+      "setFeedbackTags instruction removed on-chain in v0.5.0. " +
+      "Tags are now included in give_feedback instruction. " +
+      "Use buildGiveFeedback with tag1 and tag2 parameters instead."
+    );
   }
 
   private serializeString(str: string): Buffer {
@@ -807,64 +793,42 @@ export class ValidationInstructionBuilder {
   }
 
   /**
-   * Build updateValidation instruction - v0.3.0
-   * Same signature as respondToValidation but different discriminator
-   * Accounts: validator (signer), agent_account, asset, validation_request
-   * Note: updateValidation does not use config account
+   * @deprecated Removed on-chain in v0.5.0 - validations are immutable once responded
+   * This method will throw an error when called.
    */
   buildUpdateValidation(
-    validator: PublicKey,
-    asset: PublicKey,
-    agentAccount: PublicKey,
-    validationRequest: PublicKey,
-    response: number,
-    responseUri: string,
-    responseHash: Buffer,
-    tag: string,
+    _validator: PublicKey,
+    _asset: PublicKey,
+    _agentAccount: PublicKey,
+    _validationRequest: PublicKey,
+    _response: number,
+    _responseUri: string,
+    _responseHash: Buffer,
+    _tag: string,
   ): TransactionInstruction {
-    const data = Buffer.concat([
-      VALIDATION_DISCRIMINATORS.updateValidation,
-      Buffer.from([response]),
-      this.serializeString(responseUri),
-      responseHash,
-      this.serializeString(tag),
-    ]);
-
-    return new TransactionInstruction({
-      programId: this.programId,
-      keys: [
-        { pubkey: validator, isSigner: true, isWritable: false },
-        { pubkey: asset, isSigner: false, isWritable: false },
-        { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: validationRequest, isSigner: false, isWritable: true },
-      ],
-      data,
-    });
+    throw new Error(
+      "updateValidation instruction removed on-chain in v0.5.0. " +
+      "Validations are immutable once responded. " +
+      "Create a new validation request if updates are needed."
+    );
   }
 
   /**
-   * Build closeValidation instruction - v0.3.0
-   * Note: closeValidation does not use any config account
-   * Accounts: closer (signer), asset, agent_account, validation_request, rent_receiver
+   * @deprecated Removed on-chain in v0.5.0 - validations are immutable
+   * This method will throw an error when called.
    */
   buildCloseValidation(
-    closer: PublicKey,
-    asset: PublicKey,
-    agentAccount: PublicKey,
-    validationRequest: PublicKey,
-    rentReceiver: PublicKey,
+    _closer: PublicKey,
+    _asset: PublicKey,
+    _agentAccount: PublicKey,
+    _validationRequest: PublicKey,
+    _rentReceiver: PublicKey,
   ): TransactionInstruction {
-    return new TransactionInstruction({
-      programId: this.programId,
-      keys: [
-        { pubkey: closer, isSigner: true, isWritable: false },
-        { pubkey: asset, isSigner: false, isWritable: false },
-        { pubkey: agentAccount, isSigner: false, isWritable: false },
-        { pubkey: validationRequest, isSigner: false, isWritable: true },
-        { pubkey: rentReceiver, isSigner: false, isWritable: true },
-      ],
-      data: VALIDATION_DISCRIMINATORS.closeValidation,
-    });
+    throw new Error(
+      "closeValidation instruction removed on-chain in v0.5.0. " +
+      "Validation requests are now permanent records. " +
+      "Rent is optimized via event-based indexing."
+    );
   }
 
   private serializeString(str: string): Buffer {
