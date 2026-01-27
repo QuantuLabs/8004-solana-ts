@@ -21,33 +21,6 @@ import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { resolveScore } from './feedback-normalizer.js';
 import { encodeReputationValue } from '../utils/value-encoding.js';
-const I64_MIN = -(2n ** 63n);
-const I64_MAX = 2n ** 63n - 1n;
-/**
- * Validate and convert value to BigInt
- */
-function validateValue(value) {
-    if (typeof value === 'bigint') {
-        if (value < I64_MIN || value > I64_MAX) {
-            throw new Error(`value ${value} exceeds i64 range`);
-        }
-        return value;
-    }
-    if (!Number.isFinite(value)) {
-        throw new Error('value must be finite');
-    }
-    if (!Number.isInteger(value)) {
-        throw new Error('value must be an integer');
-    }
-    if (value > Number.MAX_SAFE_INTEGER || value < Number.MIN_SAFE_INTEGER) {
-        throw new Error(`value ${value} exceeds safe integer range, use bigint`);
-    }
-    const bigVal = BigInt(value);
-    if (bigVal < I64_MIN || bigVal > I64_MAX) {
-        throw new Error(`value ${bigVal} exceeds i64 range`);
-    }
-    return bigVal;
-}
 /**
  * Serialize a transaction for later signing and sending
  * @param transaction - The transaction to serialize
