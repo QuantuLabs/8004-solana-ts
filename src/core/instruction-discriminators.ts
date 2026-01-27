@@ -48,6 +48,9 @@ export const REPUTATION_DISCRIMINATORS = {
   giveFeedback: Buffer.from([145, 136, 123, 3, 215, 165, 98, 41]),
   revokeFeedback: Buffer.from([211, 37, 230, 82, 118, 216, 137, 206]),
   appendResponse: Buffer.from([162, 210, 186, 50, 180, 4, 47, 104]),
+  // DEPRECATED: setFeedbackTags removed in v0.5.0 - tags now included in give_feedback
+  // Kept for backwards compatibility with old transactions
+  /** @deprecated Removed on-chain - tags now part of give_feedback */
   setFeedbackTags: Buffer.from([154, 15, 246, 207, 174, 114, 255, 7]),
 } as const;
 
@@ -72,7 +75,11 @@ export const VALIDATION_DISCRIMINATORS = {
   initializeValidationConfig: Buffer.from([138, 209, 223, 183, 48, 227, 146, 152]),
   requestValidation: Buffer.from([72, 26, 53, 67, 228, 30, 144, 53]),
   respondToValidation: Buffer.from([64, 212, 244, 6, 65, 134, 212, 122]),
+  // DEPRECATED: updateValidation and closeValidation removed in v0.5.0
+  // Validations are now immutable once responded - no update/close needed
+  /** @deprecated Removed on-chain - validations are immutable */
   updateValidation: Buffer.from([226, 29, 107, 7, 213, 48, 146, 149]),
+  /** @deprecated Removed on-chain - validations are immutable */
   closeValidation: Buffer.from([107, 119, 249, 35, 5, 54, 9, 15]),
 } as const;
 
