@@ -1,8 +1,7 @@
 /**
- * Feedback Example - Solana SDK v0.3.0+
+ * Feedback Example - Solana SDK v0.5.0+
  *
  * Demonstrates feedback submission, reading, and responses
- * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { SolanaSDK } from '../src/index.js';
@@ -40,9 +39,9 @@ async function main() {
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
   const writeSdk = new SolanaSDK({ signer });
 
-  // Submit feedback (using asset PublicKey)
+  // Submit feedback (value required, score optional)
   const result = await writeSdk.giveFeedback(agentAsset, {
-    score: 90,
+    value: '90',          // Decimal string, number, or bigint
     tag1: 'fast',
     tag2: 'reliable',
     feedbackUri: 'ipfs://QmDetailedFeedback',

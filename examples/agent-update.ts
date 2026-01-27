@@ -1,5 +1,5 @@
 /**
- * Agent Update Example - Solana SDK v0.3.0+
+ * Agent Update Example - Solana SDK v0.5.0+
  *
  * Demonstrates:
  * 1. Updating agent URI via IPFS upload
@@ -7,8 +7,6 @@
  * 3. Making metadata immutable (permanent, cannot be changed)
  * 4. Reading on-chain metadata
  * 5. Deleting metadata (if not immutable)
- *
- * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
 import { Keypair, PublicKey } from '@solana/web3.js';
 import {

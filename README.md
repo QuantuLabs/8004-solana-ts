@@ -172,27 +172,27 @@ const sdk = new SolanaSDK({
 
 ## Feedback System
 
-The feedback system supports rich metrics with 8004 standardized tags:
+The feedback system supports rich metrics with 8004 standardized tags. `value` is required, `score` is optional.
 
 ```typescript
-// Basic feedback with score
-await sdk.giveFeedback(agent.asset, { score: 85, tag1: 'starred' });
-
-// Revenue tracking
+// Basic feedback (value required)
 await sdk.giveFeedback(agent.asset, {
-  score: 90,
-  value: 15000n,        // $150.00
-  valueDecimals: 2,
+  value: '85',           // Decimal string or number or bigint
+  tag1: 'starred',
+});
+
+// Revenue tracking with decimals
+await sdk.giveFeedback(agent.asset, {
+  value: '150.00',       // $150.00 → auto-encoded to 15000, decimals=2
   tag1: 'revenues',
   tag2: 'week',
 });
 
-// Uptime tracking (auto-normalized to score)
+// Uptime tracking
 await sdk.giveFeedback(agent.asset, {
-  score: null,          // Auto: 99.5% → score 100
-  value: 9950n,         // 99.50%
-  valueDecimals: 2,
+  value: '99.50',        // 99.50% → auto-encoded to 9950, decimals=2
   tag1: 'uptime',
+  tag2: 'day',
 });
 ```
 

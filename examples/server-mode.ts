@@ -1,12 +1,11 @@
 /**
- * Server Mode Example - Solana SDK v0.3.0+
+ * Server Mode Example - Solana SDK v0.5.0+
  *
  * Demonstrates how to use skipSend for server/client architecture:
  * - Server builds unsigned transactions (no private key needed)
  * - Client signs with their wallet (Phantom, Solflare, etc.)
  *
  * Use case: Web app where backend builds transactions, frontend signs
- * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
 import { Keypair, PublicKey, Transaction, Connection } from '@solana/web3.js';
 import { SolanaSDK, PreparedTransaction } from '../src/index.js';
@@ -33,18 +32,18 @@ class TransactionServer {
    */
   async buildFeedbackTransaction(params: {
     agentAsset: string; // Agent asset PublicKey (base58)
-    score: number;
+    value: string;      // Decimal string (e.g., '85', '99.5')
     tag1: string;
     tag2: string;
     fileUri: string;
     userWallet: string; // User's wallet address (base58)
   }): Promise<PreparedTransaction & { feedbackIndex: bigint }> {
-    const { agentAsset, score, tag1, tag2, fileUri, userWallet } = params;
+    const { agentAsset, value, tag1, tag2, fileUri, userWallet } = params;
 
     const prepared = await this.sdk.giveFeedback(
       new PublicKey(agentAsset),
       {
-        score,
+        value,
         tag1,
         tag2,
         feedbackUri: fileUri,
@@ -219,7 +218,7 @@ async function main() {
     console.log('\n1. Building feedback transaction on server...');
     const feedbackTx = await server.buildFeedbackTransaction({
       agentAsset,
-      score: 85,
+      value: '85',
       tag1: 'helpful',
       tag2: 'accurate',
       fileUri: 'ipfs://QmFeedbackDetails',
