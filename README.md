@@ -154,7 +154,7 @@ const summary = await sdk.getSummary(assetPubkey);
 
 The SDK uses an indexer by default for search and query operations (feedbacks, validations, agent listings). This provides fast off-chain queries without scanning the blockchain.
 
-**Default indexer**: `https://indexer.8004.ai` (Supabase-hosted)
+The default indexer is Supabase-hosted. You can self-host your own: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
 ```typescript
 // Custom indexer URL
@@ -169,8 +169,6 @@ const sdk = new SolanaSDK({
   indexerUrl: null,
 });
 ```
-
-Self-host the indexer: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
 ## Feedback System
 

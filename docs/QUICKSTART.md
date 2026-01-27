@@ -99,7 +99,7 @@ await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111
 
 See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
-**Note on ATOM (Reputation Engine):** By default, `registerAgent()` automatically initializes on-chain reputation tracking (ATOM) which costs ~0.002 SOL rent. This enables instant feedback and trust tier calculation. If you prefer to aggregate reputation yourself via the indexer, pass `{ atomEnabled: false }` to skip ATOM initialization and save the rent cost. You can later call `enableAtom()` (one-way) followed by `initializeAtomStats()`. See [README](../README.md#55-atom-reputation-engine-optional) for details.
+**Note on ATOM (Reputation Engine):** By default, `registerAgent()` automatically initializes on-chain reputation tracking (ATOM) which costs ~0.002 SOL rent. This enables instant feedback and trust tier calculation. If you prefer to aggregate reputation yourself via the indexer, pass `{ atomEnabled: false }` to skip ATOM initialization and save the rent cost. You can later call `enableAtom()` (one-way) followed by `initializeAtomStats()`.
 
 **Note on Metadata:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching.
 
@@ -130,24 +130,26 @@ You can also view your agent on the explorer a few minutes after registration:
 ## What's Next?
 
 ```typescript
-// Give feedback
+// Give feedback (value accepts decimal strings, numbers, or bigint)
 await sdk.giveFeedback(agentAsset, {
-  score: 85,
-  tag1: 'helpful',
-  feedbackUri: 'ipfs://QmFeedback',
-  feedbackHash: Buffer.alloc(32)
+  value: '99.5',              // Auto-encoded: value=995, decimals=1
+  tag1: 'uptime',             // Category tag
+  tag2: 'day',                // Period tag
+  feedbackUri: 'ipfs://QmFeedback...',
+  feedbackHash: Buffer.alloc(32),
 });
 
 // Check reputation
 const summary = await sdk.getSummary(agentAsset);
+console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
 
-// Set operational wallet (for signing)
-const opWallet = Keypair.generate();
-await sdk.setAgentWallet(agentAsset, opWallet);
-
-// Update URI (get collection from agent)
+// Update URI
 const agent = await sdk.loadAgent(agentAsset);
 await sdk.setAgentUri(agentAsset, agent.getCollectionPublicKey(), 'ipfs://newCid');
+
+// Sign data with agent's operational wallet
+const signed = sdk.sign(agentAsset, { action: 'authorize', user: 'alice' });
+const isValid = await sdk.verify(signed, agentAsset);
 ```
 
 ### Resources
