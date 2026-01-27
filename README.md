@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-QuantuLabs%2F8004--solana--ts-blue)](https://github.com/QuantuLabs/8004-solana-ts)
 
-TypeScript SDK for ERC-8004 Agent Registry on Solana.
+TypeScript SDK for 8004 Agent Registry on Solana.
 
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
@@ -79,13 +79,15 @@ console.log('Agent:', agent.asset.toBase58());
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(agent.asset, opWallet);
 
-// 4. Give feedback
+// 4. Give feedback - accepts decimal strings or raw values
+import { Tag } from '8004-solana';
+
 await sdk.giveFeedback(agent.asset, {
-  score: 85,                       // 0-100, optional (null = inferred from tag)
-  value: 15000n,                   // i64: raw metric (e.g., profit in cents)
-  valueDecimals: 2,                // 0-6: decimal precision
-  tag1: 'revenues',                // ERC-8004 standard tag
+  value: '99.77',                  // Decimal string → auto-encoded to 9977, decimals=2
+  tag1: Tag.uptime,                // 8004 standardized tag (or free text)
+  tag2: Tag.day,                   // Time period
   feedbackUri: 'ipfs://QmFeedback...',
+  feedbackHash: Buffer.alloc(32), // SHA-256 of feedback file
 });
 
 // 5. Check reputation
@@ -150,7 +152,7 @@ const summary = await sdk.getSummary(assetPubkey);
 
 ## Feedback System
 
-The feedback system supports rich metrics with ERC-8004 standardized tags:
+The feedback system supports rich metrics with 8004 standardized tags:
 
 ```typescript
 // Basic feedback with score
@@ -174,7 +176,57 @@ await sdk.giveFeedback(agent.asset, {
 });
 ```
 
-See [FEEDBACK.md](./docs/FEEDBACK.md) for all ERC-8004 tags and patterns.
+See [FEEDBACK.md](./docs/FEEDBACK.md) for all 8004 tags and patterns.
+
+## Tags
+
+Use `Tag` helpers for standard tags, or pass custom strings (max 32 bytes):
+
+```typescript
+import { Tag } from '8004-solana';
+
+// Using Tag helper
+await sdk.giveFeedback(asset, {
+  value: '99.77',
+  tag1: Tag.uptime,     // 'uptime'
+  tag2: Tag.day,        // 'day'
+});
+
+// Custom tags (free text)
+await sdk.giveFeedback(asset, {
+  value: '42.5',
+  tag1: 'my-custom-metric',
+  tag2: 'hourly',
+});
+```
+
+See [FEEDBACK.md](./docs/FEEDBACK.md) for the complete tag reference.
+
+## Value Encoding
+
+The SDK accepts multiple formats for feedback values and auto-encodes them:
+
+```typescript
+import { encodeReputationValue, decodeToDecimalString } from '8004-solana';
+
+// Decimal strings (recommended - most intuitive)
+await sdk.giveFeedback(asset, { value: '99.77', tag1: 'uptime' });
+// → encoded as: value=9977n, valueDecimals=2
+
+// Numbers with decimals
+await sdk.giveFeedback(asset, { value: 99.77, tag1: 'uptime' });
+// → same encoding
+
+// Raw integers (explicit decimals required)
+await sdk.giveFeedback(asset, { value: 9977, valueDecimals: 2, tag1: 'uptime' });
+
+// Utility functions for manual encoding/decoding
+const encoded = encodeReputationValue('99.77');
+// → { value: 9977n, valueDecimals: 2, normalized: '99.77' }
+
+const decoded = decodeToDecimalString(9977n, 2);
+// → '99.77'
+```
 
 ## ATOM Engine
 

@@ -645,7 +645,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should soft-fail when revoking non-existent feedback', async () => {
         const nonExistentIndex = BigInt(555555);
 
-        // Revoke non-existent feedback (should soft-fail per ERC-8004)
+        // Revoke non-existent feedback (should soft-fail per 8004)
         const result = await clientSdk.revokeFeedback(revokableAgent, nonExistentIndex);
 
         // Should not error (soft-fail)

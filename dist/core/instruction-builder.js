@@ -1,5 +1,5 @@
 /**
- * Manual instruction builder for ERC-8004 Solana programs
+ * Manual instruction builder for 8004 Solana programs
  * v0.3.0 - Asset-based identification
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
@@ -464,28 +464,13 @@ export class ReputationInstructionBuilder {
         });
     }
     /**
-     * Build setFeedbackTags instruction - v0.3.0
-     * Matches: set_feedback_tags(feedback_index, tag1, tag2)
-     * Accounts: client (signer), payer (signer), feedback_account, feedback_tags, system_program
+     * @deprecated Removed on-chain in v0.5.0 - tags are now included in give_feedback instruction
+     * This method will throw an error when called.
      */
-    buildSetFeedbackTags(client, payer, feedbackAccount, feedbackTags, feedbackIndex, tag1, tag2) {
-        const data = Buffer.concat([
-            REPUTATION_DISCRIMINATORS.setFeedbackTags,
-            this.serializeU64(feedbackIndex),
-            this.serializeString(tag1),
-            this.serializeString(tag2),
-        ]);
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: client, isSigner: true, isWritable: false },
-                { pubkey: payer, isSigner: true, isWritable: true },
-                { pubkey: feedbackAccount, isSigner: false, isWritable: false },
-                { pubkey: feedbackTags, isSigner: false, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            ],
-            data,
-        });
+    buildSetFeedbackTags(_client, _payer, _feedbackAccount, _feedbackTags, _feedbackIndex, _tag1, _tag2) {
+        throw new Error("setFeedbackTags instruction removed on-chain in v0.5.0. " +
+            "Tags are now included in give_feedback instruction. " +
+            "Use buildGiveFeedback with tag1 and tag2 parameters instead.");
     }
     serializeString(str) {
         const strBytes = Buffer.from(str, 'utf8');
@@ -571,47 +556,22 @@ export class ValidationInstructionBuilder {
         });
     }
     /**
-     * Build updateValidation instruction - v0.3.0
-     * Same signature as respondToValidation but different discriminator
-     * Accounts: validator (signer), agent_account, asset, validation_request
-     * Note: updateValidation does not use config account
+     * @deprecated Removed on-chain in v0.5.0 - validations are immutable once responded
+     * This method will throw an error when called.
      */
-    buildUpdateValidation(validator, asset, agentAccount, validationRequest, response, responseUri, responseHash, tag) {
-        const data = Buffer.concat([
-            VALIDATION_DISCRIMINATORS.updateValidation,
-            Buffer.from([response]),
-            this.serializeString(responseUri),
-            responseHash,
-            this.serializeString(tag),
-        ]);
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: validator, isSigner: true, isWritable: false },
-                { pubkey: asset, isSigner: false, isWritable: false },
-                { pubkey: agentAccount, isSigner: false, isWritable: false },
-                { pubkey: validationRequest, isSigner: false, isWritable: true },
-            ],
-            data,
-        });
+    buildUpdateValidation(_validator, _asset, _agentAccount, _validationRequest, _response, _responseUri, _responseHash, _tag) {
+        throw new Error("updateValidation instruction removed on-chain in v0.5.0. " +
+            "Validations are immutable once responded. " +
+            "Create a new validation request if updates are needed.");
     }
     /**
-     * Build closeValidation instruction - v0.3.0
-     * Note: closeValidation does not use any config account
-     * Accounts: closer (signer), asset, agent_account, validation_request, rent_receiver
+     * @deprecated Removed on-chain in v0.5.0 - validations are immutable
+     * This method will throw an error when called.
      */
-    buildCloseValidation(closer, asset, agentAccount, validationRequest, rentReceiver) {
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: closer, isSigner: true, isWritable: false },
-                { pubkey: asset, isSigner: false, isWritable: false },
-                { pubkey: agentAccount, isSigner: false, isWritable: false },
-                { pubkey: validationRequest, isSigner: false, isWritable: true },
-                { pubkey: rentReceiver, isSigner: false, isWritable: true },
-            ],
-            data: VALIDATION_DISCRIMINATORS.closeValidation,
-        });
+    buildCloseValidation(_closer, _asset, _agentAccount, _validationRequest, _rentReceiver) {
+        throw new Error("closeValidation instruction removed on-chain in v0.5.0. " +
+            "Validation requests are now permanent records. " +
+            "Rent is optimized via event-based indexing.");
     }
     serializeString(str) {
         const strBytes = Buffer.from(str, 'utf8');

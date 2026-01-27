@@ -1,5 +1,5 @@
 /**
- * Solana SDK for Agent0 - ERC-8004 implementation
+ * Solana SDK for Agent0 - 8004 implementation
  * v0.4.0 - ATOM Engine integration + Indexer support
  * Provides read and write access to Solana-based agent registries
  *
@@ -182,7 +182,7 @@ export interface WaitForValidationOptions {
 }
 
 /**
- * Main SDK class for Solana ERC-8004 implementation
+ * Main SDK class for Solana 8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
  * Provides read and write access to agent registries on Solana
  */

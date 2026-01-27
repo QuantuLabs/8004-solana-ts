@@ -22,7 +22,7 @@ export declare class UnsupportedRpcError extends Error {
     constructor(operation: string);
 }
 /**
- * Lightweight Solana client for ERC-8004 read operations
+ * Lightweight Solana client for 8004 read operations
  * Avoids Anchor dependency for smaller package size
  */
 export declare class SolanaClient {

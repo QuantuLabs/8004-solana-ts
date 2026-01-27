@@ -50,7 +50,9 @@ export interface IndexedFeedback {
     asset: string;
     client_address: string;
     feedback_index: number;
-    score: number;
+    value: number | string;
+    value_decimals: number;
+    score: number | null;
     tag1: string | null;
     tag2: string | null;
     endpoint: string | null;

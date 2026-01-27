@@ -1,5 +1,5 @@
 /**
- * Transaction builder for ERC-8004 Solana programs
+ * Transaction builder for 8004 Solana programs
  * v0.3.0 - Asset-based identification
  * Browser-compatible - uses cross-platform crypto utilities
  * Handles transaction creation, signing, and sending without Anchor
@@ -42,6 +42,7 @@ import { logger } from '../utils/logger.js';
 import type { IndexerClient } from './indexer-client.js';
 import { resolveScore } from './feedback-normalizer.js';
 import type { GiveFeedbackParams } from '../models/interfaces.js';
+import { encodeReputationValue } from '../utils/value-encoding.js';
 
 const I64_MIN = -(2n ** 63n);
 const I64_MAX = 2n ** 63n - 1n;
@@ -1179,13 +1180,11 @@ export class ReputationTransactionBuilder {
         throw new Error('signer required when SDK has no signer configured');
       }
 
-      const valueDecimals = params.valueDecimals ?? 0;
-
-      if (!Number.isInteger(valueDecimals) || valueDecimals < 0 || valueDecimals > 6) {
-        throw new Error('valueDecimals must be integer 0-6');
-      }
-
-      const valueBigInt = validateValue(params.value);
+      // Auto-encode value: "99.77" → { value: 9977n, valueDecimals: 2 }
+      // Or use explicit valueDecimals if provided with raw int/bigint
+      const encoded = encodeReputationValue(params.value, params.valueDecimals);
+      const valueBigInt = encoded.value;
+      const valueDecimals = encoded.valueDecimals;
 
       if (params.score !== undefined && (!Number.isInteger(params.score) || params.score < 0 || params.score > 100)) {
         throw new Error('score must be integer 0-100');

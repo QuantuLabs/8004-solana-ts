@@ -1,5 +1,5 @@
 /**
- * Build ERC-8004 compliant registration file JSON
+ * Build 8004 compliant registration file JSON
  * Extracted from IPFSClient.addRegistrationFile for frontend use
  */
 import type { RegistrationFile } from '../models/interfaces.js';
@@ -8,7 +8,7 @@ export interface RegistrationFileJsonOptions {
     identityRegistryAddress?: string;
 }
 /**
- * Build ERC-8004 compliant JSON from RegistrationFile
+ * Build 8004 compliant JSON from RegistrationFile
  * Validates OASF skills/domains if provided
  * Does NOT upload - just returns the JSON object
  */

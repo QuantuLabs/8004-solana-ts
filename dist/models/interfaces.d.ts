@@ -13,7 +13,7 @@ export interface Endpoint {
 }
 /**
  * Agent registration file structure
- * Used to build ERC-8004 compliant metadata JSON
+ * Used to build 8004 compliant metadata JSON
  */
 export interface RegistrationFile {
     agentId?: AgentId;
@@ -93,12 +93,20 @@ export type FeedbackId = string;
  */
 export interface GiveFeedbackParams {
     /**
-     * Raw metric value (e.g., 9977 for 99.77%) - supports negative for yields/PnL
-     * Must be integer. Use bigint for values > Number.MAX_SAFE_INTEGER (9007199254740991)
+     * Metric value - accepts multiple formats:
+     * - Decimal string: "99.77" → auto-encoded to value=9977, valueDecimals=2
+     * - Number: 99.77 → auto-encoded to value=9977, valueDecimals=2
+     * - Raw bigint/int: 9977n with valueDecimals=2 → used directly
+     *
+     * Supports negative values for yields, PnL, etc.
      * Range: i64 (-9223372036854775808 to 9223372036854775807)
+     * Max 6 decimal places.
      */
-    value: bigint | number;
-    /** Decimal precision (e.g., 2 for 99.77%) - integer 0-6, default 0 */
+    value: string | number | bigint;
+    /**
+     * Decimal precision (0-6) - only needed when value is raw integer/bigint.
+     * Auto-detected when value is a decimal string like "99.77".
+     */
     valueDecimals?: number;
     /** Direct 0-100 score (optional, integer) - takes priority over tag normalization */
     score?: number;

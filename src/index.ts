@@ -1,6 +1,6 @@
 /**
  * 8004-solana-ts SDK
- * TypeScript SDK for ERC-8004 on Solana
+ * TypeScript SDK for 8004 on Solana
  * v0.4.0 - ATOM Engine + Indexer + User Collections
  * Main entry point - exports public API
  */

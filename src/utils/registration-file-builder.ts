@@ -1,5 +1,5 @@
 /**
- * Build ERC-8004 compliant registration file JSON
+ * Build 8004 compliant registration file JSON
  * Extracted from IPFSClient.addRegistrationFile for frontend use
  */
 import type { RegistrationFile } from '../models/interfaces.js';
@@ -11,7 +11,7 @@ export interface RegistrationFileJsonOptions {
 }
 
 /**
- * Build ERC-8004 compliant JSON from RegistrationFile
+ * Build 8004 compliant JSON from RegistrationFile
  * Validates OASF skills/domains if provided
  * Does NOT upload - just returns the JSON object
  */
@@ -41,7 +41,7 @@ export function buildRegistrationFileJson(
     }
   }
 
-  // Convert from internal format { type, value, meta } to ERC-8004 format { name, endpoint, version }
+  // Convert from internal format { type, value, meta } to 8004 format { name, endpoint, version }
   const endpoints: Array<Record<string, unknown>> = [];
   for (const ep of registrationFile.endpoints) {
     const endpointDict: Record<string, unknown> = {
@@ -89,7 +89,7 @@ export function buildRegistrationFileJson(
     });
   }
 
-  // Build ERC-8004 compliant registration file
+  // Build 8004 compliant registration file
   return {
     type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
     name: registrationFile.name,

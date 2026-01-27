@@ -1,7 +1,7 @@
 /**
  * Solana feedback management system for Agent0 SDK
  * v0.4.0 - ATOM Engine + Indexer support
- * Implements the 6 ERC-8004 read functions for Solana
+ * Implements the 6 8004 read functions for Solana
  *
  * BREAKING CHANGES from v0.3.0:
  * - Optional indexer support for fast queries
@@ -18,7 +18,7 @@ const DEFAULT_MAX_FEEDBACKS = 1000;
 const DEFAULT_MAX_ALL_FEEDBACKS = 5000;
 /**
  * Manages feedback operations for Solana - v0.4.0
- * Implements all 6 ERC-8004 read functions
+ * Implements all 6 8004 read functions
  * Optional indexer support for fast queries
  */
 export class SolanaFeedbackManager {
@@ -126,15 +126,17 @@ export class SolanaFeedbackManager {
         const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
             includeRevoked: false,
         });
-        // Apply filters
-        const filtered = feedbacks.filter((f) => (!minScore || f.score >= minScore) &&
+        // Apply filters (score can be null)
+        const filtered = feedbacks.filter((f) => (!minScore || (f.score !== null && f.score >= minScore)) &&
             (!clientFilter || f.client_address === clientFilter.toBase58()));
-        const sum = filtered.reduce((acc, f) => acc + f.score, 0);
+        // Only sum feedbacks with non-null scores
+        const withScore = filtered.filter((f) => f.score !== null);
+        const sum = withScore.reduce((acc, f) => acc + (f.score ?? 0), 0);
         const uniqueClients = new Set(filtered.map((f) => f.client_address));
-        const positiveCount = filtered.filter((f) => f.score >= 50).length;
-        const negativeCount = filtered.filter((f) => f.score < 50).length;
+        const positiveCount = withScore.filter((f) => (f.score ?? 0) >= 50).length;
+        const negativeCount = withScore.filter((f) => (f.score ?? 0) < 50).length;
         return {
-            averageScore: filtered.length > 0 ? sum / filtered.length : 0,
+            averageScore: withScore.length > 0 ? sum / withScore.length : 0,
             totalFeedbacks: filtered.length,
             nextFeedbackIndex: filtered.length,
             totalClients: uniqueClients.size,
@@ -159,7 +161,7 @@ export class SolanaFeedbackManager {
             throw new Error('Indexer required for readFeedback in v0.4.0');
         }
         try {
-            // Get specific feedback by asset, client, and index (ERC-8004 compliant)
+            // Get specific feedback by asset, client, and index (8004 compliant)
             const indexed = await this.indexerClient.getFeedback(asset.toBase58(), client.toBase58(), feedbackIndex);
             if (!indexed) {
                 logger.warn(`Feedback index ${feedbackIndex} not yet indexed. It may take a few seconds for the indexer to process new transactions. Try again shortly.`);
@@ -345,13 +347,18 @@ export class SolanaFeedbackManager {
         }
     }
     /**
-     * Helper to map IndexedFeedback to SolanaFeedback - v0.4.0
+     * Helper to map IndexedFeedback to SolanaFeedback
      */
     mapIndexedFeedback(indexed) {
+        // Handle value as BIGINT (may come as string from Supabase)
+        const rawValue = indexed.value;
+        const value = typeof rawValue === 'string' ? BigInt(rawValue) : BigInt(rawValue ?? 0);
         return {
             asset: new PublicKey(indexed.asset),
             client: new PublicKey(indexed.client_address),
             feedbackIndex: BigInt(indexed.feedback_index),
+            value,
+            valueDecimals: indexed.value_decimals ?? 0,
             score: indexed.score,
             tag1: indexed.tag1 || '',
             tag2: indexed.tag2 || '',
