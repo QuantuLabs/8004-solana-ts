@@ -1,5 +1,5 @@
 /**
- * Solana SDK for Agent0 - ERC-8004 implementation
+ * Solana SDK for Agent0 - 8004 implementation
  * v0.4.0 - ATOM Engine integration + Indexer support
  * Provides read and write access to Solana-based agent registries
  *
@@ -34,7 +34,7 @@ import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
 /**
- * Main SDK class for Solana ERC-8004 implementation
+ * Main SDK class for Solana 8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
  * Provides read and write access to agent registries on Solana
  */

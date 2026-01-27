@@ -1,7 +1,7 @@
 /**
  * Solana feedback management system for Agent0 SDK
  * v0.4.0 - ATOM Engine + Indexer support
- * Implements the 6 ERC-8004 read functions for Solana
+ * Implements the 6 8004 read functions for Solana
  *
  * BREAKING CHANGES from v0.3.0:
  * - Optional indexer support for fast queries
@@ -31,7 +31,7 @@ export interface FeedbackQueryOptions {
 }
 
 /**
- * Summary result matching ERC-8004 getSummary interface
+ * Summary result matching 8004 getSummary interface
  * v0.4.0: Extended with positive/negative counts
  */
 export interface SolanaAgentSummary {
@@ -45,7 +45,7 @@ export interface SolanaAgentSummary {
 }
 
 /**
- * Feedback result matching SDK interface - v0.4.0
+ * Feedback result matching SDK interface
  * Extended with event-sourced fields available via indexer
  */
 export interface SolanaFeedback {
@@ -53,11 +53,13 @@ export interface SolanaFeedback {
   asset: PublicKey;
   client: PublicKey;
   feedbackIndex: bigint;
-  score: number;
+  value: bigint;               // i64 raw metric value
+  valueDecimals: number;       // decimal precision 0-6
+  score: number | null;        // nullable (null = ATOM skipped)
   tag1: string;
   tag2: string;
-  revoked?: boolean;         // Kept for backward compatibility
-  isRevoked?: boolean;       // v0.4.0 naming
+  revoked?: boolean;           // Kept for backward compatibility
+  isRevoked?: boolean;         // v0.4.0 naming
   // Event-sourced fields (available via indexer)
   endpoint?: string;
   feedbackUri?: string;
@@ -79,7 +81,7 @@ export interface SolanaResponse {
 
 /**
  * Manages feedback operations for Solana - v0.4.0
- * Implements all 6 ERC-8004 read functions
+ * Implements all 6 8004 read functions
  * Optional indexer support for fast queries
  */
 export class SolanaFeedbackManager {
@@ -204,20 +206,22 @@ export class SolanaFeedbackManager {
       includeRevoked: false,
     });
 
-    // Apply filters
+    // Apply filters (score can be null)
     const filtered = feedbacks.filter(
       (f) =>
-        (!minScore || f.score >= minScore) &&
+        (!minScore || (f.score !== null && f.score >= minScore)) &&
         (!clientFilter || f.client_address === clientFilter.toBase58())
     );
 
-    const sum = filtered.reduce((acc, f) => acc + f.score, 0);
+    // Only sum feedbacks with non-null scores
+    const withScore = filtered.filter((f) => f.score !== null);
+    const sum = withScore.reduce((acc, f) => acc + (f.score ?? 0), 0);
     const uniqueClients = new Set(filtered.map((f) => f.client_address));
-    const positiveCount = filtered.filter((f) => f.score >= 50).length;
-    const negativeCount = filtered.filter((f) => f.score < 50).length;
+    const positiveCount = withScore.filter((f) => (f.score ?? 0) >= 50).length;
+    const negativeCount = withScore.filter((f) => (f.score ?? 0) < 50).length;
 
     return {
-      averageScore: filtered.length > 0 ? sum / filtered.length : 0,
+      averageScore: withScore.length > 0 ? sum / withScore.length : 0,
       totalFeedbacks: filtered.length,
       nextFeedbackIndex: filtered.length,
       totalClients: uniqueClients.size,
@@ -248,7 +252,7 @@ export class SolanaFeedbackManager {
     }
 
     try {
-      // Get specific feedback by asset, client, and index (ERC-8004 compliant)
+      // Get specific feedback by asset, client, and index (8004 compliant)
       const indexed = await this.indexerClient.getFeedback(
         asset.toBase58(),
         client.toBase58(),
@@ -476,13 +480,19 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Helper to map IndexedFeedback to SolanaFeedback - v0.4.0
+   * Helper to map IndexedFeedback to SolanaFeedback
    */
   private mapIndexedFeedback(indexed: IndexedFeedback): SolanaFeedback {
+    // Handle value as BIGINT (may come as string from Supabase)
+    const rawValue = indexed.value;
+    const value = typeof rawValue === 'string' ? BigInt(rawValue) : BigInt(rawValue ?? 0);
+
     return {
       asset: new PublicKey(indexed.asset),
       client: new PublicKey(indexed.client_address),
       feedbackIndex: BigInt(indexed.feedback_index),
+      value,
+      valueDecimals: indexed.value_decimals ?? 0,
       score: indexed.score,
       tag1: indexed.tag1 || '',
       tag2: indexed.tag2 || '',

@@ -81,10 +81,16 @@ export function indexedAgentToSimplified(indexed: IndexedAgent): {
  * Convert indexed feedback to SolanaFeedback format
  */
 export function indexedFeedbackToSolanaFeedback(indexed: IndexedFeedback): SolanaFeedback {
+  // Handle value as BIGINT (may come as string from Supabase)
+  const rawValue = indexed.value;
+  const value = typeof rawValue === 'string' ? BigInt(rawValue) : BigInt(rawValue ?? 0);
+
   return {
     asset: new PublicKey(indexed.asset),
     client: new PublicKey(indexed.client_address),
     feedbackIndex: BigInt(indexed.feedback_index),
+    value,
+    valueDecimals: indexed.value_decimals ?? 0,
     score: indexed.score,
     tag1: indexed.tag1 || '',
     tag2: indexed.tag2 || '',

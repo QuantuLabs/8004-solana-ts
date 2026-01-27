@@ -320,7 +320,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
 
   describe('Validation Integrity (1 Test)', () => {
     describe('Test #10: Validation Request Immutability', () => {
-      it('should confirm no close_validation method exists (ERC-8004 compliance)', async () => {
+      it('should confirm no close_validation method exists (8004 compliance)', async () => {
         // Verify SDK does not expose validation deletion methods
         const sdkMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(sdk));
 
@@ -349,7 +349,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
         expect(validation?.responded).toBe(false);
 
         // Confirm no method to delete it
-        console.log('✅ Validation records are immutable (ERC-8004 compliant)');
+        console.log('✅ Validation records are immutable (8004 compliant)');
       });
     });
   });

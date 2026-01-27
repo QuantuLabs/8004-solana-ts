@@ -11,7 +11,7 @@
  * - Boundary validation (score, URI length, nonce uniqueness)
  * - Security tests (self-validation, unauthorized responses)
  * - Progressive validation (multiple updates from same validator)
- * - ERC-8004 compliance (immutable validation records)
+ * - 8004 compliance (immutable validation records)
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
@@ -456,9 +456,9 @@ describe('Validation Module - Complete Coverage (3 Instructions)', () => {
       });
     });
 
-    describe('ERC-8004 Compliance', () => {
+    describe('8004 Compliance', () => {
       it('should confirm no close_validation method exists (immutability)', async () => {
-        // ERC-8004 requires validation records to be immutable
+        // 8004 requires validation records to be immutable
         // There should be NO method to delete or close validations
         const sdkMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(sdk));
 
@@ -466,7 +466,7 @@ describe('Validation Module - Complete Coverage (3 Instructions)', () => {
         expect(sdkMethods).not.toContain('deleteValidation');
         expect(sdkMethods).not.toContain('revokeValidation');
 
-        console.log('✅ Validation immutability confirmed (ERC-8004 compliant)');
+        console.log('✅ Validation immutability confirmed (8004 compliant)');
       });
 
       it('should wait for pending validation (progressive updates)', async () => {
@@ -544,6 +544,6 @@ describe('Validation Module - Complete Coverage (3 Instructions)', () => {
 // - Covers initialize_validation_config with authority checks
 // - Covers request_validation with nonce uniqueness and security tests
 // - Covers respond_to_validation with progressive updates and boundary tests
-// - Includes ERC-8004 compliance verification (immutability, waitForValidation)
+// - Includes 8004 compliance verification (immutability, waitForValidation)
 // - All constraint boundaries tested (score 0-100, URI ≤250 bytes)
 // - Security tests for unauthorized responses and self-validation

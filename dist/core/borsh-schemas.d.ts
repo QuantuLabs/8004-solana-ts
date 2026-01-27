@@ -1,6 +1,6 @@
 /**
  * Borsh schemas for deserializing Solana account data
- * Based on ERC-8004 Solana program v0.3.0 account structures
+ * Based on 8004 Solana program v0.3.0 account structures
  * Must match exactly the Rust structs in 8004-solana programs
  *
  * v0.3.0 Breaking Changes:

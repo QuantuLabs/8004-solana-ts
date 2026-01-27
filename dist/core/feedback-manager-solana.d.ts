@@ -1,7 +1,7 @@
 /**
  * Solana feedback management system for Agent0 SDK
  * v0.4.0 - ATOM Engine + Indexer support
- * Implements the 6 ERC-8004 read functions for Solana
+ * Implements the 6 8004 read functions for Solana
  *
  * BREAKING CHANGES from v0.3.0:
  * - Optional indexer support for fast queries
@@ -19,7 +19,7 @@ export interface FeedbackQueryOptions {
     maxResults?: number;
 }
 /**
- * Summary result matching ERC-8004 getSummary interface
+ * Summary result matching 8004 getSummary interface
  * v0.4.0: Extended with positive/negative counts
  */
 export interface SolanaAgentSummary {
@@ -31,14 +31,16 @@ export interface SolanaAgentSummary {
     negativeCount: number;
 }
 /**
- * Feedback result matching SDK interface - v0.4.0
+ * Feedback result matching SDK interface
  * Extended with event-sourced fields available via indexer
  */
 export interface SolanaFeedback {
     asset: PublicKey;
     client: PublicKey;
     feedbackIndex: bigint;
-    score: number;
+    value: bigint;
+    valueDecimals: number;
+    score: number | null;
     tag1: string;
     tag2: string;
     revoked?: boolean;
@@ -61,7 +63,7 @@ export interface SolanaResponse {
 }
 /**
  * Manages feedback operations for Solana - v0.4.0
- * Implements all 6 ERC-8004 read functions
+ * Implements all 6 8004 read functions
  * Optional indexer support for fast queries
  */
 export declare class SolanaFeedbackManager {
@@ -177,7 +179,7 @@ export declare class SolanaFeedbackManager {
         offset?: number;
     }): Promise<SolanaFeedback[]>;
     /**
-     * Helper to map IndexedFeedback to SolanaFeedback - v0.4.0
+     * Helper to map IndexedFeedback to SolanaFeedback
      */
     private mapIndexedFeedback;
     /**

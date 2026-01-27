@@ -1,5 +1,5 @@
 /**
- * Manual instruction builder for ERC-8004 Solana programs
+ * Manual instruction builder for 8004 Solana programs
  * v0.3.0 - Asset-based identification
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
@@ -125,11 +125,10 @@ export declare class ReputationInstructionBuilder {
      */
     buildAppendResponse(responder: PublicKey, agentAccount: PublicKey, asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
     /**
-     * Build setFeedbackTags instruction - v0.3.0
-     * Matches: set_feedback_tags(feedback_index, tag1, tag2)
-     * Accounts: client (signer), payer (signer), feedback_account, feedback_tags, system_program
+     * @deprecated Removed on-chain in v0.5.0 - tags are now included in give_feedback instruction
+     * This method will throw an error when called.
      */
-    buildSetFeedbackTags(client: PublicKey, payer: PublicKey, feedbackAccount: PublicKey, feedbackTags: PublicKey, feedbackIndex: bigint, tag1: string, tag2: string): TransactionInstruction;
+    buildSetFeedbackTags(_client: PublicKey, _payer: PublicKey, _feedbackAccount: PublicKey, _feedbackTags: PublicKey, _feedbackIndex: bigint, _tag1: string, _tag2: string): TransactionInstruction;
     private serializeString;
     private serializeU64;
 }
@@ -154,18 +153,15 @@ export declare class ValidationInstructionBuilder {
      */
     buildRespondToValidation(validationConfig: PublicKey, validator: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, nonce: number, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
     /**
-     * Build updateValidation instruction - v0.3.0
-     * Same signature as respondToValidation but different discriminator
-     * Accounts: validator (signer), agent_account, asset, validation_request
-     * Note: updateValidation does not use config account
+     * @deprecated Removed on-chain in v0.5.0 - validations are immutable once responded
+     * This method will throw an error when called.
      */
-    buildUpdateValidation(validator: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, response: number, responseUri: string, responseHash: Buffer, tag: string): TransactionInstruction;
+    buildUpdateValidation(_validator: PublicKey, _asset: PublicKey, _agentAccount: PublicKey, _validationRequest: PublicKey, _response: number, _responseUri: string, _responseHash: Buffer, _tag: string): TransactionInstruction;
     /**
-     * Build closeValidation instruction - v0.3.0
-     * Note: closeValidation does not use any config account
-     * Accounts: closer (signer), asset, agent_account, validation_request, rent_receiver
+     * @deprecated Removed on-chain in v0.5.0 - validations are immutable
+     * This method will throw an error when called.
      */
-    buildCloseValidation(closer: PublicKey, asset: PublicKey, agentAccount: PublicKey, validationRequest: PublicKey, rentReceiver: PublicKey): TransactionInstruction;
+    buildCloseValidation(_closer: PublicKey, _asset: PublicKey, _agentAccount: PublicKey, _validationRequest: PublicKey, _rentReceiver: PublicKey): TransactionInstruction;
     private serializeString;
     private serializeU64;
     private serializeU32;

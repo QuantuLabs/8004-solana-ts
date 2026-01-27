@@ -1,6 +1,6 @@
 # Feedback System Guide
 
-The ERC-8004 feedback system enables rich reputation tracking with standardized tags and raw metrics.
+The 8004 feedback system enables rich reputation tracking with standardized tags and raw metrics.
 
 > **Solana Constraints**: This SDK uses `i64` for value (vs `int128` on EVM) and `0-6` for valueDecimals (vs `0-18` on EVM). Tags are optional by design so ecosystems can evolve their own taxonomies.
 
@@ -11,7 +11,7 @@ await sdk.giveFeedback(agent.asset, {
   score: 85,                      // 0-100, optional (null = inferred from tag)
   value: 15000n,                  // i64: raw metric value
   valueDecimals: 2,               // 0-6: decimal precision
-  tag1: 'revenues',               // primary category (ERC-8004 standard)
+  tag1: 'revenues',               // primary category (8004 standard)
   tag2: 'month',                  // secondary qualifier (day/week/month/year)
   endpoint: '/api/v1/generate',   // endpoint called (max 250 bytes)
   feedbackUri: 'ipfs://Qm...',    // detailed feedback file
@@ -32,9 +32,40 @@ await sdk.giveFeedback(agent.asset, {
 | `feedbackUri` | `string` | IPFS/HTTP link to detailed feedback |
 | `feedbackHash` | `Buffer` | SHA-256 hash for integrity verification |
 
-## ERC-8004 Standardized Tags
+## Tag Helper
 
-As defined in the [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004):
+The SDK provides `Tag` constants for standardized tags:
+
+```typescript
+import { Tag, isKnownTag, getTagDescription } from '8004-solana';
+
+// Category tags (tag1)
+Tag.starred           // 'starred'
+Tag.reachable         // 'reachable'
+Tag.ownerVerified     // 'ownerVerified'
+Tag.uptime            // 'uptime'
+Tag.successRate       // 'successRate'
+Tag.responseTime      // 'responseTime'
+Tag.blocktimeFreshness // 'blocktimeFreshness'
+Tag.revenues          // 'revenues'
+Tag.tradingYield      // 'tradingYield'
+
+// Period tags (tag2)
+Tag.day               // 'day'
+Tag.week              // 'week'
+Tag.month             // 'month'
+Tag.year              // 'year'
+
+// Utilities
+isKnownTag('uptime')              // true
+getTagDescription('successRate')  // 'Task completion success percentage'
+```
+
+Custom tags are also supported (any string up to 32 bytes).
+
+## 8004 Standardized Tags
+
+As defined in the [8004 specification](https://github.com/erc-8004/erc-8004-contracts/blob/master/ERC8004SPEC.md):
 
 | tag1 | Purpose | value | ATOM auto-score |
 |------|---------|-------|-----------------|
@@ -207,9 +238,62 @@ console.log(summary.averageScore);
 console.log(summary.totalFeedbacks);
 ```
 
+## x402 Protocol Integration
+
+The x402 protocol extends 8004 for payment-based agent interactions. Use these tags for payment feedback:
+
+### Client → Agent Feedback (tag1)
+
+| Tag | Constant | Description |
+|-----|----------|-------------|
+| `x402-resource-delivered` | `Tag.x402ResourceDelivered` | Resource delivered successfully |
+| `x402-delivery-failed` | `Tag.x402DeliveryFailed` | Resource delivery failed |
+| `x402-delivery-timeout` | `Tag.x402DeliveryTimeout` | Resource delivery timed out |
+| `x402-quality-issue` | `Tag.x402QualityIssue` | Resource quality below expectations |
+
+### Agent → Client Feedback (tag1)
+
+| Tag | Constant | Description |
+|-----|----------|-------------|
+| `x402-good-payer` | `Tag.x402GoodPayer` | Client paid successfully |
+| `x402-payment-failed` | `Tag.x402PaymentFailed` | Payment failed to settle |
+| `x402-insufficient-funds` | `Tag.x402InsufficientFunds` | Insufficient funds |
+| `x402-invalid-signature` | `Tag.x402InvalidSignature` | Invalid signature |
+
+### Network Identifier (tag2)
+
+| Tag | Constant | Description |
+|-----|----------|-------------|
+| `exact-evm` | `Tag.x402Evm` | EVM network settlement (Base, Ethereum) |
+| `exact-svm` | `Tag.x402Svm` | Solana network settlement |
+
+### Example
+
+```typescript
+import { Tag } from '8004-solana';
+
+// Client feedback after successful delivery
+await sdk.giveFeedback(agent.asset, {
+  score: 95,
+  value: 100n,           // Payment amount in cents
+  valueDecimals: 2,
+  tag1: Tag.x402ResourceDelivered,
+  tag2: Tag.x402Svm,     // Solana settlement
+});
+
+// Agent feedback for good payer
+await sdk.giveFeedback(client.asset, {
+  score: 100,
+  tag1: Tag.x402GoodPayer,
+  tag2: Tag.x402Evm,     // EVM settlement
+});
+```
+
+> **Reference**: [x402 8004 Integration](https://github.com/coinbase/x402/issues/931)
+
 ## Best Practices
 
-1. **Use ERC-8004 standard tags** when applicable for interoperability
+1. **Use 8004 standard tags** when applicable for interoperability
 2. **Include value/valueDecimals** for quantitative metrics
 3. **Set score explicitly** when you have a clear quality assessment
 4. **Use null score** for pure metric tracking without quality judgment

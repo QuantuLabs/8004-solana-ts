@@ -1,6 +1,6 @@
 import { validateSkill, validateDomain } from '../core/oasf-validator.js';
 /**
- * Build ERC-8004 compliant JSON from RegistrationFile
+ * Build 8004 compliant JSON from RegistrationFile
  * Validates OASF skills/domains if provided
  * Does NOT upload - just returns the JSON object
  */
@@ -20,7 +20,7 @@ export function buildRegistrationFileJson(registrationFile, options) {
             throw new Error(`Invalid OASF domains: ${invalidDomains.join(', ')}. Use getAllDomains() to list valid slugs.`);
         }
     }
-    // Convert from internal format { type, value, meta } to ERC-8004 format { name, endpoint, version }
+    // Convert from internal format { type, value, meta } to 8004 format { name, endpoint, version }
     const endpoints = [];
     for (const ep of registrationFile.endpoints) {
         const endpointDict = {
@@ -62,7 +62,7 @@ export function buildRegistrationFileJson(registrationFile, options) {
             agentRegistry,
         });
     }
-    // Build ERC-8004 compliant registration file
+    // Build 8004 compliant registration file
     return {
         type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
         name: registrationFile.name,

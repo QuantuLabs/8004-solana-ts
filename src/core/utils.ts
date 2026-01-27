@@ -1,5 +1,5 @@
 /**
- * Utility functions for ERC-8004 Solana SDK
+ * Utility functions for 8004 Solana SDK
  */
 
 /**

@@ -481,7 +481,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const nonExistentIndex = BigInt(999999);
         const result = await clientSdk.revokeFeedback(agent, nonExistentIndex);
 
-        // Should not error (soft-fail per ERC-8004)
+        // Should not error (soft-fail per 8004)
         expect(result.success).toBe(true);
       });
 
@@ -545,7 +545,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         });
 
         const revokeResult = await validatorSdk.revokeFeedback(agent, index);
-        // Per ERC-8004, revoke is a soft-fail for non-matching PDAs
+        // Per 8004, revoke is a soft-fail for non-matching PDAs
         expect(revokeResult.success).toBe(true);
 
         // Verify original feedback NOT revoked (if indexer synced)
@@ -615,7 +615,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         }
       });
 
-      it('should allow owner to add multiple responses (ERC-8004 spec)', async () => {
+      it('should allow owner to add multiple responses (8004 spec)', async () => {
         // Give feedback
         const multiRespUri = `ipfs://multiresponse_${Date.now()}`;
         const giveResult = await clientSdk.giveFeedback(
@@ -645,7 +645,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Second response by same owner (both stored per ERC-8004)
+        // Second response by same owner (both stored per 8004)
         const response2Uri = `ipfs://response2_${Date.now()}`;
         const response2 = await sdk.appendResponse(
           agent,
@@ -657,7 +657,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 
         await new Promise(resolve => setTimeout(resolve, 4000));
 
-        // ERC-8004: Multiple responses per responder allowed
+        // 8004: Multiple responses per responder allowed
         const responses = await sdk.readResponses(agent, clientWallet.publicKey, index);
         if (responses.length >= 2) {
           // All responses from the agent owner
@@ -697,7 +697,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
     });
 
     describe('Event Verification', () => {
-      it('should emit ResponseAppended event (ERC-8004)', async () => {
+      it('should emit ResponseAppended event (8004)', async () => {
         const responseUri = `ipfs://eventuri_${Date.now()}`;
         const result = await sdk.appendResponse(
           agent,
@@ -758,7 +758,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           `ipfs://validatorresponse_${Date.now()}`
         );
 
-        // Per ERC-8004, only owner or agent_wallet can respond
+        // Per 8004, only owner or agent_wallet can respond
         expect(result.success).toBe(false);
         expect(result.error).toContain('Unauthorized');
       });
@@ -785,6 +785,6 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 // - Created comprehensive E2E tests for Reputation module (3 instructions)
 // - Covers give_feedback with ATOM integration, boundary tests, security tests
 // - Covers revoke_feedback with soft-fail behavior and stats updates
-// - Covers append_response with ERC-8004 client field verification
+// - Covers append_response with 8004 client field verification
 // - Includes cross-wallet operations and multiple responder scenarios
 // - All constraint boundaries tested (score 0-100, tag ≤32 bytes, URI ≤250 bytes)

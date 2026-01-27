@@ -71,7 +71,9 @@ export interface IndexedFeedback {
   asset: string;
   client_address: string;
   feedback_index: number;
-  score: number;
+  value: number | string;        // i64 raw metric value (BIGINT as string from Supabase)
+  value_decimals: number;        // decimal precision 0-6
+  score: number | null;          // nullable (null = ATOM skipped)
   tag1: string | null;
   tag2: string | null;
   endpoint: string | null;

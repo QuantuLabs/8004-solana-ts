@@ -1,5 +1,5 @@
 /**
- * PDA (Program Derived Address) helpers for ERC-8004 Solana programs
+ * PDA (Program Derived Address) helpers for 8004 Solana programs
  * v0.3.0 - Asset-based identification
  * Browser-compatible - uses cross-platform buffer utilities
  *

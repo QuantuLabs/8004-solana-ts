@@ -1,5 +1,5 @@
 /**
- * Solana program IDs and configuration for ERC-8004
+ * Solana program IDs and configuration for 8004
  * v0.2.0 - Consolidated single program architecture
  */
 import { PublicKey } from '@solana/web3.js';

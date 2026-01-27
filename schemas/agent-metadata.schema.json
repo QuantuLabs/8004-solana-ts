@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://8004.dev/schemas/agent-metadata.json",
   "title": "8004 Agent Metadata",
-  "description": "JSON schema for AI agent metadata URI (ERC-8004 compatible)",
+  "description": "JSON schema for AI agent metadata URI (8004 compatible)",
   "type": "object",
   "required": ["name"],
   "properties": {

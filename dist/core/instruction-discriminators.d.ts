@@ -41,6 +41,7 @@ export declare const REPUTATION_DISCRIMINATORS: {
     readonly giveFeedback: Buffer<ArrayBuffer>;
     readonly revokeFeedback: Buffer<ArrayBuffer>;
     readonly appendResponse: Buffer<ArrayBuffer>;
+    /** @deprecated Removed on-chain - tags now part of give_feedback */
     readonly setFeedbackTags: Buffer<ArrayBuffer>;
 };
 /**
@@ -63,7 +64,9 @@ export declare const VALIDATION_DISCRIMINATORS: {
     readonly initializeValidationConfig: Buffer<ArrayBuffer>;
     readonly requestValidation: Buffer<ArrayBuffer>;
     readonly respondToValidation: Buffer<ArrayBuffer>;
+    /** @deprecated Removed on-chain - validations are immutable */
     readonly updateValidation: Buffer<ArrayBuffer>;
+    /** @deprecated Removed on-chain - validations are immutable */
     readonly closeValidation: Buffer<ArrayBuffer>;
 };
 /**

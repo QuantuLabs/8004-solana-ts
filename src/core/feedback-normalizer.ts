@@ -1,12 +1,12 @@
 /**
  * Feedback Normalizer for ATOM score calculation
- * Converts raw metric values to 0-100 scores based on ERC-8004 tag semantics
+ * Converts raw metric values to 0-100 scores based on 8004 tag semantics
  *
  * @see https://eips.ethereum.org/EIPS/eip-8004
  */
 
 /**
- * ERC-8004 standardized tags that are ATOM-enabled
+ * 8004 standardized tags that are ATOM-enabled
  * These tags have defined semantics for score calculation
  */
 export const ATOM_ENABLED_TAGS = [
@@ -31,7 +31,7 @@ export function isAtomEnabledTag(tag: string): boolean {
 }
 
 /**
- * Normalize a raw metric value to 0-100 score based on ERC-8004 tag semantics
+ * Normalize a raw metric value to 0-100 score based on 8004 tag semantics
  * Uses BigInt arithmetic to avoid precision loss
  */
 export function normalizeToScore(
@@ -71,7 +71,7 @@ export function normalizeToScore(
 /**
  * Resolve final score for ATOM:
  * 1. Explicit score provided (0-100) → use directly
- * 2. Known ERC-8004 tag → normalize from value
+ * 2. Known 8004 tag → normalize from value
  * 3. Otherwise → null (skip ATOM)
  */
 export function resolveScore(params: {
