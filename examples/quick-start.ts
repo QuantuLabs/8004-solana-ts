@@ -1,8 +1,7 @@
 /**
- * Quick Start Example - Solana SDK v0.3.0+
+ * Quick Start Example - Solana SDK v0.5.0+
  *
  * Demonstrates basic read and write operations using 8004-solana SDK
- * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
 import { Keypair, PublicKey } from '@solana/web3.js';
 import {
@@ -83,9 +82,9 @@ async function main() {
   }
 
   // === GIVE FEEDBACK ===
-  // Submit feedback for an existing agent (using asset PublicKey)
+  // Submit feedback for an existing agent (value required)
   // await writeSdk.giveFeedback(agentAsset, {
-  //   score: 85,
+  //   value: '85',
   //   tag1: 'helpful',
   //   tag2: 'accurate',
   // });

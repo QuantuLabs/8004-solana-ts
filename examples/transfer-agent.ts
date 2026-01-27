@@ -1,8 +1,7 @@
 /**
- * Transfer Agent Example - Solana SDK v0.3.0+
+ * Transfer Agent Example - Solana SDK v0.5.0+
  *
  * Demonstrates transferring agent ownership
- * Note: v0.3.0 uses asset (PublicKey) instead of agentId (bigint)
  */
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { SolanaSDK } from '../src/index.js';
