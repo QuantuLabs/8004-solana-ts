@@ -202,32 +202,6 @@ await sdk.giveFeedback(asset, {
 
 See [FEEDBACK.md](./docs/FEEDBACK.md) for the complete tag reference.
 
-## Value Encoding
-
-The SDK accepts multiple formats for feedback values and auto-encodes them:
-
-```typescript
-import { encodeReputationValue, decodeToDecimalString } from '8004-solana';
-
-// Decimal strings (recommended - most intuitive)
-await sdk.giveFeedback(asset, { value: '99.77', tag1: 'uptime' });
-// → encoded as: value=9977n, valueDecimals=2
-
-// Numbers with decimals
-await sdk.giveFeedback(asset, { value: 99.77, tag1: 'uptime' });
-// → same encoding
-
-// Raw integers (explicit decimals required)
-await sdk.giveFeedback(asset, { value: 9977, valueDecimals: 2, tag1: 'uptime' });
-
-// Utility functions for manual encoding/decoding
-const encoded = encodeReputationValue('99.77');
-// → { value: 9977n, valueDecimals: 2, normalized: '99.77' }
-
-const decoded = decodeToDecimalString(9977n, 2);
-// → '99.77'
-```
-
 ## ATOM Engine
 
 The SDK auto-initializes ATOM stats on registration (atomEnabled: true by default). ATOM provides:
