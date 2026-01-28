@@ -33,8 +33,6 @@ export const IDENTITY_DISCRIMINATORS = {
   transferAgent: Buffer.from([137, 80, 56, 147, 107, 99, 39, 192]),
   ownerOf: Buffer.from([165, 85, 46, 249, 100, 61, 249, 112]),
   // v0.3.0 - Multi-collection instructions
-  createBaseRegistry: Buffer.from([150, 191, 7, 52, 251, 227, 60, 23]),
-  rotateBaseRegistry: Buffer.from([106, 216, 250, 57, 65, 122, 221, 109]),
   createUserRegistry: Buffer.from([244, 141, 67, 250, 234, 104, 58, 135]),
   updateUserRegistryMetadata: Buffer.from([121, 57, 38, 142, 118, 18, 204, 28]),
   setAgentWallet: Buffer.from([154, 87, 251, 23, 51, 12, 4, 150]),

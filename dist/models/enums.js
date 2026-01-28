@@ -2,17 +2,19 @@
  * Enums for Agent0 SDK
  */
 /**
- * Types of endpoints that agents can advertise
+ * Types of services that agents can advertise
  */
-export var EndpointType;
-(function (EndpointType) {
-    EndpointType["MCP"] = "MCP";
-    EndpointType["A2A"] = "A2A";
-    EndpointType["ENS"] = "ENS";
-    EndpointType["DID"] = "DID";
-    EndpointType["WALLET"] = "wallet";
-    EndpointType["OASF"] = "OASF";
-})(EndpointType || (EndpointType = {}));
+export var ServiceType;
+(function (ServiceType) {
+    ServiceType["MCP"] = "MCP";
+    ServiceType["A2A"] = "A2A";
+    ServiceType["ENS"] = "ENS";
+    ServiceType["DID"] = "DID";
+    ServiceType["WALLET"] = "wallet";
+    ServiceType["OASF"] = "OASF";
+})(ServiceType || (ServiceType = {}));
+/** @deprecated Use ServiceType instead */
+export const EndpointType = ServiceType;
 /**
  * Trust models supported by the SDK
  */

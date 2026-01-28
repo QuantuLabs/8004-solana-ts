@@ -2,15 +2,17 @@
  * Core interfaces for Agent0 SDK
  */
 import type { AgentId, Address, URI, Timestamp } from './types.js';
-import type { EndpointType, TrustModel } from './enums.js';
+import type { ServiceType, TrustModel } from './enums.js';
 /**
- * Represents an agent endpoint
+ * Represents an agent service
  */
-export interface Endpoint {
-    type: EndpointType;
+export interface Service {
+    type: ServiceType;
     value: string;
     meta?: Record<string, unknown>;
 }
+/** @deprecated Use Service instead */
+export type Endpoint = Service;
 /**
  * Agent registration file structure
  * Used to build 8004 compliant metadata JSON
@@ -23,12 +25,12 @@ export interface RegistrationFile {
     image?: URI;
     walletAddress?: Address;
     walletChainId?: number;
-    endpoints: Endpoint[];
+    services: Service[];
     trustModels?: (TrustModel | string)[];
     owners?: Address[];
     operators?: Address[];
     active?: boolean;
-    x402support?: boolean;
+    x402Support?: boolean;
     metadata?: Record<string, unknown>;
     updatedAt?: Timestamp;
     skills?: string[];

@@ -33,7 +33,7 @@ export PINATA_JWT='your-jwt-token'          # Optional: for IPFS uploads
 Create a new file `register.ts` and run with `npx tsx register.ts`:
 
 ```typescript
-import { SolanaSDK, IPFSClient, buildRegistrationFileJson, EndpointType } from '8004-solana';
+import { SolanaSDK, IPFSClient, buildRegistrationFileJson, ServiceType } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
 
 // 1. Setup SDK with your wallet
@@ -52,16 +52,16 @@ const ipfs = new IPFSClient({
 const imageCid = await ipfs.addFile('./my-agent-avatar.png');
 const imageUri = `ipfs://${imageCid}`;
 
-// 4. Build your agent metadata with capabilities
+// 4. Build your agent metadata
 const metadata = buildRegistrationFileJson({
   name: 'My AI Agent',
   description: 'An autonomous agent that does amazing things',
   image: imageUri,
 
-  // Endpoints
-  endpoints: [
-    { type: EndpointType.MCP, value: 'https://my-api.com/mcp' },
-    { type: EndpointType.A2A, value: 'https://my-api.com/a2a' },
+  // Services
+  services: [
+    { type: ServiceType.MCP, value: 'https://my-api.com/mcp' },
+    { type: ServiceType.A2A, value: 'https://my-api.com/a2a' },
   ],
 
   // Skills (OASF taxonomy)

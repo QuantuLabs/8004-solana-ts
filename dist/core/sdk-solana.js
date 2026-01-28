@@ -24,7 +24,7 @@ import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.j
 import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
 import { buildSignedPayload, canonicalizeSignedPayload, parseSignedPayload, verifySignedPayload, } from '../utils/signing.js';
-import { EndpointType } from '../models/enums.js';
+import { ServiceType } from '../models/enums.js';
 // ATOM Engine imports (v0.4.0)
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA, getAtomConfigPDA } from './atom-pda.js';
@@ -1415,18 +1415,18 @@ export class SolanaSDK {
         const concurrency = options.concurrency ?? 4;
         const treatAuthAsAlive = options.treatAuthAsAlive ?? true;
         const registration = await this.fetchJsonFromUri(agent.agent_uri, timeoutMs);
-        let endpoints = this.normalizeRegistrationEndpoints(registration);
+        let endpoints = this.normalizeRegistrationServices(registration);
         if (options.includeTypes?.length) {
             const includeSet = new Set(options.includeTypes.map((entry) => String(entry)));
             endpoints = endpoints.filter((endpoint) => includeSet.has(String(endpoint.type)));
         }
         const crawler = new EndpointCrawler(timeoutMs);
         const results = await mapWithConcurrency(endpoints, concurrency, (endpoint) => this.pingEndpoint(endpoint, crawler, { timeoutMs, treatAuthAsAlive }));
-        const liveEndpoints = results.filter((result) => result.ok);
-        const skippedEndpoints = results.filter((result) => result.skipped);
-        const deadEndpoints = results.filter((result) => !result.ok && !result.skipped);
-        const totalPinged = results.length - skippedEndpoints.length;
-        const okCount = liveEndpoints.length;
+        const liveServices = results.filter((result) => result.ok);
+        const skippedServices = results.filter((result) => result.skipped);
+        const deadServices = results.filter((result) => !result.ok && !result.skipped);
+        const totalPinged = results.length - skippedServices.length;
+        const okCount = liveServices.length;
         const status = totalPinged === 0 || okCount === 0
             ? 'not_live'
             : okCount === totalPinged
@@ -1436,11 +1436,11 @@ export class SolanaSDK {
             status,
             okCount,
             totalPinged,
-            skippedCount: skippedEndpoints.length,
+            skippedCount: skippedServices.length,
             results,
-            liveEndpoints,
-            deadEndpoints,
-            skippedEndpoints,
+            liveServices,
+            deadServices,
+            skippedServices,
         };
     }
     /**
@@ -1572,19 +1572,20 @@ export class SolanaSDK {
             return false;
         }
     }
-    normalizeRegistrationEndpoints(raw) {
-        const rawEndpoints = raw.endpoints;
-        if (!Array.isArray(rawEndpoints)) {
+    normalizeRegistrationServices(raw) {
+        // Support both new `services` and legacy `endpoints`
+        const rawServices = raw.services ?? raw.endpoints;
+        if (!Array.isArray(rawServices)) {
             return [];
         }
-        const endpoints = [];
-        for (const entry of rawEndpoints) {
+        const services = [];
+        for (const entry of rawServices) {
             if (!entry || typeof entry !== 'object') {
                 continue;
             }
             const record = entry;
             if (typeof record.type === 'string' && typeof record.value === 'string') {
-                endpoints.push({
+                services.push({
                     type: record.type,
                     value: record.value,
                     meta: typeof record.meta === 'object' && record.meta !== null ? record.meta : undefined,
@@ -1597,13 +1598,13 @@ export class SolanaSDK {
                 continue;
             }
             const typeMap = {
-                mcp: EndpointType.MCP,
-                a2a: EndpointType.A2A,
-                ens: EndpointType.ENS,
-                did: EndpointType.DID,
-                wallet: EndpointType.WALLET,
-                agentwallet: EndpointType.WALLET,
-                oasf: EndpointType.OASF,
+                mcp: ServiceType.MCP,
+                a2a: ServiceType.A2A,
+                ens: ServiceType.ENS,
+                did: ServiceType.DID,
+                wallet: ServiceType.WALLET,
+                agentwallet: ServiceType.WALLET,
+                oasf: ServiceType.OASF,
             };
             const normalizedType = typeMap[name.toLowerCase()] ?? (name || 'UNKNOWN');
             const meta = {};
@@ -1613,13 +1614,13 @@ export class SolanaSDK {
                 }
                 meta[key] = valueEntry;
             }
-            endpoints.push({
+            services.push({
                 type: normalizedType,
                 value,
                 meta: Object.keys(meta).length ? meta : undefined,
             });
         }
-        return endpoints;
+        return services;
     }
     async pingEndpoint(endpoint, crawler, options) {
         const value = endpoint.value;
@@ -1641,7 +1642,7 @@ export class SolanaSDK {
                 reason: 'non_http',
             };
         }
-        if (endpoint.type === EndpointType.MCP) {
+        if (endpoint.type === ServiceType.MCP) {
             const start = Date.now();
             const capabilities = await crawler.fetchMcpCapabilities(value);
             if (capabilities) {
@@ -1654,7 +1655,7 @@ export class SolanaSDK {
             }
             return this.pingHttpEndpoint(endpoint.type, value, options.timeoutMs, options.treatAuthAsAlive);
         }
-        if (endpoint.type === EndpointType.A2A) {
+        if (endpoint.type === ServiceType.A2A) {
             const start = Date.now();
             const capabilities = await crawler.fetchA2aCapabilities(value);
             if (capabilities) {

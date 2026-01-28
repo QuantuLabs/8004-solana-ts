@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { SolanaSDK } from '../../src/core/sdk-solana.js';
 import { AgentAccount } from '../../src/core/borsh-schemas.js';
-import { EndpointType } from '../../src/models/enums.js';
+import { ServiceType } from '../../src/models/enums.js';
 
 const ORIGINAL_FETCH = global.fetch;
 
@@ -113,11 +113,11 @@ describe('Liveness Checks', () => {
     const report = await sdk.isItAlive(asset);
 
     expect(report.status).toBe('partially');
-    expect(report.liveEndpoints.length).toBe(2);
-    expect(report.deadEndpoints.length).toBe(1);
-    expect(report.liveEndpoints.some((entry) => entry.endpoint === 'https://mcp.example.com')).toBe(true);
-    expect(report.liveEndpoints.some((entry) => entry.endpoint === 'https://auth.example.com')).toBe(true);
-    expect(report.deadEndpoints[0].endpoint).toBe('https://a2a.example.com');
+    expect(report.liveServices.length).toBe(2);
+    expect(report.deadServices.length).toBe(1);
+    expect(report.liveServices.some((entry) => entry.endpoint === 'https://mcp.example.com')).toBe(true);
+    expect(report.liveServices.some((entry) => entry.endpoint === 'https://auth.example.com')).toBe(true);
+    expect(report.deadServices[0].endpoint).toBe('https://a2a.example.com');
   });
 
   it('should treat auth-required endpoints as not live when disabled', async () => {
@@ -176,10 +176,10 @@ describe('Liveness Checks', () => {
       return createResponse(404);
     }) as typeof fetch;
 
-    const report = await sdk.isItAlive(asset, { includeTypes: [EndpointType.MCP] });
+    const report = await sdk.isItAlive(asset, { includeTypes: [ServiceType.MCP] });
     expect(report.totalPinged).toBe(1);
     expect(report.status).toBe('live');
-    expect(report.liveEndpoints[0].endpoint).toBe('https://mcp.example.com');
+    expect(report.liveServices[0].endpoint).toBe('https://mcp.example.com');
   });
 
   it('should skip non-http endpoints', async () => {
@@ -231,6 +231,6 @@ describe('Liveness Checks', () => {
 
     const report = await sdk.isItAlive(asset);
     expect(report.status).toBe('live');
-    expect(report.liveEndpoints[0].endpoint).toBe('https://live.example.com');
+    expect(report.liveServices[0].endpoint).toBe('https://live.example.com');
   });
 });

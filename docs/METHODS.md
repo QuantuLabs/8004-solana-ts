@@ -54,7 +54,7 @@ const asset = new PublicKey('YourAgentAssetPubkey...');
 
 // Liveness
 const report = await sdk.isItAlive(asset);
-console.log(report.status, report.liveEndpoints, report.deadEndpoints);
+console.log(report.status, report.liveServices, report.deadServices);
 
 // Sign arbitrary data (returns canonical JSON string)
 const signed = sdk.sign(asset, {
@@ -373,7 +373,7 @@ const ipfs = new IPFSClient({
 ### Usage Examples
 
 ```typescript
-import { IPFSClient, buildRegistrationFileJson, EndpointType } from '8004-solana';
+import { IPFSClient, buildRegistrationFileJson, ServiceType } from '8004-solana';
 
 const ipfs = new IPFSClient({
   pinataEnabled: true,
@@ -389,8 +389,8 @@ const metadata = buildRegistrationFileJson({
   name: 'My Agent',
   description: 'A helpful AI agent',
   image: imageUri,
-  endpoints: [
-    { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
+  services: [
+    { type: ServiceType.MCP, value: 'https://api.example.com/mcp' },
   ],
 });
 

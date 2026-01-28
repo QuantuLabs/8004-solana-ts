@@ -1,5 +1,5 @@
 /**
- * Liveness reporting types for endpoint checks
+ * Liveness reporting types for service checks
  */
 export {};
 //# sourceMappingURL=liveness.js.map

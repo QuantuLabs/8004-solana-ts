@@ -724,7 +724,7 @@ export declare class SolanaSDK {
     private resolveSignedPayloadInput;
     private fetchJsonFromUri;
     private isAllowedUri;
-    private normalizeRegistrationEndpoints;
+    private normalizeRegistrationServices;
     private pingEndpoint;
     private pingHttpEndpoint;
     /**

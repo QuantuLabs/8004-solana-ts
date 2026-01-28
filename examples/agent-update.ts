@@ -13,7 +13,7 @@ import {
   SolanaSDK,
   IPFSClient,
   buildRegistrationFileJson,
-  EndpointType,
+  ServiceType,
 } from '../src/index.js';
 
 async function main() {
@@ -52,8 +52,8 @@ async function main() {
       name: 'My Updated Agent',
       description: 'Agent with updated metadata',
       image: 'https://example.com/new-avatar.png',
-      endpoints: [
-        { type: EndpointType.MCP, value: 'https://api.example.com/mcp/v2' },
+      services: [
+        { type: ServiceType.MCP, value: 'https://api.example.com/mcp/v2' },
       ],
     });
 

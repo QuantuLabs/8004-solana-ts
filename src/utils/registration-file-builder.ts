@@ -3,6 +3,7 @@
  * Extracted from IPFSClient.addRegistrationFile for frontend use
  */
 import type { RegistrationFile } from '../models/interfaces.js';
+import { ServiceType } from '../models/enums.js';
 import { validateSkill, validateDomain } from '../core/oasf-validator.js';
 
 export interface RegistrationFileJsonOptions {
@@ -41,23 +42,32 @@ export function buildRegistrationFileJson(
     }
   }
 
-  // Convert from internal format { type, value, meta } to 8004 format { name, endpoint, version }
-  const endpoints: Array<Record<string, unknown>> = [];
-  for (const ep of registrationFile.endpoints) {
-    const endpointDict: Record<string, unknown> = {
-      name: ep.type,
-      endpoint: ep.value,
+  // Convert from internal format { type, value, meta } to ERC-8004 services format
+  const services: Array<Record<string, unknown>> = [];
+  for (const svc of registrationFile.services) {
+    const serviceDict: Record<string, unknown> = {
+      name: svc.type,
+      endpoint: svc.value,
     };
-    if (ep.meta) {
-      Object.assign(endpointDict, ep.meta);
+    if (svc.meta) {
+      Object.assign(serviceDict, svc.meta);
     }
-    endpoints.push(endpointDict);
+    // Add skills/domains to OASF service type
+    if (svc.type === ServiceType.OASF) {
+      if (registrationFile.skills?.length) {
+        serviceDict.skills = registrationFile.skills;
+      }
+      if (registrationFile.domains?.length) {
+        serviceDict.domains = registrationFile.domains;
+      }
+    }
+    services.push(serviceDict);
   }
 
-  // Add walletAddress as an endpoint if present
+  // Add walletAddress as a service if present
   if (registrationFile.walletAddress) {
     const walletChainId = registrationFile.walletChainId || chainId || 1;
-    endpoints.push({
+    services.push({
       name: 'agentWallet',
       endpoint: `eip155:${walletChainId}:${registrationFile.walletAddress}`,
     });
@@ -89,20 +99,19 @@ export function buildRegistrationFileJson(
     });
   }
 
-  // Build 8004 compliant registration file
+  // Build ERC-8004 compliant registration file v1
+  // Ref: https://github.com/erc-8004/best-practices/blob/main/Registration.md
   return {
     type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
     name: registrationFile.name,
     description: registrationFile.description,
     ...(registrationFile.image && { image: registrationFile.image }),
-    endpoints,
+    services,
     ...(registrations.length > 0 && { registrations }),
     ...(registrationFile.trustModels?.length && {
-      supportedTrusts: registrationFile.trustModels,
+      supportedTrust: registrationFile.trustModels, // Singular per spec
     }),
     active: registrationFile.active ?? true,
-    x402support: registrationFile.x402support ?? false,
-    ...(registrationFile.skills?.length && { skills: registrationFile.skills }),
-    ...(registrationFile.domains?.length && { domains: registrationFile.domains }),
+    x402Support: registrationFile.x402Support ?? false,
   };
 }

@@ -8,7 +8,7 @@ import {
   SolanaSDK,
   IPFSClient,
   buildRegistrationFileJson,
-  EndpointType,
+  ServiceType,
 } from '../src/index.js';
 import type { RegistrationFile } from '../src/index.js';
 
@@ -47,8 +47,8 @@ async function main() {
   const agentData: RegistrationFile = {
     name: 'My AI Assistant',
     description: 'A helpful AI agent for task automation',
-    endpoints: [
-      { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
+    services: [
+      { type: ServiceType.MCP, value: 'https://api.example.com/mcp' },
     ],
     // OASF taxonomies (optional) - see docs/OASF.md for valid slugs
     skills: ['natural_language_processing/natural_language_generation/summarization'],
