@@ -64,7 +64,8 @@ export {
 export {
   fetchRegistryConfig,
   fetchRegistryConfigByPda,
-  getCurrentBaseRegistryPda,
+  getBaseRegistryPda,
+  getBaseCollection,
 } from './core/config-reader.js';
 
 // ============================================================================

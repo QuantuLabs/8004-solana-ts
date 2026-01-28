@@ -181,8 +181,8 @@ export class IdentityTransactionBuilder {
         if (!rootConfig) {
           throw new Error('Root config not initialized. Please initialize the registry first.');
         }
-        // current_base_registry is the RegistryConfig PDA, fetch it directly
-        const registryConfigPda = rootConfig.getCurrentBaseRegistryPublicKey();
+        // base_registry is the RegistryConfig PDA, fetch it directly
+        const registryConfigPda = rootConfig.getBaseRegistryPublicKey();
         const registryConfig = await fetchRegistryConfigByPda(
           this.connection,
           registryConfigPda
@@ -1023,62 +1023,6 @@ export class IdentityTransactionBuilder {
       );
 
       return { signature, success: true, collection: collectionPubkey };
-    } catch (error) {
-      return {
-        signature: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /**
-   * Rotate to a new base collection - v0.3.0 (Admin only)
-   * Sets a different collection as the active base collection for new registrations
-   * Only the program authority can call this
-   * @param newCollection - The collection to set as active base
-   * @param options - Write options (skipSend, signer)
-   */
-  async rotateBaseCollection(
-    newCollection: PublicKey,
-    options?: WriteOptions
-  ): Promise<TransactionResult | PreparedTransaction> {
-    try {
-      const signerPubkey = options?.signer || this.payer?.publicKey;
-      if (!signerPubkey) {
-        throw new Error('signer required when SDK has no signer configured');
-      }
-
-      // Derive PDAs
-      const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
-      const [newRegistryConfigPda] = PDAHelpers.getRegistryConfigPDA(newCollection);
-
-      const instruction = this.instructionBuilder.buildRotateBaseRegistry(
-        rootConfigPda,
-        newRegistryConfigPda,
-        signerPubkey
-      );
-
-      const transaction = new Transaction().add(instruction);
-
-      // If skipSend, return serialized transaction
-      if (options?.skipSend) {
-        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-      }
-
-      // Normal mode: send transaction
-      if (!this.payer) {
-        throw new Error('No signer configured - SDK is read-only');
-      }
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.payer]
-      );
-
-      return { signature, success: true };
     } catch (error) {
       return {
         signature: '',

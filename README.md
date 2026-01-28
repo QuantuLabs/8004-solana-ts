@@ -55,21 +55,20 @@ const collection = await sdk.createCollection(collectionMeta.name, collectionUri
 console.log('Collection:', collection.collection.toBase58());
 
 // 2. Build agent metadata
-import { buildRegistrationFileJson, EndpointType } from '8004-solana';
+import { buildRegistrationFileJson, ServiceType } from '8004-solana';
 
 const agentMeta = buildRegistrationFileJson({
   name: 'My AI Agent',
   description: 'Autonomous agent for task automation',
   image: 'ipfs://QmAgentAvatar...',
-  endpoints: [
-    { type: EndpointType.MCP, value: 'https://api.example.com/mcp' },
-    { type: EndpointType.A2A, value: 'https://api.example.com/a2a' },
+  services: [
+    { type: ServiceType.MCP, value: 'https://api.example.com/mcp' },
+    { type: ServiceType.A2A, value: 'https://api.example.com/a2a' },
+    { type: ServiceType.OASF, value: 'https://api.example.com/oasf' },
   ],
   skills: ['natural_language_processing/text_generation/text_generation'],
   domains: ['technology/software_engineering/software_engineering'],
 });
-
-// Note: `_uri:` keys are reserved for indexer-derived metadata and ignored on-chain.
 // Upload and register
 const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
 const agent = await sdk.registerAgent(agentUri, collection.collection);
@@ -137,8 +136,8 @@ const isValid = await sdk.verify(signed, agent.asset, opWallet.publicKey);
 ```typescript
 // Ping agent endpoints
 const report = await sdk.isItAlive(agent.asset);
-console.log(report.status); // 'alive' | 'partial' | 'dead'
-console.log(report.liveEndpoints, report.deadEndpoints);
+console.log(report.status); // 'live' | 'partially' | 'not_live'
+console.log(report.liveServices, report.deadServices);
 ```
 
 ### Read-Only Mode

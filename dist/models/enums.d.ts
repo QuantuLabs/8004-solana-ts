@@ -2,9 +2,9 @@
  * Enums for Agent0 SDK
  */
 /**
- * Types of endpoints that agents can advertise
+ * Types of services that agents can advertise
  */
-export declare enum EndpointType {
+export declare enum ServiceType {
     MCP = "MCP",
     A2A = "A2A",
     ENS = "ENS",
@@ -12,6 +12,10 @@ export declare enum EndpointType {
     WALLET = "wallet",
     OASF = "OASF"
 }
+/** @deprecated Use ServiceType instead */
+export declare const EndpointType: typeof ServiceType;
+/** @deprecated Use ServiceType instead */
+export type EndpointType = ServiceType;
 /**
  * Trust models supported by the SDK
  */

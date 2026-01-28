@@ -33,7 +33,7 @@ import {
   UpdateAtomConfigParams,
 } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
-import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.js';
+import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -42,9 +42,9 @@ import {
   parseSignedPayload,
   verifySignedPayload,
 } from '../utils/signing.js';
-import type { Endpoint } from '../models/interfaces.js';
-import { EndpointType } from '../models/enums.js';
-import type { EndpointPingResult, LivenessOptions, LivenessReport } from '../models/liveness.js';
+import type { Service } from '../models/interfaces.js';
+import { ServiceType } from '../models/enums.js';
+import type { ServicePingResult, LivenessOptions, LivenessReport } from '../models/liveness.js';
 import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
 // ATOM Engine imports (v0.4.0)
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
@@ -142,7 +142,6 @@ export interface CollectionInfo {
   collection: PublicKey;
   registryType: 'BASE' | 'USER';
   authority: PublicKey;
-  baseIndex: number;
 }
 
 /**
@@ -262,7 +261,7 @@ export class SolanaSDK {
       const connection = this.client.getConnection();
 
       // v0.3.0: Get base collection from RootConfig
-      this.baseCollection = await getCurrentBaseCollection(connection) || undefined;
+      this.baseCollection = await getBaseCollection(connection) || undefined;
 
       if (!this.baseCollection) {
         throw new Error('Registry not initialized. Root config not found.');
@@ -595,7 +594,6 @@ export class SolanaSDK {
         collection: registryConfig.getCollectionPublicKey(),
         registryType: registryConfig.isBaseRegistry() ? 'BASE' : 'USER',
         authority: registryConfig.getAuthorityPublicKey(),
-        baseIndex: registryConfig.base_index,
       };
     } catch (error) {
       logger.error('Error getting collection', error);
@@ -606,7 +604,7 @@ export class SolanaSDK {
   /**
    * Get all registered collections - v0.4.0
    * Note: This always uses on-chain queries because indexer doesn't have
-   * registryType/authority/baseIndex. Use getCollectionStats() for indexed stats.
+   * registryType/authority. Use getCollectionStats() for indexed stats.
    * @returns Array of all collection infos
    * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
    */
@@ -632,7 +630,6 @@ export class SolanaSDK {
           collection: config.getCollectionPublicKey(),
           registryType: config.isBaseRegistry() ? 'BASE' : 'USER',
           authority: config.getAuthorityPublicKey(),
-          baseIndex: config.base_index,
         };
       });
     } catch (error) {
@@ -1882,7 +1879,7 @@ export class SolanaSDK {
     const treatAuthAsAlive = options.treatAuthAsAlive ?? true;
 
     const registration = await this.fetchJsonFromUri(agent.agent_uri, timeoutMs);
-    let endpoints = this.normalizeRegistrationEndpoints(registration);
+    let endpoints = this.normalizeRegistrationServices(registration);
 
     if (options.includeTypes?.length) {
       const includeSet = new Set(options.includeTypes.map((entry) => String(entry)));
@@ -1894,11 +1891,11 @@ export class SolanaSDK {
       this.pingEndpoint(endpoint, crawler, { timeoutMs, treatAuthAsAlive })
     );
 
-    const liveEndpoints = results.filter((result) => result.ok);
-    const skippedEndpoints = results.filter((result) => result.skipped);
-    const deadEndpoints = results.filter((result) => !result.ok && !result.skipped);
-    const totalPinged = results.length - skippedEndpoints.length;
-    const okCount = liveEndpoints.length;
+    const liveServices = results.filter((result) => result.ok);
+    const skippedServices = results.filter((result) => result.skipped);
+    const deadServices = results.filter((result) => !result.ok && !result.skipped);
+    const totalPinged = results.length - skippedServices.length;
+    const okCount = liveServices.length;
 
     const status: LivenessReport['status'] =
       totalPinged === 0 || okCount === 0
@@ -1911,11 +1908,11 @@ export class SolanaSDK {
       status,
       okCount,
       totalPinged,
-      skippedCount: skippedEndpoints.length,
+      skippedCount: skippedServices.length,
       results,
-      liveEndpoints,
-      deadEndpoints,
-      skippedEndpoints,
+      liveServices,
+      deadServices,
+      skippedServices,
     };
   }
 
@@ -2080,14 +2077,15 @@ export class SolanaSDK {
     }
   }
 
-  private normalizeRegistrationEndpoints(raw: Record<string, unknown>): Endpoint[] {
-    const rawEndpoints = raw.endpoints;
-    if (!Array.isArray(rawEndpoints)) {
+  private normalizeRegistrationServices(raw: Record<string, unknown>): Service[] {
+    // Support both new `services` and legacy `endpoints`
+    const rawServices = raw.services ?? raw.endpoints;
+    if (!Array.isArray(rawServices)) {
       return [];
     }
 
-    const endpoints: Endpoint[] = [];
-    for (const entry of rawEndpoints) {
+    const services: Service[] = [];
+    for (const entry of rawServices) {
       if (!entry || typeof entry !== 'object') {
         continue;
       }
@@ -2095,8 +2093,8 @@ export class SolanaSDK {
       const record = entry as Record<string, unknown>;
 
       if (typeof record.type === 'string' && typeof record.value === 'string') {
-        endpoints.push({
-          type: record.type as EndpointType,
+        services.push({
+          type: record.type as ServiceType,
           value: record.value,
           meta: typeof record.meta === 'object' && record.meta !== null ? record.meta as Record<string, unknown> : undefined,
         });
@@ -2109,14 +2107,14 @@ export class SolanaSDK {
         continue;
       }
 
-      const typeMap: Record<string, EndpointType> = {
-        mcp: EndpointType.MCP,
-        a2a: EndpointType.A2A,
-        ens: EndpointType.ENS,
-        did: EndpointType.DID,
-        wallet: EndpointType.WALLET,
-        agentwallet: EndpointType.WALLET,
-        oasf: EndpointType.OASF,
+      const typeMap: Record<string, ServiceType> = {
+        mcp: ServiceType.MCP,
+        a2a: ServiceType.A2A,
+        ens: ServiceType.ENS,
+        did: ServiceType.DID,
+        wallet: ServiceType.WALLET,
+        agentwallet: ServiceType.WALLET,
+        oasf: ServiceType.OASF,
       };
 
       const normalizedType = typeMap[name.toLowerCase()] ?? (name || 'UNKNOWN');
@@ -2128,21 +2126,21 @@ export class SolanaSDK {
         meta[key] = valueEntry;
       }
 
-      endpoints.push({
+      services.push({
         type: normalizedType,
         value,
         meta: Object.keys(meta).length ? meta : undefined,
       });
     }
 
-    return endpoints;
+    return services;
   }
 
   private async pingEndpoint(
-    endpoint: Endpoint,
+    endpoint: Service,
     crawler: EndpointCrawler,
     options: { timeoutMs: number; treatAuthAsAlive: boolean }
-  ): Promise<EndpointPingResult> {
+  ): Promise<ServicePingResult> {
     const value = endpoint.value;
     if (typeof value !== 'string' || value.length === 0) {
       return {
@@ -2164,7 +2162,7 @@ export class SolanaSDK {
       };
     }
 
-    if (endpoint.type === EndpointType.MCP) {
+    if (endpoint.type === ServiceType.MCP) {
       const start = Date.now();
       const capabilities = await crawler.fetchMcpCapabilities(value);
       if (capabilities) {
@@ -2178,7 +2176,7 @@ export class SolanaSDK {
       return this.pingHttpEndpoint(endpoint.type, value, options.timeoutMs, options.treatAuthAsAlive);
     }
 
-    if (endpoint.type === EndpointType.A2A) {
+    if (endpoint.type === ServiceType.A2A) {
       const start = Date.now();
       const capabilities = await crawler.fetchA2aCapabilities(value);
       if (capabilities) {
@@ -2196,11 +2194,11 @@ export class SolanaSDK {
   }
 
   private async pingHttpEndpoint(
-    type: EndpointType | string,
+    type: ServiceType | string,
     endpoint: string,
     timeoutMs: number,
     treatAuthAsAlive: boolean
-  ): Promise<EndpointPingResult> {
+  ): Promise<ServicePingResult> {
     const start = Date.now();
 
     try {

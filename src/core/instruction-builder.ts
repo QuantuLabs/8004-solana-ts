@@ -296,52 +296,6 @@ export class IdentityInstructionBuilder {
   // ============================================================================
 
   /**
-   * Build createBaseRegistry instruction - v0.3.0
-   * Creates a new base registry (authority only)
-   * Accounts: root_config, registry_config, collection (signer), authority (signer), system_program, mpl_core_program
-   */
-  buildCreateBaseRegistry(
-    rootConfig: PublicKey,
-    registryConfig: PublicKey,
-    collection: PublicKey,
-    authority: PublicKey,
-  ): TransactionInstruction {
-    return new TransactionInstruction({
-      programId: this.programId,
-      keys: [
-        { pubkey: rootConfig, isSigner: false, isWritable: true },
-        { pubkey: registryConfig, isSigner: false, isWritable: true },
-        { pubkey: collection, isSigner: true, isWritable: true },
-        { pubkey: authority, isSigner: true, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
-      ],
-      data: IDENTITY_DISCRIMINATORS.createBaseRegistry,
-    });
-  }
-
-  /**
-   * Build rotateBaseRegistry instruction - v0.3.0
-   * Rotates to a new base registry (authority only)
-   * Accounts: root_config, new_registry, authority (signer)
-   */
-  buildRotateBaseRegistry(
-    rootConfig: PublicKey,
-    newRegistry: PublicKey,
-    authority: PublicKey,
-  ): TransactionInstruction {
-    return new TransactionInstruction({
-      programId: this.programId,
-      keys: [
-        { pubkey: rootConfig, isSigner: false, isWritable: true },
-        { pubkey: newRegistry, isSigner: false, isWritable: false },
-        { pubkey: authority, isSigner: true, isWritable: false },
-      ],
-      data: IDENTITY_DISCRIMINATORS.rotateBaseRegistry,
-    });
-  }
-
-  /**
    * Build createUserRegistry instruction - v0.3.0
    * Creates a user-owned registry collection
    * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program

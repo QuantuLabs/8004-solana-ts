@@ -3,16 +3,19 @@
  */
 
 import type { AgentId, Address, URI, Timestamp } from './types.js';
-import type { EndpointType, TrustModel } from './enums.js';
+import type { ServiceType, TrustModel } from './enums.js';
 
 /**
- * Represents an agent endpoint
+ * Represents an agent service
  */
-export interface Endpoint {
-  type: EndpointType;
-  value: string; // endpoint value (URL, name, DID, ENS)
-  meta?: Record<string, unknown>; // optional metadata
+export interface Service {
+  type: ServiceType;
+  value: string; // service endpoint URL or identifier
+  meta?: Record<string, unknown>; // optional metadata (version, etc.)
 }
+
+/** @deprecated Use Service instead */
+export type Endpoint = Service;
 
 /**
  * Agent registration file structure
@@ -26,12 +29,12 @@ export interface RegistrationFile {
   image?: URI;
   walletAddress?: Address;
   walletChainId?: number; // Chain ID for the wallet address
-  endpoints: Endpoint[];
+  services: Service[];
   trustModels?: (TrustModel | string)[]; // optional trust models
   owners?: Address[]; // from chain (read-only, hydrated)
   operators?: Address[]; // from chain (read-only, hydrated)
   active?: boolean; // SDK extension flag (default: true)
-  x402support?: boolean; // Binary flag for x402 payment support (default: false)
+  x402Support?: boolean; // Binary flag for x402 payment support (default: false)
   metadata?: Record<string, unknown>; // arbitrary, SDK-managed
   updatedAt?: Timestamp;
   // OASF taxonomies - validated against taxonomy files
