@@ -13,8 +13,8 @@
 - `fileUri/fileHash` renamed to `feedbackUri/feedbackHash`
 
 **Program ID (Devnet):**
-- Agent Registry: `HHCVWcqsziJMmp43u2UAgAfH2cBjUFxVdW1M3C3NqzvT`
-- ATOM Engine: `B8Q2nXG7FT89Uau3n41T2qcDLAWxcaQggGqwFWGCEpr7`
+- Agent Registry: `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N`
+- ATOM Engine: `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8`
 
 ## v0.3.0 - Asset-based API
 
