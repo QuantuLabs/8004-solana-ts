@@ -27,8 +27,6 @@ export declare const IDENTITY_DISCRIMINATORS: {
     readonly syncOwner: Buffer<ArrayBuffer>;
     readonly transferAgent: Buffer<ArrayBuffer>;
     readonly ownerOf: Buffer<ArrayBuffer>;
-    readonly createBaseRegistry: Buffer<ArrayBuffer>;
-    readonly rotateBaseRegistry: Buffer<ArrayBuffer>;
     readonly createUserRegistry: Buffer<ArrayBuffer>;
     readonly updateUserRegistryMetadata: Buffer<ArrayBuffer>;
     readonly setAgentWallet: Buffer<ArrayBuffer>;

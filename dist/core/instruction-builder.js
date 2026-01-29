@@ -204,41 +204,6 @@ export class IdentityInstructionBuilder {
     // v0.3.0 - Multi-collection instructions
     // ============================================================================
     /**
-     * Build createBaseRegistry instruction - v0.3.0
-     * Creates a new base registry (authority only)
-     * Accounts: root_config, registry_config, collection (signer), authority (signer), system_program, mpl_core_program
-     */
-    buildCreateBaseRegistry(rootConfig, registryConfig, collection, authority) {
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: rootConfig, isSigner: false, isWritable: true },
-                { pubkey: registryConfig, isSigner: false, isWritable: true },
-                { pubkey: collection, isSigner: true, isWritable: true },
-                { pubkey: authority, isSigner: true, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
-            ],
-            data: IDENTITY_DISCRIMINATORS.createBaseRegistry,
-        });
-    }
-    /**
-     * Build rotateBaseRegistry instruction - v0.3.0
-     * Rotates to a new base registry (authority only)
-     * Accounts: root_config, new_registry, authority (signer)
-     */
-    buildRotateBaseRegistry(rootConfig, newRegistry, authority) {
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: rootConfig, isSigner: false, isWritable: true },
-                { pubkey: newRegistry, isSigner: false, isWritable: false },
-                { pubkey: authority, isSigner: true, isWritable: false },
-            ],
-            data: IDENTITY_DISCRIMINATORS.rotateBaseRegistry,
-        });
-    }
-    /**
      * Build createUserRegistry instruction - v0.3.0
      * Creates a user-owned registry collection
      * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program
@@ -495,9 +460,8 @@ export class ValidationInstructionBuilder {
         this.programId = PROGRAM_ID;
     }
     /**
-     * Build requestValidation instruction - v0.3.0
-     * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
-     * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, validator, system_program
+     * Build requestValidation instruction
+     * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, system_program
      */
     buildRequestValidation(validationConfig, requester, payer, agentAccount, asset, validationRequest, validatorAddress, nonce, requestUri, requestHash) {
         // v0.5.0: Pass asset_key to avoid .key() allocations in seeds (OOM fix)
@@ -512,13 +476,12 @@ export class ValidationInstructionBuilder {
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: validationConfig, isSigner: false, isWritable: true }, // validation_config is mut
-                { pubkey: requester, isSigner: true, isWritable: true }, // requester is mut
+                { pubkey: validationConfig, isSigner: false, isWritable: true },
+                { pubkey: requester, isSigner: true, isWritable: true },
                 { pubkey: payer, isSigner: true, isWritable: true },
                 { pubkey: agentAccount, isSigner: false, isWritable: false },
                 { pubkey: asset, isSigner: false, isWritable: false },
                 { pubkey: validationRequest, isSigner: false, isWritable: true },
-                { pubkey: validatorAddress, isSigner: false, isWritable: false }, // validator account
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
             data,

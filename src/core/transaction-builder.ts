@@ -955,81 +955,17 @@ export class IdentityTransactionBuilder {
     }
   }
 
-  // ============================================================================
-  // Admin methods (authority only)
-  // ============================================================================
-
   /**
-   * Create a new base collection - v0.3.0 (Admin only)
-   * Creates a new protocol-managed collection for horizontal scaling
-   * Only the program authority can call this
-   * @param options - Write options with optional collectionPubkey for skipSend mode
+   * @deprecated Removed on-chain - base registry rotation system was removed
    */
   async createBaseCollection(
-    options?: WriteOptions & { collectionPubkey?: PublicKey }
-  ): Promise<(TransactionResult & { collection?: PublicKey }) | (PreparedTransaction & { collection: PublicKey })> {
-    try {
-      const signerPubkey = options?.signer || this.payer?.publicKey;
-      if (!signerPubkey) {
-        throw new Error('signer required when SDK has no signer configured');
-      }
-
-      // Determine collection keypair
-      let collectionPubkey: PublicKey;
-      let collectionKeypair: Keypair | undefined;
-
-      if (options?.skipSend) {
-        if (!options.collectionPubkey) {
-          throw new Error('collectionPubkey required when skipSend is true');
-        }
-        collectionPubkey = options.collectionPubkey;
-      } else {
-        if (!this.payer) {
-          throw new Error('No signer configured - SDK is read-only');
-        }
-        collectionKeypair = Keypair.generate();
-        collectionPubkey = collectionKeypair.publicKey;
-      }
-
-      // Derive PDAs
-      const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
-      const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
-
-      const instruction = this.instructionBuilder.buildCreateBaseRegistry(
-        rootConfigPda,
-        registryConfigPda,
-        collectionPubkey,
-        signerPubkey
-      );
-
-      const transaction = new Transaction().add(instruction);
-
-      // If skipSend, return serialized transaction
-      if (options?.skipSend) {
-        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-        return { ...prepared, collection: collectionPubkey };
-      }
-
-      // Normal mode: send transaction
-      if (!this.payer || !collectionKeypair) {
-        throw new Error('No signer configured - SDK is read-only');
-      }
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.payer, collectionKeypair]
-      );
-
-      return { signature, success: true, collection: collectionPubkey };
-    } catch (error) {
-      return {
-        signature: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    _options?: WriteOptions & { collectionPubkey?: PublicKey }
+  ): Promise<TransactionResult> {
+    throw new Error(
+      "createBaseCollection removed on-chain. " +
+      "Base registry rotation system was removed. " +
+      "Use createUserRegistry for user-managed collections."
+    );
   }
 
   private async sendWithRetry(

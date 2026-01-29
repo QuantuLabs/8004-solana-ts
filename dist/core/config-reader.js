@@ -47,7 +47,7 @@ export async function fetchRegistryConfig(connection, collection) {
 }
 /**
  * Fetch a Registry Config directly by its PDA address - v0.3.0
- * Use this when you have the RegistryConfig PDA (e.g., from RootConfig.current_base_registry)
+ * Use this when you have the RegistryConfig PDA (e.g., from RootConfig.base_registry)
  * @param connection - Solana RPC connection
  * @param registryConfigPda - The RegistryConfig PDA address
  * @returns RegistryConfig or null if not found
@@ -75,19 +75,19 @@ export async function isRegistryInitialized(connection) {
     return rootConfig !== null;
 }
 /**
- * Get the current base collection from root config - v0.3.0
- * Note: RootConfig.current_base_registry stores the RegistryConfig PDA, not the collection.
+ * Get the base collection from root config - v0.3.0
+ * Note: RootConfig.base_registry stores the RegistryConfig PDA, not the collection.
  * This function fetches the RegistryConfig and returns the actual collection.
  * @param connection - Solana RPC connection
  * @returns Base collection pubkey or null if not initialized
  */
-export async function getCurrentBaseCollection(connection) {
+export async function getBaseCollection(connection) {
     const rootConfig = await fetchRootConfig(connection);
     if (!rootConfig) {
         return null;
     }
-    // current_base_registry is the RegistryConfig PDA, not the collection
-    const registryConfigPda = rootConfig.getCurrentBaseRegistryPublicKey();
+    // base_registry is the RegistryConfig PDA, not the collection
+    const registryConfigPda = rootConfig.getBaseRegistryPublicKey();
     const registryConfig = await fetchRegistryConfigByPda(connection, registryConfigPda);
     if (!registryConfig) {
         return null;
@@ -95,15 +95,15 @@ export async function getCurrentBaseCollection(connection) {
     return registryConfig.getCollectionPublicKey();
 }
 /**
- * Get the current base registry config PDA from root config - v0.3.0
+ * Get the base registry config PDA from root config - v0.3.0
  * @param connection - Solana RPC connection
  * @returns Base RegistryConfig PDA or null if not initialized
  */
-export async function getCurrentBaseRegistryPda(connection) {
+export async function getBaseRegistryPda(connection) {
     const rootConfig = await fetchRootConfig(connection);
     if (!rootConfig) {
         return null;
     }
-    return rootConfig.getCurrentBaseRegistryPublicKey();
+    return rootConfig.getBaseRegistryPublicKey();
 }
 //# sourceMappingURL=config-reader.js.map

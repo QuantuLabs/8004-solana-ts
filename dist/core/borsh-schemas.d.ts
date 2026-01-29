@@ -27,23 +27,21 @@ export declare class MetadataEntry {
 }
 /**
  * Root Config Account (Identity Registry) - v0.3.0
- * Global pointer to the current base registry
+ * Global pointer to the base registry
  * Seeds: ["root_config"]
  */
 export declare class RootConfig {
-    current_base_registry: Uint8Array;
-    base_registry_count: number;
+    base_registry: Uint8Array;
     authority: Uint8Array;
     bump: number;
     constructor(fields: {
-        current_base_registry: Uint8Array;
-        base_registry_count: number;
+        base_registry: Uint8Array;
         authority: Uint8Array;
         bump: number;
     });
     static schema: Schema;
     static deserialize(data: Buffer): RootConfig;
-    getCurrentBaseRegistryPublicKey(): PublicKey;
+    getBaseRegistryPublicKey(): PublicKey;
     getAuthorityPublicKey(): PublicKey;
 }
 /**
@@ -55,13 +53,11 @@ export declare class RegistryConfig {
     collection: Uint8Array;
     registry_type: number;
     authority: Uint8Array;
-    base_index: number;
     bump: number;
     constructor(fields: {
         collection: Uint8Array;
         registry_type: number;
         authority: Uint8Array;
-        base_index: number;
         bump: number;
     });
     static schema: Schema;

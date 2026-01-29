@@ -61,18 +61,6 @@ export declare class IdentityInstructionBuilder {
      */
     buildSyncOwner(agentAccount: PublicKey, asset: PublicKey): TransactionInstruction;
     /**
-     * Build createBaseRegistry instruction - v0.3.0
-     * Creates a new base registry (authority only)
-     * Accounts: root_config, registry_config, collection (signer), authority (signer), system_program, mpl_core_program
-     */
-    buildCreateBaseRegistry(rootConfig: PublicKey, registryConfig: PublicKey, collection: PublicKey, authority: PublicKey): TransactionInstruction;
-    /**
-     * Build rotateBaseRegistry instruction - v0.3.0
-     * Rotates to a new base registry (authority only)
-     * Accounts: root_config, new_registry, authority (signer)
-     */
-    buildRotateBaseRegistry(rootConfig: PublicKey, newRegistry: PublicKey, authority: PublicKey): TransactionInstruction;
-    /**
      * Build createUserRegistry instruction - v0.3.0
      * Creates a user-owned registry collection
      * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program
@@ -141,9 +129,8 @@ export declare class ValidationInstructionBuilder {
     private programId;
     constructor();
     /**
-     * Build requestValidation instruction - v0.3.0
-     * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
-     * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, validator, system_program
+     * Build requestValidation instruction
+     * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, system_program
      */
     buildRequestValidation(validationConfig: PublicKey, requester: PublicKey, payer: PublicKey, agentAccount: PublicKey, asset: PublicKey, validationRequest: PublicKey, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer): TransactionInstruction;
     /**
