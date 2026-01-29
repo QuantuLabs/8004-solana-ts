@@ -228,15 +228,16 @@ export declare class ReputationTransactionBuilder {
      */
     revokeFeedback(asset: PublicKey, feedbackIndex: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Append response to feedback - v0.3.0
+     * Append response to feedback
      * @param asset - Agent Core asset
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index
+     * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: bigint, feedbackHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set feedback tags (optional, creates FeedbackTagsPda) - v0.3.0
      * Creates a separate PDA for tags to save -42% cost when tags not needed

@@ -405,11 +405,10 @@ export class ReputationInstructionBuilder {
         });
     }
     /**
-     * Build appendResponse instruction - v0.4.1
-     * Matches: append_response(asset_key, client_address, feedback_index, response_uri, response_hash)
-     * Accounts: responder (signer), agent_account, asset
+     * Build appendResponse instruction
+     * Accounts: responder (signer), agent_account (mut), asset
      */
-    buildAppendResponse(responder, agentAccount, asset, client, feedbackIndex, responseUri, responseHash) {
+    buildAppendResponse(responder, agentAccount, asset, client, feedbackIndex, responseUri, responseHash, feedbackHash) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.appendResponse,
             asset.toBuffer(),
@@ -417,12 +416,13 @@ export class ReputationInstructionBuilder {
             this.serializeU64(feedbackIndex),
             this.serializeString(responseUri),
             responseHash,
+            feedbackHash,
         ]);
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
                 { pubkey: responder, isSigner: true, isWritable: false },
-                { pubkey: agentAccount, isSigner: false, isWritable: false },
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
                 { pubkey: asset, isSigner: false, isWritable: false },
             ],
             data,

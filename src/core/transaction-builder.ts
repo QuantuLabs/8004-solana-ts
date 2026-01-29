@@ -1206,10 +1206,11 @@ export class ReputationTransactionBuilder {
   }
 
   /**
-   * Append response to feedback - v0.3.0
+   * Append response to feedback
    * @param asset - Agent Core asset
    * @param client - Client address who gave the feedback
    * @param feedbackIndex - Feedback index
+   * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
    * @param responseUri - Response URI
    * @param responseHash - Response hash (optional for ipfs://)
    * @param options - Write options (skipSend, signer)
@@ -1218,6 +1219,7 @@ export class ReputationTransactionBuilder {
     asset: PublicKey,
     client: PublicKey,
     feedbackIndex: bigint,
+    feedbackHash: Buffer,
     responseUri: string,
     responseHash?: Buffer,
     options?: WriteOptions
@@ -1226,6 +1228,10 @@ export class ReputationTransactionBuilder {
       const signerPubkey = options?.signer || this.payer?.publicKey;
       if (!signerPubkey) {
         throw new Error('signer required when SDK has no signer configured');
+      }
+
+      if (feedbackHash.length !== 32) {
+        throw new Error('feedbackHash must be 32 bytes');
       }
 
       validateByteLength(responseUri, 250, 'responseUri');
@@ -1247,7 +1253,8 @@ export class ReputationTransactionBuilder {
         client,
         feedbackIndex,
         responseUri,
-        hash
+        hash,
+        feedbackHash
       );
 
       const transaction = new Transaction().add(instruction);

@@ -789,19 +789,23 @@ export class ReputationTransactionBuilder {
         }
     }
     /**
-     * Append response to feedback - v0.3.0
+     * Append response to feedback
      * @param asset - Agent Core asset
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index
+     * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    async appendResponse(asset, client, feedbackIndex, responseUri, responseHash, options) {
+    async appendResponse(asset, client, feedbackIndex, feedbackHash, responseUri, responseHash, options) {
         try {
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
+            }
+            if (feedbackHash.length !== 32) {
+                throw new Error('feedbackHash must be 32 bytes');
             }
             validateByteLength(responseUri, 250, 'responseUri');
             if (!responseHash) {
@@ -814,7 +818,7 @@ export class ReputationTransactionBuilder {
             }
             const [agentPda] = PDAHelpers.getAgentPDA(asset);
             const hash = responseHash ?? Buffer.alloc(32);
-            const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, agentPda, asset, client, feedbackIndex, responseUri, hash);
+            const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, agentPda, asset, client, feedbackIndex, responseUri, hash, feedbackHash);
             const transaction = new Transaction().add(instruction);
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
