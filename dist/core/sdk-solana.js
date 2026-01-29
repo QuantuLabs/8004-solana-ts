@@ -1250,20 +1250,21 @@ export class SolanaSDK {
         return await this.reputationTxBuilder.revokeFeedback(asset, idx, options);
     }
     /**
-     * Append response to feedback (write operation) - v0.4.1
+     * Append response to feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index (number or bigint)
+     * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    async appendResponse(asset, client, feedbackIndex, responseUri, responseHash, options) {
+    async appendResponse(asset, client, feedbackIndex, feedbackHash, responseUri, responseHash, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.reputationTxBuilder.appendResponse(asset, client, idx, responseUri, responseHash, options);
+        return await this.reputationTxBuilder.appendResponse(asset, client, idx, feedbackHash, responseUri, responseHash, options);
     }
     /**
      * Request validation (write operation) - v0.3.0

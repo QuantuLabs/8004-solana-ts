@@ -1634,10 +1634,11 @@ export class SolanaSDK {
   }
 
   /**
-   * Append response to feedback (write operation) - v0.4.1
+   * Append response to feedback (write operation)
    * @param asset - Agent Core asset pubkey
    * @param client - Client address who gave the feedback
    * @param feedbackIndex - Feedback index (number or bigint)
+   * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
    * @param responseUri - Response URI
    * @param responseHash - Response hash (optional for ipfs://)
    * @param options - Write options (skipSend, signer)
@@ -1646,6 +1647,7 @@ export class SolanaSDK {
     asset: PublicKey,
     client: PublicKey,
     feedbackIndex: number | bigint,
+    feedbackHash: Buffer,
     responseUri: string,
     responseHash?: Buffer,
     options?: WriteOptions
@@ -1658,6 +1660,7 @@ export class SolanaSDK {
       asset,
       client,
       idx,
+      feedbackHash,
       responseUri,
       responseHash,
       options

@@ -107,11 +107,10 @@ export declare class ReputationInstructionBuilder {
      */
     buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, feedbackIndex: bigint): TransactionInstruction;
     /**
-     * Build appendResponse instruction - v0.4.1
-     * Matches: append_response(asset_key, client_address, feedback_index, response_uri, response_hash)
-     * Accounts: responder (signer), agent_account, asset
+     * Build appendResponse instruction
+     * Accounts: responder (signer), agent_account (mut), asset
      */
-    buildAppendResponse(responder: PublicKey, agentAccount: PublicKey, asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer): TransactionInstruction;
+    buildAppendResponse(responder: PublicKey, agentAccount: PublicKey, asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer, feedbackHash: Buffer): TransactionInstruction;
     /**
      * @deprecated Removed on-chain in v0.5.0 - tags are now included in give_feedback instruction
      * This method will throw an error when called.
