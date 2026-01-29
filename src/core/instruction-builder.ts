@@ -659,9 +659,8 @@ export class ValidationInstructionBuilder {
   }
 
   /**
-   * Build requestValidation instruction - v0.3.0
-   * Matches: request_validation(validator_address, nonce, request_uri, request_hash)
-   * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, validator, system_program
+   * Build requestValidation instruction
+   * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, system_program
    */
   buildRequestValidation(
     validationConfig: PublicKey,
@@ -688,13 +687,12 @@ export class ValidationInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: validationConfig, isSigner: false, isWritable: true },  // validation_config is mut
-        { pubkey: requester, isSigner: true, isWritable: true },    // requester is mut
+        { pubkey: validationConfig, isSigner: false, isWritable: true },
+        { pubkey: requester, isSigner: true, isWritable: true },
         { pubkey: payer, isSigner: true, isWritable: true },
         { pubkey: agentAccount, isSigner: false, isWritable: false },
         { pubkey: asset, isSigner: false, isWritable: false },
         { pubkey: validationRequest, isSigner: false, isWritable: true },
-        { pubkey: validatorAddress, isSigner: false, isWritable: false },  // validator account
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data,

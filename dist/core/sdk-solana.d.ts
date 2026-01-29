@@ -85,7 +85,6 @@ export interface CollectionInfo {
     collection: PublicKey;
     registryType: 'BASE' | 'USER';
     authority: PublicKey;
-    baseIndex: number;
 }
 /**
  * Normalized validation data for user-friendly access
@@ -235,7 +234,7 @@ export declare class SolanaSDK {
     /**
      * Get all registered collections - v0.4.0
      * Note: This always uses on-chain queries because indexer doesn't have
-     * registryType/authority/baseIndex. Use getCollectionStats() for indexed stats.
+     * registryType/authority. Use getCollectionStats() for indexed stats.
      * @returns Array of all collection infos
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */

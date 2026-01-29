@@ -24,7 +24,7 @@ export { SolanaSDK } from './core/sdk-solana.js';
 export type { SolanaSDKConfig, AgentWithMetadata, EnrichedSummary, CollectionInfo } from './core/sdk-solana.js';
 export type { SolanaFeedback, SolanaAgentSummary } from './core/feedback-manager-solana.js';
 export { validateSkill, validateDomain, getAllSkills, getAllDomains, } from './core/oasf-validator.js';
-export { fetchRegistryConfig, fetchRegistryConfigByPda, getCurrentBaseRegistryPda, } from './core/config-reader.js';
+export { fetchRegistryConfig, fetchRegistryConfigByPda, getBaseRegistryPda, getBaseCollection, } from './core/config-reader.js';
 export { AtomStats, AtomConfig, TrustTier, ATOM_STATS_SCHEMA, ATOM_CONFIG_SCHEMA, trustTierToString, } from './core/atom-schemas.js';
 export { getAtomConfigPDA, getAtomStatsPDA, } from './core/atom-pda.js';
 export { IndexerClient } from './core/indexer-client.js';

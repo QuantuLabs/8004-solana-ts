@@ -190,26 +190,11 @@ export declare class IdentityTransactionBuilder {
      */
     updateCollectionMetadata(collection: PublicKey, newName: string | null, newUri: string | null, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Create a new base collection - v0.3.0 (Admin only)
-     * Creates a new protocol-managed collection for horizontal scaling
-     * Only the program authority can call this
-     * @param options - Write options with optional collectionPubkey for skipSend mode
+     * @deprecated Removed on-chain - base registry rotation system was removed
      */
-    createBaseCollection(options?: WriteOptions & {
+    createBaseCollection(_options?: WriteOptions & {
         collectionPubkey?: PublicKey;
-    }): Promise<(TransactionResult & {
-        collection?: PublicKey;
-    }) | (PreparedTransaction & {
-        collection: PublicKey;
-    })>;
-    /**
-     * Rotate to a new base collection - v0.3.0 (Admin only)
-     * Sets a different collection as the active base collection for new registrations
-     * Only the program authority can call this
-     * @param newCollection - The collection to set as active base
-     * @param options - Write options (skipSend, signer)
-     */
-    rotateBaseCollection(newCollection: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    }): Promise<TransactionResult>;
     private sendWithRetry;
 }
 /**

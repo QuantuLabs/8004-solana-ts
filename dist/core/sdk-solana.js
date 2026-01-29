@@ -20,7 +20,7 @@ import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
 import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
-import { getCurrentBaseCollection, fetchRegistryConfig } from './config-reader.js';
+import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
 import { logger } from '../utils/logger.js';
 import { buildSignedPayload, canonicalizeSignedPayload, parseSignedPayload, verifySignedPayload, } from '../utils/signing.js';
@@ -105,7 +105,7 @@ export class SolanaSDK {
         try {
             const connection = this.client.getConnection();
             // v0.3.0: Get base collection from RootConfig
-            this.baseCollection = await getCurrentBaseCollection(connection) || undefined;
+            this.baseCollection = await getBaseCollection(connection) || undefined;
             if (!this.baseCollection) {
                 throw new Error('Registry not initialized. Root config not found.');
             }
@@ -409,7 +409,6 @@ export class SolanaSDK {
                 collection: registryConfig.getCollectionPublicKey(),
                 registryType: registryConfig.isBaseRegistry() ? 'BASE' : 'USER',
                 authority: registryConfig.getAuthorityPublicKey(),
-                baseIndex: registryConfig.base_index,
             };
         }
         catch (error) {
@@ -420,7 +419,7 @@ export class SolanaSDK {
     /**
      * Get all registered collections - v0.4.0
      * Note: This always uses on-chain queries because indexer doesn't have
-     * registryType/authority/baseIndex. Use getCollectionStats() for indexed stats.
+     * registryType/authority. Use getCollectionStats() for indexed stats.
      * @returns Array of all collection infos
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
@@ -443,7 +442,6 @@ export class SolanaSDK {
                     collection: config.getCollectionPublicKey(),
                     registryType: config.isBaseRegistry() ? 'BASE' : 'USER',
                     authority: config.getAuthorityPublicKey(),
-                    baseIndex: config.base_index,
                 };
             });
         }
