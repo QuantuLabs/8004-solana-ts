@@ -534,8 +534,8 @@ export class SolanaFeedbackManager {
    * @returns Map of asset (base58 string) -> SolanaFeedback[]
    *
    * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+   * v0.4.2: Optimized to use single bulk query instead of N+1 pattern
    * REQUIRES indexer to be configured
-   * Note: For large datasets, consider using indexer APIs directly
    */
   async fetchAllFeedbacks(
     includeRevoked: boolean = false,
@@ -549,39 +549,22 @@ export class SolanaFeedbackManager {
     const maxResults = options.maxResults ?? DEFAULT_MAX_ALL_FEEDBACKS;
 
     try {
-      // Get all agents from indexer
-      const agents = await this.indexerClient.getAgents({ limit: 1000 });
+      // Single bulk query instead of N+1 (one query per agent)
+      const allFeedbacks = await this.indexerClient.getAllFeedbacks({
+        includeRevoked,
+        limit: maxResults,
+      });
 
-      // Fetch feedbacks for each agent in parallel (batched)
+      // Group feedbacks by asset
       const grouped = new Map<string, SolanaFeedback[]>();
-      let totalProcessed = 0;
-
-      // Process in batches of 10 to avoid overwhelming the indexer
-      const batchSize = 10;
-      for (let i = 0; i < agents.length && totalProcessed < maxResults; i += batchSize) {
-        const batch = agents.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map(async (agent) => {
-            const feedbacks = await this.indexerClient!.getFeedbacks(agent.asset, {
-              includeRevoked,
-              limit: Math.min(100, maxResults - totalProcessed),
-            });
-            return { asset: agent.asset, feedbacks };
-          })
-        );
-
-        for (const { asset, feedbacks } of batchResults) {
-          if (feedbacks.length > 0 && totalProcessed < maxResults) {
-            const mapped = feedbacks
-              .slice(0, maxResults - totalProcessed)
-              .map((f) => this.mapIndexedFeedback(f));
-            grouped.set(asset, mapped);
-            totalProcessed += mapped.length;
-          }
-        }
+      for (const indexed of allFeedbacks) {
+        const mapped = this.mapIndexedFeedback(indexed);
+        const existing = grouped.get(indexed.asset) || [];
+        existing.push(mapped);
+        grouped.set(indexed.asset, existing);
       }
 
-      logger.debug(`fetchAllFeedbacks processed ${totalProcessed} feedbacks across ${grouped.size} agents`);
+      logger.debug(`fetchAllFeedbacks processed ${allFeedbacks.length} feedbacks across ${grouped.size} agents`);
 
       return grouped;
     } catch (error) {
