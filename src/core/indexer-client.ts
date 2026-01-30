@@ -297,13 +297,17 @@ export class IndexerClient {
   }
 
   /**
-   * Build query string from params
+   * Build query string from params using URLSearchParams for safety
    */
   private buildQuery(params: Record<string, string | number | boolean | undefined>): string {
-    const filtered = Object.entries(params)
-      .filter(([, v]) => v !== undefined)
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
-    return filtered.length > 0 ? `?${filtered.join('&')}` : '';
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) {
+        searchParams.append(key, String(value));
+      }
+    }
+    const queryString = searchParams.toString();
+    return queryString ? `?${queryString}` : '';
   }
 
   // ============================================================================
@@ -433,11 +437,13 @@ export class IndexerClient {
     limit?: number;
     cursorSortKey?: string;
   }): Promise<IndexedAgent[]> {
+    // Note: p_cursor_sort_key is passed as string to avoid BigInt JSON.stringify crash
+    // PostgreSQL will cast it to BIGINT on the server side
     const body = {
       p_collection: options?.collection || null,
       p_min_tier: options?.minTier ?? 0,
       p_limit: options?.limit || 50,
-      p_cursor_sort_key: options?.cursorSortKey ? BigInt(options.cursorSortKey) : null,
+      p_cursor_sort_key: options?.cursorSortKey || null,
     };
 
     return this.request<IndexedAgent[]>('/rpc/get_leaderboard', {
@@ -519,6 +525,29 @@ export class IndexerClient {
       endpoint: `eq.${endpoint}`,
       order: 'created_at.desc',
     });
+    return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+  }
+
+  /**
+   * Get ALL feedbacks across all agents (bulk query)
+   * Optimized for fetchAllFeedbacks - single query instead of N+1
+   * @param options - Query options
+   * @returns Array of all feedbacks (grouped by caller)
+   */
+  async getAllFeedbacks(options?: {
+    includeRevoked?: boolean;
+    limit?: number;
+  }): Promise<IndexedFeedback[]> {
+    const params: Record<string, string | number | undefined> = {
+      order: 'asset,feedback_index.asc',
+      limit: options?.limit || 5000,
+    };
+
+    if (!options?.includeRevoked) {
+      params.is_revoked = 'eq.false';
+    }
+
+    const query = this.buildQuery(params);
     return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
   }
 
@@ -719,17 +748,23 @@ export class IndexerClient {
 
   /**
    * Get responses for a specific feedback (asset + client + index)
+   * @param asset - Agent asset pubkey (base58)
+   * @param client - Client pubkey (base58)
+   * @param feedbackIndex - Feedback index
+   * @param limit - Max responses to return (default: 100, prevents large payloads)
    */
   async getFeedbackResponsesFor(
     asset: string,
     client: string,
-    feedbackIndex: number | bigint
+    feedbackIndex: number | bigint,
+    limit: number = 100
   ): Promise<IndexedFeedbackResponse[]> {
     const query = this.buildQuery({
       asset: `eq.${asset}`,
       client_address: `eq.${client}`,
       feedback_index: `eq.${feedbackIndex.toString()}`,
       order: 'created_at.asc',
+      limit,
     });
     return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
   }
