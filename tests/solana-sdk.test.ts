@@ -143,7 +143,7 @@ describe('SolanaSDK', () => {
 
     it('revokeFeedback should throw without signer', async () => {
       const asset = Keypair.generate().publicKey;
-      await expect(sdkReadOnly.revokeFeedback(asset, 0n)).rejects.toThrow(
+      await expect(sdkReadOnly.revokeFeedback(asset, 0n, Buffer.alloc(32))).rejects.toThrow(
         'No signer configured - SDK is read-only'
       );
     });

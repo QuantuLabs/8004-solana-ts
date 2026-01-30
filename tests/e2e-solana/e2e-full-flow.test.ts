@@ -29,6 +29,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
   let agentAsset: PublicKey;
   let collection: PublicKey;
   let feedbackIndex: bigint;
+  let feedbackHashForRevoke: Buffer;
   let validationNonce: number;
 
   beforeAll(async () => {
@@ -235,14 +236,14 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       const score = 85;
       const feedbackUri = `ipfs://QmFeedback${Date.now()}`;
-      const feedbackHash = Buffer.alloc(32, 1); // Mock hash
+      feedbackHashForRevoke = Buffer.alloc(32, 1); // Mock hash
 
       // Use clientSdk (different wallet) to give feedback (self-feedback not allowed)
       const result = await clientSdk.giveFeedback(agentAsset, {
         value: BigInt(score),
         score,
         feedbackUri,
-        feedbackHash,
+        feedbackHash: feedbackHashForRevoke,
       });
 
       expect(result).toHaveProperty('signature');
@@ -482,7 +483,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       console.log(`\n🚫 Revoking feedback ${feedbackIndex}...`);
 
       // Client revokes their own feedback
-      const result = await clientSdk.revokeFeedback(agentAsset, feedbackIndex);
+      const result = await clientSdk.revokeFeedback(agentAsset, feedbackIndex, feedbackHashForRevoke);
 
       expect(result).toHaveProperty('signature');
       console.log(`✅ Feedback revoked`);

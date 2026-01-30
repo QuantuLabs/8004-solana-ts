@@ -165,7 +165,7 @@ describe('E2E: Error Scenarios', () => {
         return;
       }
       await expect(
-        sdkReadOnly.revokeFeedback(testAgent, 0n)
+        sdkReadOnly.revokeFeedback(testAgent, 0n, Buffer.alloc(32))
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });
 
