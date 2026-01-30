@@ -53,6 +53,37 @@ export class UnsupportedRpcError extends Error {
 }
 
 /**
+ * Error thrown when an RPC operation fails due to network issues
+ * Distinguishes network failures from "account not found" (which returns null)
+ */
+export class RpcNetworkError extends Error {
+  public readonly operation: string;
+  public readonly cause: unknown;
+
+  constructor(operation: string, cause: unknown) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super(`RPC operation "${operation}" failed: ${causeMsg}`);
+    this.name = 'RpcNetworkError';
+    this.operation = operation;
+    this.cause = cause;
+  }
+}
+
+/**
+ * Check if an error is a "not found" type error vs a network/server error
+ * @internal
+ */
+function isAccountNotFoundError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes('account not found') ||
+           msg.includes('could not find') ||
+           msg.includes('invalid account');
+  }
+  return false;
+}
+
+/**
  * Lightweight Solana client for 8004 read operations
  * Avoids Anchor dependency for smaller package size
  */
@@ -90,34 +121,42 @@ export class SolanaClient {
   /**
    * Get single account data
    * Returns null if account doesn't exist
+   * @throws RpcNetworkError if RPC call fails due to network/server issues
    */
   async getAccount(address: PublicKey): Promise<Buffer | null> {
     try {
       const accountInfo = await this.connection.getAccountInfo(address);
       return accountInfo?.data ?? null;
     } catch (error) {
-      logger.error('Error fetching account', error);
-      return null;
+      // Account genuinely not found - return null
+      if (isAccountNotFoundError(error)) {
+        return null;
+      }
+      // Network/server error - throw to allow retry strategies
+      logger.error('RPC error fetching account', error);
+      throw new RpcNetworkError('getAccount', error);
     }
   }
 
   /**
    * Get multiple accounts in a single RPC call
    * More efficient than individual getAccount calls
+   * @throws RpcNetworkError if RPC call fails due to network/server issues
    */
   async getMultipleAccounts(addresses: PublicKey[]): Promise<(Buffer | null)[]> {
     try {
       const accounts = await this.connection.getMultipleAccountsInfo(addresses);
       return accounts.map((acc) => acc?.data ?? null);
     } catch (error) {
-      logger.error('Error fetching multiple accounts', error);
-      return addresses.map(() => null);
+      logger.error('RPC error fetching multiple accounts', error);
+      throw new RpcNetworkError('getMultipleAccounts', error);
     }
   }
 
   /**
    * Get all program accounts with optional filters
    * Used for queries like "get all feedbacks for agent X"
+   * @throws RpcNetworkError if RPC call fails due to network/server issues
    */
   async getProgramAccounts(
     programId: PublicKey,
@@ -133,8 +172,8 @@ export class SolanaClient {
         data: acc.account.data,
       }));
     } catch (error) {
-      logger.error('Error fetching program accounts', error);
-      return [];
+      logger.error('RPC error fetching program accounts', error);
+      throw new RpcNetworkError('getProgramAccounts', error);
     }
   }
 
@@ -174,13 +213,17 @@ export class SolanaClient {
 
   /**
    * Get account info with full metadata
+   * @throws RpcNetworkError if RPC call fails due to network/server issues
    */
   async getAccountInfo(address: PublicKey): Promise<AccountInfo<Buffer> | null> {
     try {
       return await this.connection.getAccountInfo(address);
     } catch (error) {
-      logger.error('Error fetching account info', error);
-      return null;
+      if (isAccountNotFoundError(error)) {
+        return null;
+      }
+      logger.error('RPC error fetching account info', error);
+      throw new RpcNetworkError('getAccountInfo', error);
     }
   }
 
