@@ -13,6 +13,40 @@ import { Schema, deserializeUnchecked } from 'borsh';
 import { PublicKey } from '@solana/web3.js';
 import { LIMITS } from '../utils/constants.js';
 
+// ============================================================================
+// Raw Borsh Deserialized Interfaces
+// These represent the raw data returned by deserializeUnchecked before processing
+// ============================================================================
+
+/** Raw deserialized MetadataEntryPda from Borsh */
+interface RawMetadataEntry {
+  asset: Uint8Array;
+  immutable: number;
+  bump: number;
+  metadata_key: string;
+  metadata_value: Uint8Array;
+}
+
+/** Raw deserialized FeedbackAccount from Borsh */
+interface RawFeedbackAccount {
+  asset: Uint8Array;
+  client_address: Uint8Array;
+  feedback_index: bigint;
+  score: number;
+  is_revoked: number;
+  bump: number;
+}
+
+/** Raw deserialized ValidationRequest from Borsh */
+interface RawValidationRequest {
+  asset: Uint8Array;
+  validator_address: Uint8Array;
+  nonce: number;
+  request_hash: Uint8Array;
+  response: number;
+  responded_at: bigint;
+}
+
 /**
  * Security: Pre-validate Borsh string/vec length prefixes BEFORE deserialization
  * This prevents DoS via malicious buffers with huge length values that would
@@ -242,8 +276,8 @@ export class RegistryConfig {
 }
 
 /**
- * Agent Account (Identity Registry) - v0.3.0
- * Represents an agent NFT
+ * Agent Account (Identity Registry) - v0.5.0
+ * Represents an agent NFT with hash-chain support
  * Seeds: ["agent", asset]
  */
 export class AgentAccount {
@@ -253,6 +287,14 @@ export class AgentAccount {
   bump: number;
   atom_enabled: number; // bool (u8) - ATOM Engine enabled
   agent_wallet: Uint8Array | null; // Option<Pubkey> - operational wallet (Ed25519 verified)
+  // Hash-chain fields for event verification
+  feedback_digest: Uint8Array; // [u8; 32] - hash-chain of all feedbacks
+  feedback_count: bigint; // u64 - total feedback count
+  response_digest: Uint8Array; // [u8; 32] - hash-chain of all responses
+  response_count: bigint; // u64 - total response count
+  revoke_digest: Uint8Array; // [u8; 32] - hash-chain of all revocations
+  revoke_count: bigint; // u64 - total revocation count
+  // Dynamic-size fields last
   agent_uri: string; // max 250 bytes
   nft_name: string; // max 32 bytes
 
@@ -263,6 +305,12 @@ export class AgentAccount {
     bump: number;
     atom_enabled: number;
     agent_wallet: Uint8Array | null;
+    feedback_digest: Uint8Array;
+    feedback_count: bigint;
+    response_digest: Uint8Array;
+    response_count: bigint;
+    revoke_digest: Uint8Array;
+    revoke_count: bigint;
     agent_uri: string;
     nft_name: string;
   }) {
@@ -272,6 +320,12 @@ export class AgentAccount {
     this.bump = fields.bump;
     this.atom_enabled = fields.atom_enabled;
     this.agent_wallet = fields.agent_wallet;
+    this.feedback_digest = fields.feedback_digest;
+    this.feedback_count = fields.feedback_count;
+    this.response_digest = fields.response_digest;
+    this.response_count = fields.response_count;
+    this.revoke_digest = fields.revoke_digest;
+    this.revoke_count = fields.revoke_count;
     this.agent_uri = fields.agent_uri;
     this.nft_name = fields.nft_name;
   }
@@ -289,6 +343,12 @@ export class AgentAccount {
           ['bump', 'u8'],
           ['atom_enabled', 'u8'],
           ['agent_wallet', { kind: 'option', type: [32] }], // Option<Pubkey>
+          ['feedback_digest', [32]], // Hash-chain for feedbacks
+          ['feedback_count', 'u64'],
+          ['response_digest', [32]], // Hash-chain for responses
+          ['response_count', 'u64'],
+          ['revoke_digest', [32]], // Hash-chain for revocations
+          ['revoke_count', 'u64'],
           ['agent_uri', 'string'],
           ['nft_name', 'string'],
         ],
@@ -297,20 +357,27 @@ export class AgentAccount {
   ]);
 
   static deserialize(data: Buffer): AgentAccount {
-    // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet option tag(1) = 107 bytes minimum
-    // With Some(wallet): 107 + 32 = 139 bytes minimum
-    if (data.length < 107) {
-      throw new Error(`Invalid AgentAccount data: expected >= 107 bytes, got ${data.length}`);
+    // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1)
+    // + agent_wallet option tag(1) + feedback_digest(32) + feedback_count(8)
+    // + response_digest(32) + response_count(8) + revoke_digest(32) + revoke_count(8) = 227 bytes minimum
+    // With Some(wallet): 227 + 32 = 259 bytes minimum
+    if (data.length < 227) {
+      throw new Error(`Invalid AgentAccount data: expected >= 227 bytes, got ${data.length}`);
     }
     const accountData = data.slice(8);
 
     // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
-    // Layout: collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet(Option) + agent_uri(String) + nft_name(String)
+    // Layout: collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet(Option)
+    //         + feedback_digest(32) + feedback_count(8) + response_digest(32) + response_count(8)
+    //         + revoke_digest(32) + revoke_count(8) + agent_uri(String) + nft_name(String)
     let offset = 32 + 32 + 32 + 1 + 1; // = 98, at agent_wallet Option tag
 
     // Pre-validate Option<Pubkey>
     const optionResult = preValidateBorshOption(accountData, offset, 32);
     offset += optionResult.consumedBytes;
+
+    // Skip hash-chain fixed fields: feedback_digest(32) + feedback_count(8) + response_digest(32) + response_count(8) + revoke_digest(32) + revoke_count(8) = 120 bytes
+    offset += 32 + 8 + 32 + 8 + 32 + 8;
 
     // Pre-validate agent_uri string length
     const agentUriLen = preValidateBorshLength(accountData, offset, LIMITS.MAX_URI_LENGTH, 'agent_uri');
@@ -436,8 +503,7 @@ export class MetadataEntryPda {
     preValidateBorshLength(accountData, offset, LIMITS.MAX_METADATA_VALUE_LENGTH, 'metadata_value');
 
     // Now safe to deserialize
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData) as any;
+    const raw = deserializeUnchecked(this.schema, MetadataEntryPda, accountData) as unknown as RawMetadataEntry;
 
     // Post-validation backup (defense in depth)
     validateStringLength(raw.metadata_key, LIMITS.MAX_METADATA_KEY_LENGTH, 'metadata_key');
@@ -525,8 +591,7 @@ export class FeedbackAccount {
       throw new Error(`Invalid FeedbackAccount data: expected >= 83 bytes, got ${data.length}`);
     }
     const accountData = data.slice(8);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = deserializeUnchecked(this.schema, FeedbackAccount, accountData) as any;
+    const raw = deserializeUnchecked(this.schema, FeedbackAccount, accountData) as unknown as RawFeedbackAccount;
     return new FeedbackAccount({
       asset: raw.asset,
       client_address: raw.client_address,
@@ -786,8 +851,7 @@ export class ValidationRequest {
       throw new Error(`Invalid ValidationRequest data: expected >= 117 bytes, got ${data.length}`);
     }
     const accountData = data.slice(8);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = deserializeUnchecked(this.schema, ValidationRequest, accountData) as any;
+    const raw = deserializeUnchecked(this.schema, ValidationRequest, accountData) as unknown as RawValidationRequest;
     return new ValidationRequest({
       asset: raw.asset,
       validator_address: raw.validator_address,
