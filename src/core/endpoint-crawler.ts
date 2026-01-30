@@ -3,6 +3,8 @@
  * Automatically fetches capabilities (tools, prompts, resources, skills) from endpoints
  */
 
+import { isPrivateHost } from '../utils/validation.js';
+
 export interface McpCapabilities {
   mcpTools?: string[];
   mcpPrompts?: string[];
@@ -43,6 +45,16 @@ export class EndpointCrawler {
     if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
       // Invalid endpoint format - return null
       return null;
+    }
+
+    // SSRF Protection: Block requests to private/internal IP ranges
+    try {
+      const url = new URL(endpoint);
+      if (isPrivateHost(url.hostname)) {
+        return null; // Silently reject private hosts
+      }
+    } catch {
+      return null; // Invalid URL
     }
 
     // Try JSON-RPC approach first (for real MCP servers)
@@ -225,6 +237,16 @@ export class EndpointCrawler {
       if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
         // Invalid endpoint format - skip
         return null;
+      }
+
+      // SSRF Protection: Block requests to private/internal IP ranges
+      try {
+        const url = new URL(endpoint);
+        if (isPrivateHost(url.hostname)) {
+          return null; // Silently reject private hosts
+        }
+      } catch {
+        return null; // Invalid URL
       }
 
       // Try multiple well-known paths for A2A agent cards
