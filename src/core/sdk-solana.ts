@@ -198,6 +198,7 @@ export class SolanaSDK {
   private readonly atomTxBuilder: AtomTransactionBuilder;
   private mintResolver?: AgentMintResolver;
   private baseCollection?: PublicKey;
+  private _initPromise?: Promise<void>; // Guard against concurrent initialization
   // Indexer (v0.4.0)
   private readonly indexerClient: IndexerClient;
   private readonly useIndexer: boolean;
@@ -251,26 +252,39 @@ export class SolanaSDK {
 
   /**
    * Initialize the agent mint resolver and base collection (lazy initialization)
+   * Uses promise lock to prevent redundant concurrent network calls
    */
   private async initializeMintResolver(): Promise<void> {
     if (this.mintResolver) {
       return; // Already initialized
     }
 
-    try {
-      const connection = this.client.getConnection();
-
-      // v0.3.0: Get base collection from RootConfig
-      this.baseCollection = await getBaseCollection(connection) || undefined;
-
-      if (!this.baseCollection) {
-        throw new Error('Registry not initialized. Root config not found.');
-      }
-
-      this.mintResolver = new AgentMintResolver(connection);
-    } catch (error) {
-      throw new Error(`Failed to initialize SDK: ${error}`);
+    // If initialization is already in progress, wait for it
+    if (this._initPromise) {
+      return this._initPromise;
     }
+
+    // Start initialization and store promise to prevent race condition
+    this._initPromise = (async () => {
+      try {
+        const connection = this.client.getConnection();
+
+        // v0.3.0: Get base collection from RootConfig
+        this.baseCollection = await getBaseCollection(connection) || undefined;
+
+        if (!this.baseCollection) {
+          throw new Error('Registry not initialized. Root config not found.');
+        }
+
+        this.mintResolver = new AgentMintResolver(connection);
+      } catch (error) {
+        // Clear promise on failure so retry is possible
+        this._initPromise = undefined;
+        throw new Error(`Failed to initialize SDK: ${error}`);
+      }
+    })();
+
+    return this._initPromise;
   }
 
   /**
@@ -289,20 +303,21 @@ export class SolanaSDK {
    * @returns Agent account data or null if not found
    */
   async loadAgent(asset: PublicKey): Promise<AgentAccount | null> {
+    // Derive PDA from asset
+    const [agentPDA] = PDAHelpers.getAgentPDA(asset);
+
+    // Fetch account data - RpcNetworkError propagates for network issues
+    const data = await this.client.getAccount(agentPDA);
+
+    if (!data) {
+      return null;
+    }
+
     try {
-      // Derive PDA from asset
-      const [agentPDA] = PDAHelpers.getAgentPDA(asset);
-
-      // Fetch account data
-      const data = await this.client.getAccount(agentPDA);
-
-      if (!data) {
-        return null;
-      }
-
       return AgentAccount.deserialize(data);
     } catch (error) {
-      logger.error('Error loading agent', error);
+      // Deserialization error - log and return null (corrupted/invalid data)
+      logger.error('Error deserializing agent account', error);
       return null;
     }
   }
@@ -1557,7 +1572,7 @@ export class SolanaSDK {
   }
 
   /**
-   * Set agent metadata (write operation) - v0.3.0
+   * Set agent metadata (write operation)
    * @param asset - Agent Core asset pubkey
    * @param key - Metadata key
    * @param value - Metadata value
@@ -1616,21 +1631,23 @@ export class SolanaSDK {
   }
 
   /**
-   * Revoke feedback (write operation) - v0.3.0
+   * Revoke feedback (write operation) - v0.5.0
    * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index to revoke (number or bigint)
+   * @param feedbackHash - Hash of the feedback to revoke (from NewFeedback event or computed from feedbackUri)
    * @param options - Write options (skipSend, signer)
    */
   async revokeFeedback(
     asset: PublicKey,
     feedbackIndex: number | bigint,
+    feedbackHash: Buffer,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.reputationTxBuilder.revokeFeedback(asset, idx, options);
+    return await this.reputationTxBuilder.revokeFeedback(asset, idx, feedbackHash, options);
   }
 
   /**
@@ -1934,6 +1951,16 @@ export class SolanaSDK {
 
   /**
    * Verify a signed payload against an agent wallet or provided public key
+   *
+   * NOTE: If publicKey is not provided, this method makes a network call to
+   * fetch the agent's wallet from on-chain data. For offline verification,
+   * always provide the publicKey parameter.
+   *
+   * @param payloadOrUri - Signed payload or URI to fetch it from
+   * @param asset - Agent Core asset pubkey
+   * @param publicKey - Optional: verifier public key (avoids network call if provided)
+   * @returns True if signature is valid
+   * @throws RpcNetworkError if publicKey not provided and network call fails
    */
   async verify(
     payloadOrUri: string | SignedPayloadV1,
@@ -1995,6 +2022,11 @@ export class SolanaSDK {
     }
 
     // Dynamic import to avoid bundler resolution
+    // NOTE: Using Function('m', 'return import(m)') is intentional to:
+    // 1. Prevent bundlers (webpack, vite, esbuild) from statically analyzing the import
+    // 2. Allow fs/promises to be tree-shaken out in browser builds
+    // 3. Enable runtime-only resolution for Node.js environments
+    // This pattern is safe here because fsModule is a hardcoded string constant.
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fsModule = 'fs/promises';
     const { readFile } = await (Function('m', 'return import(m)')(fsModule) as Promise<typeof import('fs/promises')>);

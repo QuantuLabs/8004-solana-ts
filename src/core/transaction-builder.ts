@@ -55,6 +55,9 @@ export interface TransactionResult {
  * Options for all write methods
  * Use skipSend to get the serialized transaction instead of sending it
  */
+/** Default compute unit limit for complex transactions */
+const DEFAULT_COMPUTE_UNITS = 400_000;
+
 export interface WriteOptions {
   /** If true, returns serialized transaction instead of sending */
   skipSend?: boolean;
@@ -65,6 +68,12 @@ export interface WriteOptions {
    * Security: Explicitly specifying feePayer prevents implicit fee payment assumptions
    */
   feePayer?: PublicKey;
+  /**
+   * Compute unit limit for the transaction (default: 400,000)
+   * Increase if transactions fail with "exceeded CUs" error
+   * Decrease to optimize priority fee costs
+   */
+  computeUnits?: number;
 }
 
 /**
@@ -173,8 +182,20 @@ export class IdentityTransactionBuilder {
 
       // Get collection - either provided or from base registry
       let collectionPubkey: PublicKey;
+      let isBaseRegistry = false;
+      const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
+
       if (collection) {
         collectionPubkey = collection;
+        // Check if this is the base collection
+        const rootConfig = await fetchRootConfig(this.connection);
+        if (rootConfig) {
+          const baseRegistryConfigPda = rootConfig.getBaseRegistryPublicKey();
+          const baseRegistryConfig = await fetchRegistryConfigByPda(this.connection, baseRegistryConfigPda);
+          if (baseRegistryConfig && baseRegistryConfig.getCollectionPublicKey().equals(collection)) {
+            isBaseRegistry = true;
+          }
+        }
       } else {
         // Fetch root config to get current base registry
         const rootConfig = await fetchRootConfig(this.connection);
@@ -191,6 +212,7 @@ export class IdentityTransactionBuilder {
           throw new Error('Registry not initialized.');
         }
         collectionPubkey = registryConfig.getCollectionPublicKey();
+        isBaseRegistry = true;
       }
 
       // Determine the asset pubkey (Metaplex Core asset)
@@ -224,7 +246,8 @@ export class IdentityTransactionBuilder {
             collectionPubkey,
             signerPubkey,
             agentUri || '',
-            false
+            false,
+            isBaseRegistry ? rootConfigPda : undefined
           )
         : this.instructionBuilder.buildRegister(
             registryConfigPda,
@@ -232,12 +255,13 @@ export class IdentityTransactionBuilder {
             assetPubkey,
             collectionPubkey,
             signerPubkey,
-            agentUri || ''
+            agentUri || '',
+            isBaseRegistry ? rootConfigPda : undefined
           );
 
-      // Create transaction with increased compute budget
+      // Create transaction with compute budget (configurable via options)
       const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-        units: 400_000,
+        units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
       });
 
       const registerTransaction = new Transaction()
@@ -771,32 +795,32 @@ export class IdentityTransactionBuilder {
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
 
       // Build Ed25519 verify instruction (must be immediately before setAgentWallet)
-      // Ed25519 instruction data format:
-      // - num_signatures: u8 = 1
-      // - padding: u8 = 0
-      // - signature_offset: u16 = 16 (after header)
-      // - signature_instruction_index: u16 = 0xFFFF (inline)
-      // - pubkey_offset: u16 = 80 (16 + 64)
-      // - pubkey_instruction_index: u16 = 0xFFFF (inline)
-      // - message_offset: u16 = 112 (16 + 64 + 32)
-      // - message_size: u16 = message.length
-      // - message_instruction_index: u16 = 0xFFFF (inline)
-      // Followed by: signature (64), pubkey (32), message (variable)
-      const signatureOffset = 16;
-      const pubkeyOffset = signatureOffset + 64;
-      const messageOffset = pubkeyOffset + 32;
+      // Ed25519 instruction data layout (fixed by Solana Ed25519 program):
+      // See: https://docs.solana.com/developing/runtime-facilities/programs#ed25519-program
+      //
+      // Constants defined by Solana Ed25519 program (do not modify):
+      const ED25519_HEADER_SIZE = 16;       // Header with offsets and counts
+      const ED25519_SIGNATURE_SIZE = 64;    // Ed25519 signature length
+      const ED25519_PUBKEY_SIZE = 32;       // Ed25519 public key length
+      const ED25519_INLINE_MARKER = 0xFFFF; // Marker indicating data is inline (not in another instruction)
+
+      // Calculate offsets based on data layout: [header][signature][pubkey][message]
+      const signatureOffset = ED25519_HEADER_SIZE;
+      const pubkeyOffset = signatureOffset + ED25519_SIGNATURE_SIZE;
+      const messageOffset = pubkeyOffset + ED25519_PUBKEY_SIZE;
       const messageSize = message.length;
 
-      const ed25519Header = Buffer.alloc(16);
+      // Build header (16 bytes)
+      const ed25519Header = Buffer.alloc(ED25519_HEADER_SIZE);
       ed25519Header.writeUInt8(1, 0); // num_signatures
       ed25519Header.writeUInt8(0, 1); // padding
       ed25519Header.writeUInt16LE(signatureOffset, 2); // signature_offset
-      ed25519Header.writeUInt16LE(0xFFFF, 4); // signature_instruction_index (inline)
+      ed25519Header.writeUInt16LE(ED25519_INLINE_MARKER, 4); // signature_instruction_index (inline)
       ed25519Header.writeUInt16LE(pubkeyOffset, 6); // pubkey_offset
-      ed25519Header.writeUInt16LE(0xFFFF, 8); // pubkey_instruction_index (inline)
+      ed25519Header.writeUInt16LE(ED25519_INLINE_MARKER, 8); // pubkey_instruction_index (inline)
       ed25519Header.writeUInt16LE(messageOffset, 10); // message_offset
       ed25519Header.writeUInt16LE(messageSize, 12); // message_size
-      ed25519Header.writeUInt16LE(0xFFFF, 14); // message_instruction_index (inline)
+      ed25519Header.writeUInt16LE(ED25519_INLINE_MARKER, 14); // message_instruction_index (inline)
 
       const ed25519Data = Buffer.concat([
         ed25519Header,
@@ -854,7 +878,7 @@ export class IdentityTransactionBuilder {
   }
 
   /**
-   * Build the message to sign for setAgentWallet - v0.3.0
+   * Build the message to sign for setAgentWallet
    * Use this to construct the message that must be signed by the new wallet
    * @param asset - Agent Core asset
    * @param newWallet - New operational wallet public key
@@ -985,7 +1009,26 @@ export class IdentityTransactionBuilder {
         return signature;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        logger.warn(`Transaction attempt ${attempt}/${maxRetries} failed`);
+        const errorMsg = lastError.message;
+
+        // Check for permanent errors that should NOT be retried
+        const isPermanentError =
+          errorMsg.includes('InstructionError') ||
+          errorMsg.includes('custom program error') ||
+          errorMsg.includes('insufficient funds') ||
+          errorMsg.includes('account not found') ||
+          errorMsg.includes('invalid account data') ||
+          errorMsg.includes('ConstraintViolation') ||
+          errorMsg.includes('AccountNotInitialized') ||
+          errorMsg.includes('InvalidProgramId');
+
+        if (isPermanentError) {
+          logger.warn(`Transaction failed with permanent error (not retrying): ${errorMsg}`);
+          throw lastError;
+        }
+
+        // Transient errors: network issues, blockhash expired, etc.
+        logger.warn(`Transaction attempt ${attempt}/${maxRetries} failed (transient): ${errorMsg}`);
 
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt - 1) * 1000;
@@ -1009,7 +1052,6 @@ export class ReputationTransactionBuilder {
   constructor(
     private connection: Connection,
     private payer?: Keypair,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private indexerClient?: IndexerClient
   ) {
     this.instructionBuilder = new ReputationInstructionBuilder();
@@ -1071,22 +1113,11 @@ export class ReputationTransactionBuilder {
       const atomStats = atomEnabled ? getAtomStatsPDA(asset)[0] : null;
       const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA()[0] : null;
 
-      let feedbackIndex: bigint;
-      if (options?.feedbackIndex !== undefined) {
-        feedbackIndex = options.feedbackIndex;
-      } else if (this.indexerClient) {
-        try {
-          const lastIndex = await this.indexerClient.getLastFeedbackIndex(
-            asset.toBase58(),
-            signerPubkey.toBase58()
-          );
-          feedbackIndex = lastIndex + 1n;
-        } catch (error) {
-          throw new Error(`Failed to get feedback index from indexer: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      } else {
-        throw new Error('Indexer client required for feedback_index calculation. Use options.feedbackIndex for manual index.');
-      }
+      // v0.5.0: feedbackIndex is determined on-chain from agent_account.feedback_count
+      // The SDK reads this value to return to the caller (for reference/tracking)
+      // Note: options.feedbackIndex is ignored - it was only used when feedbackIndex was
+      // part of the instruction data, which is no longer the case
+      const feedbackIndex = agentAccount.feedback_count;
 
       const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(
         signerPubkey,
@@ -1141,11 +1172,12 @@ export class ReputationTransactionBuilder {
    * @param feedbackIndex - Feedback index to revoke
    * @param options - Write options (skipSend, signer)
    *
-   * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
+   * v0.5.0: Now requires feedbackHash parameter for on-chain verification.
    */
   async revokeFeedback(
     asset: PublicKey,
     feedbackIndex: bigint,
+    feedbackHash: Buffer,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     try {
@@ -1154,7 +1186,7 @@ export class ReputationTransactionBuilder {
         throw new Error('signer required when SDK has no signer configured');
       }
 
-      // Derive PDAs (v0.4.0)
+      // Derive PDAs
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
       const agentInfo = await this.connection.getAccountInfo(agentPda);
       if (!agentInfo) {
@@ -1173,7 +1205,8 @@ export class ReputationTransactionBuilder {
         atomConfig,
         atomStats,
         registryAuthority,
-        feedbackIndex
+        feedbackIndex,
+        feedbackHash
       );
 
       const transaction = new Transaction().add(instruction);
@@ -1363,12 +1396,7 @@ export class ValidationTransactionBuilder {
         nonce
       );
 
-      console.log('[DEBUG] requestValidation - Creating validation request:');
-      console.log(`  Asset: ${asset.toBase58()}`);
-      console.log(`  Validator: ${validatorAddress.toBase58()}`);
-      console.log(`  Nonce: ${nonce}`);
-      console.log(`  PDA: ${validationRequestPda.toBase58()}`);
-      console.log(`  Bump: ${bump}`);
+      logger.debug(`requestValidation - Creating validation request: Asset=${asset.toBase58()}, Validator=${validatorAddress.toBase58()}, Nonce=${nonce}, PDA=${validationRequestPda.toBase58()}, Bump=${bump}`);
 
       const instruction = this.instructionBuilder.buildRequestValidation(
         validationConfigPda,
