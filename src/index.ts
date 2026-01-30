@@ -39,6 +39,7 @@ export * from './core/transaction-builder.js';
 export {
   SolanaClient,
   UnsupportedRpcError,
+  RpcNetworkError,
   SOLANA_DEVNET_RPC,
   RECOMMENDED_RPC_PROVIDERS,
   createDevnetClient,
