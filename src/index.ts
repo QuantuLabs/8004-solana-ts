@@ -48,7 +48,18 @@ export type { Cluster, SolanaClientConfig } from './core/client.js';
 
 // Export Solana SDK
 export { SolanaSDK } from './core/sdk-solana.js';
-export type { SolanaSDKConfig, AgentWithMetadata, EnrichedSummary, CollectionInfo } from './core/sdk-solana.js';
+export type {
+  SolanaSDKConfig,
+  AgentWithMetadata,
+  EnrichedSummary,
+  CollectionInfo,
+  IntegrityResult,
+  IntegrityStatus,
+  IntegrityChainResult,
+  DeepIntegrityOptions,
+  DeepIntegrityResult,
+  SpotCheckResult,
+} from './core/sdk-solana.js';
 
 // Export Feedback types
 export type { SolanaFeedback, SolanaAgentSummary } from './core/feedback-manager-solana.js';

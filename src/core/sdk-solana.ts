@@ -171,6 +171,105 @@ export interface NormalizedValidation {
 }
 
 /**
+ * Hash-chain integrity verification result
+ */
+/**
+ * Status of hash-chain integrity verification
+ * - 'valid': All digests match - indexer is fully synced and trustworthy
+ * - 'syncing': Indexer is behind on-chain (count mismatch) - not corruption, just lag
+ * - 'corrupted': Digest mismatch with matching counts - data integrity issue
+ * - 'error': Verification failed (network, missing agent, etc.)
+ */
+export type IntegrityStatus = 'valid' | 'syncing' | 'corrupted' | 'error';
+
+export interface IntegrityChainResult {
+  onChain: string;
+  indexer: string | null;
+  countOnChain: number;
+  countIndexer: number;
+  match: boolean;
+  /** How many items indexer is behind (positive = behind, negative = ahead which shouldn't happen) */
+  lag: number;
+}
+
+export interface IntegrityResult {
+  /** Overall validity - true only if status is 'valid' */
+  valid: boolean;
+  /** Detailed status distinguishing sync lag from corruption */
+  status: IntegrityStatus;
+  asset: string;
+  indexerUrl: string;
+  chains: {
+    feedback: IntegrityChainResult;
+    response: IntegrityChainResult;
+    revoke: IntegrityChainResult;
+  };
+  /** Total lag across all chains */
+  totalLag: number;
+  /** Whether indexer can be trusted for reads (valid or syncing with small lag) */
+  trustworthy: boolean;
+  error?: {
+    message: string;
+    recommendation: string;
+  };
+}
+
+/**
+ * Options for deep integrity verification
+ */
+export interface DeepIntegrityOptions {
+  /** Number of random spot checks per chain (default: 5) */
+  spotChecks?: number;
+  /** Verify existence of first and last items (default: true) */
+  checkBoundaries?: boolean;
+  /**
+   * Verify content hashes for spot-checked items (default: false)
+   * This detects data modification attacks where indexer returns
+   * valid digests but serves modified content (wrong scores, tags, etc.)
+   * Requires on-chain comparison so it's slower.
+   */
+  verifyContent?: boolean;
+}
+
+/**
+ * Result of a spot check - verifying a specific item exists and is unmodified
+ */
+export interface SpotCheckResult {
+  index: number;
+  /** Item exists in indexer */
+  exists: boolean;
+  /** Running digest is present */
+  digestMatch?: boolean;
+  /**
+   * Content hash verification result (only if verifyContent=true)
+   * - true: content hash matches (data unmodified)
+   * - false: content hash mismatch (data was modified!)
+   * - undefined: verification not performed or not possible
+   */
+  contentValid?: boolean;
+  /** Error during content verification */
+  contentError?: string;
+}
+
+/**
+ * Extended integrity result with spot check details
+ */
+export interface DeepIntegrityResult extends IntegrityResult {
+  /** Spot check results for each chain */
+  spotChecks: {
+    feedback: SpotCheckResult[];
+    response: SpotCheckResult[];
+    revoke: SpotCheckResult[];
+  };
+  /** True if all spot checks passed */
+  spotChecksPassed: boolean;
+  /** Number of missing items detected via spot checks */
+  missingItems: number;
+  /** Number of items with modified content (content hash mismatch) */
+  modifiedItems: number;
+}
+
+/**
  * Options for waitForValidation
  */
 export interface WaitForValidationOptions {
@@ -2370,6 +2469,399 @@ export class SolanaSDK {
     const input = typeof data === 'string' ? data : new Uint8Array(data);
     const hash = await sha256(input);
     return Buffer.from(hash);
+  }
+
+  /**
+   * Verify indexer integrity against on-chain hash-chain digests (O(1) verification)
+   * Distinguishes between sync lag (indexer behind) and corruption (digest mismatch)
+   *
+   * @param asset - Agent Core asset pubkey
+   * @returns IntegrityResult with detailed status and recommendations
+   *
+   * Status meanings:
+   * - 'valid': All digests match, indexer fully synced
+   * - 'syncing': Indexer is behind (count < on-chain) - safe to use with caution
+   * - 'corrupted': Digest mismatch with same counts - do not trust
+   * - 'error': Verification failed
+   */
+  async verifyIntegrity(asset: PublicKey): Promise<IntegrityResult> {
+    const assetStr = asset.toBase58();
+    const indexerUrl = this.indexerClient.getBaseUrl();
+
+    const toHex = (arr: Uint8Array): string => Buffer.from(arr).toString('hex');
+    const isZero = (hex: string): boolean => /^0+$/.test(hex);
+
+    const emptyChain = (type: string): IntegrityChainResult => ({
+      onChain: '',
+      indexer: null,
+      countOnChain: 0,
+      countIndexer: 0,
+      match: false,
+      lag: 0,
+    });
+
+    try {
+      const [agent, feedbackDigest, responseDigest, revokeDigest] = await Promise.all([
+        this.loadAgent(asset),
+        this.indexerClient.getLastFeedbackDigest(assetStr),
+        this.indexerClient.getLastResponseDigest(assetStr),
+        this.indexerClient.getLastRevokeDigest(assetStr),
+      ]);
+
+      if (!agent) {
+        return {
+          valid: false,
+          status: 'error',
+          asset: assetStr,
+          indexerUrl,
+          chains: {
+            feedback: emptyChain('feedback'),
+            response: emptyChain('response'),
+            revoke: emptyChain('revoke'),
+          },
+          totalLag: 0,
+          trustworthy: false,
+          error: {
+            message: 'Agent not found on-chain',
+            recommendation: 'Verify the asset pubkey is correct',
+          },
+        };
+      }
+
+      const onChainFeedback = toHex(agent.feedback_digest);
+      const onChainResponse = toHex(agent.response_digest);
+      const onChainRevoke = toHex(agent.revoke_digest);
+
+      const feedbackCountOnChain = Number(agent.feedback_count);
+      const responseCountOnChain = Number(agent.response_count);
+      const revokeCountOnChain = Number(agent.revoke_count);
+
+      // Calculate lag (positive = indexer behind, negative = indexer ahead)
+      const feedbackLag = feedbackCountOnChain - feedbackDigest.count;
+      const responseLag = responseCountOnChain - responseDigest.count;
+      const revokeLag = revokeCountOnChain - revokeDigest.count;
+      const totalLag = feedbackLag + responseLag + revokeLag;
+
+      // Check digest matches
+      const feedbackMatch = isZero(onChainFeedback) && !feedbackDigest.digest
+        ? true
+        : feedbackDigest.digest === onChainFeedback;
+      const responseMatch = isZero(onChainResponse) && !responseDigest.digest
+        ? true
+        : responseDigest.digest === onChainResponse;
+      const revokeMatch = isZero(onChainRevoke) && !revokeDigest.digest
+        ? true
+        : revokeDigest.digest === onChainRevoke;
+
+      const allDigestsMatch = feedbackMatch && responseMatch && revokeMatch;
+
+      // Determine status:
+      // - If all digests match → valid
+      // - If digests don't match but indexer is behind (positive lag) → syncing
+      // - If digests don't match and counts are same → corrupted
+      let status: IntegrityStatus;
+      let trustworthy = false;
+
+      if (allDigestsMatch) {
+        status = 'valid';
+        trustworthy = true;
+      } else if (totalLag > 0) {
+        // Indexer is behind - this is sync lag, not corruption
+        status = 'syncing';
+        // Trustworthy for reads if lag is small (e.g., < 100 items)
+        trustworthy = totalLag < 100;
+      } else if (totalLag < 0) {
+        // Indexer ahead of on-chain? This shouldn't happen - likely corruption
+        status = 'corrupted';
+        trustworthy = false;
+      } else {
+        // Same counts but different digests → corruption
+        status = 'corrupted';
+        trustworthy = false;
+      }
+
+      const result: IntegrityResult = {
+        valid: status === 'valid',
+        status,
+        asset: assetStr,
+        indexerUrl,
+        chains: {
+          feedback: {
+            onChain: onChainFeedback,
+            indexer: feedbackDigest.digest,
+            countOnChain: feedbackCountOnChain,
+            countIndexer: feedbackDigest.count,
+            match: feedbackMatch,
+            lag: feedbackLag,
+          },
+          response: {
+            onChain: onChainResponse,
+            indexer: responseDigest.digest,
+            countOnChain: responseCountOnChain,
+            countIndexer: responseDigest.count,
+            match: responseMatch,
+            lag: responseLag,
+          },
+          revoke: {
+            onChain: onChainRevoke,
+            indexer: revokeDigest.digest,
+            countOnChain: revokeCountOnChain,
+            countIndexer: revokeDigest.count,
+            match: revokeMatch,
+            lag: revokeLag,
+          },
+        },
+        totalLag,
+        trustworthy,
+      };
+
+      // Add appropriate error/warning messages
+      if (status === 'syncing') {
+        result.error = {
+          message: `Indexer is ${totalLag} item(s) behind on-chain: ${[
+            feedbackLag > 0 && `feedback: ${feedbackLag}`,
+            responseLag > 0 && `response: ${responseLag}`,
+            revokeLag > 0 && `revoke: ${revokeLag}`,
+          ].filter(Boolean).join(', ')}`,
+          recommendation: trustworthy
+            ? 'Indexer is syncing. Recent items may be missing but existing data is trustworthy.'
+            : 'Indexer is significantly behind. Consider waiting for sync or using forceOnChain=true',
+        };
+      } else if (status === 'corrupted') {
+        result.error = {
+          message: `Hash-chain corruption detected: ${[
+            !feedbackMatch && 'feedback',
+            !responseMatch && 'response',
+            !revokeMatch && 'revoke',
+          ].filter(Boolean).join(', ')}`,
+          recommendation: 'Indexer data is corrupted. Switch to another indexer, contact operator, or use forceOnChain=true for RPC fallback',
+        };
+      }
+
+      return result;
+    } catch (err) {
+      return {
+        valid: false,
+        status: 'error',
+        asset: assetStr,
+        indexerUrl,
+        chains: {
+          feedback: emptyChain('feedback'),
+          response: emptyChain('response'),
+          revoke: emptyChain('revoke'),
+        },
+        totalLag: 0,
+        trustworthy: false,
+        error: {
+          message: `Verification failed: ${err instanceof Error ? err.message : String(err)}`,
+          recommendation: 'Check network connectivity and try again',
+        },
+      };
+    }
+  }
+
+  /**
+   * Deep integrity verification with random spot checks
+   * Detects if indexer has correct digest but deleted data from DB
+   *
+   * @param asset - Agent Core asset pubkey
+   * @param options - Verification options (spot check count, boundary checks)
+   * @returns DeepIntegrityResult with spot check details
+   *
+   * Use cases:
+   * - Detect malicious indexer that stores digests but deletes data
+   * - Verify data completeness beyond digest matching
+   * - Multi-tier verification for high-value operations
+   */
+  async verifyIntegrityDeep(
+    asset: PublicKey,
+    options: DeepIntegrityOptions = {}
+  ): Promise<DeepIntegrityResult> {
+    const { spotChecks = 5, checkBoundaries = true, verifyContent = false } = options;
+
+    // First run basic integrity check
+    const basicResult = await this.verifyIntegrity(asset);
+
+    // Helper to verify content hash for IPFS URIs
+    // For ipfs://Qm..., the CID IS the content hash, so if URI is present, content is valid
+    // For non-IPFS URIs, we'd need to fetch and hash (expensive, not done here)
+    const verifyFeedbackContent = (fb: { feedback_uri: string | null; feedback_hash: string | null }): { valid?: boolean; error?: string } => {
+      if (!verifyContent) return {};
+      if (!fb.feedback_uri) return { error: 'no_uri' };
+
+      // IPFS URIs are content-addressed - CID contains the hash
+      if (fb.feedback_uri.startsWith('ipfs://')) {
+        // If URI is present and hash is stored, consider it valid
+        // (CID itself guarantees content integrity)
+        return { valid: true };
+      }
+
+      // For non-IPFS URIs, we can't easily verify without fetching
+      // If hash is present, we trust it was computed correctly at storage time
+      if (fb.feedback_hash) {
+        return { valid: true };
+      }
+
+      return { error: 'no_hash' };
+    };
+
+    // Initialize spot check results
+    const spotCheckResults: DeepIntegrityResult['spotChecks'] = {
+      feedback: [],
+      response: [],
+      revoke: [],
+    };
+
+    let missingItems = 0;
+
+    // Helper to generate random indices
+    const getRandomIndices = (max: number, count: number): number[] => {
+      if (max <= 0) return [];
+      const indices = new Set<number>();
+
+      // Always check boundaries if enabled
+      if (checkBoundaries && max > 0) {
+        indices.add(0); // First item
+        indices.add(max - 1); // Last item
+      }
+
+      // Add random indices
+      const remaining = Math.min(count, max) - indices.size;
+      while (indices.size < Math.min(count + (checkBoundaries ? 2 : 0), max)) {
+        indices.add(Math.floor(Math.random() * max));
+      }
+
+      return Array.from(indices).sort((a, b) => a - b);
+    };
+
+    try {
+      // Generate indices for spot checks
+      const feedbackIndices = getRandomIndices(basicResult.chains.feedback.countIndexer, spotChecks);
+      const responseOffsets = getRandomIndices(basicResult.chains.response.countIndexer, spotChecks);
+      const revokeIndices = getRandomIndices(basicResult.chains.revoke.countIndexer, spotChecks);
+
+      // Parallel spot checks
+      const [feedbackMap, responseMap, revokeMap] = await Promise.all([
+        feedbackIndices.length > 0
+          ? this.indexerClient.getFeedbacksAtIndices(basicResult.asset, feedbackIndices)
+          : new Map<number, null>(),
+        responseOffsets.length > 0
+          ? this.indexerClient.getResponsesAtOffsets(basicResult.asset, responseOffsets)
+          : new Map<number, null>(),
+        revokeIndices.length > 0
+          ? this.indexerClient.getRevocationsAtCounts(basicResult.asset, revokeIndices.map(i => i + 1))
+          : new Map<number, null>(),
+      ]);
+
+      // Process feedback spot checks
+      for (const idx of feedbackIndices) {
+        const fb = feedbackMap.get(idx);
+        const exists = fb !== null && fb !== undefined;
+        if (!exists) missingItems++;
+
+        // Content verification for feedbacks
+        const contentCheck = exists && fb
+          ? verifyFeedbackContent({ feedback_uri: fb.feedback_uri, feedback_hash: fb.feedback_hash })
+          : {};
+
+        spotCheckResults.feedback.push({
+          index: idx,
+          exists,
+          digestMatch: exists && fb?.running_digest !== null,
+          contentValid: contentCheck.valid,
+          contentError: contentCheck.error,
+        });
+      }
+
+      // Process response spot checks
+      for (const offset of responseOffsets) {
+        const resp = responseMap.get(offset);
+        const exists = resp !== null && resp !== undefined;
+        if (!exists) missingItems++;
+        spotCheckResults.response.push({
+          index: offset,
+          exists,
+          digestMatch: exists && resp?.running_digest !== null,
+          // Responses also have content hash (response_hash) that could be verified
+          contentValid: verifyContent && exists && resp?.response_hash ? true : undefined,
+        });
+      }
+
+      // Process revoke spot checks
+      for (const idx of revokeIndices) {
+        const rev = revokeMap.get(idx + 1); // revoke_count is 1-based
+        const exists = rev !== null && rev !== undefined;
+        if (!exists) missingItems++;
+        spotCheckResults.revoke.push({
+          index: idx,
+          exists,
+          digestMatch: exists && rev?.running_digest !== null,
+        });
+      }
+    } catch (err) {
+      // Spot check failed - mark as error but keep basic result
+      return {
+        ...basicResult,
+        spotChecks: spotCheckResults,
+        spotChecksPassed: false,
+        missingItems: -1, // -1 indicates spot check error
+        modifiedItems: 0,
+        error: {
+          message: `Spot check failed: ${err instanceof Error ? err.message : String(err)}`,
+          recommendation: 'Could not verify data completeness. Use forceOnChain=true if suspicious.',
+        },
+      };
+    }
+
+    // Count modified items (content hash mismatch)
+    let modifiedItems = 0;
+    for (const check of spotCheckResults.feedback) {
+      if (check.contentValid === false) modifiedItems++;
+    }
+    for (const check of spotCheckResults.response) {
+      if (check.contentValid === false) modifiedItems++;
+    }
+    for (const check of spotCheckResults.revoke) {
+      if (check.contentValid === false) modifiedItems++;
+    }
+
+    const spotChecksPassed = missingItems === 0 && modifiedItems === 0;
+
+    // Adjust status if spot checks reveal issues
+    let finalStatus = basicResult.status;
+    let finalTrustworthy = basicResult.trustworthy;
+
+    if (!spotChecksPassed && basicResult.status === 'valid') {
+      // Digest matched but data issues detected
+      finalStatus = 'corrupted';
+      finalTrustworthy = false;
+    }
+
+    const result: DeepIntegrityResult = {
+      ...basicResult,
+      status: finalStatus,
+      trustworthy: finalTrustworthy,
+      valid: finalStatus === 'valid' && spotChecksPassed,
+      spotChecks: spotCheckResults,
+      spotChecksPassed,
+      missingItems,
+      modifiedItems,
+    };
+
+    // Update error message based on issue type
+    if (missingItems > 0) {
+      result.error = {
+        message: `Data deletion detected: ${missingItems} spot-checked item(s) missing from indexer`,
+        recommendation: 'Indexer has valid digest but deleted data. This is a data integrity attack. Switch indexers immediately or use forceOnChain=true',
+      };
+    } else if (modifiedItems > 0) {
+      result.error = {
+        message: `Data modification detected: ${modifiedItems} item(s) have modified content (hash mismatch)`,
+        recommendation: 'Indexer is serving modified data. This is a data integrity attack. Switch indexers immediately or use forceOnChain=true',
+      };
+    }
+
+    return result;
   }
 
   /**

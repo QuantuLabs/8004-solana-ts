@@ -20,6 +20,8 @@
     "test:e2e:devnet": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/e2e-devnet-funded.test.ts --verbose --runInBand",
     "test:e2e:v050": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/07-v050-value-decimals.test.ts --verbose --runInBand",
     "test:e2e:gaming": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/08-reputation-gaming.test.ts --verbose --runInBand",
+    "test:integrity:stress": "NODE_OPTIONS='--experimental-vm-modules' npx tsx tests/e2e-solana/stress-test-hashchain-localnet.ts",
+    "test:integrity:manipulation": "NODE_OPTIONS='--experimental-vm-modules' npx tsx tests/e2e-solana/integrity-manipulation-test.ts",
     "test:wallets:create": "npx tsx scripts/test-wallet-manager.ts create",
     "test:wallets:recover": "npx tsx scripts/test-wallet-manager.ts recover",
     "test:wallets:status": "npx tsx scripts/test-wallet-manager.ts status",
@@ -72,10 +74,12 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.6",
     "@typescript-eslint/eslint-plugin": "^6.17.0",
     "@typescript-eslint/parser": "^6.17.0",
+    "better-sqlite3": "^12.6.2",
     "dotenv": "^16.3.1",
     "eslint": "^8.56.0",
     "jest": "^29.7.0",
