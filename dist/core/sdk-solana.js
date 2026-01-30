@@ -1837,7 +1837,7 @@ export class SolanaSDK {
         const indexerUrl = this.indexerClient.getBaseUrl();
         const toHex = (arr) => Buffer.from(arr).toString('hex');
         const isZero = (hex) => /^0+$/.test(hex);
-        const emptyChain = (type) => ({
+        const emptyChain = (_type) => ({
             onChain: '',
             indexer: null,
             countOnChain: 0,
@@ -2054,7 +2054,6 @@ export class SolanaSDK {
                 indices.add(max - 1); // Last item
             }
             // Add random indices
-            const remaining = Math.min(count, max) - indices.size;
             while (indices.size < Math.min(count + (checkBoundaries ? 2 : 0), max)) {
                 indices.add(Math.floor(Math.random() * max));
             }
