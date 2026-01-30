@@ -48,4 +48,23 @@ export function readUInt32LE(buffer, offset = 0) {
     const view = new DataView(buffer.buffer, buffer.byteOffset + offset, 4);
     return view.getUint32(0, true); // true = little-endian
 }
+/** Maximum string length for Solana transaction size constraints */
+const MAX_SERIALIZED_STRING_LENGTH = 1000;
+/**
+ * Serialize a string to Buffer with 4-byte length prefix (little-endian)
+ * Used for Borsh-compatible string serialization in Solana instructions
+ * @param str - String to serialize
+ * @param maxLength - Optional max byte length (default: 1000 to fit in Solana tx)
+ * @returns Buffer with [length (4 bytes LE), utf8 bytes]
+ * @throws Error if string exceeds maxLength bytes
+ */
+export function serializeString(str, maxLength = MAX_SERIALIZED_STRING_LENGTH) {
+    const strBytes = Buffer.from(str, 'utf8');
+    if (strBytes.length > maxLength) {
+        throw new Error(`String exceeds maximum length: ${strBytes.length} > ${maxLength} bytes`);
+    }
+    const len = Buffer.alloc(4);
+    len.writeUInt32LE(strBytes.length);
+    return Buffer.concat([len, strBytes]);
+}
 //# sourceMappingURL=buffer-utils.js.map

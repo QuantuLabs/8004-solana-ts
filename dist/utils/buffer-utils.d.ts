@@ -27,4 +27,13 @@ export declare function readBigUInt64LE(buffer: Uint8Array, offset?: number): bi
  * Cross-platform alternative to Buffer.readUInt32LE()
  */
 export declare function readUInt32LE(buffer: Uint8Array, offset?: number): number;
+/**
+ * Serialize a string to Buffer with 4-byte length prefix (little-endian)
+ * Used for Borsh-compatible string serialization in Solana instructions
+ * @param str - String to serialize
+ * @param maxLength - Optional max byte length (default: 1000 to fit in Solana tx)
+ * @returns Buffer with [length (4 bytes LE), utf8 bytes]
+ * @throws Error if string exceeds maxLength bytes
+ */
+export declare function serializeString(str: string, maxLength?: number): Buffer;
 //# sourceMappingURL=buffer-utils.d.ts.map

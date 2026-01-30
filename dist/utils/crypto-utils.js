@@ -37,6 +37,12 @@ export async function sha256(data) {
  * @throws Error if called in browser without Node.js crypto
  */
 export function sha256Sync(data) {
+    // Check if we're in a browser environment (no Node.js crypto)
+    if (typeof globalThis !== 'undefined' &&
+        typeof globalThis.window !== 'undefined' &&
+        typeof require === 'undefined') {
+        throw new Error('sha256Sync is not available in browser. Use the async sha256() function instead.');
+    }
     const input = typeof data === 'string' ? new TextEncoder().encode(data) : data;
     // Node.js only - synchronous version
     // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports

@@ -13,6 +13,8 @@ import { PublicKey, TransactionInstruction, SystemProgram, SYSVAR_INSTRUCTIONS_P
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID, ATOM_ENGINE_PROGRAM_ID } from './programs.js';
 import { IDENTITY_DISCRIMINATORS, REPUTATION_DISCRIMINATORS, VALIDATION_DISCRIMINATORS, ATOM_ENGINE_DISCRIMINATORS, } from './instruction-discriminators.js';
 import { toBigInt } from './utils.js';
+import { serializeString } from '../utils/buffer-utils.js';
+import { validateByteLength } from '../utils/validation.js';
 /**
  * Instruction builder for Identity Registry (Metaplex Core)
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
@@ -25,16 +27,18 @@ export class IdentityInstructionBuilder {
     /**
      * Build register instruction (Metaplex Core)
      * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
      */
-    buildRegister(config, agentAccount, asset, collection, owner, agentUri = '') {
+    buildRegister(config, agentAccount, asset, collection, owner, agentUri = '', rootConfig) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.register,
-            this.serializeString(agentUri),
+            serializeString(agentUri),
         ]);
         // Derive user_collection_authority PDA (seeds: ["user_collection_authority"])
-        // This is an optional account but must be included in the accounts list
         const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
+        // For optional root_config: use program ID to signal None, or actual PDA for Some
+        // Anchor interprets program ID as None for Option<Account>
+        const rootConfigAccount = rootConfig || this.programId;
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
@@ -42,7 +46,8 @@ export class IdentityInstructionBuilder {
                 { pubkey: agentAccount, isSigner: false, isWritable: true },
                 { pubkey: asset, isSigner: true, isWritable: true },
                 { pubkey: collection, isSigner: false, isWritable: true },
-                { pubkey: userCollectionAuthority, isSigner: false, isWritable: false }, // Optional PDA
+                { pubkey: userCollectionAuthority, isSigner: false, isWritable: false },
+                { pubkey: rootConfigAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
                 { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -53,15 +58,17 @@ export class IdentityInstructionBuilder {
     /**
      * Build register_with_options instruction (Metaplex Core)
      * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
      */
-    buildRegisterWithOptions(config, agentAccount, asset, collection, owner, agentUri, atomEnabled) {
+    buildRegisterWithOptions(config, agentAccount, asset, collection, owner, agentUri, atomEnabled, rootConfig) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.registerWithOptions,
-            this.serializeString(agentUri),
+            serializeString(agentUri),
             Buffer.from([atomEnabled ? 1 : 0]),
         ]);
         const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
+        // For optional root_config: use program ID to signal None, or actual PDA for Some
+        const rootConfigAccount = rootConfig || this.programId;
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
@@ -70,6 +77,7 @@ export class IdentityInstructionBuilder {
                 { pubkey: asset, isSigner: true, isWritable: true },
                 { pubkey: collection, isSigner: false, isWritable: true },
                 { pubkey: userCollectionAuthority, isSigner: false, isWritable: false },
+                { pubkey: rootConfigAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
                 { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -101,7 +109,7 @@ export class IdentityInstructionBuilder {
     buildSetAgentUri(config, agentAccount, asset, collection, owner, newUri) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.setAgentUri,
-            this.serializeString(newUri),
+            serializeString(newUri),
         ]);
         // Derive user_collection_authority PDA (seeds: ["user_collection_authority"])
         const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
@@ -132,7 +140,7 @@ export class IdentityInstructionBuilder {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.setMetadata,
             keyHash.slice(0, 16), // [u8; 16] key_hash (v1.9 security update)
-            this.serializeString(key),
+            serializeString(key),
             serializedValue,
             Buffer.from([immutable ? 1 : 0]), // bool
         ]);
@@ -211,8 +219,8 @@ export class IdentityInstructionBuilder {
     buildCreateUserRegistry(collectionAuthority, registryConfig, collection, owner, collectionName, collectionUri) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.createUserRegistry,
-            this.serializeString(collectionName),
-            this.serializeString(collectionUri),
+            serializeString(collectionName),
+            serializeString(collectionUri),
         ]);
         return new TransactionInstruction({
             programId: this.programId,
@@ -234,8 +242,8 @@ export class IdentityInstructionBuilder {
      */
     buildUpdateUserRegistryMetadata(collectionAuthority, registryConfig, collection, owner, newName, newUri) {
         // Serialize optional strings
-        const nameBuffer = this.serializeOption(newName, (s) => this.serializeString(s));
-        const uriBuffer = this.serializeOption(newUri, (s) => this.serializeString(s));
+        const nameBuffer = this.serializeOption(newName, (s) => serializeString(s));
+        const uriBuffer = this.serializeOption(newUri, (s) => serializeString(s));
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.updateUserRegistryMetadata,
             nameBuffer,
@@ -284,12 +292,6 @@ export class IdentityInstructionBuilder {
             data,
         });
     }
-    serializeString(str) {
-        const strBytes = Buffer.from(str, 'utf8');
-        const len = Buffer.alloc(4);
-        len.writeUInt32LE(strBytes.length);
-        return Buffer.concat([len, strBytes]);
-    }
     serializeOption(value, serializer) {
         if (value === null) {
             return Buffer.from([0]); // None
@@ -328,17 +330,18 @@ export class ReputationInstructionBuilder {
         if (value < I64_MIN || value > I64_MAX) {
             throw new Error(`value ${value} exceeds i64 range`);
         }
+        // Anchor program instruction: give_feedback(value, value_decimals, score, feedback_hash, tag1, tag2, endpoint, feedback_uri)
+        // Note: feedbackIndex is NOT an instruction parameter - it's computed from agent_account.feedback_count
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.giveFeedback,
             this.serializeI64(value),
             Buffer.from([valueDecimals]),
             this.serializeOptionU8(score),
             feedbackHash,
-            this.serializeU64(feedbackIndex),
-            this.serializeString(tag1),
-            this.serializeString(tag2),
-            this.serializeString(endpoint),
-            this.serializeString(feedbackUri),
+            serializeString(tag1),
+            serializeString(tag2),
+            serializeString(endpoint),
+            serializeString(feedbackUri),
         ]);
         const hasAtomAccounts = !!(atomConfig && atomStats && registryAuthority);
         if ((atomConfig || atomStats || registryAuthority) && !hasAtomAccounts) {
@@ -346,7 +349,7 @@ export class ReputationInstructionBuilder {
         }
         const keys = [
             { pubkey: client, isSigner: true, isWritable: true },
-            { pubkey: agentAccount, isSigner: false, isWritable: false },
+            { pubkey: agentAccount, isSigner: false, isWritable: true }, // mut in Anchor
             { pubkey: asset, isSigner: false, isWritable: false },
             { pubkey: collection, isSigner: false, isWritable: false },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
@@ -375,15 +378,18 @@ export class ReputationInstructionBuilder {
         return Buffer.from([1, value]);
     }
     /**
-     * Build revokeFeedback instruction - v0.4.0
-     * Matches: revoke_feedback(feedback_index)
+     * Build revokeFeedback instruction - v0.5.0
+     * Matches: revoke_feedback(feedback_index, feedback_hash)
      * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
-     * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildRevokeFeedback(client, agentAccount, asset, atomConfig, atomStats, registryAuthority, feedbackIndex) {
+    buildRevokeFeedback(client, agentAccount, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, feedbackHash) {
+        if (!feedbackHash || feedbackHash.length !== 32) {
+            throw new Error('feedbackHash must be 32 bytes');
+        }
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.revokeFeedback,
             this.serializeU64(feedbackIndex),
+            feedbackHash,
         ]);
         const hasAtomAccounts = !!(atomConfig && atomStats && registryAuthority);
         if ((atomConfig || atomStats || registryAuthority) && !hasAtomAccounts) {
@@ -391,7 +397,7 @@ export class ReputationInstructionBuilder {
         }
         const keys = [
             { pubkey: client, isSigner: true, isWritable: true },
-            { pubkey: agentAccount, isSigner: false, isWritable: false },
+            { pubkey: agentAccount, isSigner: false, isWritable: true }, // mut in Anchor
             { pubkey: asset, isSigner: false, isWritable: false },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ];
@@ -414,7 +420,7 @@ export class ReputationInstructionBuilder {
             asset.toBuffer(),
             client.toBuffer(),
             this.serializeU64(feedbackIndex),
-            this.serializeString(responseUri),
+            serializeString(responseUri),
             responseHash,
             feedbackHash,
         ]);
@@ -436,12 +442,6 @@ export class ReputationInstructionBuilder {
         throw new Error("setFeedbackTags instruction removed on-chain in v0.5.0. " +
             "Tags are now included in give_feedback instruction. " +
             "Use buildGiveFeedback with tag1 and tag2 parameters instead.");
-    }
-    serializeString(str) {
-        const strBytes = Buffer.from(str, 'utf8');
-        const len = Buffer.alloc(4);
-        len.writeUInt32LE(strBytes.length);
-        return Buffer.concat([len, strBytes]);
     }
     serializeU64(value) {
         const buf = Buffer.alloc(8);
@@ -470,7 +470,7 @@ export class ValidationInstructionBuilder {
             asset.toBuffer(), // asset_key: Pubkey (32 bytes)
             validatorAddress.toBuffer(), // validator_address: Pubkey (32 bytes)
             this.serializeU32(nonce), // nonce: u32 (4 bytes)
-            this.serializeString(requestUri),
+            serializeString(requestUri),
             requestHash,
         ]);
         return new TransactionInstruction({
@@ -493,6 +493,9 @@ export class ValidationInstructionBuilder {
      * Accounts: validator (signer), agent_account, asset, validation_request
      */
     buildRespondToValidation(validationConfig, validator, agentAccount, asset, validationRequest, nonce, response, responseUri, responseHash, tag) {
+        // Validate string lengths before serialization
+        validateByteLength(responseUri, 250, 'responseUri');
+        validateByteLength(tag, 32, 'tag');
         // v0.5.0: Pass asset_key and validator_address to avoid .key() allocations in seeds
         const nonceBuffer = Buffer.alloc(4);
         nonceBuffer.writeUInt32LE(nonce, 0);
@@ -502,9 +505,9 @@ export class ValidationInstructionBuilder {
             validator.toBuffer(), // validator_address: Pubkey
             nonceBuffer, // nonce: u32
             Buffer.from([response]), // response: u8
-            this.serializeString(responseUri),
+            serializeString(responseUri),
             responseHash,
-            this.serializeString(tag),
+            serializeString(tag),
         ]);
         return new TransactionInstruction({
             programId: this.programId,
@@ -535,12 +538,6 @@ export class ValidationInstructionBuilder {
         throw new Error("closeValidation instruction removed on-chain in v0.5.0. " +
             "Validation requests are now permanent records. " +
             "Rent is optimized via event-based indexing.");
-    }
-    serializeString(str) {
-        const strBytes = Buffer.from(str, 'utf8');
-        const len = Buffer.alloc(4);
-        len.writeUInt32LE(strBytes.length);
-        return Buffer.concat([len, strBytes]);
     }
     serializeU64(value) {
         const buf = Buffer.alloc(8);

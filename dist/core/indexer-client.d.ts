@@ -57,6 +57,7 @@ export interface IndexedFeedback {
     tag2: string | null;
     endpoint: string | null;
     feedback_uri: string | null;
+    running_digest: string | null;
     feedback_hash: string | null;
     is_revoked: boolean;
     revoked_at: string | null;
@@ -139,10 +140,6 @@ export interface GlobalStats {
     gold_agents: number;
     avg_quality: number | null;
 }
-/**
- * Feedback response from `feedback_responses` table
- * v0.4.1 - Added client_address (audit fix #2)
- */
 export interface IndexedFeedbackResponse {
     id: string;
     asset: string;
@@ -151,7 +148,23 @@ export interface IndexedFeedbackResponse {
     responder: string;
     response_uri: string | null;
     response_hash: string | null;
+    running_digest: string | null;
     block_slot: number;
+    tx_signature: string;
+    created_at: string;
+}
+export interface IndexedRevocation {
+    id: string;
+    asset: string;
+    client_address: string;
+    feedback_index: number;
+    feedback_hash: string | null;
+    slot: number;
+    original_score: number | null;
+    atom_enabled: boolean;
+    had_impact: boolean;
+    running_digest: string | null;
+    revoke_count: number;
     tx_signature: string;
     created_at: string;
 }
@@ -164,18 +177,24 @@ export declare class IndexerClient {
     private readonly timeout;
     private readonly retries;
     constructor(config: IndexerClientConfig);
+    getBaseUrl(): string;
     /**
      * Execute HTTP request with retries and error handling
      */
     private request;
     /**
-     * Build query string from params
+     * Build query string from params using URLSearchParams for safety
      */
     private buildQuery;
     /**
      * Check if indexer is available
      */
     isAvailable(): Promise<boolean>;
+    /**
+     * Get count for a resource using Prefer: count=exact header (PostgREST standard)
+     * Parses Content-Range header: "0-99/1234" -> 1234
+     */
+    getCount(resource: string, filters: Record<string, string>): Promise<number>;
     /**
      * Get agent by asset pubkey
      */
@@ -253,6 +272,16 @@ export declare class IndexerClient {
      * Get feedbacks by endpoint
      */
     getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
+    /**
+     * Get ALL feedbacks across all agents (bulk query)
+     * Optimized for fetchAllFeedbacks - single query instead of N+1
+     * @param options - Query options
+     * @returns Array of all feedbacks (grouped by caller)
+     */
+    getAllFeedbacks(options?: {
+        includeRevoked?: boolean;
+        limit?: number;
+    }): Promise<IndexedFeedback[]>;
     getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
     /**
      * Get all metadata for an agent
@@ -309,7 +338,49 @@ export declare class IndexerClient {
     getFeedbackResponses(asset: string): Promise<IndexedFeedbackResponse[]>;
     /**
      * Get responses for a specific feedback (asset + client + index)
+     * @param asset - Agent asset pubkey (base58)
+     * @param client - Client pubkey (base58)
+     * @param feedbackIndex - Feedback index
+     * @param limit - Max responses to return (default: 100, prevents large payloads)
      */
-    getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedbackResponse[]>;
+    getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
+    getRevocations(asset: string): Promise<IndexedRevocation[]>;
+    getLastFeedbackDigest(asset: string): Promise<{
+        digest: string | null;
+        count: number;
+    }>;
+    getLastResponseDigest(asset: string): Promise<{
+        digest: string | null;
+        count: number;
+    }>;
+    getLastRevokeDigest(asset: string): Promise<{
+        digest: string | null;
+        count: number;
+    }>;
+    /**
+     * Get feedbacks at specific indices for spot checking
+     * @param asset - Agent asset pubkey
+     * @param indices - Array of feedback indices to check
+     * @returns Map of index -> feedback (null if missing)
+     */
+    getFeedbacksAtIndices(asset: string, indices: number[]): Promise<Map<number, IndexedFeedback | null>>;
+    /**
+     * Get responses count for an asset
+     */
+    getResponseCount(asset: string): Promise<number>;
+    /**
+     * Get responses at specific offsets for spot checking
+     * @param asset - Agent asset pubkey
+     * @param offsets - Array of offsets (0-based) to check
+     * @returns Map of offset -> response (null if missing)
+     */
+    getResponsesAtOffsets(asset: string, offsets: number[]): Promise<Map<number, IndexedFeedbackResponse | null>>;
+    /**
+     * Get revocations at specific revoke counts for spot checking
+     * @param asset - Agent asset pubkey
+     * @param revokeCounts - Array of revoke counts (1-based) to check
+     * @returns Map of revokeCount -> revocation (null if missing)
+     */
+    getRevocationsAtCounts(asset: string, revokeCounts: number[]): Promise<Map<number, IndexedRevocation | null>>;
 }
 //# sourceMappingURL=indexer-client.d.ts.map

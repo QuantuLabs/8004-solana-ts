@@ -27,7 +27,7 @@ export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
 // Export Solana client with RPC detection
-export { SolanaClient, UnsupportedRpcError, SOLANA_DEVNET_RPC, RECOMMENDED_RPC_PROVIDERS, createDevnetClient, } from './core/client.js';
+export { SolanaClient, UnsupportedRpcError, RpcNetworkError, SOLANA_DEVNET_RPC, RECOMMENDED_RPC_PROVIDERS, createDevnetClient, } from './core/client.js';
 // Export Solana SDK
 export { SolanaSDK } from './core/sdk-solana.js';
 // Export OASF taxonomy utilities

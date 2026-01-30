@@ -1,6 +1,11 @@
 /**
  * Validation utilities - Security-hardened v0.3.0
  */
+/**
+ * Check if a hostname is a private/internal IP address
+ * Used for SSRF protection
+ */
+export declare function isPrivateHost(hostname: string): boolean;
 export interface URIValidationOptions {
     allowHttp?: boolean;
 }
