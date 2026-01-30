@@ -2,6 +2,7 @@
  * Endpoint Crawler for MCP and A2A Servers
  * Automatically fetches capabilities (tools, prompts, resources, skills) from endpoints
  */
+import { isPrivateHost } from '../utils/validation.js';
 /**
  * Helper to create JSON-RPC request
  */
@@ -29,6 +30,16 @@ export class EndpointCrawler {
         if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
             // Invalid endpoint format - return null
             return null;
+        }
+        // SSRF Protection: Block requests to private/internal IP ranges
+        try {
+            const url = new URL(endpoint);
+            if (isPrivateHost(url.hostname)) {
+                return null; // Silently reject private hosts
+            }
+        }
+        catch {
+            return null; // Invalid URL
         }
         // Try JSON-RPC approach first (for real MCP servers)
         const capabilities = await this._fetchViaJsonRpc(endpoint);
@@ -195,6 +206,16 @@ export class EndpointCrawler {
             if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
                 // Invalid endpoint format - skip
                 return null;
+            }
+            // SSRF Protection: Block requests to private/internal IP ranges
+            try {
+                const url = new URL(endpoint);
+                if (isPrivateHost(url.hostname)) {
+                    return null; // Silently reject private hosts
+                }
+            }
+            catch {
+                return null; // Invalid URL
             }
             // Try multiple well-known paths for A2A agent cards
             const agentcardUrls = [

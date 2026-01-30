@@ -22,6 +22,9 @@ export class IndexerClient {
         this.timeout = config.timeout || 10000;
         this.retries = config.retries ?? 2;
     }
+    getBaseUrl() {
+        return this.baseUrl;
+    }
     // ============================================================================
     // HTTP Helpers
     // ============================================================================
@@ -89,13 +92,17 @@ export class IndexerClient {
         throw lastError || new IndexerUnavailableError();
     }
     /**
-     * Build query string from params
+     * Build query string from params using URLSearchParams for safety
      */
     buildQuery(params) {
-        const filtered = Object.entries(params)
-            .filter(([, v]) => v !== undefined)
-            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
-        return filtered.length > 0 ? `?${filtered.join('&')}` : '';
+        const searchParams = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+            if (value !== undefined) {
+                searchParams.append(key, String(value));
+            }
+        }
+        const queryString = searchParams.toString();
+        return queryString ? `?${queryString}` : '';
     }
     // ============================================================================
     // Health Check
@@ -111,6 +118,34 @@ export class IndexerClient {
         catch {
             return false;
         }
+    }
+    /**
+     * Get count for a resource using Prefer: count=exact header (PostgREST standard)
+     * Parses Content-Range header: "0-99/1234" -> 1234
+     */
+    async getCount(resource, filters) {
+        const query = this.buildQuery({ ...filters, limit: 1 });
+        const url = `${this.baseUrl}/${resource}${query}`;
+        const response = await fetch(url, {
+            headers: {
+                'apikey': this.apiKey,
+                'Prefer': 'count=exact',
+            },
+        });
+        if (!response.ok) {
+            return 0;
+        }
+        // Parse Content-Range header: "0-0/1234" -> 1234
+        const contentRange = response.headers.get('Content-Range');
+        if (contentRange) {
+            const match = contentRange.match(/\/(\d+)$/);
+            if (match) {
+                return parseInt(match[1], 10);
+            }
+        }
+        // Fallback: count items in response (won't be accurate if paginated)
+        const data = await response.json();
+        return Array.isArray(data) ? data.length : 0;
     }
     // ============================================================================
     // Agents
@@ -198,11 +233,13 @@ export class IndexerClient {
      * Uses PostgreSQL get_leaderboard() function
      */
     async getLeaderboardRPC(options) {
+        // Note: p_cursor_sort_key is passed as string to avoid BigInt JSON.stringify crash
+        // PostgreSQL will cast it to BIGINT on the server side
         const body = {
             p_collection: options?.collection || null,
             p_min_tier: options?.minTier ?? 0,
             p_limit: options?.limit || 50,
-            p_cursor_sort_key: options?.cursorSortKey ? BigInt(options.cursorSortKey) : null,
+            p_cursor_sort_key: options?.cursorSortKey || null,
         };
         return this.request('/rpc/get_leaderboard', {
             method: 'POST',
@@ -268,6 +305,23 @@ export class IndexerClient {
             endpoint: `eq.${endpoint}`,
             order: 'created_at.desc',
         });
+        return this.request(`/feedbacks${query}`);
+    }
+    /**
+     * Get ALL feedbacks across all agents (bulk query)
+     * Optimized for fetchAllFeedbacks - single query instead of N+1
+     * @param options - Query options
+     * @returns Array of all feedbacks (grouped by caller)
+     */
+    async getAllFeedbacks(options) {
+        const params = {
+            order: 'asset,feedback_index.asc',
+            limit: options?.limit || 5000,
+        };
+        if (!options?.includeRevoked) {
+            params.is_revoked = 'eq.false';
+        }
+        const query = this.buildQuery(params);
         return this.request(`/feedbacks${query}`);
     }
     async getLastFeedbackIndex(asset, client) {
@@ -441,19 +495,161 @@ export class IndexerClient {
     }
     /**
      * Get responses for a specific feedback (asset + client + index)
+     * @param asset - Agent asset pubkey (base58)
+     * @param client - Client pubkey (base58)
+     * @param feedbackIndex - Feedback index
+     * @param limit - Max responses to return (default: 100, prevents large payloads)
      */
-    async getFeedbackResponsesFor(asset, client, feedbackIndex) {
+    async getFeedbackResponsesFor(asset, client, feedbackIndex, limit = 100) {
         const query = this.buildQuery({
             asset: `eq.${asset}`,
             client_address: `eq.${client}`,
             feedback_index: `eq.${feedbackIndex.toString()}`,
             order: 'created_at.asc',
+            limit,
         });
         return this.request(`/feedback_responses${query}`);
     }
+    async getRevocations(asset) {
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            order: 'revoke_count.asc',
+        });
+        return this.request(`/revocations${query}`);
+    }
+    async getLastFeedbackDigest(asset) {
+        // Get the truly last feedback by block_slot (hash-chain is ordered by slot, not index)
+        const lastQuery = this.buildQuery({
+            asset: `eq.${asset}`,
+            order: 'block_slot.desc',
+            limit: 1,
+        });
+        const lastFeedback = await this.request(`/feedbacks${lastQuery}`);
+        if (lastFeedback.length === 0) {
+            return { digest: null, count: 0 };
+        }
+        // Get count using Prefer: count=exact header (PostgREST standard)
+        const count = await this.getCount('feedbacks', { asset: `eq.${asset}` });
+        return { digest: lastFeedback[0].running_digest, count };
+    }
+    async getLastResponseDigest(asset) {
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            order: 'created_at.desc',
+            limit: 1,
+        });
+        const responses = await this.request(`/feedback_responses${query}`);
+        if (responses.length === 0) {
+            return { digest: null, count: 0 };
+        }
+        const countQuery = this.buildQuery({ asset: `eq.${asset}` });
+        const allResponses = await this.request(`/feedback_responses${countQuery}&select=count`);
+        return { digest: responses[0].running_digest, count: allResponses[0]?.count || 0 };
+    }
+    async getLastRevokeDigest(asset) {
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            order: 'revoke_count.desc',
+            limit: 1,
+        });
+        const revocations = await this.request(`/revocations${query}`);
+        if (revocations.length === 0) {
+            return { digest: null, count: 0 };
+        }
+        return { digest: revocations[0].running_digest, count: revocations[0].revoke_count };
+    }
+    // ============================================================================
+    // Spot Check Methods (for integrity verification)
+    // ============================================================================
+    /**
+     * Get feedbacks at specific indices for spot checking
+     * @param asset - Agent asset pubkey
+     * @param indices - Array of feedback indices to check
+     * @returns Map of index -> feedback (null if missing)
+     */
+    async getFeedbacksAtIndices(asset, indices) {
+        if (indices.length === 0)
+            return new Map();
+        // PostgREST IN query: feedback_index=in.(0,5,10,15)
+        const inClause = `in.(${indices.join(',')})`;
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            feedback_index: inClause,
+            order: 'feedback_index.asc',
+        });
+        const feedbacks = await this.request(`/feedbacks${query}`);
+        // Build result map
+        const result = new Map();
+        for (const idx of indices) {
+            result.set(idx, null);
+        }
+        for (const fb of feedbacks) {
+            result.set(fb.feedback_index, fb);
+        }
+        return result;
+    }
+    /**
+     * Get responses count for an asset
+     */
+    async getResponseCount(asset) {
+        const query = this.buildQuery({ asset: `eq.${asset}` });
+        const result = await this.request(`/feedback_responses${query}&select=count`);
+        return result[0]?.count || 0;
+    }
+    /**
+     * Get responses at specific offsets for spot checking
+     * @param asset - Agent asset pubkey
+     * @param offsets - Array of offsets (0-based) to check
+     * @returns Map of offset -> response (null if missing)
+     */
+    async getResponsesAtOffsets(asset, offsets) {
+        if (offsets.length === 0)
+            return new Map();
+        const result = new Map();
+        for (const offset of offsets) {
+            result.set(offset, null);
+        }
+        // Fetch each offset individually (PostgREST doesn't support IN on offsets)
+        await Promise.all(offsets.map(async (offset) => {
+            const query = this.buildQuery({
+                asset: `eq.${asset}`,
+                order: 'created_at.asc',
+                offset,
+                limit: 1,
+            });
+            const responses = await this.request(`/feedback_responses${query}`);
+            if (responses.length > 0) {
+                result.set(offset, responses[0]);
+            }
+        }));
+        return result;
+    }
+    /**
+     * Get revocations at specific revoke counts for spot checking
+     * @param asset - Agent asset pubkey
+     * @param revokeCounts - Array of revoke counts (1-based) to check
+     * @returns Map of revokeCount -> revocation (null if missing)
+     */
+    async getRevocationsAtCounts(asset, revokeCounts) {
+        if (revokeCounts.length === 0)
+            return new Map();
+        // PostgREST IN query: revoke_count=in.(1,5,10)
+        const inClause = `in.(${revokeCounts.join(',')})`;
+        const query = this.buildQuery({
+            asset: `eq.${asset}`,
+            revoke_count: inClause,
+            order: 'revoke_count.asc',
+        });
+        const revocations = await this.request(`/revocations${query}`);
+        // Build result map
+        const result = new Map();
+        for (const rc of revokeCounts) {
+            result.set(rc, null);
+        }
+        for (const rev of revocations) {
+            result.set(rev.revoke_count, rev);
+        }
+        return result;
+    }
 }
-// Modified:
-// - IndexedFeedbackResponse: Added client_address field
-// - Added getFeedback method to query by asset, client, and feedbackIndex
-// - Added getFeedbackResponsesFor method to query responses for specific feedback
 //# sourceMappingURL=indexer-client.js.map

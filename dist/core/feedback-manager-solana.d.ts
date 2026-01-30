@@ -193,8 +193,8 @@ export declare class SolanaFeedbackManager {
      * @returns Map of asset (base58 string) -> SolanaFeedback[]
      *
      * v0.4.0: FeedbackAccount PDAs no longer exist - uses indexer
+     * v0.4.2: Optimized to use single bulk query instead of N+1 pattern
      * REQUIRES indexer to be configured
-     * Note: For large datasets, consider using indexer APIs directly
      */
     fetchAllFeedbacks(includeRevoked?: boolean, options?: FeedbackQueryOptions): Promise<Map<string, SolanaFeedback[]>>;
 }

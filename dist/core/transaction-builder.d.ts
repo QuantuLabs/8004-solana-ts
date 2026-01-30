@@ -18,10 +18,6 @@ export interface TransactionResult {
     success: boolean;
     error?: string;
 }
-/**
- * Options for all write methods
- * Use skipSend to get the serialized transaction instead of sending it
- */
 export interface WriteOptions {
     /** If true, returns serialized transaction instead of sending */
     skipSend?: boolean;
@@ -32,6 +28,12 @@ export interface WriteOptions {
      * Security: Explicitly specifying feePayer prevents implicit fee payment assumptions
      */
     feePayer?: PublicKey;
+    /**
+     * Compute unit limit for the transaction (default: 400,000)
+     * Increase if transactions fail with "exceeded CUs" error
+     * Decrease to optimize priority fee costs
+     */
+    computeUnits?: number;
 }
 /**
  * Extended options for giveFeedback
@@ -171,7 +173,7 @@ export declare class IdentityTransactionBuilder {
      */
     setAgentWallet(asset: PublicKey, newWallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Build the message to sign for setAgentWallet - v0.3.0
+     * Build the message to sign for setAgentWallet
      * Use this to construct the message that must be signed by the new wallet
      * @param asset - Agent Core asset
      * @param newWallet - New operational wallet public key
@@ -224,9 +226,9 @@ export declare class ReputationTransactionBuilder {
      * @param feedbackIndex - Feedback index to revoke
      * @param options - Write options (skipSend, signer)
      *
-     * v0.4.0 BREAKING: Now uses ATOM Engine CPI for reputation tracking.
+     * v0.5.0: Now requires feedbackHash parameter for on-chain verification.
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, feedbackHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback
      * @param asset - Agent Core asset

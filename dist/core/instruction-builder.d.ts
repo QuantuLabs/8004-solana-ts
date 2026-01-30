@@ -20,15 +20,15 @@ export declare class IdentityInstructionBuilder {
     /**
      * Build register instruction (Metaplex Core)
      * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
      */
-    buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
+    buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string, rootConfig?: PublicKey): TransactionInstruction;
     /**
      * Build register_with_options instruction (Metaplex Core)
      * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
      */
-    buildRegisterWithOptions(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri: string, atomEnabled: boolean): TransactionInstruction;
+    buildRegisterWithOptions(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri: string, atomEnabled: boolean, rootConfig?: PublicKey): TransactionInstruction;
     /**
      * Build enable_atom instruction (one-way)
      * Accounts: agent_account, asset, owner (signer)
@@ -80,7 +80,6 @@ export declare class IdentityInstructionBuilder {
      * NOTE: Requires Ed25519 signature instruction immediately before in transaction
      */
     buildSetAgentWallet(owner: PublicKey, agentAccount: PublicKey, asset: PublicKey, newWallet: PublicKey, deadline: bigint): TransactionInstruction;
-    private serializeString;
     private serializeOption;
 }
 /**
@@ -100,12 +99,11 @@ export declare class ReputationInstructionBuilder {
     private serializeI64;
     private serializeOptionU8;
     /**
-     * Build revokeFeedback instruction - v0.4.0
-     * Matches: revoke_feedback(feedback_index)
+     * Build revokeFeedback instruction - v0.5.0
+     * Matches: revoke_feedback(feedback_index, feedback_hash)
      * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
-     * v0.4.0 BREAKING: Removed feedback_account and agent_reputation, added ATOM Engine CPI accounts
      */
-    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, feedbackIndex: bigint): TransactionInstruction;
+    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, feedbackIndex: bigint, feedbackHash: Buffer): TransactionInstruction;
     /**
      * Build appendResponse instruction
      * Accounts: responder (signer), agent_account (mut), asset
@@ -116,7 +114,6 @@ export declare class ReputationInstructionBuilder {
      * This method will throw an error when called.
      */
     buildSetFeedbackTags(_client: PublicKey, _payer: PublicKey, _feedbackAccount: PublicKey, _feedbackTags: PublicKey, _feedbackIndex: bigint, _tag1: string, _tag2: string): TransactionInstruction;
-    private serializeString;
     private serializeU64;
 }
 /**
@@ -148,7 +145,6 @@ export declare class ValidationInstructionBuilder {
      * This method will throw an error when called.
      */
     buildCloseValidation(_closer: PublicKey, _asset: PublicKey, _agentAccount: PublicKey, _validationRequest: PublicKey, _rentReceiver: PublicKey): TransactionInstruction;
-    private serializeString;
     private serializeU64;
     private serializeU32;
 }

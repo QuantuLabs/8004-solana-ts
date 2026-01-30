@@ -22,6 +22,15 @@ export declare class UnsupportedRpcError extends Error {
     constructor(operation: string);
 }
 /**
+ * Error thrown when an RPC operation fails due to network issues
+ * Distinguishes network failures from "account not found" (which returns null)
+ */
+export declare class RpcNetworkError extends Error {
+    readonly operation: string;
+    readonly cause: unknown;
+    constructor(operation: string, cause: unknown);
+}
+/**
  * Lightweight Solana client for 8004 read operations
  * Avoids Anchor dependency for smaller package size
  */
@@ -44,16 +53,19 @@ export declare class SolanaClient {
     /**
      * Get single account data
      * Returns null if account doesn't exist
+     * @throws RpcNetworkError if RPC call fails due to network/server issues
      */
     getAccount(address: PublicKey): Promise<Buffer | null>;
     /**
      * Get multiple accounts in a single RPC call
      * More efficient than individual getAccount calls
+     * @throws RpcNetworkError if RPC call fails due to network/server issues
      */
     getMultipleAccounts(addresses: PublicKey[]): Promise<(Buffer | null)[]>;
     /**
      * Get all program accounts with optional filters
      * Used for queries like "get all feedbacks for agent X"
+     * @throws RpcNetworkError if RPC call fails due to network/server issues
      */
     getProgramAccounts(programId: PublicKey, filters?: GetProgramAccountsFilter[]): Promise<{
         pubkey: PublicKey;
@@ -77,6 +89,7 @@ export declare class SolanaClient {
     }[]>;
     /**
      * Get account info with full metadata
+     * @throws RpcNetworkError if RPC call fails due to network/server issues
      */
     getAccountInfo(address: PublicKey): Promise<AccountInfo<Buffer> | null>;
     /**

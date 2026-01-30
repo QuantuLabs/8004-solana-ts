@@ -110,6 +110,99 @@ export interface NormalizedValidation {
     request_hash: string;
 }
 /**
+ * Hash-chain integrity verification result
+ */
+/**
+ * Status of hash-chain integrity verification
+ * - 'valid': All digests match - indexer is fully synced and trustworthy
+ * - 'syncing': Indexer is behind on-chain (count mismatch) - not corruption, just lag
+ * - 'corrupted': Digest mismatch with matching counts - data integrity issue
+ * - 'error': Verification failed (network, missing agent, etc.)
+ */
+export type IntegrityStatus = 'valid' | 'syncing' | 'corrupted' | 'error';
+export interface IntegrityChainResult {
+    onChain: string;
+    indexer: string | null;
+    countOnChain: number;
+    countIndexer: number;
+    match: boolean;
+    /** How many items indexer is behind (positive = behind, negative = ahead which shouldn't happen) */
+    lag: number;
+}
+export interface IntegrityResult {
+    /** Overall validity - true only if status is 'valid' */
+    valid: boolean;
+    /** Detailed status distinguishing sync lag from corruption */
+    status: IntegrityStatus;
+    asset: string;
+    indexerUrl: string;
+    chains: {
+        feedback: IntegrityChainResult;
+        response: IntegrityChainResult;
+        revoke: IntegrityChainResult;
+    };
+    /** Total lag across all chains */
+    totalLag: number;
+    /** Whether indexer can be trusted for reads (valid or syncing with small lag) */
+    trustworthy: boolean;
+    error?: {
+        message: string;
+        recommendation: string;
+    };
+}
+/**
+ * Options for deep integrity verification
+ */
+export interface DeepIntegrityOptions {
+    /** Number of random spot checks per chain (default: 5) */
+    spotChecks?: number;
+    /** Verify existence of first and last items (default: true) */
+    checkBoundaries?: boolean;
+    /**
+     * Verify content hashes for spot-checked items (default: false)
+     * This detects data modification attacks where indexer returns
+     * valid digests but serves modified content (wrong scores, tags, etc.)
+     * Requires on-chain comparison so it's slower.
+     */
+    verifyContent?: boolean;
+}
+/**
+ * Result of a spot check - verifying a specific item exists and is unmodified
+ */
+export interface SpotCheckResult {
+    index: number;
+    /** Item exists in indexer */
+    exists: boolean;
+    /** Running digest is present */
+    digestMatch?: boolean;
+    /**
+     * Content hash verification result (only if verifyContent=true)
+     * - true: content hash matches (data unmodified)
+     * - false: content hash mismatch (data was modified!)
+     * - undefined: verification not performed or not possible
+     */
+    contentValid?: boolean;
+    /** Error during content verification */
+    contentError?: string;
+}
+/**
+ * Extended integrity result with spot check details
+ */
+export interface DeepIntegrityResult extends IntegrityResult {
+    /** Spot check results for each chain */
+    spotChecks: {
+        feedback: SpotCheckResult[];
+        response: SpotCheckResult[];
+        revoke: SpotCheckResult[];
+    };
+    /** True if all spot checks passed */
+    spotChecksPassed: boolean;
+    /** Number of missing items detected via spot checks */
+    missingItems: number;
+    /** Number of items with modified content (content hash mismatch) */
+    modifiedItems: number;
+}
+/**
  * Options for waitForValidation
  */
 export interface WaitForValidationOptions {
@@ -136,6 +229,7 @@ export declare class SolanaSDK {
     private readonly atomTxBuilder;
     private mintResolver?;
     private baseCollection?;
+    private _initPromise?;
     private readonly indexerClient;
     private readonly useIndexer;
     private readonly indexerFallback;
@@ -147,6 +241,7 @@ export declare class SolanaSDK {
     private isSmallQuery;
     /**
      * Initialize the agent mint resolver and base collection (lazy initialization)
+     * Uses promise lock to prevent redundant concurrent network calls
      */
     private initializeMintResolver;
     /**
@@ -599,7 +694,7 @@ export declare class SolanaSDK {
     /** Set agent wallet - advanced version with pre-signed signature */
     setAgentWallet(asset: PublicKey, wallet: PublicKey, signature: Uint8Array, deadline: bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Set agent metadata (write operation) - v0.3.0
+     * Set agent metadata (write operation)
      * @param asset - Agent Core asset pubkey
      * @param key - Metadata key
      * @param value - Metadata value
@@ -627,12 +722,13 @@ export declare class SolanaSDK {
         feedbackIndex: bigint;
     })>;
     /**
-     * Revoke feedback (write operation) - v0.3.0
+     * Revoke feedback (write operation) - v0.5.0
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
+     * @param feedbackHash - Hash of the feedback to revoke (from NewFeedback event or computed from feedbackUri)
      * @param options - Write options (skipSend, signer)
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, feedbackHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback (write operation)
      * @param asset - Agent Core asset pubkey
@@ -719,6 +815,16 @@ export declare class SolanaSDK {
     sign(asset: PublicKey, data: unknown, options?: SignOptions): string;
     /**
      * Verify a signed payload against an agent wallet or provided public key
+     *
+     * NOTE: If publicKey is not provided, this method makes a network call to
+     * fetch the agent's wallet from on-chain data. For offline verification,
+     * always provide the publicKey parameter.
+     *
+     * @param payloadOrUri - Signed payload or URI to fetch it from
+     * @param asset - Agent Core asset pubkey
+     * @param publicKey - Optional: verifier public key (avoids network call if provided)
+     * @returns True if signature is valid
+     * @throws RpcNetworkError if publicKey not provided and network call fails
      */
     verify(payloadOrUri: string | SignedPayloadV1, asset: PublicKey, publicKey?: PublicKey): Promise<boolean>;
     private resolveSignedPayloadInput;
@@ -788,6 +894,34 @@ export declare class SolanaSDK {
      * const dataHash = await SolanaSDK.computeHash(Buffer.from(jsonData));
      */
     static computeHash(data: string | Buffer): Promise<Buffer>;
+    /**
+     * Verify indexer integrity against on-chain hash-chain digests (O(1) verification)
+     * Distinguishes between sync lag (indexer behind) and corruption (digest mismatch)
+     *
+     * @param asset - Agent Core asset pubkey
+     * @returns IntegrityResult with detailed status and recommendations
+     *
+     * Status meanings:
+     * - 'valid': All digests match, indexer fully synced
+     * - 'syncing': Indexer is behind (count < on-chain) - safe to use with caution
+     * - 'corrupted': Digest mismatch with same counts - do not trust
+     * - 'error': Verification failed
+     */
+    verifyIntegrity(asset: PublicKey): Promise<IntegrityResult>;
+    /**
+     * Deep integrity verification with random spot checks
+     * Detects if indexer has correct digest but deleted data from DB
+     *
+     * @param asset - Agent Core asset pubkey
+     * @param options - Verification options (spot check count, boundary checks)
+     * @returns DeepIntegrityResult with spot check details
+     *
+     * Use cases:
+     * - Detect malicious indexer that stores digests but deletes data
+     * - Verify data completeness beyond digest matching
+     * - Multi-tier verification for high-value operations
+     */
+    verifyIntegrityDeep(asset: PublicKey, options?: DeepIntegrityOptions): Promise<DeepIntegrityResult>;
     /**
      * Compute hash for a URI
      * - IPFS/Arweave URIs: zeros (CID already contains content hash)

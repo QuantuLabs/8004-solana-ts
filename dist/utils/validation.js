@@ -16,7 +16,11 @@ const PRIVATE_IP_PATTERNS = [
     /^\[fd/i,
 ];
 const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,}|[a-zA-Z0-9]{46,59})$/;
-function isPrivateHost(hostname) {
+/**
+ * Check if a hostname is a private/internal IP address
+ * Used for SSRF protection
+ */
+export function isPrivateHost(hostname) {
     return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(hostname));
 }
 export function isValidAgentId(agentId) {

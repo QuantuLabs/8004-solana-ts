@@ -68,8 +68,8 @@ export declare class RegistryConfig {
     isUserRegistry(): boolean;
 }
 /**
- * Agent Account (Identity Registry) - v0.3.0
- * Represents an agent NFT
+ * Agent Account (Identity Registry) - v0.5.0
+ * Represents an agent NFT with hash-chain support
  * Seeds: ["agent", asset]
  */
 export declare class AgentAccount {
@@ -79,6 +79,12 @@ export declare class AgentAccount {
     bump: number;
     atom_enabled: number;
     agent_wallet: Uint8Array | null;
+    feedback_digest: Uint8Array;
+    feedback_count: bigint;
+    response_digest: Uint8Array;
+    response_count: bigint;
+    revoke_digest: Uint8Array;
+    revoke_count: bigint;
     agent_uri: string;
     nft_name: string;
     constructor(fields: {
@@ -88,6 +94,12 @@ export declare class AgentAccount {
         bump: number;
         atom_enabled: number;
         agent_wallet: Uint8Array | null;
+        feedback_digest: Uint8Array;
+        feedback_count: bigint;
+        response_digest: Uint8Array;
+        response_count: bigint;
+        revoke_digest: Uint8Array;
+        revoke_count: bigint;
         agent_uri: string;
         nft_name: string;
     });
