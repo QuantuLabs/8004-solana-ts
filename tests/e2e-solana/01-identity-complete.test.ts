@@ -8,8 +8,8 @@ import { SolanaSDK } from '../../src/core/sdk-solana';
 import bs58 from 'bs58';
 
 const RPC_URL = process.env.RPC_URL || 'http://localhost:8899';
-const PROGRAM_ID = process.env.AGENT_REGISTRY_PROGRAM_ID || '6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1';
-const ATOM_ENGINE_ID = process.env.ATOM_ENGINE_PROGRAM_ID || '6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf';
+const PROGRAM_ID = process.env.AGENT_REGISTRY_PROGRAM_ID || '8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N';
+const ATOM_ENGINE_ID = process.env.ATOM_ENGINE_PROGRAM_ID || 'AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8';
 const MPL_CORE_ID = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 
 describe('Identity Module - Complete Coverage (15 Instructions)', () => {
@@ -31,15 +31,19 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
     // Generate wallet2
     wallet2Keypair = Keypair.generate();
 
-    // Fund both wallets
-    const airdrop1 = await connection.requestAirdrop(ownerKeypair.publicKey, 10 * LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(airdrop1);
+    // Fund both wallets with retry logic for localnet
+    const fundWallet = async (pubkey: PublicKey) => {
+      const sig = await connection.requestAirdrop(pubkey, 10 * LAMPORTS_PER_SOL);
+      const latestBlockhash = await connection.getLatestBlockhash();
+      await connection.confirmTransaction({
+        signature: sig,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      }, 'confirmed');
+    };
 
-    const airdrop2 = await connection.requestAirdrop(wallet2Keypair.publicKey, 10 * LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(airdrop2);
-
-    // Wait for confirmation
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await fundWallet(ownerKeypair.publicKey);
+    await fundWallet(wallet2Keypair.publicKey);
 
     // Initialize SDK
     sdk = new SolanaSDK({
@@ -56,7 +60,7 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
     console.log('Owner:', ownerKeypair.publicKey.toBase58());
     console.log('Wallet2:', wallet2Keypair.publicKey.toBase58());
     console.log('Programs:', { agentRegistry: PROGRAM_ID, atomEngine: ATOM_ENGINE_ID });
-  }, 30000);
+  }, 120000);
 
   // ========================================
   // 1. initialize (root config + base registry)
@@ -105,6 +109,18 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       expect(result.collection).toBeDefined();
       userCollection = result.collection!;
 
+      // Wait for indexer
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify collection via on-chain query
+      const collectionInfo = await sdk.getCollection(userCollection);
+      if (collectionInfo) {
+        expect(collectionInfo.collection.toBase58()).toBe(userCollection.toBase58());
+        console.log('[OK] User registry verified in on-chain data');
+      } else {
+        console.log('⚠️  Collection created on-chain, not yet available via query');
+      }
+
       console.log('[OK] User registry created:', userCollection.toBase58());
       console.log('     Signature:', result.signature);
     }, 30000);
@@ -124,6 +140,18 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       const result = await sdk.updateCollectionUri(userCollection, newUri);
 
       expect(result.success).toBe(true);
+
+      // Wait for indexer
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify collection URI updated via on-chain query
+      const collectionInfo = await sdk.getCollection(userCollection);
+      if (collectionInfo) {
+        // Collection info should reflect the update
+        expect(collectionInfo.collection.toBase58()).toBe(userCollection.toBase58());
+        console.log('[OK] User registry URI update verified');
+      }
+
       console.log('[OK] User registry metadata updated');
       console.log('     Signature:', result.signature);
     }, 30000);
@@ -164,6 +192,19 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       collection = baseCollection!;
       agent = result.asset!;
 
+      // Wait for indexer
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify agent indexed
+      const agentData = await sdk.loadAgent(agent);
+      if (agentData) {
+        expect(agentData.agent_uri).toBe('ipfs://QmTestAgent');
+        expect(new PublicKey(agentData.collection).toBase58()).toBe(collection.toBase58());
+        console.log('[OK] Agent verified in indexer');
+      } else {
+        console.log('⚠️  Agent registered on-chain, indexer not synced');
+      }
+
       console.log('[OK] Agent registered in base collection');
       console.log('     Asset:', agent.toBase58());
       console.log('     Signature:', result.signature);
@@ -184,6 +225,19 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       expect(result.success).toBe(true);
       expect(result.asset).toBeDefined();
       agent2 = result.asset!;
+
+      // Wait for indexer
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify agent indexed in user registry
+      const agentData = await sdk.loadAgent(agent2);
+      if (agentData) {
+        expect(agentData.agent_uri).toBe('ipfs://QmUserRegistryAgent');
+        expect(new PublicKey(agentData.collection).toBase58()).toBe(userCollection.toBase58());
+        console.log('[OK] Agent verified in user registry via indexer');
+      } else {
+        console.log('⚠️  Agent registered on-chain, indexer not synced');
+      }
 
       console.log('[OK] Agent registered in user registry');
       console.log('     Asset:', agent2.toBase58());
@@ -273,6 +327,19 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       const result = await sdk.setAgentUri(agent, collection, newUri);
 
       expect(result.success).toBe(true);
+
+      // Wait for indexer
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify URI updated via indexer
+      const agentData = await sdk.loadAgent(agent);
+      if (agentData) {
+        expect(agentData.agent_uri).toBe(newUri);
+        console.log('[OK] Agent URI verified in indexer');
+      } else {
+        console.log('⚠️  URI updated on-chain, indexer not synced');
+      }
+
       console.log('[OK] Agent URI updated');
       console.log('     New URI:', newUri);
       console.log('     Signature:', result.signature);

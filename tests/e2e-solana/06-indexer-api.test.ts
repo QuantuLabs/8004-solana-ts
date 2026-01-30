@@ -631,19 +631,20 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
     it('should include revoked feedbacks when requested', async () => {
       // Give feedback and then revoke it
       const revokeUri = `ipfs://revoke_${Date.now()}`;
+      const revokeHash = createFeedbackHash(revokeUri);
       const feedbackResult = await clientSdk.giveFeedback(agent, {
         value: 70n,
         score: 70,
         tag1: 'to-revoke',
         feedbackUri: revokeUri,
-        feedbackHash: createFeedbackHash(revokeUri),
+        feedbackHash: revokeHash,
       });
       expect(feedbackResult.success).toBe(true);
       const index = feedbackResult.feedbackIndex!;
 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      await clientSdk.revokeFeedback(agent, index);
+      await clientSdk.revokeFeedback(agent, index, revokeHash);
 
       await new Promise(resolve => setTimeout(resolve, 3000));
 

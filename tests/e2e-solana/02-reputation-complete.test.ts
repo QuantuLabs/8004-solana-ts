@@ -243,7 +243,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           { feedbackIndex: getNextFeedbackIndex() }
         );
         expect(result.success).toBe(false);
-        expect(result.error).toContain('between 0 and 100');
+        expect(result.error).toContain('0-100');
       });
     });
 
@@ -398,10 +398,12 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 
   describe('2. revoke_feedback', () => {
     let revokableFeedbackIndex: bigint;
+    let revokableFeedbackHash: Buffer;
 
     beforeAll(async () => {
       // Create feedback to revoke
       const revUri = `ipfs://revoke_${Date.now()}`;
+      revokableFeedbackHash = createFeedbackHash(revUri);
       const result = await clientSdk.giveFeedback(
         agent,
         {
@@ -409,7 +411,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 70,
           tag1: 'revoke-test',
           feedbackUri: revUri,
-          feedbackHash: createFeedbackHash(revUri),
+          feedbackHash: revokableFeedbackHash,
         },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -423,7 +425,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       it('should revoke feedback by original client', async () => {
         const result = await clientSdk.revokeFeedback(
           agent,
-          revokableFeedbackIndex
+          revokableFeedbackIndex,
+          revokableFeedbackHash
         );
         // On-chain operation must succeed
         expect(result.success).toBe(true);
@@ -444,6 +447,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       it('should update ATOM stats after revocation', async () => {
         // Give feedback
         const atomRevokeUri = `ipfs://atomrevoke_${Date.now()}`;
+        const atomRevokeHash = createFeedbackHash(atomRevokeUri);
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
@@ -451,7 +455,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 65,
             tag1: 'atom-revoke',
             feedbackUri: atomRevokeUri,
-            feedbackHash: createFeedbackHash(atomRevokeUri),
+            feedbackHash: atomRevokeHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -464,7 +468,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const feedbackCountBefore = statsBefore?.feedbackCount || BigInt(0);
 
         // Revoke feedback
-        const revokeResult = await clientSdk.revokeFeedback(agent, index);
+        const revokeResult = await clientSdk.revokeFeedback(agent, index, atomRevokeHash);
         expect(revokeResult.success).toBe(true);
 
         await new Promise(resolve => setTimeout(resolve, 4000));
@@ -477,17 +481,21 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
     });
 
     describe('Edge Cases', () => {
-      it('should soft-fail when revoking non-existent feedback', async () => {
+      it('should fail when revoking non-existent feedback', async () => {
         const nonExistentIndex = BigInt(999999);
-        const result = await clientSdk.revokeFeedback(agent, nonExistentIndex);
+        // Use a dummy hash for non-existent feedback
+        const dummyHash = createFeedbackHash('ipfs://nonexistent');
+        const result = await clientSdk.revokeFeedback(agent, nonExistentIndex, dummyHash);
 
-        // Should not error (soft-fail per 8004)
-        expect(result.success).toBe(true);
+        // Program validates feedback_index < feedback_count
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('InvalidFeedbackIndex');
       });
 
       it('should soft-fail when revoking already revoked feedback', async () => {
         // Give and revoke feedback
         const doubleRevokeUri = `ipfs://doublerevoke_${Date.now()}`;
+        const doubleRevokeHash = createFeedbackHash(doubleRevokeUri);
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
@@ -495,7 +503,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 60,
             tag1: 'double-revoke',
             feedbackUri: doubleRevokeUri,
-            feedbackHash: createFeedbackHash(doubleRevokeUri),
+            feedbackHash: doubleRevokeHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -504,13 +512,13 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 
         await new Promise(resolve => setTimeout(resolve, 4000));
 
-        const revokeResult1 = await clientSdk.revokeFeedback(agent, index);
+        const revokeResult1 = await clientSdk.revokeFeedback(agent, index, doubleRevokeHash);
         expect(revokeResult1.success).toBe(true);
 
         await new Promise(resolve => setTimeout(resolve, 4000));
 
         // Revoke again (should soft-fail)
-        const revokeResult2 = await clientSdk.revokeFeedback(agent, index);
+        const revokeResult2 = await clientSdk.revokeFeedback(agent, index, doubleRevokeHash);
         expect(revokeResult2.success).toBe(true); // Soft-fail
       });
     });
@@ -519,6 +527,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       it('should soft-fail revocation by non-original client (different PDA)', async () => {
         // Client gives feedback
         const unauthUri = `ipfs://unauth_${Date.now()}`;
+        const unauthHash = createFeedbackHash(unauthUri);
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
@@ -526,7 +535,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 55,
             tag1: 'unauthorized-revoke',
             feedbackUri: unauthUri,
-            feedbackHash: createFeedbackHash(unauthUri),
+            feedbackHash: unauthHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -544,7 +553,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           indexerUrl: process.env.INDEXER_URL || 'https://api.example.com',
         });
 
-        const revokeResult = await validatorSdk.revokeFeedback(agent, index);
+        const revokeResult = await validatorSdk.revokeFeedback(agent, index, unauthHash);
         // Per 8004, revoke is a soft-fail for non-matching PDAs
         expect(revokeResult.success).toBe(true);
 
@@ -567,10 +576,12 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
 
   describe('3. append_response', () => {
     let responseFeedbackIndex: bigint;
+    let responseFeedbackHash: Buffer;
 
     beforeAll(async () => {
       // Create feedback to respond to
       const responseTestUri = `ipfs://response_${Date.now()}`;
+      responseFeedbackHash = createFeedbackHash(responseTestUri);
       const result = await clientSdk.giveFeedback(
         agent,
         {
@@ -578,7 +589,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 92,
           tag1: 'response-test',
           feedbackUri: responseTestUri,
-          feedbackHash: createFeedbackHash(responseTestUri),
+          feedbackHash: responseFeedbackHash,
         },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -595,6 +606,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           responseFeedbackIndex,
+          responseFeedbackHash,
           responseUri
         );
 
@@ -618,6 +630,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       it('should allow owner to add multiple responses (8004 spec)', async () => {
         // Give feedback
         const multiRespUri = `ipfs://multiresponse_${Date.now()}`;
+        const multiRespHash = createFeedbackHash(multiRespUri);
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
@@ -625,7 +638,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 78,
             tag1: 'multi-response',
             feedbackUri: multiRespUri,
-            feedbackHash: createFeedbackHash(multiRespUri),
+            feedbackHash: multiRespHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -639,6 +652,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           index,
+          multiRespHash,
           `ipfs://response1_${Date.now()}`
         );
         expect(response1.success).toBe(true);
@@ -651,6 +665,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           index,
+          multiRespHash,
           response2Uri
         );
         expect(response2.success).toBe(true);
@@ -678,6 +693,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           responseFeedbackIndex,
+          responseFeedbackHash,
           uri250
         );
         expect(result.success).toBe(true);
@@ -689,6 +705,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           responseFeedbackIndex,
+          responseFeedbackHash,
           uri251
         );
         expect(result.success).toBe(false);
@@ -703,6 +720,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           responseFeedbackIndex,
+          responseFeedbackHash,
           responseUri
         );
 
@@ -728,6 +746,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
       it('should reject response from unauthorized wallet (not owner/agent_wallet)', async () => {
         // Give feedback
         const publicRespUri = `ipfs://publicresponse_${Date.now()}`;
+        const publicRespHash = createFeedbackHash(publicRespUri);
         const giveResult = await clientSdk.giveFeedback(
           agent,
           {
@@ -735,7 +754,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 82,
             tag1: 'public-response',
             feedbackUri: publicRespUri,
-            feedbackHash: createFeedbackHash(publicRespUri),
+            feedbackHash: publicRespHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -755,6 +774,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           agent,
           clientWallet.publicKey,
           index,
+          publicRespHash,
           `ipfs://validatorresponse_${Date.now()}`
         );
 
@@ -763,19 +783,21 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         expect(result.error).toContain('Unauthorized');
       });
 
-      it('should accept response to non-existent feedback (soft-success, event only)', async () => {
-        // append_response doesn't check if feedback exists - it just emits an event
+      it('should reject response to non-existent feedback', async () => {
+        // append_response validates feedback_index < feedback_count
         const nonExistentIndex = BigInt(888888);
+        const dummyHash = createFeedbackHash('dummy');
         const result = await sdk.appendResponse(
           agent,
           clientWallet.publicKey,
           nonExistentIndex,
+          dummyHash,
           `ipfs://nonexistent_${Date.now()}`
         );
 
-        // Soft-success: owner is authorized, so event is emitted
-        // (feedback existence is not verified on-chain)
-        expect(result.success).toBe(true);
+        // Program validates feedback existence before allowing response
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('InvalidFeedbackIndex');
       });
     });
   });

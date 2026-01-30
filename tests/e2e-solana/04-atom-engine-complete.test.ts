@@ -588,6 +588,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
   describe('6. revoke_stats', () => {
     let revokableAgent: PublicKey;
     let revokableFeedbackIndex: bigint;
+    let revokableFeedbackHash: Buffer;
 
     beforeAll(async () => {
       // Create agent with feedback to revoke
@@ -604,6 +605,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
 
       // Give feedback
       const revokeUri = `ipfs://revoke_${Date.now()}`;
+      revokableFeedbackHash = createFeedbackHash(revokeUri);
       const feedbackResult = await clientSdk.giveFeedback(
         revokableAgent,
         {
@@ -611,7 +613,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           score: 65,
           tag1: 'revoke-test',
           feedbackUri: revokeUri,
-          feedbackHash: createFeedbackHash(revokeUri),
+          feedbackHash: revokableFeedbackHash,
         }
       );
       expect(feedbackResult.success).toBe(true);
@@ -626,7 +628,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         const feedbackCountBefore = statsBefore?.feedback_count || BigInt(0);
 
         // Revoke feedback (triggers revoke_stats via CPI)
-        const result = await clientSdk.revokeFeedback(revokableAgent, revokableFeedbackIndex);
+        const result = await clientSdk.revokeFeedback(revokableAgent, revokableFeedbackIndex, revokableFeedbackHash);
         expect(result.success).toBe(true);
 
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -642,21 +644,25 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
     });
 
     describe('Edge Cases - Soft-Fail', () => {
-      it('should soft-fail when revoking non-existent feedback', async () => {
+      it('should fail when revoking non-existent feedback (hash mismatch)', async () => {
         const nonExistentIndex = BigInt(555555);
+        const dummyHash = createFeedbackHash('ipfs://nonexistent');
 
-        // Revoke non-existent feedback (should soft-fail per 8004)
-        const result = await clientSdk.revokeFeedback(revokableAgent, nonExistentIndex);
+        // Revoke non-existent feedback - should fail due to hash mismatch
+        const result = await clientSdk.revokeFeedback(revokableAgent, nonExistentIndex, dummyHash);
 
-        // Should not error (soft-fail)
-        expect(result.success).toBe(true);
-        console.log('✅ revoke_stats soft-fail behavior confirmed');
+        // Should fail (feedbackHash doesn't match on-chain data)
+        expect(result.success).toBe(false);
+        console.log('✅ revoke_stats correctly rejects non-existent feedback');
       });
 
       it('should handle ring buffer correctly when feedback not in buffer', async () => {
         // Give many feedbacks to fill ring buffer
+        const fillHashes: Buffer[] = [];
         for (let i = 0; i < 20; i++) {
           const fillUri = `ipfs://fill${i}_${Date.now()}`;
+          const fillHash = createFeedbackHash(fillUri);
+          fillHashes.push(fillHash);
           await clientSdk.giveFeedback(
             revokableAgent,
             {
@@ -664,14 +670,15 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
               score: 70 + (i % 20),
               tag1: `fillbuffer-${i}`,
               feedbackUri: fillUri,
-              feedbackHash: createFeedbackHash(fillUri),
+              feedbackHash: fillHash,
             }
           );
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        // Try to revoke old feedback (outside ring buffer)
-        const result = await clientSdk.revokeFeedback(revokableAgent, BigInt(1));
+        // Try to revoke old feedback (outside ring buffer) - use dummy hash since original is lost
+        const dummyOldHash = createFeedbackHash('ipfs://old_feedback');
+        const result = await clientSdk.revokeFeedback(revokableAgent, BigInt(1), dummyOldHash);
 
         // Should soft-fail (feedback not in ring buffer)
         expect(result.success).toBe(true);
@@ -694,6 +701,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         // This is enforced at program level via CPI signer checks
         // Test by ensuring revokeFeedback (legitimate CPI) works
         const cpiRevokeUri = `ipfs://cpirevoke_${Date.now()}`;
+        const cpiRevokeHash = createFeedbackHash(cpiRevokeUri);
         const feedbackResult = await clientSdk.giveFeedback(
           revokableAgent,
           {
@@ -701,7 +709,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
             score: 68,
             tag1: 'cpi-revoke-test',
             feedbackUri: cpiRevokeUri,
-            feedbackHash: createFeedbackHash(cpiRevokeUri),
+            feedbackHash: cpiRevokeHash,
           }
         );
         expect(feedbackResult.success).toBe(true);
@@ -709,7 +717,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
 
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        const result = await clientSdk.revokeFeedback(revokableAgent, index);
+        const result = await clientSdk.revokeFeedback(revokableAgent, index, cpiRevokeHash);
         expect(result.success).toBe(true);
 
         console.log('✅ CPI-only enforcement verified via legitimate revoke call');
@@ -741,6 +749,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
 
       // 3. Give feedback (update_stats via CPI)
       const lc1Uri = `ipfs://lc1_${Date.now()}`;
+      const lc1Hash = createFeedbackHash(lc1Uri);
       const feedback1 = await clientSdk.giveFeedback(
         lifecycleAgent,
         {
@@ -748,7 +757,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           score: 80,
           tag1: 'lifecycle-1',
           feedbackUri: lc1Uri,
-          feedbackHash: createFeedbackHash(lc1Uri),
+          feedbackHash: lc1Hash,
         }
       );
       expect(feedback1.success).toBe(true);
@@ -761,6 +770,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
 
       // 4. Give more feedback
       const lc2Uri = `ipfs://lc2_${Date.now()}`;
+      const lc2Hash = createFeedbackHash(lc2Uri);
       const feedback2 = await clientSdk.giveFeedback(
         lifecycleAgent,
         {
@@ -768,7 +778,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           score: 90,
           tag1: 'lifecycle-2',
           feedbackUri: lc2Uri,
-          feedbackHash: createFeedbackHash(lc2Uri),
+          feedbackHash: lc2Hash,
         }
       );
       expect(feedback2.success).toBe(true);
@@ -779,7 +789,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       expect(stats?.feedback_count).toBe(BigInt(2));
 
       // 5. Revoke first feedback (revoke_stats via CPI)
-      const revokeResult = await clientSdk.revokeFeedback(lifecycleAgent, feedback1.feedbackIndex!);
+      const revokeResult = await clientSdk.revokeFeedback(lifecycleAgent, feedback1.feedbackIndex!, lc1Hash);
       expect(revokeResult.success).toBe(true);
 
       await new Promise(resolve => setTimeout(resolve, 2000));
