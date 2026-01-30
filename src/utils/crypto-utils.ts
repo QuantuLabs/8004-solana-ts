@@ -43,6 +43,15 @@ export async function sha256(data: Uint8Array | string): Promise<Uint8Array> {
  * @throws Error if called in browser without Node.js crypto
  */
 export function sha256Sync(data: Uint8Array | string): Uint8Array {
+  // Check if we're in a browser environment (no Node.js crypto)
+  if (typeof globalThis !== 'undefined' &&
+      typeof (globalThis as unknown as { window?: unknown }).window !== 'undefined' &&
+      typeof require === 'undefined') {
+    throw new Error(
+      'sha256Sync is not available in browser. Use the async sha256() function instead.'
+    );
+  }
+
   const input = typeof data === 'string' ? new TextEncoder().encode(data) : data;
 
   // Node.js only - synchronous version
