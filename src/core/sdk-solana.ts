@@ -2491,7 +2491,7 @@ export class SolanaSDK {
     const toHex = (arr: Uint8Array): string => Buffer.from(arr).toString('hex');
     const isZero = (hex: string): boolean => /^0+$/.test(hex);
 
-    const emptyChain = (type: string): IntegrityChainResult => ({
+    const emptyChain = (_type: string): IntegrityChainResult => ({
       onChain: '',
       indexer: null,
       countOnChain: 0,
@@ -2726,7 +2726,6 @@ export class SolanaSDK {
       }
 
       // Add random indices
-      const remaining = Math.min(count, max) - indices.size;
       while (indices.size < Math.min(count + (checkBoundaries ? 2 : 0), max)) {
         indices.add(Math.floor(Math.random() * max));
       }
