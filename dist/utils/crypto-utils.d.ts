@@ -1,7 +1,16 @@
 /**
  * Cross-platform crypto utilities for browser compatibility
  * Uses WebCrypto API with Node.js fallback
+ *
+ * v0.6.0: Added keccak256 for SEAL v1 support
  */
+/**
+ * Compute Keccak-256 hash (synchronous)
+ * Used for SEAL v1 on-chain hash computation parity with Solana's keccak::hash()
+ *
+ * Uses @noble/hashes which is a well-audited, pure JS implementation
+ */
+export declare function keccak256(data: Uint8Array | Buffer): Buffer;
 /**
  * Generate cryptographically secure random bytes
  * Uses WebCrypto API (browser) with Node.js crypto fallback

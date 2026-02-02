@@ -47,7 +47,8 @@ export interface SolanaFeedback {
     isRevoked?: boolean;
     endpoint?: string;
     feedbackUri?: string;
-    feedbackHash?: Buffer;
+    feedbackFileHash?: Buffer;
+    sealHash?: Buffer;
     blockSlot?: bigint;
     txSignature?: string;
 }

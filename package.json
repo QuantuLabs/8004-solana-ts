@@ -1,6 +1,6 @@
 {
   "name": "8004-solana",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "TypeScript SDK for 8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,8 @@
     "test:e2e:atom": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/04-atom-engine-complete.test.ts --verbose",
     "test:e2e:security": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/05-security-attacks.test.ts --verbose",
     "test:e2e:indexer": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/06-indexer-api.test.ts --verbose",
-    "test:e2e:all": "npm run test:e2e:identity && npm run test:e2e:reputation && npm run test:e2e:validation && npm run test:e2e:atom && npm run test:e2e:security && npm run test:e2e:indexer",
+    "test:e2e:seal": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' jest tests/e2e-solana/09-seal-v1-complete.test.ts --verbose",
+    "test:e2e:all": "npm run test:e2e:identity && npm run test:e2e:reputation && npm run test:e2e:validation && npm run test:e2e:atom && npm run test:e2e:security && npm run test:e2e:indexer && npm run test:e2e:seal",
     "test:e2e:devnet": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/e2e-devnet-funded.test.ts --verbose --runInBand",
     "test:e2e:v050": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/07-v050-value-decimals.test.ts --verbose --runInBand",
     "test:e2e:gaming": "NODE_OPTIONS='--experimental-vm-modules' SOLANA_RPC_URL='https://api.devnet.solana.com' INDEXER_URL='https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1' jest tests/e2e-solana/08-reputation-gaming.test.ts --verbose --runInBand",
@@ -67,6 +68,7 @@
   },
   "dependencies": {
     "@coral-xyz/borsh": "^0.32.1",
+    "@noble/hashes": "^2.0.1",
     "@solana/web3.js": "^1.95.0",
     "borsh": "^0.7.0",
     "bs58": "^6.0.0",

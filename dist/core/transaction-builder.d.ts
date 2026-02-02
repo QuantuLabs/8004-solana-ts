@@ -221,25 +221,28 @@ export declare class ReputationTransactionBuilder {
         feedbackIndex: bigint;
     })>;
     /**
-     * Revoke feedback - v0.4.0
+     * Revoke feedback - v0.6.0 (SEAL v1)
      * @param asset - Agent Core asset
      * @param feedbackIndex - Feedback index to revoke
+     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param options - Write options (skipSend, signer)
      *
-     * v0.5.0: Now requires feedbackHash parameter for on-chain verification.
+     * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, feedbackHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, sealHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Append response to feedback
+     * Append response to feedback - v0.6.0 (SEAL v1)
      * @param asset - Agent Core asset
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index
-     * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
+     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
+     *
+     * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
      */
-    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: bigint, feedbackHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: bigint, sealHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set feedback tags (optional, creates FeedbackTagsPda) - v0.3.0
      * Creates a separate PDA for tags to save -42% cost when tags not needed

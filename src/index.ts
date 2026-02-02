@@ -72,6 +72,22 @@ export {
   getAllDomains,
 } from './core/oasf-validator.js';
 
+// ============================================================================
+// SEAL v1 exports (v0.6.0)
+// ============================================================================
+
+export {
+  computeSealHash,
+  computeFeedbackLeafV1,
+  verifySealHash,
+  createSealParams,
+  validateSealInputs,
+  MAX_TAG_LEN,
+  MAX_ENDPOINT_LEN,
+  MAX_URI_LEN,
+} from './core/seal.js';
+export type { SealParams } from './core/seal.js';
+
 // Export config reader
 export {
   fetchRegistryConfig,

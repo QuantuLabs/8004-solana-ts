@@ -91,7 +91,10 @@ export type FeedbackIdTuple = [AgentId, Address, number];
  */
 export type FeedbackId = string;
 /**
- * Parameters for giveFeedback - v0.5.0+
+ * Parameters for giveFeedback - v0.6.0 (SEAL v1)
+ *
+ * SEAL v1: The program computes the seal_hash on-chain from these parameters.
+ * feedbackFileHash is optional - only needed if you want to link to external file content.
  */
 export interface GiveFeedbackParams {
     /**
@@ -120,8 +123,12 @@ export interface GiveFeedbackParams {
     endpoint?: string;
     /** URI to detailed feedback file (max 250 UTF-8 bytes) */
     feedbackUri: string;
-    /** SHA-256 hash of feedback content (32 bytes) */
-    feedbackHash: Buffer;
+    /**
+     * SEAL v1: Optional hash of the feedback file content (32 bytes).
+     * Used for external file integrity verification.
+     * The on-chain seal_hash is computed from all parameters including this.
+     */
+    feedbackFileHash?: Buffer;
 }
 /**
  * Parameters for agent search
