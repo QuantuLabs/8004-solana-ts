@@ -91,24 +91,35 @@ export declare class ReputationInstructionBuilder {
     private programId;
     constructor();
     /**
-     * Build giveFeedback instruction - v0.5.0
-     * Matches: give_feedback(value, value_decimals, score, feedback_hash, feedback_index, tag1, tag2, endpoint, feedback_uri)
+     * Build giveFeedback instruction - v0.6.0 (SEAL v1)
+     * Matches: give_feedback(value, value_decimals, score, feedback_file_hash, tag1, tag2, endpoint, feedback_uri)
      * Accounts: client (signer), agent_account, asset, collection, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
+     *
+     * SEAL v1: The program computes seal_hash on-chain. feedbackFileHash is optional.
      */
-    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, value: bigint, valueDecimals: number, score: number | null, feedbackHash: Buffer, feedbackIndex: bigint, tag1: string, tag2: string, endpoint: string, feedbackUri: string): TransactionInstruction;
+    buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, value: bigint, valueDecimals: number, score: number | null, feedbackFileHash: Buffer | null, feedbackIndex: bigint, tag1: string, tag2: string, endpoint: string, feedbackUri: string): TransactionInstruction;
     private serializeI64;
     private serializeOptionU8;
     /**
-     * Build revokeFeedback instruction - v0.5.0
-     * Matches: revoke_feedback(feedback_index, feedback_hash)
-     * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
+     * Serialize Option<[u8; 32]> for SEAL v1
+     * Format: 1 byte flag (0=None, 1=Some) + 32 bytes if Some
      */
-    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, feedbackIndex: bigint, feedbackHash: Buffer): TransactionInstruction;
+    private serializeOption32Bytes;
     /**
-     * Build appendResponse instruction
-     * Accounts: responder (signer), agent_account (mut), asset
+     * Build revokeFeedback instruction - v0.6.0 (SEAL v1)
+     * Matches: revoke_feedback(feedback_index, seal_hash)
+     * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
+     *
+     * SEAL v1: Client must provide seal_hash (computed using computeSealHash)
      */
-    buildAppendResponse(responder: PublicKey, agentAccount: PublicKey, asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer, feedbackHash: Buffer): TransactionInstruction;
+    buildRevokeFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, feedbackIndex: bigint, sealHash: Buffer): TransactionInstruction;
+    /**
+     * Build appendResponse instruction - v0.6.0 (SEAL v1)
+     * Accounts: responder (signer), agent_account (mut), asset
+     *
+     * SEAL v1: Client must provide seal_hash from the original feedback
+     */
+    buildAppendResponse(responder: PublicKey, agentAccount: PublicKey, asset: PublicKey, client: PublicKey, feedbackIndex: bigint, responseUri: string, responseHash: Buffer, sealHash: Buffer): TransactionInstruction;
     /**
      * @deprecated Removed on-chain in v0.5.0 - tags are now included in give_feedback instruction
      * This method will throw an error when called.

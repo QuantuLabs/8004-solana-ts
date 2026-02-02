@@ -313,11 +313,13 @@ export class ReputationInstructionBuilder {
         this.programId = PROGRAM_ID;
     }
     /**
-     * Build giveFeedback instruction - v0.5.0
-     * Matches: give_feedback(value, value_decimals, score, feedback_hash, feedback_index, tag1, tag2, endpoint, feedback_uri)
+     * Build giveFeedback instruction - v0.6.0 (SEAL v1)
+     * Matches: give_feedback(value, value_decimals, score, feedback_file_hash, tag1, tag2, endpoint, feedback_uri)
      * Accounts: client (signer), agent_account, asset, collection, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
+     *
+     * SEAL v1: The program computes seal_hash on-chain. feedbackFileHash is optional.
      */
-    buildGiveFeedback(client, agentAccount, asset, collection, atomConfig, atomStats, registryAuthority, value, valueDecimals, score, feedbackHash, feedbackIndex, tag1, tag2, endpoint, feedbackUri) {
+    buildGiveFeedback(client, agentAccount, asset, collection, atomConfig, atomStats, registryAuthority, value, valueDecimals, score, feedbackFileHash, feedbackIndex, tag1, tag2, endpoint, feedbackUri) {
         if (typeof value !== 'bigint') {
             throw new Error(`value must be bigint, got ${typeof value}. Use BigInt(n) or validateValue().`);
         }
@@ -330,14 +332,18 @@ export class ReputationInstructionBuilder {
         if (value < I64_MIN || value > I64_MAX) {
             throw new Error(`value ${value} exceeds i64 range`);
         }
-        // Anchor program instruction: give_feedback(value, value_decimals, score, feedback_hash, tag1, tag2, endpoint, feedback_uri)
+        if (feedbackFileHash !== null && feedbackFileHash.length !== 32) {
+            throw new Error(`feedbackFileHash must be 32 bytes or null (got ${feedbackFileHash.length})`);
+        }
+        // Anchor program instruction: give_feedback(value, value_decimals, score, feedback_file_hash, tag1, tag2, endpoint, feedback_uri)
         // Note: feedbackIndex is NOT an instruction parameter - it's computed from agent_account.feedback_count
+        // SEAL v1: feedback_file_hash is Option<[u8; 32]>
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.giveFeedback,
             this.serializeI64(value),
             Buffer.from([valueDecimals]),
             this.serializeOptionU8(score),
-            feedbackHash,
+            this.serializeOption32Bytes(feedbackFileHash),
             serializeString(tag1),
             serializeString(tag2),
             serializeString(endpoint),
@@ -378,18 +384,33 @@ export class ReputationInstructionBuilder {
         return Buffer.from([1, value]);
     }
     /**
-     * Build revokeFeedback instruction - v0.5.0
-     * Matches: revoke_feedback(feedback_index, feedback_hash)
-     * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
+     * Serialize Option<[u8; 32]> for SEAL v1
+     * Format: 1 byte flag (0=None, 1=Some) + 32 bytes if Some
      */
-    buildRevokeFeedback(client, agentAccount, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, feedbackHash) {
-        if (!feedbackHash || feedbackHash.length !== 32) {
-            throw new Error('feedbackHash must be 32 bytes');
+    serializeOption32Bytes(value) {
+        if (value === null) {
+            return Buffer.from([0]);
+        }
+        if (value.length !== 32) {
+            throw new Error(`Expected 32 bytes, got ${value.length}`);
+        }
+        return Buffer.concat([Buffer.from([1]), value]);
+    }
+    /**
+     * Build revokeFeedback instruction - v0.6.0 (SEAL v1)
+     * Matches: revoke_feedback(feedback_index, seal_hash)
+     * Accounts: client (signer), agent_account, asset, system_program, [atom_config, atom_stats, atom_engine_program, registry_authority]
+     *
+     * SEAL v1: Client must provide seal_hash (computed using computeSealHash)
+     */
+    buildRevokeFeedback(client, agentAccount, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, sealHash) {
+        if (!sealHash || sealHash.length !== 32) {
+            throw new Error('sealHash must be 32 bytes');
         }
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.revokeFeedback,
             this.serializeU64(feedbackIndex),
-            feedbackHash,
+            sealHash,
         ]);
         const hasAtomAccounts = !!(atomConfig && atomStats && registryAuthority);
         if ((atomConfig || atomStats || registryAuthority) && !hasAtomAccounts) {
@@ -411,10 +432,12 @@ export class ReputationInstructionBuilder {
         });
     }
     /**
-     * Build appendResponse instruction
+     * Build appendResponse instruction - v0.6.0 (SEAL v1)
      * Accounts: responder (signer), agent_account (mut), asset
+     *
+     * SEAL v1: Client must provide seal_hash from the original feedback
      */
-    buildAppendResponse(responder, agentAccount, asset, client, feedbackIndex, responseUri, responseHash, feedbackHash) {
+    buildAppendResponse(responder, agentAccount, asset, client, feedbackIndex, responseUri, responseHash, sealHash) {
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.appendResponse,
             asset.toBuffer(),
@@ -422,7 +445,7 @@ export class ReputationInstructionBuilder {
             this.serializeU64(feedbackIndex),
             serializeString(responseUri),
             responseHash,
-            feedbackHash,
+            sealHash,
         ]);
         return new TransactionInstruction({
             programId: this.programId,

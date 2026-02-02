@@ -63,7 +63,8 @@ export interface SolanaFeedback {
   // Event-sourced fields (available via indexer)
   endpoint?: string;
   feedbackUri?: string;
-  feedbackHash?: Buffer;
+  feedbackFileHash?: Buffer;   // SEAL v1: Optional hash of feedback file content
+  sealHash?: Buffer;           // SEAL v1: On-chain computed hash (trustless)
   blockSlot?: bigint;
   txSignature?: string;
 }
@@ -500,7 +501,8 @@ export class SolanaFeedbackManager {
       isRevoked: indexed.is_revoked,
       endpoint: indexed.endpoint || '',
       feedbackUri: indexed.feedback_uri || '',
-      feedbackHash: indexed.feedback_hash
+      // SEAL v1: feedback_hash from indexer is now the sealHash (computed on-chain)
+      sealHash: indexed.feedback_hash
         ? Buffer.from(indexed.feedback_hash, 'hex')
         : undefined,
       blockSlot: BigInt(indexed.block_slot),

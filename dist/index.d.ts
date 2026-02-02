@@ -24,6 +24,8 @@ export { SolanaSDK } from './core/sdk-solana.js';
 export type { SolanaSDKConfig, AgentWithMetadata, EnrichedSummary, CollectionInfo, IntegrityResult, IntegrityStatus, IntegrityChainResult, DeepIntegrityOptions, DeepIntegrityResult, SpotCheckResult, } from './core/sdk-solana.js';
 export type { SolanaFeedback, SolanaAgentSummary } from './core/feedback-manager-solana.js';
 export { validateSkill, validateDomain, getAllSkills, getAllDomains, } from './core/oasf-validator.js';
+export { computeSealHash, computeFeedbackLeafV1, verifySealHash, createSealParams, validateSealInputs, MAX_TAG_LEN, MAX_ENDPOINT_LEN, MAX_URI_LEN, } from './core/seal.js';
+export type { SealParams } from './core/seal.js';
 export { fetchRegistryConfig, fetchRegistryConfigByPda, getBaseRegistryPda, getBaseCollection, } from './core/config-reader.js';
 export { AtomStats, AtomConfig, TrustTier, ATOM_STATS_SCHEMA, ATOM_CONFIG_SCHEMA, trustTierToString, } from './core/atom-schemas.js';
 export { getAtomConfigPDA, getAtomStatsPDA, } from './core/atom-pda.js';

@@ -1095,8 +1095,9 @@ export class ReputationTransactionBuilder {
       validateByteLength(params.tag2 ?? '', 32, 'tag2');
       validateByteLength(params.endpoint ?? '', 250, 'endpoint');
       validateByteLength(params.feedbackUri, 250, 'feedbackUri');
-      if (params.feedbackHash.length !== 32) {
-        throw new Error('feedbackHash must be 32 bytes');
+      // SEAL v1: feedbackFileHash is optional
+      if (params.feedbackFileHash && params.feedbackFileHash.length !== 32) {
+        throw new Error('feedbackFileHash must be 32 bytes');
       }
 
       const [agentPda] = PDAHelpers.getAgentPDA(asset);
@@ -1119,6 +1120,7 @@ export class ReputationTransactionBuilder {
       // part of the instruction data, which is no longer the case
       const feedbackIndex = agentAccount.feedback_count;
 
+      // SEAL v1: feedbackFileHash is optional (null if not provided)
       const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(
         signerPubkey,
         agentPda,
@@ -1130,7 +1132,7 @@ export class ReputationTransactionBuilder {
         valueBigInt,
         valueDecimals,
         resolvedScore,
-        params.feedbackHash,
+        params.feedbackFileHash ?? null,
         feedbackIndex,
         params.tag1 ?? '',
         params.tag2 ?? '',
@@ -1167,17 +1169,18 @@ export class ReputationTransactionBuilder {
   }
 
   /**
-   * Revoke feedback - v0.4.0
+   * Revoke feedback - v0.6.0 (SEAL v1)
    * @param asset - Agent Core asset
    * @param feedbackIndex - Feedback index to revoke
+   * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
    * @param options - Write options (skipSend, signer)
    *
-   * v0.5.0: Now requires feedbackHash parameter for on-chain verification.
+   * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
    */
   async revokeFeedback(
     asset: PublicKey,
     feedbackIndex: bigint,
-    feedbackHash: Buffer,
+    sealHash: Buffer,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     try {
@@ -1206,7 +1209,7 @@ export class ReputationTransactionBuilder {
         atomStats,
         registryAuthority,
         feedbackIndex,
-        feedbackHash
+        sealHash
       );
 
       const transaction = new Transaction().add(instruction);
@@ -1239,20 +1242,22 @@ export class ReputationTransactionBuilder {
   }
 
   /**
-   * Append response to feedback
+   * Append response to feedback - v0.6.0 (SEAL v1)
    * @param asset - Agent Core asset
    * @param client - Client address who gave the feedback
    * @param feedbackIndex - Feedback index
-   * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
+   * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
    * @param responseUri - Response URI
    * @param responseHash - Response hash (optional for ipfs://)
    * @param options - Write options (skipSend, signer)
+   *
+   * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
    */
   async appendResponse(
     asset: PublicKey,
     client: PublicKey,
     feedbackIndex: bigint,
-    feedbackHash: Buffer,
+    sealHash: Buffer,
     responseUri: string,
     responseHash?: Buffer,
     options?: WriteOptions
@@ -1263,8 +1268,8 @@ export class ReputationTransactionBuilder {
         throw new Error('signer required when SDK has no signer configured');
       }
 
-      if (feedbackHash.length !== 32) {
-        throw new Error('feedbackHash must be 32 bytes');
+      if (sealHash.length !== 32) {
+        throw new Error('sealHash must be 32 bytes');
       }
 
       validateByteLength(responseUri, 250, 'responseUri');
@@ -1287,7 +1292,7 @@ export class ReputationTransactionBuilder {
         feedbackIndex,
         responseUri,
         hash,
-        feedbackHash
+        sealHash
       );
 
       const transaction = new Transaction().add(instruction);

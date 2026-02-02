@@ -32,6 +32,10 @@ export { SolanaClient, UnsupportedRpcError, RpcNetworkError, SOLANA_DEVNET_RPC, 
 export { SolanaSDK } from './core/sdk-solana.js';
 // Export OASF taxonomy utilities
 export { validateSkill, validateDomain, getAllSkills, getAllDomains, } from './core/oasf-validator.js';
+// ============================================================================
+// SEAL v1 exports (v0.6.0)
+// ============================================================================
+export { computeSealHash, computeFeedbackLeafV1, verifySealHash, createSealParams, validateSealInputs, MAX_TAG_LEN, MAX_ENDPOINT_LEN, MAX_URI_LEN, } from './core/seal.js';
 // Export config reader
 export { fetchRegistryConfig, fetchRegistryConfigByPda, getBaseRegistryPda, getBaseCollection, } from './core/config-reader.js';
 // ============================================================================
