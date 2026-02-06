@@ -20,8 +20,8 @@ npm install 8004-solana
 
 ## Program IDs (Devnet)
 
-- **Agent Registry**: `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N`
-- **ATOM Engine**: `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8`
+- **Agent Registry**: `8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm`
+- **ATOM Engine**: `AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ`
 
 ## Quick Start
 
