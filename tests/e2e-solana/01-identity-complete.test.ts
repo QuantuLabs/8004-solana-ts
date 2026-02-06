@@ -8,8 +8,8 @@ import { SolanaSDK } from '../../src/core/sdk-solana';
 import bs58 from 'bs58';
 
 const RPC_URL = process.env.RPC_URL || 'http://localhost:8899';
-const PROGRAM_ID = process.env.AGENT_REGISTRY_PROGRAM_ID || '8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N';
-const ATOM_ENGINE_ID = process.env.ATOM_ENGINE_PROGRAM_ID || 'AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8';
+const PROGRAM_ID = process.env.AGENT_REGISTRY_PROGRAM_ID || '8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm';
+const ATOM_ENGINE_ID = process.env.ATOM_ENGINE_PROGRAM_ID || 'AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ';
 const MPL_CORE_ID = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 
 describe('Identity Module - Complete Coverage (15 Instructions)', () => {
