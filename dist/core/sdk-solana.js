@@ -1247,35 +1247,35 @@ export class SolanaSDK {
         return await this.reputationTxBuilder.giveFeedback(asset, params, options);
     }
     /**
-     * Revoke feedback (write operation) - v0.5.0
+     * Revoke feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
-     * @param feedbackHash - Hash of the feedback to revoke (from NewFeedback event or computed from feedbackUri)
+     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param options - Write options (skipSend, signer)
      */
-    async revokeFeedback(asset, feedbackIndex, feedbackHash, options) {
+    async revokeFeedback(asset, feedbackIndex, sealHash, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.reputationTxBuilder.revokeFeedback(asset, idx, feedbackHash, options);
+        return await this.reputationTxBuilder.revokeFeedback(asset, idx, sealHash, options);
     }
     /**
      * Append response to feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index (number or bigint)
-     * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
+     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    async appendResponse(asset, client, feedbackIndex, feedbackHash, responseUri, responseHash, options) {
+    async appendResponse(asset, client, feedbackIndex, sealHash, responseUri, responseHash, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.reputationTxBuilder.appendResponse(asset, client, idx, feedbackHash, responseUri, responseHash, options);
+        return await this.reputationTxBuilder.appendResponse(asset, client, idx, sealHash, responseUri, responseHash, options);
     }
     /**
      * Request validation (write operation) - v0.3.0
@@ -1856,10 +1856,10 @@ export class SolanaSDK {
         const emptyChain = (_type) => ({
             onChain: '',
             indexer: null,
-            countOnChain: 0,
-            countIndexer: 0,
+            countOnChain: 0n,
+            countIndexer: 0n,
             match: false,
-            lag: 0,
+            lag: 0n,
         });
         try {
             const [agent, feedbackDigest, responseDigest, revokeDigest] = await Promise.all([
@@ -1879,7 +1879,7 @@ export class SolanaSDK {
                         response: emptyChain('response'),
                         revoke: emptyChain('revoke'),
                     },
-                    totalLag: 0,
+                    totalLag: 0n,
                     trustworthy: false,
                     error: {
                         message: 'Agent not found on-chain',
@@ -1890,13 +1890,13 @@ export class SolanaSDK {
             const onChainFeedback = toHex(agent.feedback_digest);
             const onChainResponse = toHex(agent.response_digest);
             const onChainRevoke = toHex(agent.revoke_digest);
-            const feedbackCountOnChain = Number(agent.feedback_count);
-            const responseCountOnChain = Number(agent.response_count);
-            const revokeCountOnChain = Number(agent.revoke_count);
+            const feedbackCountOnChain = BigInt(agent.feedback_count);
+            const responseCountOnChain = BigInt(agent.response_count);
+            const revokeCountOnChain = BigInt(agent.revoke_count);
             // Calculate lag (positive = indexer behind, negative = indexer ahead)
-            const feedbackLag = feedbackCountOnChain - feedbackDigest.count;
-            const responseLag = responseCountOnChain - responseDigest.count;
-            const revokeLag = revokeCountOnChain - revokeDigest.count;
+            const feedbackLag = feedbackCountOnChain - BigInt(feedbackDigest.count);
+            const responseLag = responseCountOnChain - BigInt(responseDigest.count);
+            const revokeLag = revokeCountOnChain - BigInt(revokeDigest.count);
             const totalLag = feedbackLag + responseLag + revokeLag;
             // Check digest matches
             const feedbackMatch = isZero(onChainFeedback) && !feedbackDigest.digest
@@ -1919,13 +1919,13 @@ export class SolanaSDK {
                 status = 'valid';
                 trustworthy = true;
             }
-            else if (totalLag > 0) {
+            else if (totalLag > 0n) {
                 // Indexer is behind - this is sync lag, not corruption
                 status = 'syncing';
                 // Trustworthy for reads if lag is small (e.g., < 100 items)
-                trustworthy = totalLag < 100;
+                trustworthy = totalLag < 100n;
             }
-            else if (totalLag < 0) {
+            else if (totalLag < 0n) {
                 // Indexer ahead of on-chain? This shouldn't happen - likely corruption
                 status = 'corrupted';
                 trustworthy = false;
@@ -1945,7 +1945,7 @@ export class SolanaSDK {
                         onChain: onChainFeedback,
                         indexer: feedbackDigest.digest,
                         countOnChain: feedbackCountOnChain,
-                        countIndexer: feedbackDigest.count,
+                        countIndexer: BigInt(feedbackDigest.count),
                         match: feedbackMatch,
                         lag: feedbackLag,
                     },
@@ -1953,7 +1953,7 @@ export class SolanaSDK {
                         onChain: onChainResponse,
                         indexer: responseDigest.digest,
                         countOnChain: responseCountOnChain,
-                        countIndexer: responseDigest.count,
+                        countIndexer: BigInt(responseDigest.count),
                         match: responseMatch,
                         lag: responseLag,
                     },
@@ -1961,7 +1961,7 @@ export class SolanaSDK {
                         onChain: onChainRevoke,
                         indexer: revokeDigest.digest,
                         countOnChain: revokeCountOnChain,
-                        countIndexer: revokeDigest.count,
+                        countIndexer: BigInt(revokeDigest.count),
                         match: revokeMatch,
                         lag: revokeLag,
                     },
@@ -1973,9 +1973,9 @@ export class SolanaSDK {
             if (status === 'syncing') {
                 result.error = {
                     message: `Indexer is ${totalLag} item(s) behind on-chain: ${[
-                        feedbackLag > 0 && `feedback: ${feedbackLag}`,
-                        responseLag > 0 && `response: ${responseLag}`,
-                        revokeLag > 0 && `revoke: ${revokeLag}`,
+                        feedbackLag > 0n && `feedback: ${feedbackLag}`,
+                        responseLag > 0n && `response: ${responseLag}`,
+                        revokeLag > 0n && `revoke: ${revokeLag}`,
                     ].filter(Boolean).join(', ')}`,
                     recommendation: trustworthy
                         ? 'Indexer is syncing. Recent items may be missing but existing data is trustworthy.'
@@ -2005,7 +2005,7 @@ export class SolanaSDK {
                     response: emptyChain('response'),
                     revoke: emptyChain('revoke'),
                 },
-                totalLag: 0,
+                totalLag: 0n,
                 trustworthy: false,
                 error: {
                     message: `Verification failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -2076,10 +2076,10 @@ export class SolanaSDK {
             return Array.from(indices).sort((a, b) => a - b);
         };
         try {
-            // Generate indices for spot checks
-            const feedbackIndices = getRandomIndices(basicResult.chains.feedback.countIndexer, spotChecks);
-            const responseOffsets = getRandomIndices(basicResult.chains.response.countIndexer, spotChecks);
-            const revokeIndices = getRandomIndices(basicResult.chains.revoke.countIndexer, spotChecks);
+            // Generate indices for spot checks (safe to use Number for array indexing)
+            const feedbackIndices = getRandomIndices(Number(basicResult.chains.feedback.countIndexer), spotChecks);
+            const responseOffsets = getRandomIndices(Number(basicResult.chains.response.countIndexer), spotChecks);
+            const revokeIndices = getRandomIndices(Number(basicResult.chains.revoke.countIndexer), spotChecks);
             // Parallel spot checks
             const [feedbackMap, responseMap, revokeMap] = await Promise.all([
                 feedbackIndices.length > 0

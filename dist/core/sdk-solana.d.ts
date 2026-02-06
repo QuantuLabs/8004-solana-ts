@@ -123,11 +123,11 @@ export type IntegrityStatus = 'valid' | 'syncing' | 'corrupted' | 'error';
 export interface IntegrityChainResult {
     onChain: string;
     indexer: string | null;
-    countOnChain: number;
-    countIndexer: number;
+    countOnChain: bigint;
+    countIndexer: bigint;
     match: boolean;
     /** How many items indexer is behind (positive = behind, negative = ahead which shouldn't happen) */
-    lag: number;
+    lag: bigint;
 }
 export interface IntegrityResult {
     /** Overall validity - true only if status is 'valid' */
@@ -142,7 +142,7 @@ export interface IntegrityResult {
         revoke: IntegrityChainResult;
     };
     /** Total lag across all chains */
-    totalLag: number;
+    totalLag: bigint;
     /** Whether indexer can be trusted for reads (valid or syncing with small lag) */
     trustworthy: boolean;
     error?: {
@@ -719,24 +719,24 @@ export declare class SolanaSDK {
         feedbackIndex: bigint;
     })>;
     /**
-     * Revoke feedback (write operation) - v0.5.0
+     * Revoke feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
-     * @param feedbackHash - Hash of the feedback to revoke (from NewFeedback event or computed from feedbackUri)
+     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param options - Write options (skipSend, signer)
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, feedbackHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, sealHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index (number or bigint)
-     * @param feedbackHash - Hash of the feedback being responded to (from NewFeedback event)
+     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
-    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint, feedbackHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint, sealHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Request validation (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey

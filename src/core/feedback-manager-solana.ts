@@ -252,24 +252,19 @@ export class SolanaFeedbackManager {
       throw new Error('Indexer required for readFeedback in v0.4.0');
     }
 
-    try {
-      // Get specific feedback by asset, client, and index (8004 compliant)
-      const indexed = await this.indexerClient.getFeedback(
-        asset.toBase58(),
-        client.toBase58(),
-        feedbackIndex
-      );
+    // Get specific feedback by asset, client, and index (8004 compliant)
+    const indexed = await this.indexerClient.getFeedback(
+      asset.toBase58(),
+      client.toBase58(),
+      feedbackIndex
+    );
 
-      if (!indexed) {
-        logger.warn(`Feedback index ${feedbackIndex} not yet indexed. It may take a few seconds for the indexer to process new transactions. Try again shortly.`);
-        return null;
-      }
-
-      return this.mapIndexedFeedback(indexed);
-    } catch (error) {
-      logger.error(`Error reading feedback index ${feedbackIndex}`, error);
+    if (!indexed) {
+      logger.warn(`Feedback index ${feedbackIndex} not yet indexed. It may take a few seconds for the indexer to process new transactions. Try again shortly.`);
       return null;
     }
+
+    return this.mapIndexedFeedback(indexed);
   }
 
   /**
@@ -294,17 +289,12 @@ export class SolanaFeedbackManager {
 
     const maxResults = options.maxResults ?? DEFAULT_MAX_FEEDBACKS;
 
-    try {
-      const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
-        includeRevoked,
-        limit: maxResults,
-      });
+    const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
+      includeRevoked,
+      limit: maxResults,
+    });
 
-      return feedbacks.map((f) => this.mapIndexedFeedback(f));
-    } catch (error) {
-      logger.error(`Error reading all feedback for agent`, error);
-      return [];
-    }
+    return feedbacks.map((f) => this.mapIndexedFeedback(f));
   }
 
   /**
@@ -326,27 +316,21 @@ export class SolanaFeedbackManager {
       throw new Error('Indexer required for getLastIndex in v0.4.0');
     }
 
-    try {
-      // Get all feedbacks for this asset and filter by client
-      const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
-        includeRevoked: true,
-      });
-      const clientFeedbacks = feedbacks.filter((f) => f.client_address === client.toBase58());
-      // Return the actual max feedback_index using safe BigInt comparison
-      // (Number() loses precision for indices > 2^53)
-      return clientFeedbacks.length > 0
-        ? clientFeedbacks.reduce(
-            (max, f) => {
-              const idx = BigInt(f.feedback_index);
-              return idx > max ? idx : max;
-            },
-            BigInt(-1)
-          )
-        : BigInt(-1);
-    } catch (error) {
-      logger.error(`Error getting last index for client`, error);
-      return BigInt(-1);
-    }
+    // Get all feedbacks for this asset and filter by client
+    const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
+      includeRevoked: true,
+    });
+    const clientFeedbacks = feedbacks.filter((f) => f.client_address === client.toBase58());
+    // Return the actual max feedback_index using safe BigInt comparison
+    return clientFeedbacks.length > 0
+      ? clientFeedbacks.reduce(
+          (max, f) => {
+            const idx = BigInt(f.feedback_index);
+            return idx > max ? idx : max;
+          },
+          BigInt(-1)
+        )
+      : BigInt(-1);
   }
 
   /**
@@ -363,21 +347,16 @@ export class SolanaFeedbackManager {
       throw new Error('Indexer required for getClients in v0.4.0');
     }
 
-    try {
-      const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
-        includeRevoked: true,
-      });
+    const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
+      includeRevoked: true,
+    });
 
-      // Extract unique client pubkeys
-      const uniqueClients = Array.from(
-        new Set(feedbacks.map((f) => f.client_address))
-      ).map((base58) => new PublicKey(base58));
+    // Extract unique client pubkeys
+    const uniqueClients = Array.from(
+      new Set(feedbacks.map((f) => f.client_address))
+    ).map((base58) => new PublicKey(base58));
 
-      return uniqueClients;
-    } catch (error) {
-      logger.error(`Error getting clients for agent`, error);
-      return [];
-    }
+    return uniqueClients;
   }
 
   /**
@@ -397,17 +376,12 @@ export class SolanaFeedbackManager {
       throw new Error('Indexer required for getResponseCount in v0.4.1');
     }
 
-    try {
-      const responses = await this.indexerClient.getFeedbackResponsesFor(
-        asset.toBase58(),
-        client.toBase58(),
-        feedbackIndex
-      );
-      return responses.length;
-    } catch (error) {
-      logger.error(`Error getting response count for feedback index ${feedbackIndex}`, error);
-      return 0;
-    }
+    const responses = await this.indexerClient.getFeedbackResponsesFor(
+      asset.toBase58(),
+      client.toBase58(),
+      feedbackIndex
+    );
+    return responses.length;
   }
 
   /**
@@ -455,8 +429,7 @@ export class SolanaFeedbackManager {
   }
 
   /**
-   * Read feedbacks from indexer (v0.4.0)
-   * Falls back to on-chain if indexer unavailable
+   * Read feedbacks from indexer
    * @param asset - Agent Core asset pubkey
    * @param options - Query options
    * @returns Array of feedbacks with full event-sourced data
@@ -466,18 +439,11 @@ export class SolanaFeedbackManager {
     options?: { includeRevoked?: boolean; limit?: number; offset?: number }
   ): Promise<SolanaFeedback[]> {
     if (!this.indexerClient) {
-      logger.warn('No indexer client configured, falling back to on-chain');
-      return this.readAllFeedback(asset, options?.includeRevoked ?? false);
+      throw new Error('Indexer required for readFeedbackListFromIndexer');
     }
 
-    try {
-      const indexed = await this.indexerClient.getFeedbacks(asset.toBase58(), options);
-      return indexed.map((f) => this.mapIndexedFeedback(f));
-    } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      logger.warn(`Indexer failed, falling back to on-chain: ${errMsg}`);
-      return this.readAllFeedback(asset, options?.includeRevoked ?? false);
-    }
+    const indexed = await this.indexerClient.getFeedbacks(asset.toBase58(), options);
+    return indexed.map((f) => this.mapIndexedFeedback(f));
   }
 
   /**

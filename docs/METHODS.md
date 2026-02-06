@@ -81,12 +81,13 @@ await sdk.verify('./signed-payload.json', asset);
 | `updateCollectionUri` | `(collection, newUri, options?) => Promise<TransactionResult>` | Update collection URI (name immutable) |
 
 ```typescript
-// Create collection
+// Agents register into the base collection by default
+await sdk.registerAgent('ipfs://QmAgent1...');
+
+// Custom collections are still supported
 const result = await sdk.createCollection('My AI Agents', 'ipfs://QmMeta...');
 const collection = result.collection;
-
-// Register agents in collection
-await sdk.registerAgent('ipfs://QmAgent1...', collection);
+await sdk.registerAgent('ipfs://QmAgent2...', collection);
 
 // Update URI (name is immutable)
 await sdk.updateCollectionUri(collection, 'ipfs://QmNewMeta...');
@@ -155,46 +156,55 @@ await sdk.setMetadata(agentAsset, 'certification', 'verified', true);
 | `giveFeedback` | `(asset, feedbackData) => Promise<TransactionResult>` | Submit feedback |
 | `getFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Read feedback |
 | `readFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Alias |
-| `revokeFeedback` | `(asset, index) => Promise<TransactionResult>` | Revoke feedback |
+| `revokeFeedback` | `(asset, index, feedbackHash) => Promise<TransactionResult>` | Revoke feedback (feedbackHash = sealHash) |
 | `getLastIndex` | `(asset, client) => Promise<bigint>` | Get feedback count |
-| `appendResponse` | `(asset, index, uri, hash) => Promise<TransactionResult>` | Add response |
+| `appendResponse` | `(asset, client, index, feedbackHash, uri, hash?) => Promise<TransactionResult>` | Add response (feedbackHash = sealHash) |
 
 ### Feedback Data
 
 ```typescript
 await sdk.giveFeedback(agentAsset, {
-  score: 85,                                // 0-100
-  tag1: 'helpful',                          // Optional tag
-  tag2: 'accurate',                         // Optional tag
-  feedbackUri: 'ipfs://QmFeedbackDetails',  // Optional detailed feedback
-  feedbackHash: Buffer.alloc(32),           // Optional SHA256 hash
+  value: '99.77',                           // Decimal string, number, or bigint
+  score: 85,                                // 0-100 (optional)
+  tag1: 'uptime',                           // Category tag (optional)
+  tag2: 'day',                              // Period tag (optional)
+  feedbackUri: 'ipfs://QmFeedbackDetails',  // Feedback URI (required)
+  feedbackFileHash: Buffer.alloc(32),       // Optional SHA-256 of feedback file
 });
 ```
 
-## Validation Methods
+## SEAL v1 Methods
+
+SEAL (Solana Event Authenticity Layer) provides client-side hash computation that mirrors the on-chain Keccak256 algorithm for trustless feedback verification.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `requestValidation` | `(asset, validator, nonce, uri, hash) => Promise<TransactionResult>` | Request validation |
-| `respondToValidation` | `(asset, nonce, score, uri, hash, tag?) => Promise<TransactionResult>` | Respond to validation |
-| `readValidation` | `(asset, validator, nonce) => Promise<Validation \| null>` | Read validation from indexer |
-| `waitForValidation` | `(asset, validator, nonce, options?) => Promise<Validation>` | Wait for validation response |
-| `getPendingValidations` | `(validator) => Promise<Validation[]>` | Get pending validations for validator |
+| `computeSealHash` | `(params: SealParams) => Buffer` | Compute Keccak256 SEAL hash matching on-chain |
+| `computeFeedbackLeafV1` | `(asset, client, feedbackIndex, sealHash, slot) => Buffer` | Compute feedback leaf for hash-chain |
+| `verifySealHash` | `(params: SealParams & { sealHash }) => boolean` | Verify feedback integrity against SEAL hash |
+| `createSealParams` | `(value, decimals, score, tag1, tag2, endpoint, uri, fileHash?) => SealParams` | Helper to build SealParams |
+| `validateSealInputs` | `(params: SealParams) => void` | Validate inputs (throws on invalid) |
 
 ```typescript
-// Request validation
-const nonce = Date.now();
-await sdk.requestValidation(agentAsset, validatorPubkey, nonce, 'ipfs://QmRequest...', requestHash);
+import {
+  computeSealHash,
+  verifySealHash,
+  createSealParams,
+} from '8004-solana';
 
-// Respond to validation (as validator)
-await sdk.respondToValidation(agentAsset, nonce, 85, 'ipfs://QmResponse...', responseHash, 'audit-v1');
+// Build params and compute hash
+const params = createSealParams(
+  9977n, 2, 85, 'uptime', 'day',
+  'https://api.example.com/mcp',
+  'ipfs://QmFeedback...',
+);
+const sealHash = computeSealHash(params);
 
-// Wait for response with timeout
-const validation = await sdk.waitForValidation(agentAsset, validatorPubkey, nonce, {
-  timeout: 60000,
-  waitForResponse: true,
-});
+// Verify integrity
+const valid = verifySealHash({ ...params, sealHash }); // true
 ```
+
+The `sealHash` (passed as the `feedbackHash` parameter) is required for `revokeFeedback()` and `appendResponse()`.
 
 ## ATOM Engine Methods
 

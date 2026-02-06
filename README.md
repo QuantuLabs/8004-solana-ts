@@ -8,7 +8,7 @@ TypeScript SDK for 8004 Agent Registry on Solana.
 
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
-- **Submit and query reputation feedback**
+- **Submit and query reputation feedback** with SEAL v1 integrity verification
 - **Sign & verify** with agent operational wallets
 - **OASF taxonomies** support (skills & domains)
 
@@ -20,8 +20,8 @@ npm install 8004-solana
 
 ## Program IDs (Devnet)
 
-- **Agent Registry**: `6MuHv4dY4p9E4hSCEPr9dgbCSpMhq8x1vrUexbMVjfw1`
-- **ATOM Engine**: `6Mu7qj6tRDrqchxJJPjr9V1H2XQjCerVKixFEEMwC1Tf`
+- **Agent Registry**: `8oo4SbcgjRBAXjmGU4YMcdFqfeLLrtn7n6f358PkAc3N`
+- **ATOM Engine**: `AToMNmthLzvTy3D2kz2obFmbVCsTCmYpDw1ptWUJdeU8`
 
 ## Quick Start
 
@@ -32,30 +32,10 @@ import { Keypair } from '@solana/web3.js';
 const signer = Keypair.fromSecretKey(/* your key */);
 const sdk = new SolanaSDK({ cluster: 'devnet', signer });
 
-// 1. Build collection metadata
-import { buildCollectionMetadataJson, IPFSClient } from '8004-solana';
+// 1. Build agent metadata
+import { buildRegistrationFileJson, ServiceType, IPFSClient } from '8004-solana';
 
 const ipfs = new IPFSClient({ pinataEnabled: true, pinataJwt: process.env.PINATA_JWT });
-
-const collectionMeta = buildCollectionMetadataJson({
-  name: 'My AI Agents',
-  description: 'Production agents for automation',
-  image: 'ipfs://QmLogo...',
-  category: 'automation',
-  tags: ['enterprise', 'api'],
-  project: {
-    name: 'Acme Corp',
-    socials: { website: 'https://acme.ai', x: 'acme_ai' }
-  }
-});
-
-// Upload to IPFS and create collection
-const collectionUri = `ipfs://${await ipfs.addJson(collectionMeta)}`;
-const collection = await sdk.createCollection(collectionMeta.name, collectionUri);
-console.log('Collection:', collection.collection.toBase58());
-
-// 2. Build agent metadata
-import { buildRegistrationFileJson, ServiceType } from '8004-solana';
 
 const agentMeta = buildRegistrationFileJson({
   name: 'My AI Agent',
@@ -69,27 +49,27 @@ const agentMeta = buildRegistrationFileJson({
   skills: ['natural_language_processing/text_generation/text_generation'],
   domains: ['technology/software_engineering/software_engineering'],
 });
-// Upload and register
+// Upload and register (uses the base collection automatically)
 const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
-const agent = await sdk.registerAgent(agentUri, collection.collection);
+const agent = await sdk.registerAgent(agentUri);
 console.log('Agent:', agent.asset.toBase58());
 
-// 3. Set operational wallet
+// 2. Set operational wallet
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(agent.asset, opWallet);
 
-// 4. Give feedback - accepts decimal strings or raw values
+// 3. Give feedback - accepts decimal strings or raw values
 import { Tag } from '8004-solana';
 
 await sdk.giveFeedback(agent.asset, {
-  value: '99.77',                  // Decimal string → auto-encoded to 9977, decimals=2
+  value: '99.77',                  // Decimal string -> auto-encoded to 9977, decimals=2
   tag1: Tag.uptime,                // 8004 standardized tag (or free text)
   tag2: Tag.day,                   // Time period
   feedbackUri: 'ipfs://QmFeedback...',
-  feedbackHash: Buffer.alloc(32), // SHA-256 of feedback file
+  feedbackFileHash: Buffer.alloc(32), // Optional SHA-256 of feedback file
 });
 
-// 5. Check reputation
+// 4. Check reputation
 const summary = await sdk.getSummary(agent.asset);
 console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
 ```
@@ -174,24 +154,27 @@ const sdk = new SolanaSDK({
 The feedback system supports rich metrics with 8004 standardized tags. `value` is required, `score` is optional.
 
 ```typescript
-// Basic feedback (value required)
+// Basic feedback (value + feedbackUri required)
 await sdk.giveFeedback(agent.asset, {
-  value: '85',           // Decimal string or number or bigint
+  value: '85',
   tag1: 'starred',
+  feedbackUri: 'ipfs://QmFeedback...',
 });
 
 // Revenue tracking with decimals
 await sdk.giveFeedback(agent.asset, {
-  value: '150.00',       // $150.00 → auto-encoded to 15000, decimals=2
+  value: '150.00',       // $150.00 -> auto-encoded to 15000, decimals=2
   tag1: 'revenues',
   tag2: 'week',
+  feedbackUri: 'ipfs://QmRevenue...',
 });
 
 // Uptime tracking
 await sdk.giveFeedback(agent.asset, {
-  value: '99.50',        // 99.50% → auto-encoded to 9950, decimals=2
+  value: '99.50',        // 99.50% -> auto-encoded to 9950, decimals=2
   tag1: 'uptime',
   tag2: 'day',
+  feedbackUri: 'ipfs://QmUptime...',
 });
 ```
 
@@ -209,6 +192,7 @@ await sdk.giveFeedback(asset, {
   value: '99.77',
   tag1: Tag.uptime,     // 'uptime'
   tag2: Tag.day,        // 'day'
+  feedbackUri: 'ipfs://QmFeedback...',
 });
 
 // Custom tags (free text)
@@ -216,6 +200,7 @@ await sdk.giveFeedback(asset, {
   value: '42.5',
   tag1: 'my-custom-metric',
   tag2: 'hourly',
+  feedbackUri: 'ipfs://QmFeedback...',
 });
 ```
 
@@ -231,7 +216,7 @@ The SDK auto-initializes ATOM stats on registration (atomEnabled: true by defaul
 
 ```typescript
 // Disable ATOM at creation (if you aggregate reputation via indexer)
-await sdk.registerAgent('ipfs://...', collection, { atomEnabled: false });
+await sdk.registerAgent('ipfs://...', undefined, { atomEnabled: false });
 ```
 
 If you opt out at creation, you can later enable ATOM (one-way) and initialize stats:
@@ -240,6 +225,39 @@ If you opt out at creation, you can later enable ATOM (one-way) and initialize s
 await sdk.enableAtom(asset);
 await sdk.initializeAtomStats(asset);
 ```
+
+## SEAL v1 (Solana Event Authenticity Layer)
+
+SEAL provides client-side hash computation that mirrors the on-chain algorithm, enabling trustless verification of feedback integrity without replaying all events.
+
+```typescript
+import {
+  computeSealHash,
+  computeFeedbackLeafV1,
+  verifySealHash,
+  createSealParams,
+  validateSealInputs,
+} from '8004-solana';
+
+// Build SEAL params from feedback data
+const params = createSealParams(
+  9977n,              // value (bigint)
+  2,                  // valueDecimals
+  85,                 // score (or null)
+  'uptime',           // tag1
+  'day',              // tag2
+  'https://api.example.com/mcp', // endpoint
+  'ipfs://QmFeedback...',        // feedbackUri
+);
+
+// Compute the SEAL hash (matches on-chain Keccak256)
+const sealHash = computeSealHash(params);
+
+// Verify a feedback's integrity
+const isValid = verifySealHash({ ...params, sealHash });
+```
+
+The `sealHash` is required when calling `revokeFeedback()` and `appendResponse()` to prove feedback authenticity.
 
 ## RPC Provider Recommendations
 
