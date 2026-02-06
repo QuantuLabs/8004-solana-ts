@@ -1,15 +1,10 @@
 /**
  * Manual instruction builder for 8004 Solana programs
- * v0.3.0 - Asset-based identification
+ * v0.6.0 - Single-collection architecture
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
- *
- * BREAKING CHANGES from v0.2.0:
- * - agent_id (u64) removed from all instruction arguments
- * - Asset (Pubkey) used for PDA derivation only
- * - New multi-collection instructions added
  */
-import { PublicKey, TransactionInstruction, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, } from '@solana/web3.js';
+import { TransactionInstruction, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, } from '@solana/web3.js';
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID, ATOM_ENGINE_PROGRAM_ID } from './programs.js';
 import { IDENTITY_DISCRIMINATORS, REPUTATION_DISCRIMINATORS, VALIDATION_DISCRIMINATORS, ATOM_ENGINE_DISCRIMINATORS, } from './instruction-discriminators.js';
 import { toBigInt } from './utils.js';
@@ -26,28 +21,22 @@ export class IdentityInstructionBuilder {
     }
     /**
      * Build register instruction (Metaplex Core)
-     * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
+     * v0.6.0 accounts: root_config, registry_config, agent_account, asset (signer),
+     *                   collection, owner (signer), system_program, mpl_core_program
      */
-    buildRegister(config, agentAccount, asset, collection, owner, agentUri = '', rootConfig) {
+    buildRegister(rootConfig, registryConfig, agentAccount, asset, collection, owner, agentUri = '') {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.register,
             serializeString(agentUri),
         ]);
-        // Derive user_collection_authority PDA (seeds: ["user_collection_authority"])
-        const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
-        // For optional root_config: use program ID to signal None, or actual PDA for Some
-        // Anchor interprets program ID as None for Option<Account>
-        const rootConfigAccount = rootConfig || this.programId;
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: true },
+                { pubkey: rootConfig, isSigner: false, isWritable: false },
+                { pubkey: registryConfig, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: true },
                 { pubkey: asset, isSigner: true, isWritable: true },
                 { pubkey: collection, isSigner: false, isWritable: true },
-                { pubkey: userCollectionAuthority, isSigner: false, isWritable: false },
-                { pubkey: rootConfigAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
                 { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -57,27 +46,24 @@ export class IdentityInstructionBuilder {
     }
     /**
      * Build register_with_options instruction (Metaplex Core)
-     * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
+     * v0.6.0 accounts: root_config, registry_config, agent_account, asset (signer),
+     *                   collection, owner (signer), system_program, mpl_core_program
+     * Same context as register() but with explicit atom_enabled arg
      */
-    buildRegisterWithOptions(config, agentAccount, asset, collection, owner, agentUri, atomEnabled, rootConfig) {
+    buildRegisterWithOptions(rootConfig, registryConfig, agentAccount, asset, collection, owner, agentUri, atomEnabled) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.registerWithOptions,
             serializeString(agentUri),
             Buffer.from([atomEnabled ? 1 : 0]),
         ]);
-        const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
-        // For optional root_config: use program ID to signal None, or actual PDA for Some
-        const rootConfigAccount = rootConfig || this.programId;
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: true },
+                { pubkey: rootConfig, isSigner: false, isWritable: false },
+                { pubkey: registryConfig, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: true },
                 { pubkey: asset, isSigner: true, isWritable: true },
                 { pubkey: collection, isSigner: false, isWritable: true },
-                { pubkey: userCollectionAuthority, isSigner: false, isWritable: false },
-                { pubkey: rootConfigAccount, isSigner: false, isWritable: false },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
                 { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -103,24 +89,21 @@ export class IdentityInstructionBuilder {
     }
     /**
      * Build setAgentUri instruction (Metaplex Core)
-     * Accounts: registry_config, agent_account, asset, collection,
-     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     * v0.6.0 accounts: registry_config, agent_account, asset, collection,
+     *                   owner (signer), system_program, mpl_core_program
      */
-    buildSetAgentUri(config, agentAccount, asset, collection, owner, newUri) {
+    buildSetAgentUri(registryConfig, agentAccount, asset, collection, owner, newUri) {
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.setAgentUri,
             serializeString(newUri),
         ]);
-        // Derive user_collection_authority PDA (seeds: ["user_collection_authority"])
-        const [userCollectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], this.programId);
         return new TransactionInstruction({
             programId: this.programId,
             keys: [
-                { pubkey: config, isSigner: false, isWritable: false },
+                { pubkey: registryConfig, isSigner: false, isWritable: false },
                 { pubkey: agentAccount, isSigner: false, isWritable: true },
                 { pubkey: asset, isSigner: false, isWritable: true },
-                { pubkey: collection, isSigner: false, isWritable: true }, // mut for Core CPI
-                { pubkey: userCollectionAuthority, isSigner: false, isWritable: false }, // Optional PDA
+                { pubkey: collection, isSigner: false, isWritable: true },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
                 { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -209,58 +192,23 @@ export class IdentityInstructionBuilder {
         });
     }
     // ============================================================================
-    // v0.3.0 - Multi-collection instructions
+    // v0.6.0 - User registry instructions (DEPRECATED - single-collection architecture)
     // ============================================================================
     /**
-     * Build createUserRegistry instruction - v0.3.0
-     * Creates a user-owned registry collection
-     * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported. Use the base collection for all agents.
      */
-    buildCreateUserRegistry(collectionAuthority, registryConfig, collection, owner, collectionName, collectionUri) {
-        const data = Buffer.concat([
-            IDENTITY_DISCRIMINATORS.createUserRegistry,
-            serializeString(collectionName),
-            serializeString(collectionUri),
-        ]);
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: collectionAuthority, isSigner: false, isWritable: false },
-                { pubkey: registryConfig, isSigner: false, isWritable: true },
-                { pubkey: collection, isSigner: true, isWritable: true },
-                { pubkey: owner, isSigner: true, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
-            ],
-            data,
-        });
+    buildCreateUserRegistry(_collectionAuthority, _registryConfig, _collection, _owner, _collectionName, _collectionUri) {
+        throw new Error("createUserRegistry removed on-chain in v0.6.0. " +
+            "Single-collection architecture: use the base collection for all agents.");
     }
     /**
-     * Build updateUserRegistryMetadata instruction - v0.3.0
-     * Updates metadata for a user-owned registry
-     * Accounts: collection_authority, registry_config, collection, owner (signer), system_program, mpl_core_program
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported.
      */
-    buildUpdateUserRegistryMetadata(collectionAuthority, registryConfig, collection, owner, newName, newUri) {
-        // Serialize optional strings
-        const nameBuffer = this.serializeOption(newName, (s) => serializeString(s));
-        const uriBuffer = this.serializeOption(newUri, (s) => serializeString(s));
-        const data = Buffer.concat([
-            IDENTITY_DISCRIMINATORS.updateUserRegistryMetadata,
-            nameBuffer,
-            uriBuffer,
-        ]);
-        return new TransactionInstruction({
-            programId: this.programId,
-            keys: [
-                { pubkey: collectionAuthority, isSigner: false, isWritable: false },
-                { pubkey: registryConfig, isSigner: false, isWritable: false },
-                { pubkey: collection, isSigner: false, isWritable: true },
-                { pubkey: owner, isSigner: true, isWritable: false },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
-            ],
-            data,
-        });
+    buildUpdateUserRegistryMetadata(_collectionAuthority, _registryConfig, _collection, _owner, _newName, _newUri) {
+        throw new Error("updateUserRegistryMetadata removed on-chain in v0.6.0. " +
+            "Single-collection architecture: user registries no longer supported.");
     }
     /**
      * Build setAgentWallet instruction - v0.4.2
@@ -270,12 +218,15 @@ export class IdentityInstructionBuilder {
      * NOTE: Requires Ed25519 signature instruction immediately before in transaction
      */
     buildSetAgentWallet(owner, agentAccount, asset, newWallet, deadline) {
-        // Security: Validate deadline is non-negative u64
+        // On-chain deadline is i64 — validate range
         if (deadline < 0n) {
             throw new Error('Security: deadline must be non-negative');
         }
+        if (deadline > 9223372036854775807n) {
+            throw new Error('Security: deadline exceeds i64 max (9223372036854775807)');
+        }
         const deadlineBuffer = Buffer.alloc(8);
-        deadlineBuffer.writeBigUInt64LE(deadline);
+        deadlineBuffer.writeBigInt64LE(deadline);
         const data = Buffer.concat([
             IDENTITY_DISCRIMINATORS.setAgentWallet,
             newWallet.toBuffer(),

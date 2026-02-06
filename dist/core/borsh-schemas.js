@@ -98,16 +98,16 @@ export class MetadataEntry {
     }
 }
 /**
- * Root Config Account (Identity Registry) - v0.3.0
- * Global pointer to the base registry
+ * Root Config Account (Identity Registry) - v0.6.0
+ * Single-collection architecture: points directly to the base collection
  * Seeds: ["root_config"]
  */
 export class RootConfig {
-    base_registry; // Pubkey of base registry
+    base_collection; // Pubkey of base Metaplex Core collection
     authority; // Pubkey - upgrade authority
     bump;
     constructor(fields) {
-        this.base_registry = fields.base_registry;
+        this.base_collection = fields.base_collection;
         this.authority = fields.authority;
         this.bump = fields.bump;
     }
@@ -118,7 +118,7 @@ export class RootConfig {
             {
                 kind: 'struct',
                 fields: [
-                    ['base_registry', [32]],
+                    ['base_collection', [32]],
                     ['authority', [32]],
                     ['bump', 'u8'],
                 ],
@@ -126,33 +126,35 @@ export class RootConfig {
         ],
     ]);
     static deserialize(data) {
-        // discriminator(8) + base_registry(32) + authority(32) + bump(1) = 73 bytes
+        // discriminator(8) + base_collection(32) + authority(32) + bump(1) = 73 bytes
         if (data.length < 73) {
             throw new Error(`Invalid RootConfig data: expected >= 73 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, RootConfig, accountData);
     }
+    getBaseCollectionPublicKey() {
+        return new PublicKey(this.base_collection);
+    }
+    /** @deprecated Use getBaseCollectionPublicKey() instead */
     getBaseRegistryPublicKey() {
-        return new PublicKey(this.base_registry);
+        return this.getBaseCollectionPublicKey();
     }
     getAuthorityPublicKey() {
         return new PublicKey(this.authority);
     }
 }
 /**
- * Registry Config Account (Identity Registry) - v0.3.0
- * Per-collection configuration
+ * Registry Config Account (Identity Registry) - v0.6.0
+ * Single-collection architecture
  * Seeds: ["registry_config", collection]
  */
 export class RegistryConfig {
     collection; // Pubkey - Metaplex Core collection
-    registry_type; // u8 - 0 = Base, 1 = User
     authority; // Pubkey - registry authority
     bump;
     constructor(fields) {
         this.collection = fields.collection;
-        this.registry_type = fields.registry_type;
         this.authority = fields.authority;
         this.bump = fields.bump;
     }
@@ -164,7 +166,6 @@ export class RegistryConfig {
                 kind: 'struct',
                 fields: [
                     ['collection', [32]],
-                    ['registry_type', 'u8'],
                     ['authority', [32]],
                     ['bump', 'u8'],
                 ],
@@ -172,9 +173,9 @@ export class RegistryConfig {
         ],
     ]);
     static deserialize(data) {
-        // discriminator(8) + collection(32) + registry_type(1) + authority(32) + bump(1) = 74 bytes
-        if (data.length < 74) {
-            throw new Error(`Invalid RegistryConfig data: expected >= 74 bytes, got ${data.length}`);
+        // discriminator(8) + collection(32) + authority(32) + bump(1) = 73 bytes
+        if (data.length < 73) {
+            throw new Error(`Invalid RegistryConfig data: expected >= 73 bytes, got ${data.length}`);
         }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, RegistryConfig, accountData);
@@ -184,12 +185,6 @@ export class RegistryConfig {
     }
     getAuthorityPublicKey() {
         return new PublicKey(this.authority);
-    }
-    isBaseRegistry() {
-        return this.registry_type === 0;
-    }
-    isUserRegistry() {
-        return this.registry_type === 1;
     }
 }
 /**

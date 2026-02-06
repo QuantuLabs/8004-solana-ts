@@ -1,12 +1,7 @@
 /**
  * PDA (Program Derived Address) helpers for 8004 Solana programs
- * v0.3.0 - Asset-based identification
+ * v0.6.0 - Single-collection architecture
  * Browser-compatible - uses cross-platform buffer utilities
- *
- * BREAKING CHANGES from v0.2.0:
- * - agent_id (u64) replaced by asset (Pubkey) in all PDA seeds
- * - New RootConfig and RegistryConfig PDAs for multi-collection support
- * - ValidationStats removed (counters moved off-chain)
  */
 import { PublicKey } from '@solana/web3.js';
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID } from './programs.js';

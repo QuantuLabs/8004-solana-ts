@@ -57,11 +57,9 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
       indexerUrl: process.env.INDEXER_URL || 'https://api.example.com',
     });
 
-    // Create collection and agent
-    const collectionUri = `ipfs://security_collection_${Date.now()}`;
-    const collectionResult = await sdk.createCollection('Test Collection', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await sdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     const agentUri = `ipfs://security_agent_${Date.now()}`;
     const registerResult = await sdk.registerAgent(agentUri, collection);

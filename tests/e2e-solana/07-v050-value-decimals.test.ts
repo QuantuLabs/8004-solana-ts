@@ -58,10 +58,9 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
       indexerUrl: process.env.INDEXER_URL || 'https://api.example.com',
     });
 
-    const collectionUri = `ipfs://v050_collection_${Date.now()}`;
-    const collectionResult = await sdk.createCollection('v0.5.0 Test', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await sdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     const agentUri = `ipfs://v050_agent_${Date.now()}`;
     const registerResult = await sdk.registerAgent(agentUri, collection);

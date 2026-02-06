@@ -63,11 +63,9 @@ describe('Validation Module - Complete Coverage (3 Instructions)', () => {
       indexerUrl: process.env.INDEXER_URL || 'https://api.example.com',
     });
 
-    // Create collection and agent
-    const collectionUri = `ipfs://collection_${Date.now()}`;
-    const collectionResult = await sdk.createCollection('Test Collection', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await sdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     const agentUri = `ipfs://agent_${Date.now()}`;
     const registerResult = await sdk.registerAgent(agentUri, collection);

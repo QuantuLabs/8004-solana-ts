@@ -1,6 +1,6 @@
 /**
  * Registry Config Reader
- * v0.3.0 - Multi-collection support
+ * v0.6.0 - Single-collection architecture
  * Fetches and deserializes RootConfig and RegistryConfig accounts from on-chain
  */
 
@@ -95,9 +95,8 @@ export async function isRegistryInitialized(
 }
 
 /**
- * Get the base collection from root config - v0.3.0
- * Note: RootConfig.base_registry stores the RegistryConfig PDA, not the collection.
- * This function fetches the RegistryConfig and returns the actual collection.
+ * Get the base collection from root config - v0.6.0
+ * Single-collection architecture: RootConfig.base_collection IS the collection directly
  * @param connection - Solana RPC connection
  * @returns Base collection pubkey or null if not initialized
  */
@@ -109,28 +108,15 @@ export async function getBaseCollection(
     return null;
   }
 
-  // base_registry is the RegistryConfig PDA, not the collection
-  const registryConfigPda = rootConfig.getBaseRegistryPublicKey();
-  const registryConfig = await fetchRegistryConfigByPda(connection, registryConfigPda);
-
-  if (!registryConfig) {
-    return null;
-  }
-
-  return registryConfig.getCollectionPublicKey();
+  return rootConfig.getBaseCollectionPublicKey();
 }
 
 /**
- * Get the base registry config PDA from root config - v0.3.0
- * @param connection - Solana RPC connection
- * @returns Base RegistryConfig PDA or null if not initialized
+ * @deprecated Removed in v0.6.0 - single-collection architecture stores collection directly in RootConfig
+ * Use getBaseCollection() instead
  */
 export async function getBaseRegistryPda(
   connection: Connection
 ): Promise<PublicKey | null> {
-  const rootConfig = await fetchRootConfig(connection);
-  if (!rootConfig) {
-    return null;
-  }
-  return rootConfig.getBaseRegistryPublicKey();
+  return getBaseCollection(connection);
 }

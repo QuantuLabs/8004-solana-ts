@@ -13,36 +13,34 @@ import {
 } from '../../src/core/borsh-schemas.js';
 
 describe('Buffer Bounds Validation', () => {
-  describe('AgentAccount.deserialize - v0.4.0', () => {
+  describe('AgentAccount.deserialize', () => {
     it('should reject buffers smaller than minimum size', () => {
-      // v0.4.0 Minimum: discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet option tag(1) = 107 bytes
+      // Minimum: discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1)
+      //        + agent_wallet option(1+32) + digests(3*32) + counts(3*8) + token_uri(4+) = 227 bytes
       const tooSmall = Buffer.alloc(50);
       expect(() => AgentAccount.deserialize(tooSmall)).toThrow(
-        /Invalid AgentAccount data: expected >= 107 bytes, got 50/
+        /Invalid AgentAccount data: expected >= 227 bytes, got 50/
       );
     });
 
     it('should reject empty buffer', () => {
       const empty = Buffer.alloc(0);
       expect(() => AgentAccount.deserialize(empty)).toThrow(
-        /Invalid AgentAccount data: expected >= 107 bytes, got 0/
+        /Invalid AgentAccount data: expected >= 227 bytes, got 0/
       );
     });
 
-    it('should reject buffer at boundary (106 bytes)', () => {
-      const boundary = Buffer.alloc(106);
+    it('should reject buffer at boundary (226 bytes)', () => {
+      const boundary = Buffer.alloc(226);
       expect(() => AgentAccount.deserialize(boundary)).toThrow(
-        /Invalid AgentAccount data: expected >= 107 bytes, got 106/
+        /Invalid AgentAccount data: expected >= 227 bytes, got 226/
       );
     });
 
-    it('should accept buffer at minimum size (107 bytes)', () => {
-      // Note: This may still fail deserialization due to invalid data,
-      // but it should pass the size check
-      const minimal = Buffer.alloc(107);
-      // The deserialization may fail due to schema mismatch, but not due to size check
+    it('should accept buffer at minimum size (227 bytes)', () => {
+      const minimal = Buffer.alloc(227);
       expect(() => AgentAccount.deserialize(minimal)).not.toThrow(
-        /Invalid AgentAccount data: expected >= 107 bytes/
+        /Invalid AgentAccount data: expected >= 227 bytes/
       );
     });
   });
@@ -81,43 +79,43 @@ describe('Buffer Bounds Validation', () => {
     });
   });
 
-  describe('RegistryConfig.deserialize - v0.3.0', () => {
+  describe('RegistryConfig.deserialize - v0.6.0', () => {
     it('should reject buffers smaller than minimum size', () => {
-      // v0.3.0 Minimum: discriminator(8) + collection(32) + registry_type(1) + authority(32) + base_index(4) + bump(1) = 78 bytes
+      // Minimum: discriminator(8) + collection(32) + authority(32) + bump(1) = 73 bytes
       const tooSmall = Buffer.alloc(50);
       expect(() => RegistryConfig.deserialize(tooSmall)).toThrow(
-        /Invalid RegistryConfig data: expected >= 78 bytes, got 50/
+        /Invalid RegistryConfig data: expected >= 73 bytes, got 50/
       );
     });
 
     it('should reject empty buffer', () => {
       const empty = Buffer.alloc(0);
       expect(() => RegistryConfig.deserialize(empty)).toThrow(
-        /Invalid RegistryConfig data: expected >= 78 bytes, got 0/
+        /Invalid RegistryConfig data: expected >= 73 bytes, got 0/
       );
     });
 
-    it('should reject buffer at boundary (77 bytes)', () => {
-      const boundary = Buffer.alloc(77);
+    it('should reject buffer at boundary (72 bytes)', () => {
+      const boundary = Buffer.alloc(72);
       expect(() => RegistryConfig.deserialize(boundary)).toThrow(
-        /Invalid RegistryConfig data: expected >= 78 bytes, got 77/
+        /Invalid RegistryConfig data: expected >= 73 bytes, got 72/
       );
     });
   });
 
   describe('RootConfig.deserialize - v0.3.0', () => {
     it('should reject buffers smaller than minimum size', () => {
-      // v0.3.0 Minimum: discriminator(8) + current_base_registry(32) + base_registry_count(4) + authority(32) + bump(1) = 77 bytes
+      // Minimum: discriminator(8) + base_registry(32) + authority(32) + bump(1) = 73 bytes
       const tooSmall = Buffer.alloc(50);
       expect(() => RootConfig.deserialize(tooSmall)).toThrow(
-        /Invalid RootConfig data: expected >= 77 bytes, got 50/
+        /Invalid RootConfig data: expected >= 73 bytes, got 50/
       );
     });
 
     it('should reject empty buffer', () => {
       const empty = Buffer.alloc(0);
       expect(() => RootConfig.deserialize(empty)).toThrow(
-        /Invalid RootConfig data: expected >= 77 bytes, got 0/
+        /Invalid RootConfig data: expected >= 73 bytes, got 0/
       );
     });
   });

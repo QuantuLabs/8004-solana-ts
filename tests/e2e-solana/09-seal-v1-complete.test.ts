@@ -47,11 +47,9 @@ describe('SEAL v1 - Complete E2E Tests', () => {
       indexerUrl: INDEXER_URL,
     });
 
-    // Create collection and agent
-    const collectionUri = `ipfs://seal_test_collection_${Date.now()}`;
-    const collectionResult = await sdk.createCollection('SEAL Test', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await sdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     const agentUri = `ipfs://seal_test_agent_${Date.now()}`;
     const registerResult = await sdk.registerAgent(agentUri, collection);

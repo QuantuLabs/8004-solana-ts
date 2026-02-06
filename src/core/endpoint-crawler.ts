@@ -68,7 +68,7 @@ export class EndpointCrawler {
       const agentcardUrl = `${endpoint}/agentcard.json`;
       const response = await fetch(agentcardUrl, {
         signal: AbortSignal.timeout(this.timeout),
-        redirect: 'follow',
+        redirect: 'manual',
       });
 
       if (response.ok) {
@@ -260,7 +260,7 @@ export class EndpointCrawler {
         try {
           const response = await fetch(agentcardUrl, {
             signal: AbortSignal.timeout(this.timeout),
-            redirect: 'follow',
+            redirect: 'manual',
           });
 
           if (response.ok) {

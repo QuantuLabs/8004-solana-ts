@@ -13,7 +13,7 @@ export declare function matchesDiscriminator(data: Buffer, expected: Buffer): bo
 /**
  * Identity Registry instruction discriminators
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
- * v0.3.0 - Added multi-collection and wallet instructions
+ * v0.6.0 - Single-collection architecture
  */
 export declare const IDENTITY_DISCRIMINATORS: {
     readonly initialize: Buffer<ArrayBuffer>;
@@ -27,8 +27,6 @@ export declare const IDENTITY_DISCRIMINATORS: {
     readonly syncOwner: Buffer<ArrayBuffer>;
     readonly transferAgent: Buffer<ArrayBuffer>;
     readonly ownerOf: Buffer<ArrayBuffer>;
-    readonly createUserRegistry: Buffer<ArrayBuffer>;
-    readonly updateUserRegistryMetadata: Buffer<ArrayBuffer>;
     readonly setAgentWallet: Buffer<ArrayBuffer>;
 };
 /**

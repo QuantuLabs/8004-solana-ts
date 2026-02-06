@@ -17,7 +17,7 @@ export function matchesDiscriminator(data, expected) {
 /**
  * Identity Registry instruction discriminators
  * Hardcoded from IDL - SHA256("global:instruction_name")[0..8]
- * v0.3.0 - Added multi-collection and wallet instructions
+ * v0.6.0 - Single-collection architecture
  */
 export const IDENTITY_DISCRIMINATORS = {
     initialize: Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]),
@@ -31,9 +31,6 @@ export const IDENTITY_DISCRIMINATORS = {
     syncOwner: Buffer.from([46, 5, 232, 198, 59, 158, 160, 119]),
     transferAgent: Buffer.from([137, 80, 56, 147, 107, 99, 39, 192]),
     ownerOf: Buffer.from([165, 85, 46, 249, 100, 61, 249, 112]),
-    // v0.3.0 - Multi-collection instructions
-    createUserRegistry: Buffer.from([244, 141, 67, 250, 234, 104, 58, 135]),
-    updateUserRegistryMetadata: Buffer.from([121, 57, 38, 142, 118, 18, 204, 28]),
     setAgentWallet: Buffer.from([154, 87, 251, 23, 51, 12, 4, 150]),
 };
 /**

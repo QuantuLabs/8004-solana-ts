@@ -9,13 +9,13 @@
  * - Multi-collection support via RootConfig
  */
 import { PublicKey, Transaction, TransactionInstruction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
-import { PDAHelpers, PROGRAM_ID } from './pda-helpers.js';
+import { PDAHelpers } from './pda-helpers.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { writeBigUInt64LE } from '../utils/buffer-utils.js';
 import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, AtomInstructionBuilder, } from './instruction-builder.js';
 import { getProgramIds } from './programs.js';
 import { AgentAccount } from './borsh-schemas.js';
-import { fetchRegistryConfigByPda, fetchRootConfig } from './config-reader.js';
+import { fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
@@ -80,37 +80,13 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            // Get collection - either provided or from base registry
-            let collectionPubkey;
-            let isBaseRegistry = false;
+            // v0.6.0 single-collection: always use base collection from RootConfig
             const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
-            if (collection) {
-                collectionPubkey = collection;
-                // Check if this is the base collection
-                const rootConfig = await fetchRootConfig(this.connection);
-                if (rootConfig) {
-                    const baseRegistryConfigPda = rootConfig.getBaseRegistryPublicKey();
-                    const baseRegistryConfig = await fetchRegistryConfigByPda(this.connection, baseRegistryConfigPda);
-                    if (baseRegistryConfig && baseRegistryConfig.getCollectionPublicKey().equals(collection)) {
-                        isBaseRegistry = true;
-                    }
-                }
+            const rootConfig = await fetchRootConfig(this.connection);
+            if (!rootConfig) {
+                throw new Error('Root config not initialized. Please initialize the registry first.');
             }
-            else {
-                // Fetch root config to get current base registry
-                const rootConfig = await fetchRootConfig(this.connection);
-                if (!rootConfig) {
-                    throw new Error('Root config not initialized. Please initialize the registry first.');
-                }
-                // base_registry is the RegistryConfig PDA, fetch it directly
-                const registryConfigPda = rootConfig.getBaseRegistryPublicKey();
-                const registryConfig = await fetchRegistryConfigByPda(this.connection, registryConfigPda);
-                if (!registryConfig) {
-                    throw new Error('Registry not initialized.');
-                }
-                collectionPubkey = registryConfig.getCollectionPublicKey();
-                isBaseRegistry = true;
-            }
+            const collectionPubkey = collection || rootConfig.getBaseCollectionPublicKey();
             // Determine the asset pubkey (Metaplex Core asset)
             let assetPubkey;
             let assetKeypair;
@@ -129,12 +105,13 @@ export class IdentityTransactionBuilder {
                 assetKeypair = Keypair.generate();
                 assetPubkey = assetKeypair.publicKey;
             }
-            // Derive PDAs (v0.3.0 - uses asset, not agent_id)
+            // Derive PDAs
             const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
             const [agentPda] = PDAHelpers.getAgentPDA(assetPubkey);
+            // v0.6.0: root_config and registry_config are always required
             const registerInstruction = options?.atomEnabled === false
-                ? this.instructionBuilder.buildRegisterWithOptions(registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '', false, isBaseRegistry ? rootConfigPda : undefined)
-                : this.instructionBuilder.buildRegister(registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '', isBaseRegistry ? rootConfigPda : undefined);
+                ? this.instructionBuilder.buildRegisterWithOptions(rootConfigPda, registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '', false)
+                : this.instructionBuilder.buildRegister(rootConfigPda, registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '');
             // Create transaction with compute budget (configurable via options)
             const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
                 units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
@@ -408,62 +385,15 @@ export class IdentityTransactionBuilder {
         }
     }
     /**
-     * Create a user-owned collection - v0.3.0
-     * Allows users to create their own 8004 asset collections for horizontal scaling
-     * @param collectionName - Collection name (max 32 bytes)
-     * @param collectionUri - Collection URI (max 200 bytes)
-     * @param options - Write options with optional collectionPubkey for skipSend mode
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported. Use the base collection for all agents.
      */
-    async createCollection(collectionName, collectionUri, options) {
-        try {
-            const signerPubkey = options?.signer || this.payer?.publicKey;
-            if (!signerPubkey) {
-                throw new Error('signer required when SDK has no signer configured');
-            }
-            // Validate inputs (MAX_URI_LENGTH = 250 per program)
-            validateByteLength(collectionName, 32, 'collectionName');
-            validateByteLength(collectionUri, 250, 'collectionUri');
-            // Determine collection keypair
-            let collectionPubkey;
-            let collectionKeypair;
-            if (options?.skipSend) {
-                if (!options.collectionPubkey) {
-                    throw new Error('collectionPubkey required when skipSend is true');
-                }
-                collectionPubkey = options.collectionPubkey;
-            }
-            else {
-                if (!this.payer) {
-                    throw new Error('No signer configured - SDK is read-only');
-                }
-                collectionKeypair = Keypair.generate();
-                collectionPubkey = collectionKeypair.publicKey;
-            }
-            // Derive PDAs - user_collection_authority uses only the string seed (no collection key)
-            const [collectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], PROGRAM_ID);
-            const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
-            const instruction = this.instructionBuilder.buildCreateUserRegistry(collectionAuthority, registryConfigPda, collectionPubkey, signerPubkey, collectionName, collectionUri);
-            const transaction = new Transaction().add(instruction);
-            // If skipSend, return serialized transaction
-            if (options?.skipSend) {
-                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-                const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-                return { ...prepared, collection: collectionPubkey };
-            }
-            // Normal mode: send transaction
-            if (!this.payer || !collectionKeypair) {
-                throw new Error('No signer configured - SDK is read-only');
-            }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer, collectionKeypair]);
-            return { signature, success: true, collection: collectionPubkey };
-        }
-        catch (error) {
-            return {
-                signature: '',
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
+    async createCollection(_collectionName, _collectionUri, _options) {
+        return {
+            signature: '',
+            success: false,
+            error: 'createCollection removed in v0.6.0. Single-collection architecture: use the base collection for all agents.',
+        };
     }
     /**
      * Set agent operational wallet with Ed25519 signature verification - v0.3.0
@@ -584,61 +514,22 @@ export class IdentityTransactionBuilder {
         ]);
     }
     /**
-     * Update collection metadata (name/URI) - v0.3.0
-     * Only the collection owner can update
-     * @param collection - Collection pubkey
-     * @param newName - New collection name (null to keep current)
-     * @param newUri - New collection URI (null to keep current)
-     * @param options - Write options (skipSend, signer)
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported.
      */
-    async updateCollectionMetadata(collection, newName, newUri, options) {
-        try {
-            const signerPubkey = options?.signer || this.payer?.publicKey;
-            if (!signerPubkey) {
-                throw new Error('signer required when SDK has no signer configured');
-            }
-            // Validate inputs if provided (MAX_URI_LENGTH = 250 per program)
-            if (newName !== null) {
-                validateByteLength(newName, 32, 'newName');
-            }
-            if (newUri !== null) {
-                validateByteLength(newUri, 250, 'newUri');
-            }
-            if (newName === null && newUri === null) {
-                throw new Error('At least one of newName or newUri must be provided');
-            }
-            // Derive PDAs - user_collection_authority uses only the string seed (no collection key)
-            const [collectionAuthority] = PublicKey.findProgramAddressSync([Buffer.from('user_collection_authority')], PROGRAM_ID);
-            const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collection);
-            const instruction = this.instructionBuilder.buildUpdateUserRegistryMetadata(collectionAuthority, registryConfigPda, collection, signerPubkey, newName, newUri);
-            const transaction = new Transaction().add(instruction);
-            // If skipSend, return serialized transaction
-            if (options?.skipSend) {
-                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-            }
-            // Normal mode: send transaction
-            if (!this.payer) {
-                throw new Error('No signer configured - SDK is read-only');
-            }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
-            return { signature, success: true };
-        }
-        catch (error) {
-            return {
-                signature: '',
-                success: false,
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
+    async updateCollectionMetadata(_collection, _newName, _newUri, _options) {
+        return {
+            signature: '',
+            success: false,
+            error: 'updateCollectionMetadata removed in v0.6.0. Single-collection architecture: user registries no longer supported.',
+        };
     }
     /**
      * @deprecated Removed on-chain - base registry rotation system was removed
      */
     async createBaseCollection(_options) {
-        throw new Error("createBaseCollection removed on-chain. " +
-            "Base registry rotation system was removed. " +
-            "Use createUserRegistry for user-managed collections.");
+        throw new Error("createBaseCollection removed on-chain in v0.6.0. " +
+            "Single-collection architecture: base collection is created during initialize.");
     }
     async sendWithRetry(transaction, signers, maxRetries = 3) {
         let lastError = null;

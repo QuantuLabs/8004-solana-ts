@@ -26,37 +26,37 @@ export declare class MetadataEntry {
     get value(): Uint8Array;
 }
 /**
- * Root Config Account (Identity Registry) - v0.3.0
- * Global pointer to the base registry
+ * Root Config Account (Identity Registry) - v0.6.0
+ * Single-collection architecture: points directly to the base collection
  * Seeds: ["root_config"]
  */
 export declare class RootConfig {
-    base_registry: Uint8Array;
+    base_collection: Uint8Array;
     authority: Uint8Array;
     bump: number;
     constructor(fields: {
-        base_registry: Uint8Array;
+        base_collection: Uint8Array;
         authority: Uint8Array;
         bump: number;
     });
     static schema: Schema;
     static deserialize(data: Buffer): RootConfig;
+    getBaseCollectionPublicKey(): PublicKey;
+    /** @deprecated Use getBaseCollectionPublicKey() instead */
     getBaseRegistryPublicKey(): PublicKey;
     getAuthorityPublicKey(): PublicKey;
 }
 /**
- * Registry Config Account (Identity Registry) - v0.3.0
- * Per-collection configuration
+ * Registry Config Account (Identity Registry) - v0.6.0
+ * Single-collection architecture
  * Seeds: ["registry_config", collection]
  */
 export declare class RegistryConfig {
     collection: Uint8Array;
-    registry_type: number;
     authority: Uint8Array;
     bump: number;
     constructor(fields: {
         collection: Uint8Array;
-        registry_type: number;
         authority: Uint8Array;
         bump: number;
     });
@@ -64,8 +64,6 @@ export declare class RegistryConfig {
     static deserialize(data: Buffer): RegistryConfig;
     getCollectionPublicKey(): PublicKey;
     getAuthorityPublicKey(): PublicKey;
-    isBaseRegistry(): boolean;
-    isUserRegistry(): boolean;
 }
 /**
  * Agent Account (Identity Registry) - v0.5.0

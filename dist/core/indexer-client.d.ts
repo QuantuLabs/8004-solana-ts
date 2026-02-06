@@ -35,8 +35,6 @@ export interface IndexedAgent {
     feedback_count: number;
     raw_avg_score: number;
     sort_key: string;
-    global_id?: number;
-    global_id_formatted?: string;
     block_slot: number;
     tx_signature: string;
     created_at: string;
@@ -118,10 +116,10 @@ export interface IndexedValidation {
 }
 /**
  * Collection statistics from `collection_stats` view
+ * v0.6.0: Single-collection architecture - registry_type removed
  */
 export interface CollectionStats {
     collection: string;
-    registry_type: 'BASE' | 'USER';
     authority: string | null;
     agent_count: number;
     total_feedbacks: number;
