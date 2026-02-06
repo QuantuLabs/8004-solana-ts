@@ -168,8 +168,7 @@ export declare class SolanaFeedbackManager {
      */
     readResponses(asset: PublicKey, client: PublicKey, feedbackIndex: bigint): Promise<SolanaResponse[]>;
     /**
-     * Read feedbacks from indexer (v0.4.0)
-     * Falls back to on-chain if indexer unavailable
+     * Read feedbacks from indexer
      * @param asset - Agent Core asset pubkey
      * @param options - Query options
      * @returns Array of feedbacks with full event-sourced data
