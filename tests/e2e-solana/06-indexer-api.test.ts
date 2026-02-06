@@ -71,11 +71,9 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
       indexerUrl,
     });
 
-    // Create collection and agent
-    const collectionUri = `ipfs://indexer_collection_${Date.now()}`;
-    const collectionResult = await sdk.createCollection('Test Collection', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await sdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     const agentUri = `ipfs://indexer_agent_${Date.now()}`;
     const registerResult = await sdk.registerAgent(agentUri, collection);
@@ -299,23 +297,14 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
       }
     });
 
-    it('should return zero stats for empty collection', async () => {
-      // Create empty collection
-      const emptyCollectionUri = `ipfs://empty_${Date.now()}`;
-      const emptyResult = await sdk.createCollection('Empty Collection', emptyCollectionUri);
-      expect(emptyResult.success).toBe(true);
-      const emptyCollection = emptyResult.collection!;
+    it('should return zero stats for non-existent collection', async () => {
+      // createCollection removed in v0.6.0 - test with a random non-existent collection
+      const fakeCollection = Keypair.generate().publicKey;
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      const stats = await sdk.getCollectionStats(emptyCollection.toBase58());
-      // Stats may be null for unindexed collections, or have 0 agents
-      if (stats) {
-        expect(stats.agent_count).toBe(0);
-        console.log('✅ Empty collection returns zero stats');
-      } else {
-        console.log('⚠️  Collection not yet indexed');
-      }
+      const stats = await sdk.getCollectionStats(fakeCollection.toBase58());
+      // Stats should be null for non-existent collections
+      expect(stats == null || stats.agent_count === 0).toBe(true);
+      console.log('\u2705 Non-existent collection returns null/zero stats');
     });
   });
 

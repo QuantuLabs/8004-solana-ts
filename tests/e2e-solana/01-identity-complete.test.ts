@@ -99,30 +99,13 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
   // 4. create_user_registry (user shards)
   // ========================================
   describe('4. create_user_registry', () => {
-    it('should create user registry collection', async () => {
+    it('should report createCollection as removed in v0.6.0', async () => {
       const result = await sdk.createCollection(
         `UserRegistry_${Date.now()}`,
         'ipfs://QmUserRegistryTest'
       );
-
-      expect(result.success).toBe(true);
-      expect(result.collection).toBeDefined();
-      userCollection = result.collection!;
-
-      // Wait for indexer
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Verify collection via on-chain query
-      const collectionInfo = await sdk.getCollection(userCollection);
-      if (collectionInfo) {
-        expect(collectionInfo.collection.toBase58()).toBe(userCollection.toBase58());
-        console.log('[OK] User registry verified in on-chain data');
-      } else {
-        console.log('⚠️  Collection created on-chain, not yet available via query');
-      }
-
-      console.log('[OK] User registry created:', userCollection.toBase58());
-      console.log('     Signature:', result.signature);
+      // createCollection removed in v0.6.0 single-collection architecture
+      expect(result.success).toBe(false);
     }, 30000);
   });
 

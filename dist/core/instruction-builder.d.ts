@@ -1,13 +1,8 @@
 /**
  * Manual instruction builder for 8004 Solana programs
- * v0.3.0 - Asset-based identification
+ * v0.6.0 - Single-collection architecture
  * Builds transactions without Anchor dependency
  * Must match exactly the instruction layouts in 8004-solana programs
- *
- * BREAKING CHANGES from v0.2.0:
- * - agent_id (u64) removed from all instruction arguments
- * - Asset (Pubkey) used for PDA derivation only
- * - New multi-collection instructions added
  */
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 /**
@@ -19,16 +14,17 @@ export declare class IdentityInstructionBuilder {
     constructor();
     /**
      * Build register instruction (Metaplex Core)
-     * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
+     * v0.6.0 accounts: root_config, registry_config, agent_account, asset (signer),
+     *                   collection, owner (signer), system_program, mpl_core_program
      */
-    buildRegister(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string, rootConfig?: PublicKey): TransactionInstruction;
+    buildRegister(rootConfig: PublicKey, registryConfig: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri?: string): TransactionInstruction;
     /**
      * Build register_with_options instruction (Metaplex Core)
-     * Accounts: registry_config, agent_account, asset (signer), collection,
-     *           user_collection_authority (optional), root_config (optional), owner (signer), system_program, mpl_core_program
+     * v0.6.0 accounts: root_config, registry_config, agent_account, asset (signer),
+     *                   collection, owner (signer), system_program, mpl_core_program
+     * Same context as register() but with explicit atom_enabled arg
      */
-    buildRegisterWithOptions(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri: string, atomEnabled: boolean, rootConfig?: PublicKey): TransactionInstruction;
+    buildRegisterWithOptions(rootConfig: PublicKey, registryConfig: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, agentUri: string, atomEnabled: boolean): TransactionInstruction;
     /**
      * Build enable_atom instruction (one-way)
      * Accounts: agent_account, asset, owner (signer)
@@ -36,10 +32,10 @@ export declare class IdentityInstructionBuilder {
     buildEnableAtom(agentAccount: PublicKey, asset: PublicKey, owner: PublicKey): TransactionInstruction;
     /**
      * Build setAgentUri instruction (Metaplex Core)
-     * Accounts: registry_config, agent_account, asset, collection,
-     *           user_collection_authority (optional), owner (signer), system_program, mpl_core_program
+     * v0.6.0 accounts: registry_config, agent_account, asset, collection,
+     *                   owner (signer), system_program, mpl_core_program
      */
-    buildSetAgentUri(config: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
+    buildSetAgentUri(registryConfig: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
     /**
      * Build setMetadata instruction (v0.2.0 - uses MetadataEntryPda)
      * Accounts: metadata_entry, agent_account, asset, owner (signer), system_program
@@ -61,17 +57,15 @@ export declare class IdentityInstructionBuilder {
      */
     buildSyncOwner(agentAccount: PublicKey, asset: PublicKey): TransactionInstruction;
     /**
-     * Build createUserRegistry instruction - v0.3.0
-     * Creates a user-owned registry collection
-     * Accounts: collection_authority, registry_config, collection (signer), owner (signer), system_program, mpl_core_program
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported. Use the base collection for all agents.
      */
-    buildCreateUserRegistry(collectionAuthority: PublicKey, registryConfig: PublicKey, collection: PublicKey, owner: PublicKey, collectionName: string, collectionUri: string): TransactionInstruction;
+    buildCreateUserRegistry(_collectionAuthority: PublicKey, _registryConfig: PublicKey, _collection: PublicKey, _owner: PublicKey, _collectionName: string, _collectionUri: string): TransactionInstruction;
     /**
-     * Build updateUserRegistryMetadata instruction - v0.3.0
-     * Updates metadata for a user-owned registry
-     * Accounts: collection_authority, registry_config, collection, owner (signer), system_program, mpl_core_program
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported.
      */
-    buildUpdateUserRegistryMetadata(collectionAuthority: PublicKey, registryConfig: PublicKey, collection: PublicKey, owner: PublicKey, newName: string | null, newUri: string | null): TransactionInstruction;
+    buildUpdateUserRegistryMetadata(_collectionAuthority: PublicKey, _registryConfig: PublicKey, _collection: PublicKey, _owner: PublicKey, _newName: string | null, _newUri: string | null): TransactionInstruction;
     /**
      * Build setAgentWallet instruction - v0.4.2
      * Sets the agent wallet with Ed25519 signature verification

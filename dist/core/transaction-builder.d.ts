@@ -148,19 +148,14 @@ export declare class IdentityTransactionBuilder {
      */
     enableAtom(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
-     * Create a user-owned collection - v0.3.0
-     * Allows users to create their own 8004 asset collections for horizontal scaling
-     * @param collectionName - Collection name (max 32 bytes)
-     * @param collectionUri - Collection URI (max 200 bytes)
-     * @param options - Write options with optional collectionPubkey for skipSend mode
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported. Use the base collection for all agents.
      */
-    createCollection(collectionName: string, collectionUri: string, options?: WriteOptions & {
+    createCollection(_collectionName: string, _collectionUri: string, _options?: WriteOptions & {
         collectionPubkey?: PublicKey;
-    }): Promise<(TransactionResult & {
+    }): Promise<TransactionResult & {
         collection?: PublicKey;
-    }) | (PreparedTransaction & {
-        collection: PublicKey;
-    })>;
+    }>;
     /**
      * Set agent operational wallet with Ed25519 signature verification - v0.3.0
      * The new wallet must sign the message to prove ownership
@@ -183,14 +178,10 @@ export declare class IdentityTransactionBuilder {
      */
     static buildWalletSetMessage(asset: PublicKey, newWallet: PublicKey, owner: PublicKey, deadline: bigint): Buffer;
     /**
-     * Update collection metadata (name/URI) - v0.3.0
-     * Only the collection owner can update
-     * @param collection - Collection pubkey
-     * @param newName - New collection name (null to keep current)
-     * @param newUri - New collection URI (null to keep current)
-     * @param options - Write options (skipSend, signer)
+     * @deprecated Removed in v0.6.0 - single-collection architecture
+     * User registries are no longer supported.
      */
-    updateCollectionMetadata(collection: PublicKey, newName: string | null, newUri: string | null, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    updateCollectionMetadata(_collection: PublicKey, _newName: string | null, _newUri: string | null, _options?: WriteOptions): Promise<TransactionResult>;
     /**
      * @deprecated Removed on-chain - base registry rotation system was removed
      */

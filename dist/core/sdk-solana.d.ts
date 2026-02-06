@@ -80,10 +80,10 @@ export interface EnrichedSummary {
 /**
  * Collection information returned by getCollection()
  * Represents on-chain RegistryConfig data in a user-friendly format
+ * v0.6.0: Single-collection architecture - registryType removed
  */
 export interface CollectionInfo {
     collection: PublicKey;
-    registryType: 'BASE' | 'USER';
     authority: PublicKey;
 }
 /**
@@ -321,15 +321,14 @@ export declare class SolanaSDK {
         averageScore: number;
     }>;
     /**
-     * Get collection details by collection pubkey - v0.4.0
+     * Get collection details by collection pubkey - v0.6.0
      * @param collection - Collection (Metaplex Core collection) public key
      * @returns Collection info or null if not registered
      */
     getCollection(collection: PublicKey): Promise<CollectionInfo | null>;
     /**
-     * Get all registered collections - v0.4.0
-     * Note: This always uses on-chain queries because indexer doesn't have
-     * registryType/authority. Use getCollectionStats() for indexed stats.
+     * Get all registered collections - v0.6.0
+     * Single-collection architecture: typically returns only the base collection
      * @returns Array of all collection infos
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
      */
@@ -612,11 +611,9 @@ export declare class SolanaSDK {
      */
     createCollection(name: string, uri: string, options?: WriteOptions & {
         collectionPubkey?: PublicKey;
-    }): Promise<(TransactionResult & {
+    }): Promise<TransactionResult & {
         collection?: PublicKey;
-    }) | (PreparedTransaction & {
-        collection: PublicKey;
-    })>;
+    }>;
     /**
      * Update collection URI (write operation) - v0.4.2
      * Update metadata URI for a user-owned collection.
@@ -636,7 +633,7 @@ export declare class SolanaSDK {
      * );
      * ```
      */
-    updateCollectionUri(collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    updateCollectionUri(collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult>;
     /**
      * Register a new agent (write operation) - v0.3.0
      *

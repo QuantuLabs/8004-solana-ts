@@ -70,11 +70,9 @@ describe('Reputation Gaming & Exploitation', () => {
       }));
     }
 
-    // Create agent
-    const collectionUri = `ipfs://gaming_collection_${Date.now()}`;
-    const collectionResult = await ownerSdk.createCollection('Gaming Test', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await ownerSdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     const agentUri = `ipfs://gaming_agent_${Date.now()}`;
     const registerResult = await ownerSdk.registerAgent(agentUri, collection);

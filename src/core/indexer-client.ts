@@ -53,9 +53,6 @@ export interface IndexedAgent {
   raw_avg_score: number; // 0-100 (simple arithmetic mean when ATOM not enabled)
   // Leaderboard
   sort_key: string; // BIGINT as string (for precision)
-  // Global Agent ID (cosmetic, from indexer materialized view)
-  global_id?: number; // Sequential ID based on registration order
-  global_id_formatted?: string; // e.g., "#042"
   // Chain reference
   block_slot: number;
   tx_signature: string;
@@ -143,10 +140,10 @@ export interface IndexedValidation {
 
 /**
  * Collection statistics from `collection_stats` view
+ * v0.6.0: Single-collection architecture - registry_type removed
  */
 export interface CollectionStats {
   collection: string;
-  registry_type: 'BASE' | 'USER';
   authority: string | null;
   agent_count: number;
   total_feedbacks: number;

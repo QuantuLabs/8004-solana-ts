@@ -137,10 +137,10 @@ export interface EnrichedSummary {
 /**
  * Collection information returned by getCollection()
  * Represents on-chain RegistryConfig data in a user-friendly format
+ * v0.6.0: Single-collection architecture - registryType removed
  */
 export interface CollectionInfo {
   collection: PublicKey;
-  registryType: 'BASE' | 'USER';
   authority: PublicKey;
 }
 
@@ -688,10 +688,10 @@ export class SolanaSDK {
     };
   }
 
-  // ==================== Collection Methods (v0.4.0) ====================
+  // ==================== Collection Methods (v0.6.0) ====================
 
   /**
-   * Get collection details by collection pubkey - v0.4.0
+   * Get collection details by collection pubkey - v0.6.0
    * @param collection - Collection (Metaplex Core collection) public key
    * @returns Collection info or null if not registered
    */
@@ -706,7 +706,6 @@ export class SolanaSDK {
 
       return {
         collection: registryConfig.getCollectionPublicKey(),
-        registryType: registryConfig.isBaseRegistry() ? 'BASE' : 'USER',
         authority: registryConfig.getAuthorityPublicKey(),
       };
     } catch (error) {
@@ -716,9 +715,8 @@ export class SolanaSDK {
   }
 
   /**
-   * Get all registered collections - v0.4.0
-   * Note: This always uses on-chain queries because indexer doesn't have
-   * registryType/authority. Use getCollectionStats() for indexed stats.
+   * Get all registered collections - v0.6.0
+   * Single-collection architecture: typically returns only the base collection
    * @returns Array of all collection infos
    * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
    */
@@ -742,7 +740,6 @@ export class SolanaSDK {
         const config = RegistryConfig.deserialize(acc.data);
         return {
           collection: config.getCollectionPublicKey(),
-          registryType: config.isBaseRegistry() ? 'BASE' : 'USER',
           authority: config.getAuthorityPublicKey(),
         };
       });
@@ -1552,10 +1549,10 @@ export class SolanaSDK {
         }
         // If ATOM init fails, still return the agent registration (non-blocking)
         const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
-        console.warn('[8004-sdk] [WARN] Agent registered successfully but ATOM stats initialization failed:', errorMsg);
+        logger.warn(`Agent registered but ATOM stats init failed: ${errorMsg}`);
       } catch (error) {
         // Non-blocking: agent is registered even if ATOM init fails
-        console.warn('[8004-sdk] [WARN] Agent registered successfully but ATOM stats initialization failed:', error);
+        logger.warn(`Agent registered but ATOM stats init failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -1632,7 +1629,7 @@ export class SolanaSDK {
       owner.toBuffer(),
       Buffer.alloc(8),
     ]);
-    message.writeBigUInt64LE(deadline, message.length - 8);
+    message.writeBigInt64LE(deadline, message.length - 8);
 
     return {
       message: new Uint8Array(message),
@@ -2162,10 +2159,26 @@ export class SolanaSDK {
       throw new Error('URI blocked: internal/private host not allowed');
     }
 
-    const response = await fetch(resolvedUri, {
+    let response = await fetch(resolvedUri, {
       signal: AbortSignal.timeout(timeoutMs),
-      redirect: 'follow',
+      redirect: 'manual',
     });
+
+    // Follow redirects manually with SSRF re-validation (max 5 hops)
+    let redirectCount = 0;
+    while (response.status >= 300 && response.status < 400 && redirectCount < 5) {
+      const location = response.headers.get('location');
+      if (!location) break;
+      const redirectUrl = new URL(location, resolvedUri).toString();
+      if (!this.isAllowedUri(redirectUrl)) {
+        throw new Error('Redirect blocked: target is internal/private host');
+      }
+      response = await fetch(redirectUrl, {
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: 'manual',
+      });
+      redirectCount++;
+    }
 
     if (!response.ok) {
       throw new Error(`Failed to fetch JSON: HTTP ${response.status}`);
@@ -2195,12 +2208,15 @@ export class SolanaSDK {
       const url = new URL(uri);
       const hostname = url.hostname.toLowerCase();
 
-      // Block common internal hostnames
-      const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'metadata.google.internal', '169.254.169.254'];
+      const blockedHosts = ['localhost', 'metadata.google.internal'];
       if (blockedHosts.includes(hostname)) return false;
 
-      // Block private IP ranges
-      const privatePatterns = [/^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./, /^169\.254\./, /^127\./, /^0\./];
+      const privatePatterns = [
+        /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./,
+        /^169\.254\./, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
+        /^\[?::1\]?$/, /^\[?fe80:/i, /^\[?fc/i, /^\[?fd/i,
+        /^\[?::ffff:(127\.|10\.|192\.168\.|0\.)/i,
+      ];
       for (const pattern of privatePatterns) {
         if (pattern.test(hostname)) return false;
       }
@@ -2338,14 +2354,14 @@ export class SolanaSDK {
     try {
       let response = await fetch(endpoint, {
         method: 'HEAD',
-        redirect: 'follow',
+        redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (response.status === 405) {
         response = await fetch(endpoint, {
           method: 'GET',
-          redirect: 'follow',
+          redirect: 'manual',
           signal: AbortSignal.timeout(timeoutMs),
         });
       }

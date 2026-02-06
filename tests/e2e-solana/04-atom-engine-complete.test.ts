@@ -79,10 +79,9 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
     });
 
     // Create collection and agents
-    const collectionUri = `ipfs://collection_${Date.now()}`;
-    const collectionResult = await sdk.createCollection('Test Collection', collectionUri);
-    expect(collectionResult.success).toBe(true);
-    collection = collectionResult.collection!;
+    // Fetch base collection (createCollection removed in v0.6.0)
+    collection = (await sdk.getBaseCollection())!;
+    expect(collection).toBeDefined();
 
     // Create agent with ATOM enabled (default)
     const agentUri = `ipfs://agent_${Date.now()}`;
