@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair, SystemProgram, Transaction } from '@solana/web3.js';
 import { createHash } from 'crypto';
 import { SolanaSDK } from '../../src/core/sdk-solana.js';
+import { computeSealHash } from '../../src/core/seal.js';
 import { loadTestWallets, fundNewKeypair, returnFunds, type DevnetTestWallets } from './devnet-setup.js';
 
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
@@ -32,6 +33,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
   let agentAsset: PublicKey;
   let collection: PublicKey;
   let feedbackIndex: bigint;
+  let feedbackSealHash: Buffer;
   let validationNonce: number;
 
   // Track temp wallets for cleanup
@@ -139,18 +141,31 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       const feedbackUri = `ipfs://feedback_${Date.now()}`;
 
       console.log('\n⭐ Giving feedback...');
-      const result = await clientSdk.giveFeedback(agentAsset, {
+      const feedbackParams = {
         value: 85n,
         score: 85,
         tag1: 'devnet-test',
         feedbackUri,
         feedbackHash: sha256(feedbackUri),
-      });
+      };
+      const result = await clientSdk.giveFeedback(agentAsset, feedbackParams);
 
       expect(result.success).toBe(true);
       expect(result.feedbackIndex).toBeDefined();
 
       feedbackIndex = result.feedbackIndex!;
+
+      feedbackSealHash = computeSealHash({
+        value: feedbackParams.value,
+        valueDecimals: 0,
+        score: feedbackParams.score,
+        tag1: feedbackParams.tag1,
+        tag2: '',
+        endpoint: '',
+        feedbackUri: feedbackParams.feedbackUri,
+        feedbackFileHash: feedbackParams.feedbackHash,
+      });
+
       console.log(`✅ Feedback index: ${feedbackIndex}`);
     }, 60000);
 
@@ -192,6 +207,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
         agentAsset,
         wallets.client1.publicKey,
         feedbackIndex,
+        feedbackSealHash,
         responseUri
       );
 
@@ -273,7 +289,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
   describe('6. Feedback Revocation', () => {
     it('should revoke feedback', async () => {
       console.log('\n🚫 Revoking feedback...');
-      const result = await clientSdk.revokeFeedback(agentAsset, feedbackIndex);
+      const result = await clientSdk.revokeFeedback(agentAsset, feedbackIndex, feedbackSealHash);
 
       expect(result.success).toBe(true);
       console.log('✅ Feedback revoked');
@@ -338,8 +354,8 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
 
       console.log('\n🔢 Testing feedback index increment for same client...');
 
-      // Client1 already gave feedback at index 0 (revoked)
-      // Now give feedback again - should get index 1
+      // feedbackIndex is global per-agent: index 0 (client1), index 1 (client2)
+      // Next feedback gets index 2 (revoke doesn't decrement the counter)
       const feedbackUri1 = `ipfs://client1_second_${Date.now()}`;
       const result1 = await clientSdk.giveFeedback(agentAsset, {
         value: 75n,
@@ -350,36 +366,47 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       });
 
       expect(result1.success).toBe(true);
-      expect(result1.feedbackIndex).toBe(1n); // Should be 1 (second feedback from client1)
-      console.log(`✅ Second feedback from client1: index ${result1.feedbackIndex} (expected: 1)`);
+      expect(result1.feedbackIndex).toBe(2n); // Global index 2 (3rd feedback on agent)
+      console.log(`✅ Second feedback from client1: index ${result1.feedbackIndex} (expected: 2)`);
 
       // Wait for indexer to sync BEFORE giving next feedback
       // This is critical - otherwise getLastFeedbackIndex returns stale data
-      console.log('   Waiting for indexer to sync feedback index 1...');
+      console.log('   Waiting for indexer to sync feedback index 2...');
       const synced1 = await sdk.waitForIndexerSync(
         async () => {
           const feedbacks = await sdk.getFeedbacksFromIndexer(agentAsset, { noFallback: true });
           const client1Feedbacks = feedbacks.filter(f => f.client.equals(wallets.client1.publicKey));
-          const hasIndex1 = client1Feedbacks.some(f => f.feedbackIndex === 1n);
-          return hasIndex1;
+          const hasIndex2 = client1Feedbacks.some(f => f.feedbackIndex === 2n);
+          return hasIndex2;
         },
         { timeout: 15000, initialDelay: 2000 }
       );
       expect(synced1).toBe(true);
-      console.log('   ✅ Indexer synced feedback index 1');
+      console.log('   ✅ Indexer synced feedback index 2');
 
-      // Append response to this feedback
+      // Append response to this feedback (needs sealHash)
       const responseUri = `ipfs://response_index_test_${Date.now()}`;
+      const responseSealHash = computeSealHash({
+        value: 75n,
+        valueDecimals: 0,
+        score: 75,
+        tag1: 'index-test-1',
+        tag2: '',
+        endpoint: '',
+        feedbackUri: feedbackUri1,
+        feedbackFileHash: sha256(feedbackUri1),
+      });
       const responseResult = await sdk.appendResponse(
         agentAsset,
         wallets.client1.publicKey,
         result1.feedbackIndex!,
+        responseSealHash,
         responseUri
       );
       expect(responseResult.success).toBe(true);
       console.log('✅ Response appended to second feedback');
 
-      // Give third feedback from same client - should get index 2
+      // Give third feedback from same client - should get global index 3
       const feedbackUri2 = `ipfs://client1_third_${Date.now()}`;
       const result2 = await clientSdk.giveFeedback(agentAsset, {
         value: 95n,
@@ -390,8 +417,8 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       });
 
       expect(result2.success).toBe(true);
-      expect(result2.feedbackIndex).toBe(2n); // Should be 2 (third feedback from client1)
-      console.log(`✅ Third feedback from client1: index ${result2.feedbackIndex} (expected: 2)`);
+      expect(result2.feedbackIndex).toBe(3n); // Global index 3 (4th feedback on agent)
+      console.log(`✅ Third feedback from client1: index ${result2.feedbackIndex} (expected: 3)`);
 
       // Verify total feedbacks increased
       // Note: getSummary uses ATOM stats which counts NON-revoked feedbacks only

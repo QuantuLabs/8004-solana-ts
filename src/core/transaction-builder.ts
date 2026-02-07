@@ -964,7 +964,7 @@ export class ReputationTransactionBuilder {
       // The SDK reads this value to return to the caller (for reference/tracking)
       // Note: options.feedbackIndex is ignored - it was only used when feedbackIndex was
       // part of the instruction data, which is no longer the case
-      const feedbackIndex = agentAccount.feedback_count;
+      const feedbackIndex = BigInt(agentAccount.feedback_count.toString());
 
       // SEAL v1: feedbackFileHash is optional (null if not provided)
       const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(
