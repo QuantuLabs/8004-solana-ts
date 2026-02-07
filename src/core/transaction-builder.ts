@@ -20,7 +20,7 @@ import {
   Signer,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
-import { PDAHelpers, PROGRAM_ID } from './pda-helpers.js';
+import { PDAHelpers } from './pda-helpers.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { writeBigUInt64LE } from '../utils/buffer-utils.js';
 import {
@@ -35,7 +35,7 @@ import { getProgramIds } from './programs.js';
 // Re-export for SDK users
 export type { UpdateAtomConfigParams };
 import { AgentAccount } from './borsh-schemas.js';
-import { fetchRegistryConfigByPda, fetchRootConfig } from './config-reader.js';
+import { fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
