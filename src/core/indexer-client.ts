@@ -715,7 +715,7 @@ export class IndexerClient {
     const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
     const query = this.buildQuery({
       asset: `eq.${asset}`,
-      validator: `eq.${validator}`,
+      validator_address: `eq.${validator}`,
       nonce: `eq.${nonceNum}`,
     });
     const result = await this.request<IndexedValidation[]>(`/validations${query}`);
@@ -853,9 +853,9 @@ export class IndexerClient {
     if (responses.length === 0) {
       return { digest: null, count: 0 };
     }
-    const countQuery = this.buildQuery({ asset: `eq.${asset}` });
-    const allResponses = await this.request<{ count: number }[]>(`/feedback_responses${countQuery}&select=count`);
-    return { digest: responses[0].running_digest, count: allResponses[0]?.count || 0 };
+
+    const count = await this.getCount('feedback_responses', { asset: `eq.${asset}` });
+    return { digest: responses[0].running_digest, count };
   }
 
   async getLastRevokeDigest(asset: string): Promise<{ digest: string | null; count: number }> {
@@ -903,7 +903,7 @@ export class IndexerClient {
       result.set(idx, null);
     }
     for (const fb of feedbacks) {
-      result.set(fb.feedback_index, fb);
+      result.set(Number(fb.feedback_index), fb);
     }
     return result;
   }
@@ -912,11 +912,7 @@ export class IndexerClient {
    * Get responses count for an asset
    */
   async getResponseCount(asset: string): Promise<number> {
-    const query = this.buildQuery({ asset: `eq.${asset}` });
-    const result = await this.request<{ count: number }[]>(
-      `/feedback_responses${query}&select=count`
-    );
-    return result[0]?.count || 0;
+    return this.getCount('feedback_responses', { asset: `eq.${asset}` });
   }
 
   /**
@@ -983,7 +979,7 @@ export class IndexerClient {
       result.set(rc, null);
     }
     for (const rev of revocations) {
-      result.set(rev.revoke_count, rev);
+      result.set(Number(rev.revoke_count), rev);
     }
     return result;
   }
