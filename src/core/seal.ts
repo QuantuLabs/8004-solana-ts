@@ -152,13 +152,13 @@ export function computeSealHash(params: SealParams): Buffer {
  * - DOMAIN_LEAF_V1 (16 bytes)
  * - asset (32 bytes)
  * - client (32 bytes)
- * - feedback_index (4 bytes, u32 LE)
+ * - feedback_index (8 bytes, u64 LE)
  * - seal_hash (32 bytes)
  * - slot (8 bytes, u64 LE)
  *
  * @param asset Agent asset public key (32 bytes)
  * @param client Client public key (32 bytes)
- * @param feedbackIndex Feedback index (u32)
+ * @param feedbackIndex Feedback index (u64)
  * @param sealHash SEAL hash from computeSealHash (32 bytes)
  * @param slot Solana slot number (u64)
  * @returns 32-byte Keccak256 hash
@@ -166,7 +166,7 @@ export function computeSealHash(params: SealParams): Buffer {
 export function computeFeedbackLeafV1(
   asset: Buffer,
   client: Buffer,
-  feedbackIndex: number,
+  feedbackIndex: number | bigint,
   sealHash: Buffer,
   slot: bigint,
 ): Buffer {
@@ -183,9 +183,9 @@ export function computeFeedbackLeafV1(
   parts.push(asset); // 32 bytes
   parts.push(client); // 32 bytes
 
-  // Feedback index (4 bytes, u32 LE)
-  const indexBuf = Buffer.alloc(4);
-  indexBuf.writeUInt32LE(feedbackIndex);
+  // Feedback index (8 bytes, u64 LE)
+  const indexBuf = Buffer.alloc(8);
+  indexBuf.writeBigUInt64LE(BigInt(feedbackIndex));
   parts.push(indexBuf);
 
   // Seal hash
