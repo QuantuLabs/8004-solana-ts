@@ -22,6 +22,7 @@ import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTra
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
+import { isBlockedUri } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { buildSignedPayload, canonicalizeSignedPayload, parseSignedPayload, verifySignedPayload, } from '../utils/signing.js';
 import { ServiceType } from '../models/enums.js';
@@ -1315,6 +1316,9 @@ export class SolanaSDK {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
+        if (typeof nonce === 'bigint' && nonce > BigInt(Number.MAX_SAFE_INTEGER)) {
+            throw new Error('Nonce exceeds safe integer range');
+        }
         const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
         // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
         const responseHash = options?.responseHash ?? await this.computeUriHash(responseUri);
@@ -1552,7 +1556,7 @@ export class SolanaSDK {
             return data;
         }
         // SSRF protection: block private/internal hosts
-        if (!this.isAllowedUri(resolvedUri)) {
+        if (isBlockedUri(resolvedUri)) {
             throw new Error('URI blocked: internal/private host not allowed');
         }
         let response = await fetch(resolvedUri, {
@@ -1566,7 +1570,7 @@ export class SolanaSDK {
             if (!location)
                 break;
             const redirectUrl = new URL(location, resolvedUri).toString();
-            if (!this.isAllowedUri(redirectUrl)) {
+            if (isBlockedUri(redirectUrl)) {
                 throw new Error('Redirect blocked: target is internal/private host');
             }
             response = await fetch(redirectUrl, {
@@ -1592,29 +1596,6 @@ export class SolanaSDK {
             throw new Error('Invalid JSON payload: expected object');
         }
         return data;
-    }
-    isAllowedUri(uri) {
-        try {
-            const url = new URL(uri);
-            const hostname = url.hostname.toLowerCase();
-            const blockedHosts = ['localhost', 'metadata.google.internal'];
-            if (blockedHosts.includes(hostname))
-                return false;
-            const privatePatterns = [
-                /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./,
-                /^169\.254\./, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
-                /^\[?::1\]?$/, /^\[?fe80:/i, /^\[?fc/i, /^\[?fd/i,
-                /^\[?::ffff:(127\.|10\.|192\.168\.|0\.)/i,
-            ];
-            for (const pattern of privatePatterns) {
-                if (pattern.test(hostname))
-                    return false;
-            }
-            return true;
-        }
-        catch {
-            return false;
-        }
     }
     normalizeRegistrationServices(raw) {
         // Support both new `services` and legacy `endpoints`
@@ -1715,6 +1696,9 @@ export class SolanaSDK {
         return this.pingHttpEndpoint(endpoint.type, value, options.timeoutMs, options.treatAuthAsAlive);
     }
     async pingHttpEndpoint(type, endpoint, timeoutMs, treatAuthAsAlive) {
+        if (isBlockedUri(endpoint)) {
+            return { type, endpoint, ok: false, reason: 'blocked' };
+        }
         const start = Date.now();
         try {
             let response = await fetch(endpoint, {

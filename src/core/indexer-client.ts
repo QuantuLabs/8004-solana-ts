@@ -282,10 +282,11 @@ export class IndexerClient {
         lastError = error as Error;
 
         if (error instanceof IndexerError) {
-          // Don't retry on client errors
+          // Don't retry on client errors (4xx)
           if (
             error.code === IndexerErrorCode.UNAUTHORIZED ||
-            error.code === IndexerErrorCode.RATE_LIMITED
+            error.code === IndexerErrorCode.RATE_LIMITED ||
+            error.code === IndexerErrorCode.INVALID_RESPONSE
           ) {
             throw error;
           }
@@ -349,29 +350,50 @@ export class IndexerClient {
     const query = this.buildQuery({ ...filters, limit: 1 });
     const url = `${this.baseUrl}/${resource}${query}`;
 
-    const response = await fetch(url, {
-      headers: {
-        'apikey': this.apiKey,
-        'Prefer': 'count=exact',
-      },
-    });
+    for (let attempt = 0; attempt <= this.retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    if (!response.ok) {
-      return 0;
-    }
+        const response = await fetch(url, {
+          headers: {
+            'apikey': this.apiKey,
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Prefer': 'count=exact',
+          },
+          signal: controller.signal,
+        });
 
-    // Parse Content-Range header: "0-0/1234" -> 1234
-    const contentRange = response.headers.get('Content-Range');
-    if (contentRange) {
-      const match = contentRange.match(/\/(\d+)$/);
-      if (match) {
-        return parseInt(match[1], 10);
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (attempt < this.retries) {
+            await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
+            continue;
+          }
+          return 0;
+        }
+
+        // Parse Content-Range header: "0-0/1234" or "items 0-0/1234" -> 1234
+        const contentRange = response.headers.get('Content-Range');
+        if (contentRange) {
+          const match = contentRange.match(/\/(\d+)$/);
+          if (match) {
+            return parseInt(match[1], 10);
+          }
+        }
+
+        // Fallback: count items in response (won't be accurate if paginated)
+        const data = await response.json();
+        return Array.isArray(data) ? data.length : 0;
+      } catch {
+        if (attempt < this.retries) {
+          await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
+        }
       }
     }
 
-    // Fallback: count items in response (won't be accurate if paginated)
-    const data = await response.json();
-    return Array.isArray(data) ? data.length : 0;
+    return 0;
   }
 
   // ============================================================================
@@ -610,9 +632,7 @@ export class IndexerClient {
 
     const results = await this.request<Array<{ feedback_index: number | string }>>(`/feedbacks${query}`);
     if (results.length === 0) return -1n;
-    // Handle BIGINT returned as string from Supabase - use BigInt for precision
-    const rawIndex = results[0].feedback_index;
-    return typeof rawIndex === 'string' ? BigInt(rawIndex) : BigInt(rawIndex);
+    return BigInt(results[0].feedback_index);
   }
 
   // ============================================================================
@@ -753,7 +773,9 @@ export class IndexerClient {
         total_collections: 0,
         total_feedbacks: 0,
         total_validations: 0,
-        avg_score: null,
+        platinum_agents: 0,
+        gold_agents: 0,
+        avg_quality: null,
       }
     );
   }
@@ -846,7 +868,7 @@ export class IndexerClient {
   async getLastResponseDigest(asset: string): Promise<{ digest: string | null; count: number }> {
     const query = this.buildQuery({
       asset: `eq.${asset}`,
-      order: 'created_at.desc',
+      order: 'block_slot.desc',
       limit: 1,
     });
     const responses = await this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
@@ -868,7 +890,9 @@ export class IndexerClient {
     if (revocations.length === 0) {
       return { digest: null, count: 0 };
     }
-    return { digest: revocations[0].running_digest, count: revocations[0].revoke_count };
+
+    const count = await this.getCount('revocations', { asset: `eq.${asset}` });
+    return { digest: revocations[0].running_digest, count };
   }
 
   // ============================================================================

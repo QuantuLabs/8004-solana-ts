@@ -6,6 +6,11 @@
  * Used for SSRF protection
  */
 export declare function isPrivateHost(hostname: string): boolean;
+/**
+ * Check if a URI targets a private/internal host (full URL validation)
+ * Used for SSRF protection on fetch calls
+ */
+export declare function isBlockedUri(uri: string): boolean;
 export interface URIValidationOptions {
     allowHttp?: boolean;
 }

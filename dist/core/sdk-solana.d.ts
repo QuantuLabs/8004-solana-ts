@@ -826,7 +826,6 @@ export declare class SolanaSDK {
     verify(payloadOrUri: string | SignedPayloadV1, asset: PublicKey, publicKey?: PublicKey): Promise<boolean>;
     private resolveSignedPayloadInput;
     private fetchJsonFromUri;
-    private isAllowedUri;
     private normalizeRegistrationServices;
     private pingEndpoint;
     private pingHttpEndpoint;

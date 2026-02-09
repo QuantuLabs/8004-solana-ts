@@ -1,6 +1,6 @@
 {
   "name": "8004-solana",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "TypeScript SDK for 8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
@@ -70,7 +70,6 @@
     "@coral-xyz/borsh": "^0.32.1",
     "@noble/hashes": "^2.0.1",
     "@solana/web3.js": "^1.95.0",
-    "axios": "^1.13.4",
     "borsh": "^0.7.0",
     "bs58": "^6.0.0",
     "ipfs-http-client": "^60.0.1",

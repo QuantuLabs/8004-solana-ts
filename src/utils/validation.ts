@@ -11,10 +11,16 @@ const PRIVATE_IP_PATTERNS = [
   /^0\./,
   /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
   /^localhost$/i,
-  /^\[::1\]$/,
-  /^\[fe80:/i,
-  /^\[fc/i,
-  /^\[fd/i,
+  /^\[?::1\]?$/,
+  /^\[?fe80:/i,
+  /^\[?fc/i,
+  /^\[?fd/i,
+  /^\[?::ffff:(127\.|10\.|192\.168\.|0\.|172\.(1[6-9]|2\d|3[01])\.)/i,
+];
+
+const BLOCKED_HOSTS = [
+  'metadata.google.internal',
+  'metadata.google.internal.',
 ];
 
 const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,}|[a-zA-Z0-9]{46,59})$/;
@@ -24,7 +30,22 @@ const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,}|[a-zA-Z0-9
  * Used for SSRF protection
  */
 export function isPrivateHost(hostname: string): boolean {
-  return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(hostname));
+  const h = hostname.toLowerCase();
+  if (BLOCKED_HOSTS.includes(h)) return true;
+  return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(h));
+}
+
+/**
+ * Check if a URI targets a private/internal host (full URL validation)
+ * Used for SSRF protection on fetch calls
+ */
+export function isBlockedUri(uri: string): boolean {
+  try {
+    const url = new URL(uri);
+    return isPrivateHost(url.hostname);
+  } catch {
+    return true;
+  }
 }
 
 export interface URIValidationOptions {

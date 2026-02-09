@@ -10,7 +10,7 @@ export interface ServicePingResult {
     status?: number;
     latencyMs?: number;
     skipped?: boolean;
-    reason?: 'non_http' | 'unsupported_type' | 'timeout' | 'network' | 'invalid';
+    reason?: 'non_http' | 'unsupported_type' | 'timeout' | 'network' | 'invalid' | 'blocked';
 }
 /** @deprecated Use ServicePingResult instead */
 export type EndpointPingResult = ServicePingResult;

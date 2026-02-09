@@ -147,8 +147,12 @@ export class EndpointCrawler {
                     Accept: 'application/json, text/event-stream',
                 },
                 body: JSON.stringify(payload),
+                redirect: 'manual',
                 signal: AbortSignal.timeout(this.timeout),
             });
+            if (response.status >= 300 && response.status < 400) {
+                return null;
+            }
             if (!response.ok) {
                 return null;
             }
