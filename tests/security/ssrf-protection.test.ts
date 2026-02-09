@@ -1,6 +1,6 @@
 /**
- * Security tests for SSRF protection in SolanaSDK
- * Validates that isAllowedUri blocks private/internal addresses
+ * Security tests for SSRF protection
+ * Validates that isBlockedUri blocks private/internal addresses
  * and that fetch calls use redirect: 'manual' instead of 'follow'.
  */
 
@@ -8,17 +8,13 @@ import { describe, it, expect } from '@jest/globals';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
-import { SolanaSDK } from '../../src/core/sdk-solana.js';
+import { isBlockedUri, isPrivateHost } from '../../src/utils/validation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Create a minimal SDK instance for testing isAllowedUri
-const sdk = new SolanaSDK();
-const isAllowedUri = (uri: string): boolean => (sdk as any).isAllowedUri(uri);
-
 describe('SSRF Protection', () => {
-  describe('isAllowedUri blocks IPv4 private ranges', () => {
+  describe('isBlockedUri blocks IPv4 private ranges', () => {
     const blockedAddresses = [
       ['http://127.0.0.1', 'loopback'],
       ['http://127.0.0.42/path', 'loopback (alternate)'],
@@ -36,11 +32,11 @@ describe('SSRF Protection', () => {
     ];
 
     it.each(blockedAddresses)('blocks %s (%s)', (uri) => {
-      expect(isAllowedUri(uri as string)).toBe(false);
+      expect(isBlockedUri(uri as string)).toBe(true);
     });
   });
 
-  describe('isAllowedUri blocks CGNAT range (100.64.0.0/10)', () => {
+  describe('isBlockedUri blocks CGNAT range (100.64.0.0/10)', () => {
     const cgnatBlocked = [
       ['http://100.64.0.1', 'CGNAT start'],
       ['http://100.100.100.100', 'CGNAT mid'],
@@ -48,15 +44,15 @@ describe('SSRF Protection', () => {
     ];
 
     it.each(cgnatBlocked)('blocks %s (%s)', (uri) => {
-      expect(isAllowedUri(uri as string)).toBe(false);
+      expect(isBlockedUri(uri as string)).toBe(true);
     });
 
     it('allows 100.128.0.1 (outside CGNAT range)', () => {
-      expect(isAllowedUri('http://100.128.0.1')).toBe(true);
+      expect(isBlockedUri('http://100.128.0.1')).toBe(false);
     });
   });
 
-  describe('isAllowedUri blocks IPv6 private addresses', () => {
+  describe('isBlockedUri blocks IPv6 private addresses', () => {
     const ipv6Blocked = [
       ['http://[::1]', 'loopback'],
       ['http://[fe80::1]', 'link-local'],
@@ -65,7 +61,7 @@ describe('SSRF Protection', () => {
     ];
 
     it.each(ipv6Blocked)('blocks %s (%s)', (uri) => {
-      expect(isAllowedUri(uri as string)).toBe(false);
+      expect(isBlockedUri(uri as string)).toBe(true);
     });
 
     // Node's URL parser normalizes ::ffff:127.0.0.1 to ::ffff:7f00:1 (hex form),
@@ -74,7 +70,31 @@ describe('SSRF Protection', () => {
     it.todo('should block http://[::ffff:10.0.0.1] (IPv4-mapped class A)');
   });
 
-  describe('isAllowedUri allows legitimate public URLs', () => {
+  describe('isBlockedUri blocks cloud metadata endpoints', () => {
+    it('blocks metadata.google.internal', () => {
+      expect(isBlockedUri('http://metadata.google.internal')).toBe(true);
+    });
+
+    it('blocks metadata.google.internal with trailing dot', () => {
+      expect(isBlockedUri('http://metadata.google.internal.')).toBe(true);
+    });
+
+    it('blocks metadata.google.internal with path', () => {
+      expect(isBlockedUri('http://metadata.google.internal/computeMetadata/v1/')).toBe(true);
+    });
+  });
+
+  describe('isPrivateHost blocks cloud metadata hostnames', () => {
+    it('blocks metadata.google.internal', () => {
+      expect(isPrivateHost('metadata.google.internal')).toBe(true);
+    });
+
+    it('blocks metadata.google.internal.', () => {
+      expect(isPrivateHost('metadata.google.internal.')).toBe(true);
+    });
+  });
+
+  describe('isBlockedUri allows legitimate public URLs', () => {
     const allowedUrls = [
       'https://example.com',
       'https://api.mainnet-beta.solana.com',
@@ -84,17 +104,17 @@ describe('SSRF Protection', () => {
     ];
 
     it.each(allowedUrls)('allows %s', (uri) => {
-      expect(isAllowedUri(uri)).toBe(true);
+      expect(isBlockedUri(uri)).toBe(false);
     });
   });
 
-  describe('isAllowedUri rejects malformed URIs', () => {
+  describe('isBlockedUri rejects malformed URIs', () => {
     it('rejects empty string', () => {
-      expect(isAllowedUri('')).toBe(false);
+      expect(isBlockedUri('')).toBe(true);
     });
 
     it('rejects non-URL string', () => {
-      expect(isAllowedUri('not-a-url')).toBe(false);
+      expect(isBlockedUri('not-a-url')).toBe(true);
     });
   });
 
