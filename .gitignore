@@ -71,3 +71,4 @@ scripts/*.ts
 
 # Audit files (local only)
 audit.md
+formal.md
