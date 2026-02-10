@@ -68,3 +68,6 @@ test-e2e-supabase.ts
 tests/e2e-browser/.next/
 scripts/*.ts
 .test-wallets/
+
+# Audit files (local only)
+audit.md
