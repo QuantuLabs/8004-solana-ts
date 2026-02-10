@@ -21,7 +21,65 @@ const PRIVATE_IP_PATTERNS = [
 const BLOCKED_HOSTS = [
   'metadata.google.internal',
   'metadata.google.internal.',
+  'instance-data.ec2.internal',
+  'metadata.azure.com',
 ];
+
+/**
+ * Parse a numeric or non-standard IP notation to dotted-decimal IPv4.
+ * Handles decimal (2130706433), hex (0x7f000001), and octal (0177.0.0.1) forms.
+ * Returns null if the input is not a valid IP in any notation.
+ */
+function normalizeIpAddress(hostname: string): string | null {
+  // Pure decimal integer (e.g., 2130706433 = 127.0.0.1)
+  if (/^\d+$/.test(hostname)) {
+    const num = Number(hostname);
+    if (num >= 0 && num <= 0xFFFFFFFF) {
+      return [
+        (num >>> 24) & 0xFF,
+        (num >>> 16) & 0xFF,
+        (num >>> 8) & 0xFF,
+        num & 0xFF,
+      ].join('.');
+    }
+  }
+
+  // Hex notation (e.g., 0x7f000001)
+  if (/^0x[0-9a-fA-F]+$/.test(hostname)) {
+    const num = parseInt(hostname, 16);
+    if (num >= 0 && num <= 0xFFFFFFFF) {
+      return [
+        (num >>> 24) & 0xFF,
+        (num >>> 16) & 0xFF,
+        (num >>> 8) & 0xFF,
+        num & 0xFF,
+      ].join('.');
+    }
+  }
+
+  // Dotted notation with octal/hex octets (e.g., 0177.0.0.1)
+  const parts = hostname.split('.');
+  if (parts.length === 4) {
+    const octets: number[] = [];
+    for (const part of parts) {
+      let val: number;
+      if (/^0x[0-9a-fA-F]+$/i.test(part)) {
+        val = parseInt(part, 16);
+      } else if (/^0\d+$/.test(part)) {
+        val = parseInt(part, 8);
+      } else if (/^\d+$/.test(part)) {
+        val = parseInt(part, 10);
+      } else {
+        return null;
+      }
+      if (isNaN(val) || val < 0 || val > 255) return null;
+      octets.push(val);
+    }
+    return octets.join('.');
+  }
+
+  return null;
+}
 
 const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,}|[a-zA-Z0-9]{46,59})$/;
 
@@ -32,7 +90,15 @@ const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,}|[a-zA-Z0-9
 export function isPrivateHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
   if (BLOCKED_HOSTS.includes(h)) return true;
-  return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(h));
+  if (PRIVATE_IP_PATTERNS.some(pattern => pattern.test(h))) return true;
+
+  // Normalize non-standard IP notations (decimal, hex, octal) to dotted-decimal
+  const normalized = normalizeIpAddress(h);
+  if (normalized && normalized !== h) {
+    return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(normalized));
+  }
+
+  return false;
 }
 
 /**

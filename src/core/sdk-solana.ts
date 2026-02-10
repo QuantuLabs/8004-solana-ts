@@ -2155,15 +2155,7 @@ export class SolanaSDK {
       );
     }
 
-    // Dynamic import to avoid bundler resolution
-    // NOTE: Using Function('m', 'return import(m)') is intentional to:
-    // 1. Prevent bundlers (webpack, vite, esbuild) from statically analyzing the import
-    // 2. Allow fs/promises to be tree-shaken out in browser builds
-    // 3. Enable runtime-only resolution for Node.js environments
-    // This pattern is safe here because fsModule is a hardcoded string constant.
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fsModule = 'fs/promises';
-    const { readFile } = await (Function('m', 'return import(m)')(fsModule) as Promise<typeof import('fs/promises')>);
+    const { readFile } = await import('fs/promises');
 
     if (trimmed.startsWith('file://')) {
       const fileUrl = new URL(trimmed);
@@ -2229,8 +2221,9 @@ export class SolanaSDK {
     }
 
     const text = await response.text();
-    if (text.length > maxBytes) {
-      throw new Error(`Response too large: ${text.length} bytes (max: ${maxBytes})`);
+    const textByteLength = new TextEncoder().encode(text).byteLength;
+    if (textByteLength > maxBytes) {
+      throw new Error(`Response too large: ${textByteLength} bytes (max: ${maxBytes})`);
     }
 
     const data = JSON.parse(text) as unknown;

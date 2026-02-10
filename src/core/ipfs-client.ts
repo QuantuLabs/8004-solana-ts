@@ -121,7 +121,8 @@ export class IPFSClient {
       try {
         const verifyUrl = `https://gateway.pinata.cloud/ipfs/${cid}`;
         const verifyResponse = await fetch(verifyUrl, {
-          signal: AbortSignal.timeout(5000), // 5 second timeout for verification
+          signal: AbortSignal.timeout(5000),
+          redirect: 'error',
         });
         if (!verifyResponse.ok) {
           // HTTP 429 (rate limit) is not a failure - gateway is just rate limiting
@@ -212,10 +213,7 @@ export class IPFSClient {
       );
     }
 
-    // Dynamic import to avoid bundler resolution
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fsModule = 'fs';
-    const fs = await (Function('m', 'return import(m)')(fsModule) as Promise<typeof import('fs')>);
+    const fs = await import('fs');
     const data = fs.readFileSync(filepath, 'utf-8');
 
     if (this.provider === 'pinata') {
@@ -313,17 +311,23 @@ export class IPFSClient {
     if (this.provider === 'pinata' || this.provider === 'filecoinPin') {
       const gateways = IPFS_GATEWAYS.map(gateway => `${gateway}${encodeURIComponent(cidOnly)}`);
 
-      // Security: Shared abort controller to cancel all requests when one succeeds
+      // Global controller: cancel all remaining requests when one succeeds
       const globalAbortController = new AbortController();
 
-      // Security: Fetch with streaming, size limit, no redirects, and proper timeout
+      // Per-gateway fetch with individual timeout, size limit, and no redirects
       const fetchWithLimit = async (gateway: string): Promise<Uint8Array> => {
-        // Security: Integrate timeout directly into AbortController
-        const timeoutId = setTimeout(() => globalAbortController.abort(), TIMEOUTS.IPFS_GATEWAY);
+        const perGatewayController = new AbortController();
+
+        // Abort this gateway on its own timeout
+        const timeoutId = setTimeout(() => perGatewayController.abort(), TIMEOUTS.IPFS_GATEWAY);
+
+        // Also abort if the global controller fires (first-success cancellation)
+        const onGlobalAbort = () => perGatewayController.abort();
+        globalAbortController.signal.addEventListener('abort', onGlobalAbort);
 
         try {
           const response = await fetch(gateway, {
-            signal: globalAbortController.signal,
+            signal: perGatewayController.signal,
             // Security: Block redirects to prevent SSRF via redirect to internal IPs
             redirect: 'error',
           });
@@ -374,6 +378,7 @@ export class IPFSClient {
           return result;
         } finally {
           clearTimeout(timeoutId);
+          globalAbortController.signal.removeEventListener('abort', onGlobalAbort);
         }
       };
 
