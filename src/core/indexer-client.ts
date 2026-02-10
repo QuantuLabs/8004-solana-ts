@@ -195,6 +195,59 @@ export interface IndexedRevocation {
 }
 
 // ============================================================================
+// Replay Data Types (for hash-chain full replay verification)
+// ============================================================================
+
+export interface ReplayEventData {
+  asset: string;
+  client: string;
+  feedback_index: string;
+  slot: number;
+  running_digest: string | null;
+  feedback_hash?: string | null;
+  responder?: string;
+  response_hash?: string | null;
+  response_count?: number | null;
+  revoke_count?: number | null;
+}
+
+export interface ReplayDataPage {
+  events: ReplayEventData[];
+  hasMore: boolean;
+  nextFromCount: number;
+}
+
+export interface CheckpointData {
+  event_count: number;
+  digest: string;
+  created_at: string;
+}
+
+export interface CheckpointSet {
+  feedback: CheckpointData | null;
+  response: CheckpointData | null;
+  revoke: CheckpointData | null;
+}
+
+export interface ServerChainReplayResult {
+  chainType: string;
+  finalDigest: string;
+  count: number;
+  valid: boolean;
+  mismatchAt?: number;
+  checkpointsStored: number;
+}
+
+export interface ServerReplayResult {
+  agentId: string;
+  feedback: ServerChainReplayResult;
+  response: ServerChainReplayResult;
+  revoke: ServerChainReplayResult;
+  valid: boolean;
+  duration: number;
+}
+
+// ============================================================================
 // IndexerClient Implementation
 // ============================================================================
 
@@ -1006,5 +1059,38 @@ export class IndexerClient {
       result.set(Number(rev.revoke_count), rev);
     }
     return result;
+  }
+
+  // ============================================================================
+  // Replay Data Methods (for hash-chain full replay verification)
+  // ============================================================================
+
+  async getReplayData(
+    asset: string,
+    chainType: 'feedback' | 'response' | 'revoke',
+    fromCount: number = 0,
+    toCount: number = 1000,
+    limit: number = 1000,
+  ): Promise<ReplayDataPage> {
+    const query = this.buildQuery({
+      chainType,
+      fromCount,
+      toCount,
+      limit,
+    });
+    const events = await this.request<ReplayEventData[]>(`/events/${asset}/replay-data${query}`);
+    return {
+      events,
+      hasMore: events.length === limit,
+      nextFromCount: events.length > 0 ? fromCount + events.length : fromCount,
+    };
+  }
+
+  async getLatestCheckpoints(asset: string): Promise<CheckpointSet> {
+    return this.request<CheckpointSet>(`/checkpoints/${asset}/latest`);
+  }
+
+  async triggerReplay(asset: string): Promise<ServerReplayResult> {
+    return this.request<ServerReplayResult>(`/verify/replay/${asset}`);
   }
 }

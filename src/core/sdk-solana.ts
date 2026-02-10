@@ -60,6 +60,18 @@ import {
   CollectionStats,
   GlobalStats,
 } from './indexer-client.js';
+import type { ReplayEventData, CheckpointSet } from './indexer-client.js';
+import {
+  replayFeedbackChain,
+  replayResponseChain,
+  replayRevokeChain,
+} from './hash-chain-replay.js';
+import type {
+  ReplayResult,
+  FeedbackReplayEvent,
+  ResponseReplayEvent,
+  RevokeReplayEvent,
+} from './hash-chain-replay.js';
 import type { AgentSearchParams } from './indexer-types.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
@@ -268,6 +280,28 @@ export interface DeepIntegrityResult extends IntegrityResult {
   missingItems: number;
   /** Number of items with modified content (content hash mismatch) */
   modifiedItems: number;
+}
+
+/**
+ * Options for full hash-chain replay verification
+ */
+export interface FullVerificationOptions {
+  useCheckpoints?: boolean;
+  batchSize?: number;
+  onProgress?: (chain: string, count: number, total: number) => void;
+}
+
+/**
+ * Full verification result with replay details
+ */
+export interface FullVerificationResult extends IntegrityResult {
+  replay: {
+    feedback: ReplayResult;
+    response: ReplayResult;
+    revoke: ReplayResult;
+  };
+  checkpointsUsed: boolean;
+  duration: number;
 }
 
 /**
@@ -2862,6 +2896,254 @@ export class SolanaSDK {
     }
 
     return result;
+  }
+
+  /**
+   * Full hash-chain replay verification
+   * Replays all events and recomputes digests from scratch (or from checkpoint).
+   * Detects any event censorship, reordering, or modification by the indexer.
+   *
+   * @param asset - Agent Core asset pubkey
+   * @param options - Verification options
+   * @returns FullVerificationResult with per-chain replay details
+   */
+  async verifyIntegrityFull(
+    asset: PublicKey,
+    options: FullVerificationOptions = {},
+  ): Promise<FullVerificationResult> {
+    const { useCheckpoints = true, batchSize = 1000, onProgress } = options;
+    const start = Date.now();
+    const assetStr = asset.toBase58();
+    const indexerUrl = this.indexerClient.getBaseUrl();
+
+    const toHex = (arr: Uint8Array): string => Buffer.from(arr).toString('hex');
+
+    try {
+      const agent = await this.loadAgent(asset);
+      if (!agent) {
+        const emptyReplay: ReplayResult = { finalDigest: Buffer.alloc(32), count: 0, valid: true };
+        return {
+          valid: false,
+          status: 'error',
+          asset: assetStr,
+          indexerUrl,
+          chains: {
+            feedback: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+            response: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+            revoke: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+          },
+          totalLag: 0n,
+          trustworthy: false,
+          error: { message: 'Agent not found on-chain', recommendation: 'Verify the asset pubkey is correct' },
+          replay: { feedback: emptyReplay, response: emptyReplay, revoke: emptyReplay },
+          checkpointsUsed: false,
+          duration: Date.now() - start,
+        };
+      }
+
+      const onChainFeedbackDigest = toHex(agent.feedback_digest);
+      const onChainResponseDigest = toHex(agent.response_digest);
+      const onChainRevokeDigest = toHex(agent.revoke_digest);
+      const feedbackCountOnChain = BigInt(agent.feedback_count);
+      const responseCountOnChain = BigInt(agent.response_count);
+      const revokeCountOnChain = BigInt(agent.revoke_count);
+
+      let checkpoints: CheckpointSet | null = null;
+      let checkpointsUsed = false;
+      if (useCheckpoints) {
+        try {
+          checkpoints = await this.indexerClient.getLatestCheckpoints(assetStr);
+        } catch {
+          // Checkpoints not available, replay from zero
+        }
+      }
+
+      const replayChainFromIndexer = async (
+        chainType: 'feedback' | 'response' | 'revoke',
+        onChainCount: bigint,
+      ): Promise<ReplayResult> => {
+        const cp = checkpoints?.[chainType];
+        let startDigest = Buffer.alloc(32);
+        let startCount = 0;
+        if (cp && useCheckpoints) {
+          startDigest = Buffer.from(cp.digest, 'hex');
+          startCount = cp.event_count;
+          checkpointsUsed = true;
+        }
+
+        const allEvents: ReplayEventData[] = [];
+        let fromCount = startCount;
+        const target = Number(onChainCount);
+
+        while (fromCount < target) {
+          const toCount = Math.min(fromCount + batchSize, target);
+          const page = await this.indexerClient.getReplayData(assetStr, chainType, fromCount, toCount, batchSize);
+          allEvents.push(...page.events);
+          onProgress?.(chainType, allEvents.length + startCount, target);
+          if (!page.hasMore || page.events.length === 0) break;
+          fromCount = page.nextFromCount;
+        }
+
+        if (chainType === 'feedback') {
+          const events: FeedbackReplayEvent[] = allEvents.map(e => ({
+            asset: Buffer.from(bs58.decode(e.asset)),
+            client: Buffer.from(bs58.decode(e.client)),
+            feedbackIndex: BigInt(e.feedback_index),
+            sealHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+            slot: BigInt(e.slot),
+            storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+          }));
+          return replayFeedbackChain(events, startDigest, startCount);
+        } else if (chainType === 'response') {
+          const events: ResponseReplayEvent[] = allEvents.map(e => ({
+            asset: Buffer.from(bs58.decode(e.asset)),
+            client: Buffer.from(bs58.decode(e.client)),
+            feedbackIndex: BigInt(e.feedback_index),
+            responder: e.responder ? Buffer.from(bs58.decode(e.responder)) : Buffer.alloc(32),
+            responseHash: e.response_hash ? Buffer.from(e.response_hash, 'hex') : Buffer.alloc(32),
+            feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+            slot: BigInt(e.slot),
+            storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+          }));
+          return replayResponseChain(events, startDigest, startCount);
+        } else {
+          const events: RevokeReplayEvent[] = allEvents.map(e => ({
+            asset: Buffer.from(bs58.decode(e.asset)),
+            client: Buffer.from(bs58.decode(e.client)),
+            feedbackIndex: BigInt(e.feedback_index),
+            feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+            slot: BigInt(e.slot),
+            storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+          }));
+          return replayRevokeChain(events, startDigest, startCount);
+        }
+      };
+
+      const [feedbackReplay, responseReplay, revokeReplay] = await Promise.all([
+        replayChainFromIndexer('feedback', feedbackCountOnChain),
+        replayChainFromIndexer('response', responseCountOnChain),
+        replayChainFromIndexer('revoke', revokeCountOnChain),
+      ]);
+
+      const feedbackDigestMatch = feedbackReplay.finalDigest.toString('hex') === onChainFeedbackDigest;
+      const responseDigestMatch = responseReplay.finalDigest.toString('hex') === onChainResponseDigest;
+      const revokeDigestMatch = revokeReplay.finalDigest.toString('hex') === onChainRevokeDigest;
+
+      const feedbackCountMatch = BigInt(feedbackReplay.count) === feedbackCountOnChain;
+      const responseCountMatch = BigInt(responseReplay.count) === responseCountOnChain;
+      const revokeCountMatch = BigInt(revokeReplay.count) === revokeCountOnChain;
+
+      const allValid = feedbackDigestMatch && responseDigestMatch && revokeDigestMatch
+        && feedbackCountMatch && responseCountMatch && revokeCountMatch
+        && feedbackReplay.valid && responseReplay.valid && revokeReplay.valid;
+
+      const feedbackLag = feedbackCountOnChain - BigInt(feedbackReplay.count);
+      const responseLag = responseCountOnChain - BigInt(responseReplay.count);
+      const revokeLag = revokeCountOnChain - BigInt(revokeReplay.count);
+      const totalLag = feedbackLag + responseLag + revokeLag;
+
+      let status: IntegrityStatus;
+      let trustworthy = false;
+
+      if (allValid) {
+        status = 'valid';
+        trustworthy = true;
+      } else if (totalLag > 0n && feedbackReplay.valid && responseReplay.valid && revokeReplay.valid) {
+        status = 'syncing';
+        trustworthy = totalLag < 100n;
+      } else {
+        status = 'corrupted';
+        trustworthy = false;
+      }
+
+      const result: FullVerificationResult = {
+        valid: allValid,
+        status,
+        asset: assetStr,
+        indexerUrl,
+        chains: {
+          feedback: {
+            onChain: onChainFeedbackDigest,
+            indexer: feedbackReplay.finalDigest.toString('hex'),
+            countOnChain: feedbackCountOnChain,
+            countIndexer: BigInt(feedbackReplay.count),
+            match: feedbackDigestMatch,
+            lag: feedbackLag,
+          },
+          response: {
+            onChain: onChainResponseDigest,
+            indexer: responseReplay.finalDigest.toString('hex'),
+            countOnChain: responseCountOnChain,
+            countIndexer: BigInt(responseReplay.count),
+            match: responseDigestMatch,
+            lag: responseLag,
+          },
+          revoke: {
+            onChain: onChainRevokeDigest,
+            indexer: revokeReplay.finalDigest.toString('hex'),
+            countOnChain: revokeCountOnChain,
+            countIndexer: BigInt(revokeReplay.count),
+            match: revokeDigestMatch,
+            lag: revokeLag,
+          },
+        },
+        totalLag,
+        trustworthy,
+        replay: {
+          feedback: feedbackReplay,
+          response: responseReplay,
+          revoke: revokeReplay,
+        },
+        checkpointsUsed,
+        duration: Date.now() - start,
+      };
+
+      if (status === 'corrupted') {
+        const mismatchChains = [
+          !feedbackReplay.valid && `feedback (mismatch at event ${feedbackReplay.mismatchAt})`,
+          !responseReplay.valid && `response (mismatch at event ${responseReplay.mismatchAt})`,
+          !revokeReplay.valid && `revoke (mismatch at event ${revokeReplay.mismatchAt})`,
+          !feedbackDigestMatch && feedbackReplay.valid && 'feedback (final digest mismatch)',
+          !responseDigestMatch && responseReplay.valid && 'response (final digest mismatch)',
+          !revokeDigestMatch && revokeReplay.valid && 'revoke (final digest mismatch)',
+        ].filter(Boolean);
+        result.error = {
+          message: `Full replay detected corruption: ${mismatchChains.join(', ')}`,
+          recommendation: 'Hash-chain replay failed. Events may have been censored, reordered, or modified. Switch indexers immediately.',
+        };
+      } else if (status === 'syncing') {
+        result.error = {
+          message: `Replay verified ${feedbackReplay.count + responseReplay.count + revokeReplay.count} events but indexer is ${totalLag} event(s) behind on-chain`,
+          recommendation: trustworthy
+            ? 'Partial verification passed. Recent events still syncing.'
+            : 'Indexer significantly behind. Wait for sync or use another indexer.',
+        };
+      }
+
+      return result;
+    } catch (err) {
+      const emptyReplay: ReplayResult = { finalDigest: Buffer.alloc(32), count: 0, valid: true };
+      return {
+        valid: false,
+        status: 'error',
+        asset: assetStr,
+        indexerUrl,
+        chains: {
+          feedback: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+          response: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+          revoke: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+        },
+        totalLag: 0n,
+        trustworthy: false,
+        error: {
+          message: `Full replay failed: ${err instanceof Error ? err.message : String(err)}`,
+          recommendation: 'Check network connectivity and try again',
+        },
+        replay: { feedback: emptyReplay, response: emptyReplay, revoke: emptyReplay },
+        checkpointsUsed: false,
+        duration: Date.now() - start,
+      };
+    }
   }
 
   /**

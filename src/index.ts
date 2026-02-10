@@ -59,6 +59,8 @@ export type {
   DeepIntegrityOptions,
   DeepIntegrityResult,
   SpotCheckResult,
+  FullVerificationOptions,
+  FullVerificationResult,
 } from './core/sdk-solana.js';
 
 // Export Feedback types
@@ -130,6 +132,11 @@ export type {
   IndexedFeedbackResponse,
   CollectionStats,
   GlobalStats,
+  ReplayEventData,
+  ReplayDataPage,
+  CheckpointData,
+  CheckpointSet,
+  ServerReplayResult,
 } from './core/indexer-client.js';
 
 // Indexer errors
@@ -162,4 +169,28 @@ export {
   DEFAULT_FORCE_ON_CHAIN,
   SMALL_QUERY_OPERATIONS,
 } from './core/indexer-defaults.js';
+
+// ============================================================================
+// Hash-chain replay & verification
+// ============================================================================
+
+export {
+  chainHash,
+  computeResponseLeaf,
+  computeRevokeLeaf,
+  replayFeedbackChain,
+  replayResponseChain,
+  replayRevokeChain,
+  DOMAIN_FEEDBACK,
+  DOMAIN_RESPONSE,
+  DOMAIN_REVOKE,
+  DOMAIN_SEAL_V1,
+  DOMAIN_LEAF_V1,
+} from './core/hash-chain-replay.js';
+export type {
+  ReplayResult,
+  FeedbackReplayEvent,
+  ResponseReplayEvent,
+  RevokeReplayEvent,
+} from './core/hash-chain-replay.js';
 
