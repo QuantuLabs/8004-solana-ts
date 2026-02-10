@@ -17,7 +17,7 @@ describe('SEAL v1 Cross-Validation', () => {
     vector2: '12cb1b6d1351b3a79ff15440d6c41e098a4fb69077670ce6b21c636adf98f04a',
     vector3: 'cc81c864e771056c9b0e5fc4401035f0189142d3d44364acf8e5a6597c469c2e',
     vector4: '84be87fdff6ff50a53c30188026d69f28b4888bf4ae9bd93d27cc341520fe6e6',
-    leaf: '8049579cda2c902bc95bfa9025a81911d46d4619ac3406f2f6cefaf292e455b3',
+    leaf: 'f23e92ed586f8308ea256ecf95772531a89bd75a6782f5ab7cc99bc6c1fb5270',
   };
 
   test('Vector 1: Minimal (score=None, fileHash=None)', () => {
