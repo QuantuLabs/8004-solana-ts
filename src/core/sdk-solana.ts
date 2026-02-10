@@ -35,7 +35,7 @@ import {
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
-import { isBlockedUri } from '../utils/validation.js';
+import { isBlockedUri, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import {
   buildSignedPayload,
@@ -1910,6 +1910,8 @@ export class SolanaSDK {
     nonce: number | bigint
   ): Promise<NormalizedValidation | null> {
     try {
+      const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+      validateNonce(nonceNum);
       const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce);
 
       const accountData = await this.client.getAccount(validationRequestPda);
@@ -2101,7 +2103,7 @@ export class SolanaSDK {
     asset: PublicKey,
     publicKey?: PublicKey
   ): Promise<boolean> {
-    const payload = await this.resolveSignedPayloadInput(payloadOrUri);
+    const payload = await this.resolveSignedPayloadInput(payloadOrUri, { allowFileRead: true });
 
     if (payload.asset !== asset.toBase58()) {
       return false;
@@ -2123,7 +2125,7 @@ export class SolanaSDK {
     return verifySignedPayload(payload, verifierKey);
   }
 
-  private async resolveSignedPayloadInput(input: string | SignedPayloadV1): Promise<SignedPayloadV1> {
+  private async resolveSignedPayloadInput(input: string | SignedPayloadV1, options?: { allowFileRead?: boolean }): Promise<SignedPayloadV1> {
     if (typeof input !== 'string') {
       return parseSignedPayload(input);
     }
@@ -2145,6 +2147,14 @@ export class SolanaSDK {
     ) {
       const payload = await this.fetchJsonFromUri(trimmed, 10000);
       return parseSignedPayload(payload);
+    }
+
+    // File system reads require explicit opt-in
+    if (!options?.allowFileRead) {
+      throw new Error(
+        'File system reads are disabled by default. ' +
+        'Pass { allowFileRead: true } to enable, or use http/ipfs URIs or JSON strings.'
+      );
     }
 
     // File system operations are Node.js only
@@ -2220,10 +2230,41 @@ export class SolanaSDK {
       throw new Error(`Response too large: ${contentLength} bytes (max: ${maxBytes})`);
     }
 
-    const text = await response.text();
-    const textByteLength = new TextEncoder().encode(text).byteLength;
-    if (textByteLength > maxBytes) {
-      throw new Error(`Response too large: ${textByteLength} bytes (max: ${maxBytes})`);
+    // Stream body with byte counting to prevent OOM from large responses
+    let text: string;
+    const reader = response.body?.getReader();
+    if (reader) {
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      try {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          totalBytes += value.length;
+          if (totalBytes > maxBytes) {
+            throw new Error(`Response too large: ${totalBytes} bytes (max: ${maxBytes})`);
+          }
+          chunks.push(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      text = new TextDecoder().decode(
+        chunks.length === 1 ? chunks[0] : (() => {
+          const merged = new Uint8Array(totalBytes);
+          let offset = 0;
+          for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+          return merged;
+        })()
+      );
+    } else {
+      // Fallback for environments where response.body is not available
+      text = await response.text();
+      const textByteLength = new TextEncoder().encode(text).byteLength;
+      if (textByteLength > maxBytes) {
+        throw new Error(`Response too large: ${textByteLength} bytes (max: ${maxBytes})`);
+      }
     }
 
     const data = JSON.parse(text) as unknown;
@@ -2529,11 +2570,24 @@ export class SolanaSDK {
     });
 
     try {
+      let countRetrievalFailed = false;
+
+      const safeGetDigest = async (
+        fn: () => Promise<{ digest: string | null; count: number }>
+      ): Promise<{ digest: string | null; count: number }> => {
+        try {
+          return await fn();
+        } catch {
+          countRetrievalFailed = true;
+          return { digest: null, count: 0 };
+        }
+      };
+
       const [agent, feedbackDigest, responseDigest, revokeDigest] = await Promise.all([
         this.loadAgent(asset),
-        this.indexerClient.getLastFeedbackDigest(assetStr),
-        this.indexerClient.getLastResponseDigest(assetStr),
-        this.indexerClient.getLastRevokeDigest(assetStr),
+        safeGetDigest(() => this.indexerClient.getLastFeedbackDigest(assetStr)),
+        safeGetDigest(() => this.indexerClient.getLastResponseDigest(assetStr)),
+        safeGetDigest(() => this.indexerClient.getLastRevokeDigest(assetStr)),
       ]);
 
       if (!agent) {
@@ -2590,7 +2644,10 @@ export class SolanaSDK {
       let status: IntegrityStatus;
       let trustworthy = false;
 
-      if (allDigestsMatch) {
+      if (countRetrievalFailed) {
+        status = 'error';
+        trustworthy = false;
+      } else if (allDigestsMatch) {
         status = 'valid';
         trustworthy = true;
       } else if (totalLag > 0n) {
@@ -2794,6 +2851,8 @@ export class SolanaSDK {
         spotCheckResults.feedback.push({
           index: idx,
           exists,
+          // Spot checks verify event existence and non-null digest, not digest value correctness.
+          // Use full hash-chain replay (verifyIntegrityFull) for digest value verification.
           digestMatch: exists && fb?.running_digest !== null,
           contentValid: contentCheck.valid,
           contentError: contentCheck.error,

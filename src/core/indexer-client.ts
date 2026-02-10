@@ -302,6 +302,7 @@ export class IndexerClient {
           ...options,
           headers,
           signal: controller.signal,
+          redirect: 'error',
         });
 
         clearTimeout(timeoutId);
@@ -424,7 +425,10 @@ export class IndexerClient {
             await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
             continue;
           }
-          return 0;
+          throw new IndexerError(
+            `getCount failed: HTTP ${response.status}`,
+            IndexerErrorCode.SERVER_ERROR
+          );
         }
 
         // Parse Content-Range header: "0-0/1234" or "items 0-0/1234" -> 1234
@@ -439,14 +443,20 @@ export class IndexerClient {
         // Fallback: count items in response (won't be accurate if paginated)
         const data = await response.json();
         return Array.isArray(data) ? data.length : 0;
-      } catch {
+      } catch (error) {
         if (attempt < this.retries) {
           await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
+        } else {
+          throw error instanceof IndexerError
+            ? error
+            : new IndexerUnavailableError(
+                error instanceof Error ? error.message : 'getCount failed after retries'
+              );
         }
       }
     }
 
-    return 0;
+    throw new IndexerUnavailableError('getCount failed after retries');
   }
 
   // ============================================================================

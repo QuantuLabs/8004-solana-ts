@@ -30,11 +30,45 @@ function createJsonRpcRequest(method: string, params?: Record<string, unknown>, 
 /**
  * Crawls MCP and A2A endpoints to fetch capabilities
  */
+const MAX_CRAWLER_RESPONSE_BYTES = 1024 * 1024; // 1 MB
+
 export class EndpointCrawler {
   private timeout: number;
 
   constructor(timeout: number = 5000) {
     this.timeout = timeout;
+  }
+
+  private async readLimitedText(response: Response): Promise<string> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      // Fallback for environments where response.body is not available
+      const text = await response.text();
+      if (new TextEncoder().encode(text).byteLength > MAX_CRAWLER_RESPONSE_BYTES) {
+        throw new Error(`Crawler response exceeded ${MAX_CRAWLER_RESPONSE_BYTES} bytes`);
+      }
+      return text;
+    }
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.length;
+        if (totalBytes > MAX_CRAWLER_RESPONSE_BYTES) {
+          throw new Error(`Crawler response exceeded ${MAX_CRAWLER_RESPONSE_BYTES} bytes`);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+    return new TextDecoder().decode(merged);
   }
 
   /**
@@ -72,7 +106,8 @@ export class EndpointCrawler {
       });
 
       if (response.ok) {
-        const data = (await response.json()) as Record<string, unknown>;
+        const rawText = await this.readLimitedText(response);
+        const data = JSON.parse(rawText) as Record<string, unknown>;
 
         // Extract capabilities from agentcard
         const result: McpCapabilities = {
@@ -188,7 +223,7 @@ export class EndpointCrawler {
 
       // Check if response is SSE format
       const contentType = response.headers.get('content-type') || '';
-      const text = await response.text();
+      const text = await this.readLimitedText(response);
 
       if (contentType.includes('text/event-stream') || text.includes('event: message')) {
         // Parse SSE format
@@ -269,7 +304,8 @@ export class EndpointCrawler {
           });
 
           if (response.ok) {
-            const data = (await response.json()) as Record<string, unknown>;
+            const rawText = await this.readLimitedText(response);
+            const data = JSON.parse(rawText) as Record<string, unknown>;
 
             // Extract skills from agentcard
             const skills = this._extractList(data, 'skills');

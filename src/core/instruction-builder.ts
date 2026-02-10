@@ -564,6 +564,12 @@ export class ReputationInstructionBuilder {
     responseHash: Buffer,
     sealHash: Buffer,
   ): TransactionInstruction {
+    if (responseHash.length !== 32) {
+      throw new Error(`responseHash must be 32 bytes, got ${responseHash.length}`);
+    }
+    if (sealHash.length !== 32) {
+      throw new Error(`sealHash must be 32 bytes, got ${sealHash.length}`);
+    }
     const data = Buffer.concat([
       REPUTATION_DISCRIMINATORS.appendResponse,
       asset.toBuffer(),

@@ -16,6 +16,8 @@ const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 const PREFIX_RAW = 0x00;
 const PREFIX_ZSTD = 0x01;
 
+const MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024; // 10 MB
+
 // Cache for zstd decompress function
 type DecompressFn = (data: Buffer) => Promise<Buffer>;
 let zstdDecompressCache: DecompressFn | null = null;
@@ -65,7 +67,13 @@ export async function decompressFromStorage(data: Buffer): Promise<Buffer> {
     if (!decompress) {
       throw new Error('ZSTD decompression required but @mongodb-js/zstd not installed');
     }
-    return decompress(data.slice(1));
+    const decompressed = await decompress(data.slice(1));
+    if (decompressed.length > MAX_DECOMPRESSED_SIZE) {
+      throw new Error(
+        `Decompressed output exceeds size limit: ${decompressed.length} > ${MAX_DECOMPRESSED_SIZE} bytes`
+      );
+    }
+    return decompressed;
   }
 
   // Legacy format: no prefix, return as-is

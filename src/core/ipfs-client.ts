@@ -250,10 +250,9 @@ export class IPFSClient {
    */
   private async verifyCidV0(cid: string, content: Uint8Array): Promise<boolean> {
     if (!cid.startsWith('Qm')) {
-      // CIDv1 - would need multiformats library for proper verification
-      // For now, log warning and accept (defense in depth, not sole protection)
-      logger.debug('CIDv1 hash verification not implemented, skipping');
-      return true;
+      // CIDv1 - verification not implemented; fail-closed to prevent tampered content
+      logger.warn('CIDv1 hash verification not implemented, rejecting unverifiable content');
+      return false;
     }
 
     // CIDv0: Qm... is base58btc encoded multihash (0x12 0x20 + SHA256)
@@ -266,8 +265,8 @@ export class IPFSClient {
       const decoded = bs58.decode(cid);
       // First 2 bytes are multihash header (0x12, 0x20), rest is the hash
       if (decoded.length !== 34) {
-        logger.warn('CIDv0 unexpected length, skipping verification');
-        return true;
+        logger.warn('CIDv0 unexpected decoded length, rejecting');
+        return false;
       }
       const expectedHash = decoded.slice(2);
       const matches = Buffer.compare(Buffer.from(hash), Buffer.from(expectedHash)) === 0;
@@ -276,9 +275,8 @@ export class IPFSClient {
       }
       return matches;
     } catch {
-      // If bs58 decode fails, log and continue (defense in depth)
-      logger.warn('Failed to decode CID for verification');
-      return true;
+      logger.warn('Failed to decode CID for verification, rejecting');
+      return false;
     }
   }
 
@@ -388,41 +386,47 @@ export class IPFSClient {
 
       // Sequential with hedging: start next gateway after delay if no response
       const HEDGE_DELAY = 2000;
+      const MAX_CONCURRENT = 3;
+      const inFlight: Promise<void>[] = [];
 
       for (let i = 0; i < gateways.length && !result; i++) {
+        // Cancel oldest in-flight request if at capacity
+        if (inFlight.length >= MAX_CONCURRENT) {
+          await Promise.race(inFlight);
+        }
+
         const gateway = gateways[i];
         try {
           const fetchPromise = fetchWithLimit(gateway);
+          const tracked = fetchPromise
+            .then((data) => { if (!result) { result = data; globalAbortController.abort(); } })
+            .catch((err) => { lastError = err instanceof Error ? err : new Error(String(err)); })
+            .finally(() => { const idx = inFlight.indexOf(tracked); if (idx >= 0) inFlight.splice(idx, 1); });
+          inFlight.push(tracked);
 
-          if (i < gateways.length - 1) {
-            // Race with hedge delay
-            type RaceResult = { ok: true; data: Uint8Array } | { ok: false; hedge: true } | { ok: false; error: Error };
-
-            const raceResult = await Promise.race<RaceResult>([
-              fetchPromise.then((data): RaceResult => ({ ok: true, data }))
-                          .catch((err): RaceResult => ({ ok: false, error: err })),
-              new Promise<RaceResult>((resolve) =>
-                setTimeout(() => resolve({ ok: false, hedge: true }), HEDGE_DELAY)
-              ),
-            ]);
-
-            if (raceResult.ok) {
-              result = raceResult.data;
-              globalAbortController.abort();
-              break;
-            } else if ('error' in raceResult) {
-              lastError = raceResult.error;
-              logger.debug(`Gateway failed: ${gateway.slice(0, 30)}...`);
-              continue;
-            }
-            // hedge: continue to next gateway
+          if (i < gateways.length - 1 && !result) {
+            // Wait for hedge delay before launching next gateway
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, HEDGE_DELAY);
+              // Resolve early if a result arrives
+              const check = setInterval(() => {
+                if (result) { clearTimeout(timer); clearInterval(check); resolve(); }
+              }, 50);
+              tracked.finally(() => { clearInterval(check); });
+            });
           } else {
-            result = await fetchPromise;
+            // Last gateway - wait for all in-flight to settle
+            await Promise.allSettled(inFlight);
           }
         } catch (err) {
           lastError = err instanceof Error ? err : new Error(String(err));
           logger.debug(`Gateway failed: ${gateway.slice(0, 30)}...`);
         }
+      }
+
+      // Wait for remaining in-flight to settle
+      if (inFlight.length > 0) {
+        await Promise.allSettled(inFlight);
       }
 
       globalAbortController.abort();
