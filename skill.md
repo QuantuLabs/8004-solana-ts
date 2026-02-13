@@ -1,6 +1,9 @@
 ---
 name: 8004-solana-sdk
-description: Use this skill when implementing, debugging, or documenting integrations with the 8004-solana TypeScript SDK (agent registration, feedback/SEAL, ATOM, signer flows, indexer queries, and skipSend server-mode patterns).
+description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
+version: 0.6.3
+homepage: "https://github.com/CasterCorp/agent0-ts-solana"
+metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
 
 # 8004-solana SDK Skill
@@ -27,10 +30,9 @@ import {
 
   // Builders
   buildRegistrationFileJson,
-  buildCollectionMetadataJson,
 
   // Enums & Types
-  ServiceType,       // 'MCP', 'A2A', 'ENS', 'DID', 'wallet', 'OASF'
+  ServiceType,       // MCP, A2A, ENS, DID, WALLET, OASF
   TrustTier,         // Unrated=0, Bronze=1, Silver=2, Gold=3, Platinum=4
   Tag,               // Standardized tag constants
 
@@ -43,6 +45,10 @@ import {
   computeFeedbackLeafV1,
   verifySealHash,
   createSealParams,
+  validateSealInputs,
+  MAX_TAG_LEN,          // 32 bytes
+  MAX_ENDPOINT_LEN,     // 250 bytes
+  MAX_URI_LEN,          // 250 bytes
 
   // OASF Taxonomy
   getAllSkills,
@@ -56,6 +62,19 @@ import {
   buildSignedPayload,
   verifySignedPayload,
   parseSignedPayload,
+  normalizeSignData,
+  createNonce,
+  canonicalizeJson,
+
+  // Value encoding
+  encodeReputationValue,
+  decodeToDecimalString,
+  decodeToNumber,
+
+  // Crypto utilities
+  keccak256,
+  sha256,
+  sha256Sync,          // Node.js only
 
   // Hash-chain replay
   replayFeedbackChain,
@@ -67,6 +86,14 @@ import {
 
   // Endpoint crawler
   EndpointCrawler,
+
+  // Error classes
+  IndexerError,
+  IndexerUnavailableError,
+  IndexerTimeoutError,
+  IndexerRateLimitError,
+  UnsupportedRpcError,
+  RpcNetworkError,
 } from '8004-solana';
 
 import { Keypair, PublicKey } from '@solana/web3.js';
@@ -143,8 +170,8 @@ const metadata = buildRegistrationFileJson({
     { type: ServiceType.MCP, value: 'https://my-agent.com/mcp' },
     { type: ServiceType.A2A, value: 'https://my-agent.com/a2a' },
   ],
-  skills: ['analytical_skills/financial_analysis/financial_analysis'],
-  domains: ['finance_and_business/trading/trading'],
+  skills: ['advanced_reasoning_planning/strategic_planning'],
+  domains: ['finance_and_business/finance'],
   x402Support: true,
 });
 ```
@@ -171,21 +198,12 @@ const opWallet = Keypair.generate();
 await sdk.setAgentWallet(result.asset, opWallet);
 ```
 
-### Collection behavior in v0.6.x
+### Collection (v0.6.x: single-collection)
+
+All agents register into the base collection automatically. `createCollection()` and `updateCollectionUri()` are deprecated and return `{ success: false }`.
 
 ```typescript
-// Registers into the base collection by default
-const agent = await sdk.registerAgent(`ipfs://${cid}`);
-
-// Optional: inspect the base collection address
 const baseCollection = await sdk.getBaseCollection();
-console.log(baseCollection?.toBase58());
-
-// Legacy methods remain for backward compatibility but are deprecated:
-const legacy = await sdk.createCollection('My Collection', `ipfs://${colCid}`);
-if (!legacy.success) {
-  console.warn(legacy.error); // "createCollection removed in v0.6.0..."
-}
 ```
 
 ---
@@ -258,8 +276,22 @@ await sdk.giveFeedback(assetPubkey, {
   score: 95,                          // 0-100, optional
   endpoint: '/api/v1/generate',       // optional, max 250 bytes
   feedbackUri: `ipfs://${feedbackCid}`,
+  feedbackFileHash,                   // optional, 32 bytes Buffer (links file to SEAL)
 });
 ```
+
+### GiveFeedbackParams reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `value` | `string \| number \| bigint` | Yes | Metric value. Strings auto-encode decimals ("99.77" -> 9977n, 2) |
+| `valueDecimals` | `number` (0-6) | No | Only needed for raw int/bigint. Auto-detected for strings |
+| `score` | `number` (0-100) | No | Explicit ATOM score. If omitted, inferred from tag1 |
+| `tag1` | `string` | No | Category tag (max 32 UTF-8 bytes) |
+| `tag2` | `string` | No | Period/network tag (max 32 UTF-8 bytes) |
+| `endpoint` | `string` | No | Endpoint used (max 250 UTF-8 bytes) |
+| `feedbackUri` | `string` | Yes | URI to detailed feedback file (IPFS/HTTPS, max 250 bytes) |
+| `feedbackFileHash` | `Buffer` | No | SHA-256 of feedback file content (32 bytes). Binds file to on-chain SEAL |
 
 ### Value encoding patterns
 
@@ -272,11 +304,11 @@ const feedbackExamples = [
 // Milliseconds: 250ms
 { value: 250, tag1: Tag.responseTime, valueDecimals: 0 },
 
-// Currency: $150.00
-{ value: '150.00', tag1: Tag.revenues, tag2: Tag.week },
+// Currency: $150.25
+{ value: '150.25', tag1: Tag.revenues, tag2: Tag.week },
 
-// Negative PnL: -$15.50
-{ value: '-15.50', tag1: Tag.tradingYield, tag2: Tag.month },
+// Negative PnL: -$15.5
+{ value: '-15.5', tag1: Tag.tradingYield, tag2: Tag.month },
 
 // Binary check: reachable
 { value: 1, tag1: Tag.reachable, valueDecimals: 0, score: 100 },
@@ -291,6 +323,9 @@ const feedbackExamples = [
 - `score: 95` -> explicit quality score, used directly by ATOM
 - `score: undefined/null` -> ATOM infers from tag1 if it's a known tag (uptime, successRate, starred)
 - Tags without auto-score (responseTime, revenues, etc.) require explicit `score` for ATOM impact
+
+ATOM-enabled tags (auto-score from value): `starred`, `uptime`, `successRate`
+Context-dependent tags (require explicit score): `reachable`, `ownerVerified`, `responseTime`, `blocktimeFreshness`, `revenues`, `tradingYield`
 
 ### Read feedback
 
@@ -495,7 +530,8 @@ const tunedReport = await sdk.isItAlive(assetPubkey, {
 SEAL provides client-side hash computation matching on-chain Keccak256. Required for `revokeFeedback()` and `appendResponse()`.
 
 ```typescript
-// Build params
+// Build params (with optional feedbackFileHash)
+const fileHash = await SolanaSDK.computeHash(JSON.stringify(feedbackFile));
 const params = createSealParams(
   9977n,                        // value (i64)
   2,                            // decimals
@@ -504,7 +540,11 @@ const params = createSealParams(
   'day',                        // tag2
   'https://api.example.com',    // endpoint (or null)
   'ipfs://QmFeedback...',       // feedbackUri
+  fileHash,                     // feedbackFileHash (or null)
 );
+
+// Validate inputs before hashing (throws on invalid params)
+validateSealInputs(params);
 
 // Compute hash
 const sealHash = computeSealHash(params);  // Buffer, 32 bytes (Keccak256)
@@ -521,6 +561,15 @@ const leaf = computeFeedbackLeafV1(
   12345n,       // slot
 );
 ```
+
+### Field size limits
+
+| Field | Max bytes | Constant |
+|-------|-----------|----------|
+| `tag1`, `tag2` | 32 UTF-8 | `MAX_TAG_LEN` |
+| `endpoint` | 250 UTF-8 | `MAX_ENDPOINT_LEN` |
+| `feedbackUri` | 250 UTF-8 | `MAX_URI_LEN` |
+| `feedbackFileHash` | 32 exact | - |
 
 ---
 
@@ -613,32 +662,35 @@ const a2a = await crawler.fetchA2aCapabilities('https://agent.com');
 
 ---
 
-## 12. Collections
+## 12. SDK Introspection
 
 ```typescript
-// Build collection metadata JSON (still useful for external docs/catalogs)
-const colMeta = buildCollectionMetadataJson({
-  name: 'Trading Bots',
-  description: 'Collection of trading agents',
-  image: 'ipfs://QmLogo...',
-  category: 'finance',
-  tags: ['defi', 'trading', 'automated'],
-  project: {
-    name: 'Acme Corp',
-    socials: { website: 'https://acme.ai', x: 'acme_ai' },
-  },
-});
-const colCid = await ipfs.addJson(colMeta as unknown as Record<string, unknown>);
+// Chain identity (CAIP-2 format)
+const chain = await sdk.chainId();       // 'solana-devnet'
+const cluster = sdk.getCluster();         // 'devnet' | 'mainnet-beta' | 'testnet'
 
-// Get base collection
+// Program IDs for all registries
+const programs = sdk.getProgramIds();
+// programs.identityRegistry   -> PublicKey
+// programs.reputationRegistry -> PublicKey
+// programs.validationRegistry -> PublicKey
+
+// Registry addresses as strings (parity with agent0-ts)
+const regs = sdk.registries();
+// { IDENTITY: 'base58...', REPUTATION: 'base58...', VALIDATION: 'base58...' }
+
+// RPC info
+const rpcUrl = sdk.getRpcUrl();
+const isDefaultRpc = sdk.isUsingDefaultDevnetRpc();
+const canBulkQuery = sdk.supportsAdvancedQueries();
+const readOnly = sdk.isReadOnly;
+
+// Base collection (single-collection architecture in v0.6.x)
 const base = await sdk.getBaseCollection();
 
-// v0.6.x note:
-// createCollection/updateCollectionUri are deprecated and return success=false.
-const createRes = await sdk.createCollection('Trading Bots', `ipfs://${colCid}`);
-if (!createRes.success) {
-  console.warn(createRes.error);
-}
+// Advanced: access underlying clients
+const solanaClient = sdk.getSolanaClient();
+const feedbackMgr = sdk.getFeedbackManager();
 ```
 
 ---
@@ -715,7 +767,88 @@ const domains = getAllDomains(); // 204 domains
 
 ---
 
-## 15. IPFS Operations
+## 15. Hash Utilities
+
+```typescript
+// SHA-256 (async, browser-compatible via WebCrypto)
+const hash = await SolanaSDK.computeHash('My feedback content');
+const bufHash = await SolanaSDK.computeHash(Buffer.from(jsonData));
+// Returns: Buffer (32 bytes)
+
+// URI hash (zeros for IPFS/Arweave since CID is already content-addressable)
+const uriHash = await SolanaSDK.computeUriHash('https://example.com/data.json');
+// -> SHA-256 of the URI string
+const ipfsHash = await SolanaSDK.computeUriHash('ipfs://Qm...');
+// -> Buffer.alloc(32) (zeros)
+
+// Keccak-256 (synchronous, used by SEAL v1)
+import { keccak256 } from '8004-solana';
+const k = keccak256(Buffer.from('data'));
+
+// SHA-256 sync (CJS context only — uses require('crypto'), throws in pure ESM or browser)
+import { sha256Sync } from '8004-solana';
+const s = sha256Sync('data');  // Uint8Array (32 bytes)
+```
+
+---
+
+## 16. Value Encoding
+
+```typescript
+import {
+  encodeReputationValue,
+  decodeToDecimalString,
+  decodeToNumber,
+} from '8004-solana';
+
+// Encode: decimal string -> { value: bigint, valueDecimals: number }
+const encoded = encodeReputationValue('99.77');
+// { value: 9977n, valueDecimals: 2, normalized: '99.77' }
+
+const neg = encodeReputationValue('-15.5');
+// { value: -155n, valueDecimals: 1, normalized: '-15.5' }
+
+const raw = encodeReputationValue(9977n, 2);
+// { value: 9977n, valueDecimals: 2, normalized: '99.77' }
+
+// Decode: bigint + decimals -> string or number
+decodeToDecimalString(9977n, 2);   // '99.77'
+decodeToDecimalString(-155n, 1);   // '-15.5'
+decodeToNumber(9977n, 2);          // 99.77
+
+// Limits: max 6 decimal places, clamped to i64 range
+```
+
+---
+
+## 17. Canonical JSON & Signing Utilities
+
+```typescript
+import {
+  canonicalizeJson,
+  normalizeSignData,
+  createNonce,
+} from '8004-solana';
+
+// RFC 8785 canonical JSON (deterministic key ordering, no whitespace)
+canonicalizeJson({ b: 2, a: 1 });  // '{"a":1,"b":2}'
+
+// Normalize data for signing (handles BigInt, PublicKey, Date, Buffer)
+const normalized = normalizeSignData({
+  amount: 100n,           // -> { $bigint: '100' }
+  key: somePubkey,        // -> { $pubkey: 'base58...' }
+  when: new Date(),       // -> { $date: 'ISO...' }
+  data: Buffer.from([1]), // -> { $bytes: 'AQ==', encoding: 'base64' }
+});
+
+// Cryptographic nonce generation (base58-encoded random bytes)
+const nonce = createNonce();     // 16 bytes default
+const nonce32 = createNonce(32); // 32 bytes
+```
+
+---
+
+## 18. IPFS Operations
 
 ```typescript
 // Add data
@@ -744,7 +877,7 @@ await ipfs.close();
 
 ---
 
-## 16. Server Mode (skipSend)
+## 19. Server Mode (skipSend)
 
 For browser wallets or external signing:
 
@@ -773,7 +906,7 @@ All write methods accept `{ skipSend: true }` in their options.
 
 ---
 
-## 17. Indexer Client (Direct Access)
+## 20. Indexer Client (Direct Access)
 
 ```typescript
 const indexer = sdk.getIndexerClient();
@@ -787,9 +920,24 @@ const feedbacks = await indexer.getFeedbacks('base58...', { limit: 100 });
 const leaderboard = await indexer.getLeaderboard({ minTier: 3 });
 ```
 
+### Wait for indexer sync after write
+
+```typescript
+await sdk.giveFeedback(assetPubkey, feedbackParams);
+
+// Poll until indexer catches up (returns true if synced, false on timeout)
+const synced = await sdk.waitForIndexerSync(
+  async () => {
+    const fbs = await sdk.getFeedbacksFromIndexer(assetPubkey);
+    return fbs.length >= expectedCount;
+  },
+  { timeout: 30000 }  // ms, default 30s
+);
+```
+
 ---
 
-## 18. Error Handling
+## 21. Error Handling
 
 ```typescript
 import {
@@ -825,7 +973,7 @@ Indexer-backed reads (`readAllFeedback()`, `getClients()`, `getLastIndex()`, `re
 
 ---
 
-## 19. Operation Costs (Solana devnet)
+## 22. Operation Costs (Solana devnet)
 
 | Operation | Cost | Notes |
 |-----------|------|-------|
@@ -841,7 +989,7 @@ Indexer-backed reads (`readAllFeedback()`, `getClients()`, `getLastIndex()`, `re
 
 ---
 
-## 20. Common Patterns
+## 23. Common Patterns
 
 ### Monitor agent health
 
@@ -879,17 +1027,64 @@ if (tier < TrustTier.Silver) {
 }
 ```
 
-### x402 payment feedback
+### x402 payment feedback (full flow)
 
 ```typescript
-// After successful x402 payment and delivery
+// 1. Build the feedback file JSON (off-chain proof of payment)
+const feedbackFile = {
+  version: '1.0',
+  type: 'x402-feedback',
+  agent: assetPubkey.toBase58(),
+  client: clientPubkey.toBase58(),
+  endpoint: '/api/generate',
+  timestamp: new Date().toISOString(),
+  proofOfPayment: {
+    txHash: 'base58-tx-signature...',
+    fromAddress: clientPubkey.toBase58(),
+    toAddress: agentWalletPubkey.toBase58(),
+    amount: '0.001',
+    token: 'SOL',
+    chainId: await sdk.chainId(),   // 'solana-devnet'
+  },
+  settlement: {
+    success: true,
+    network: 'solana',
+    settledAt: new Date().toISOString(),
+  },
+  result: {
+    delivered: true,
+    latencyMs: 230,
+    quality: 'good',
+  },
+};
+
+// 2. Upload to IPFS
+const feedbackCid = await ipfs.addJson(feedbackFile);
+
+// 3. Optionally compute content hash for SEAL integrity
+const feedbackFileHash = await SolanaSDK.computeHash(
+  JSON.stringify(feedbackFile)
+);
+
+// 4. Submit on-chain feedback with proof link
 await sdk.giveFeedback(assetPubkey, {
   value: '100.00',
   tag1: Tag.x402ResourceDelivered,
   tag2: Tag.x402Svm,
   score: 95,
   endpoint: '/api/generate',
-  feedbackUri: `ipfs://${proofCid}`,
+  feedbackUri: `ipfs://${feedbackCid}`,
+  feedbackFileHash,  // links file content to on-chain SEAL
+});
+
+// Agent-side: report good payer
+await sdk.giveFeedback(clientAgentPubkey, {
+  value: '1',
+  valueDecimals: 0,
+  tag1: Tag.x402GoodPayer,
+  tag2: Tag.x402Svm,
+  score: 100,
+  feedbackUri: `ipfs://${payerProofCid}`,
 });
 ```
 
@@ -903,24 +1098,9 @@ if (!integrity.trustworthy) {
 }
 ```
 
-### Wait for indexer sync after write
-
-```typescript
-await sdk.giveFeedback(assetPubkey, feedbackParams);
-
-// Wait for indexer to pick up the new feedback
-const synced = await sdk.waitForIndexerSync(
-  async () => {
-    const fbs = await sdk.getFeedbacksFromIndexer(assetPubkey);
-    return fbs.length >= expectedCount;
-  },
-  { timeout: 30000 }
-);
-```
-
 ---
 
-## 21. Program IDs
+## 24. Program IDs
 
 ```typescript
 import {
