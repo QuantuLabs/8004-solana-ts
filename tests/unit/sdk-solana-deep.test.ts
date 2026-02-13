@@ -229,7 +229,11 @@ describe('SolanaSDK deep tests', () => {
     jest.clearAllMocks();
     mockFetch.mockReset();
     mockSolanaClient.getAccount.mockResolvedValue(Buffer.alloc(300));
-    sdk = new SolanaSDK();
+    sdk = new SolanaSDK({
+      // Force legacy REST mock in unit tests (integrity helpers are REST-only today)
+      indexerUrl: 'https://example.supabase.co/rest/v1',
+      indexerApiKey: 'test-key',
+    });
   });
 
   // ==================== verifyIntegrityDeep ====================

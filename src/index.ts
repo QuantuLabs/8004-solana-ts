@@ -122,8 +122,10 @@ export {
 
 // Indexer client
 export { IndexerClient } from './core/indexer-client.js';
+export { IndexerGraphQLClient } from './core/indexer-graphql-client.js';
 export type {
   IndexerClientConfig,
+  IndexerReadClient,
   IndexedAgent,
   IndexedFeedback,
   IndexedAgentReputation,
@@ -166,6 +168,7 @@ export {
 export {
   DEFAULT_INDEXER_URL,
   DEFAULT_INDEXER_API_KEY,
+  DEFAULT_INDEXER_GRAPHQL_URL,
   DEFAULT_FORCE_ON_CHAIN,
   SMALL_QUERY_OPERATIONS,
 } from './core/indexer-defaults.js';
@@ -193,4 +196,3 @@ export type {
   ResponseReplayEvent,
   RevokeReplayEvent,
 } from './core/hash-chain-replay.js';
-

@@ -457,7 +457,6 @@ describe('Section 11: Search & Discovery (method existence)', () => {
   test('searchAgents exists', () => expect(typeof sdk.searchAgents).toBe('function'));
   test('getLeaderboard exists', () => expect(typeof sdk.getLeaderboard).toBe('function'));
   test('getGlobalStats exists', () => expect(typeof sdk.getGlobalStats).toBe('function'));
-  test('getCollectionStats exists', () => expect(typeof sdk.getCollectionStats).toBe('function'));
   test('getAgentByWallet exists', () => expect(typeof sdk.getAgentByWallet).toBe('function'));
 
   test('EndpointCrawler construction', () => {

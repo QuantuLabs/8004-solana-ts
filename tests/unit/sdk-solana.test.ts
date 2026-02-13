@@ -277,12 +277,17 @@ describe('SolanaSDK', () => {
     jest.clearAllMocks();
 
     // Read-only SDK
-    sdk = new SolanaSDK();
+    sdk = new SolanaSDK({
+      indexerUrl: 'https://example.supabase.co/rest/v1',
+      indexerApiKey: 'test-key',
+    });
 
     // SDK with signer
     signerSdk = new SolanaSDK({
       signer,
       rpcUrl: 'https://mock.example.com',
+      indexerUrl: 'https://example.supabase.co/rest/v1',
+      indexerApiKey: 'test-key',
     });
   });
 
@@ -767,13 +772,6 @@ describe('SolanaSDK', () => {
     });
   });
 
-  describe('getCollectionStats', () => {
-    it('should delegate to indexerClient', async () => {
-      await sdk.getCollectionStats('test-collection');
-      expect(mockIndexerClient.getCollectionStats).toHaveBeenCalledWith('test-collection');
-    });
-  });
-
   describe('getFeedbacksByEndpoint', () => {
     it('should delegate to indexerClient', async () => {
       await sdk.getFeedbacksByEndpoint('/api/chat');
@@ -1141,10 +1139,6 @@ describe('SolanaSDK', () => {
 
     it('should throw on getGlobalStats', async () => {
       await expect(forcedSdk.getGlobalStats()).rejects.toThrow('requires indexer');
-    });
-
-    it('should throw on getCollectionStats', async () => {
-      await expect(forcedSdk.getCollectionStats('x')).rejects.toThrow('requires indexer');
     });
 
     it('should throw on getFeedbacksByEndpoint', async () => {

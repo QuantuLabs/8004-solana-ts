@@ -1,18 +1,17 @@
 /**
  * E2E Tests - Indexer API (Complete Coverage)
  *
- * Covers 11 indexer query methods:
+ * Covers 10 indexer query methods:
  * 1. isIndexerAvailable - Health check
  * 2. searchAgents - Query agents by filters
  * 3. getLeaderboard - Top agents by reputation
  * 4. getGlobalStats - Platform-wide statistics
- * 5. getCollectionStats - Collection-specific stats
- * 6. getFeedbacksByEndpoint - Query feedbacks by endpoint
- * 7. getFeedbacksByTag - Query feedbacks by tag
- * 8. getAgentByWallet - Find agent by wallet address
- * 9. getPendingValidations - Validations awaiting response
- * 10. getAgentReputationFromIndexer - Full reputation data
- * 11. getFeedbacksFromIndexer - All feedbacks for agent
+ * 5. getFeedbacksByEndpoint - Query feedbacks by endpoint
+ * 6. getFeedbacksByTag - Query feedbacks by tag
+ * 7. getAgentByWallet - Find agent by wallet address
+ * 8. getPendingValidations - Validations awaiting response
+ * 9. getAgentReputationFromIndexer - Full reputation data
+ * 10. getFeedbacksFromIndexer - All feedbacks for agent
  *
  * Tests include:
  * - Indexer availability checks
@@ -34,7 +33,7 @@ function createFeedbackHash(feedbackUri: string): Buffer {
   return createHash('sha256').update(feedbackUri).digest();
 }
 
-describe('Indexer API - Complete Coverage (11 Methods)', () => {
+describe('Indexer API - Complete Coverage (10 Methods)', () => {
   let sdk: SolanaSDK;
   let clientSdk: SolanaSDK;
   let agent: PublicKey;
@@ -278,41 +277,10 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
   });
 
   // ============================================================================
-  // 5. getCollectionStats - Collection-specific stats
+  // 5. getFeedbacksByEndpoint - Query feedbacks by endpoint
   // ============================================================================
 
-  describe('5. getCollectionStats', () => {
-    it('should get statistics for specific collection', async () => {
-      const stats = await sdk.getCollectionStats(collection.toBase58());
-
-      expect(stats).toBeDefined();
-      expect(stats!.collection).toBe(collection.toBase58());
-      // Interface uses snake_case: agent_count
-      expect(typeof stats!.agent_count).toBe('number');
-      // In local mode, indexer may not have synced the agent data
-      if (stats!.agent_count >= 1) {
-        console.log(`✅ Collection stats: ${stats!.agent_count} agent(s)`);
-      } else {
-        console.log(`⚠️  Collection stats: 0 agents (indexer not synced)`);
-      }
-    });
-
-    it('should return zero stats for non-existent collection', async () => {
-      // createCollection removed in v0.6.0 - test with a random non-existent collection
-      const fakeCollection = Keypair.generate().publicKey;
-
-      const stats = await sdk.getCollectionStats(fakeCollection.toBase58());
-      // Stats should be null for non-existent collections
-      expect(stats == null || stats.agent_count === 0).toBe(true);
-      console.log('\u2705 Non-existent collection returns null/zero stats');
-    });
-  });
-
-  // ============================================================================
-  // 6. getFeedbacksByEndpoint - Query feedbacks by endpoint
-  // ============================================================================
-
-  describe('6. getFeedbacksByEndpoint', () => {
+  describe('5. getFeedbacksByEndpoint', () => {
     it('should get feedbacks filtered by endpoint', async () => {
       const endpoint = '/test-endpoint';
 
@@ -352,10 +320,10 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
   });
 
   // ============================================================================
-  // 7. getFeedbacksByTag - Query feedbacks by tag
+  // 6. getFeedbacksByTag - Query feedbacks by tag
   // ============================================================================
 
-  describe('7. getFeedbacksByTag', () => {
+  describe('6. getFeedbacksByTag', () => {
     it('should get feedbacks filtered by tag', async () => {
       const tag = 'integration-test';
 
@@ -395,10 +363,10 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
   });
 
   // ============================================================================
-  // 8. getAgentByWallet - Find agent by wallet address
+  // 7. getAgentByWallet - Find agent by wallet address
   // ============================================================================
 
-  describe('8. getAgentByWallet', () => {
+  describe('7. getAgentByWallet', () => {
     it('should find agent by owner wallet address', async () => {
       const foundAgent = await sdk.getAgentByWallet(agentWallet.publicKey.toBase58());
 
@@ -454,10 +422,10 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
   });
 
   // ============================================================================
-  // 9. getPendingValidations - Validations awaiting response
+  // 8. getPendingValidations - Validations awaiting response
   // ============================================================================
 
-  describe('9. getPendingValidations', () => {
+  describe('8. getPendingValidations', () => {
     it('should get pending validations for validator', async () => {
       // Request validation
       const validator = Keypair.generate().publicKey;
@@ -552,10 +520,10 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
   });
 
   // ============================================================================
-  // 10. getAgentReputationFromIndexer - Full reputation data
+  // 9. getAgentReputationFromIndexer - Full reputation data
   // ============================================================================
 
-  describe('10. getAgentReputationFromIndexer', () => {
+  describe('9. getAgentReputationFromIndexer', () => {
     it('should get complete reputation data for agent', async () => {
       const reputation = await sdk.getAgentReputationFromIndexer(agent);
 
@@ -588,10 +556,10 @@ describe('Indexer API - Complete Coverage (11 Methods)', () => {
   });
 
   // ============================================================================
-  // 11. getFeedbacksFromIndexer - All feedbacks for agent
+  // 10. getFeedbacksFromIndexer - All feedbacks for agent
   // ============================================================================
 
-  describe('11. getFeedbacksFromIndexer', () => {
+  describe('10. getFeedbacksFromIndexer', () => {
     it('should get all feedbacks for agent', async () => {
       // The SDK has fallback to on-chain data if indexer doesn't have it
       const feedbacks = await sdk.getFeedbacksFromIndexer(agent);

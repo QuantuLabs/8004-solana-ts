@@ -28,6 +28,71 @@ export interface IndexerClientConfig {
   retries?: number;
 }
 
+/**
+ * Read-only indexer client contract used by the SDK.
+ *
+ * The SDK supports multiple backends (REST v1 / GraphQL v2). This interface
+ * allows switching implementations without leaking transport details.
+ */
+export interface IndexerReadClient {
+  getBaseUrl(): string;
+  isAvailable(): Promise<boolean>;
+
+  // Agents
+  getAgent(asset: string): Promise<IndexedAgent | null>;
+  getAgents(options?: { limit?: number; offset?: number; order?: string }): Promise<IndexedAgent[]>;
+  getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
+  getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;
+  getAgentByWallet(wallet: string): Promise<IndexedAgent | null>;
+  getLeaderboard(options?: {
+    collection?: string;
+    minTier?: number;
+    limit?: number;
+    cursorSortKey?: string;
+  }): Promise<IndexedAgent[]>;
+  getGlobalStats(): Promise<GlobalStats>;
+
+  // Feedbacks
+  getFeedbacks(asset: string, options?: { includeRevoked?: boolean; limit?: number; offset?: number }): Promise<IndexedFeedback[]>;
+  getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
+  getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
+  getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
+  getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
+  getAllFeedbacks(options?: { includeRevoked?: boolean; limit?: number }): Promise<IndexedFeedback[]>;
+  getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
+
+  // Responses
+  getFeedbackResponsesFor(
+    asset: string,
+    client: string,
+    feedbackIndex: number | bigint,
+    limit?: number
+  ): Promise<IndexedFeedbackResponse[]>;
+
+  // Validations
+  getPendingValidations(validator: string): Promise<IndexedValidation[]>;
+
+  // Reputation
+  getAgentReputation(asset: string): Promise<IndexedAgentReputation | null>;
+
+  // Integrity (optional, backend-dependent)
+  getLastFeedbackDigest?(asset: string): Promise<{ digest: string | null; count: number }>;
+  getLastResponseDigest?(asset: string): Promise<{ digest: string | null; count: number }>;
+  getLastRevokeDigest?(asset: string): Promise<{ digest: string | null; count: number }>;
+  getFeedbacksAtIndices?(asset: string, indices: number[]): Promise<Map<number, IndexedFeedback | null>>;
+  getResponsesAtOffsets?(asset: string, offsets: number[]): Promise<Map<number, IndexedFeedbackResponse | null>>;
+  getRevocationsAtCounts?(asset: string, revokeCounts: number[]): Promise<Map<number, IndexedRevocation | null>>;
+  getReplayData?(
+    asset: string,
+    chainType: 'feedback' | 'response' | 'revoke',
+    fromCount?: number,
+    toCount?: number,
+    limit?: number,
+  ): Promise<ReplayDataPage>;
+  getLatestCheckpoints?(asset: string): Promise<CheckpointSet>;
+  triggerReplay?(asset: string): Promise<ServerReplayResult>;
+}
+
 // ============================================================================
 // Indexed Data Types (aligned with Supabase schema)
 // ============================================================================
@@ -255,7 +320,7 @@ export interface ServerReplayResult {
 /**
  * Client for interacting with Supabase indexer
  */
-export class IndexerClient {
+export class IndexerClient implements IndexerReadClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly timeout: number;

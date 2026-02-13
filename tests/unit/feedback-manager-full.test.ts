@@ -40,6 +40,7 @@ const mockAsset = new PublicKey('So11111111111111111111111111111111111111112');
 const mockClient = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 
 const createMockIndexer = (overrides: Record<string, unknown> = {}) => ({
+  getAgent: jest.fn().mockResolvedValue(null),
   getFeedbacks: jest.fn().mockResolvedValue([]),
   getFeedback: jest.fn().mockResolvedValue(null),
   getFeedbackResponsesFor: jest.fn().mockResolvedValue([]),

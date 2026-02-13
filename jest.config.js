@@ -4,7 +4,12 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
-  testPathIgnorePatterns: ['/node_modules/'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    // E2E suites are intentionally opt-in (require local validator / funded devnet wallet).
+    '/tests/e2e-solana/',
+    '/tests/e2e-browser/',
+  ],
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: 'tsconfig.test.json',

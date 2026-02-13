@@ -112,12 +112,14 @@ describe('E2E: Error Scenarios', () => {
     }, 30000);
 
     it('should return 0 for non-existent feedback response count', async () => {
-      const count = await sdk.getResponseCount(nonExistentAsset, 0n);
+      const randomClient = Keypair.generate().publicKey;
+      const count = await sdk.getResponseCount(nonExistentAsset, randomClient, 0n);
       expect(count).toBe(0);
     }, 30000);
 
     it('should return empty array for non-existent responses', async () => {
-      const responses = await sdk.readResponses(nonExistentAsset, 0n);
+      const randomClient = Keypair.generate().publicKey;
+      const responses = await sdk.readResponses(nonExistentAsset, randomClient, 0n);
       expect(responses).toEqual([]);
     }, 30000);
   });

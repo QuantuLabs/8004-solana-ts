@@ -39,7 +39,7 @@ import { fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
 import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
-import type { IndexerClient } from './indexer-client.js';
+import type { IndexerReadClient } from './indexer-client.js';
 import { resolveScore } from './feedback-normalizer.js';
 import type { GiveFeedbackParams } from '../models/interfaces.js';
 import { encodeReputationValue } from '../utils/value-encoding.js';
@@ -898,7 +898,7 @@ export class ReputationTransactionBuilder {
   constructor(
     private connection: Connection,
     private payer?: Keypair,
-    private indexerClient?: IndexerClient
+    private indexerClient?: IndexerReadClient
   ) {
     this.instructionBuilder = new ReputationInstructionBuilder();
   }

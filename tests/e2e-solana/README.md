@@ -103,9 +103,9 @@ Instructions: initialize_config, update_config, initialize_stats, update_stats, 
 Tests: Ed25519 attacks (3), CPI bypass (3), Immutability (3), Validation integrity (1), Fake accounts (3), Bonus tests (8+)
 
 ### 06-indexer-api.test.ts
-**Coverage**: 11 methods
+**Coverage**: 10 methods
 
-Methods: isIndexerAvailable, searchAgents, getLeaderboard, getGlobalStats, getCollectionStats, getFeedbacksByEndpoint, getFeedbacksByTag, getAgentByWallet, getPendingValidations, getAgentReputationFromIndexer, getFeedbacksFromIndexer
+Methods: isIndexerAvailable, searchAgents, getLeaderboard, getGlobalStats, getFeedbacksByEndpoint, getFeedbacksByTag, getAgentByWallet, getPendingValidations, getAgentReputationFromIndexer, getFeedbacksFromIndexer
 
 ---
 

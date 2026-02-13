@@ -199,19 +199,17 @@ export class IPFSClient {
     formData.append('file', blob, 'registration.json');
     formData.append('network', 'public');
 
+    // Add timeout to fetch. Must always be cleared to avoid hanging test runners.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.PINATA_UPLOAD);
+
     try {
-      // Add timeout to fetch
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.PINATA_UPLOAD);
-      
       const response = await fetch(url, {
         method: 'POST',
         headers,
         body: formData,
         signal: controller.signal,
       });
-      
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -270,6 +268,8 @@ export class IPFSClient {
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to pin to Pinata: ${errorMessage}`);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

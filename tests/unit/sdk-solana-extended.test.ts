@@ -280,8 +280,17 @@ describe('SolanaSDK extended', () => {
     mockSolanaClient.getAccount.mockResolvedValue(Buffer.alloc(300));
     mockSolanaClient.getProgramAccounts.mockResolvedValue([]);
 
-    sdk = new SolanaSDK();
-    signerSdk = new SolanaSDK({ signer, rpcUrl: 'https://mock.example.com' });
+    sdk = new SolanaSDK({
+      // Force legacy REST mock in unit tests (integrity helpers are REST-only today)
+      indexerUrl: 'https://example.supabase.co/rest/v1',
+      indexerApiKey: 'test-key',
+    });
+    signerSdk = new SolanaSDK({
+      signer,
+      rpcUrl: 'https://mock.example.com',
+      indexerUrl: 'https://example.supabase.co/rest/v1',
+      indexerApiKey: 'test-key',
+    });
   });
 
   // ==================== Collection Methods ====================

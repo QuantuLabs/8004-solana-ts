@@ -108,32 +108,6 @@ describe('Indexer Queries (Integration)', () => {
     });
   });
 
-  describe('Collection Stats', () => {
-    it('should get collection stats when collection exists', async () => {
-      if (!runIntegration) return;
-
-      // First get a collection from leaderboard
-      const agents = await sdk.getLeaderboard({ limit: 1 });
-      if (agents.length > 0) {
-        const collection = agents[0].collection;
-        const stats = await sdk.getCollectionStats(collection);
-
-        if (stats) {
-          expect(stats.collection).toBe(collection);
-          expect(typeof stats.agent_count).toBe('number');
-        }
-      }
-    });
-
-    it('should return null for non-existent collection', async () => {
-      if (!runIntegration) return;
-
-      const stats = await sdk.getCollectionStats('NonExistentCollection12345');
-
-      expect(stats).toBeNull();
-    });
-  });
-
   describe('Feedback Queries', () => {
     it('should get feedbacks by tag', async () => {
       if (!runIntegration) return;

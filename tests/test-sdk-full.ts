@@ -5,7 +5,7 @@
 
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { readFileSync } from 'fs';
-import { SolanaSDK } from '/Users/true/Documents/Pipeline/CasterCorp/agent0-ts-solana/dist/index.js';
+import { SolanaSDK } from '../dist/index.js';
 
 // Load wallet from Anchor provider
 const walletPath = process.env.ANCHOR_WALLET || `${process.env.HOME}/.config/solana/id.json`;
@@ -38,20 +38,13 @@ async function main() {
     console.log(`  ${i+1}. ${a.asset} | tier=${a.trust_tier} | score=${a.quality_score}`);
   });
 
-  // 1.3 Collection Stats
-  if (leaderboard.length > 0 && leaderboard[0].collection) {
-    console.log('\n1.3 getCollectionStats():');
-    const collStats = await sdk.getCollectionStats(leaderboard[0].collection);
-    console.log(JSON.stringify(collStats, null, 2));
-  }
-
-  // 1.4 Feedbacks by tag
-  console.log('\n1.4 getFeedbacksByTag("quality"):');
+  // 1.3 Feedbacks by tag
+  console.log('\n1.3 getFeedbacksByTag("quality"):');
   const feedbacksByTag = await sdk.getFeedbacksByTag('quality');
   console.log(`Count: ${feedbacksByTag.length}`);
 
-  // 1.5 Search agents
-  console.log('\n1.5 searchAgents({ limit: 2 }):');
+  // 1.4 Search agents
+  console.log('\n1.4 searchAgents({ limit: 2 }):');
   const searchResults = await sdk.searchAgents({ limit: 2 });
   console.log(`Count: ${searchResults.length}`);
 
