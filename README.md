@@ -133,21 +133,35 @@ const summary = await sdk.getSummary(assetPubkey);
 
 The SDK uses an indexer by default for search and query operations (feedbacks, validations, agent listings). This provides fast off-chain queries without scanning the blockchain.
 
-The default indexer is Supabase-hosted. You can self-host your own: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
+Default backend is **GraphQL v2** (public read-only reference deployment).
+
+You can self-host your own indexer: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
 ```typescript
-// Custom indexer URL
+// Custom GraphQL indexer (recommended)
 const sdk = new SolanaSDK({
   cluster: 'devnet',
-  indexerUrl: 'https://your-indexer.example.com',
+  indexerGraphqlUrl: 'https://your-indexer.example.com/v2/graphql',
 });
 
-// Disable indexer (on-chain only, slower)
+// Legacy REST v1 (Supabase PostgREST) - deprecated but supported for now
 const sdk = new SolanaSDK({
   cluster: 'devnet',
-  indexerUrl: null,
+  indexerUrl: 'https://your-project.supabase.co/rest/v1',
+  indexerApiKey: process.env.INDEXER_API_KEY,
+});
+
+// Force on-chain reads when possible (indexer-only methods will still require an indexer)
+const sdk = new SolanaSDK({
+  cluster: 'devnet',
+  forceOnChain: true,
 });
 ```
+
+Environment variables (optional):
+
+- `INDEXER_GRAPHQL_URL`: override GraphQL endpoint
+- `INDEXER_URL` + `INDEXER_API_KEY`: legacy REST v1 (Supabase PostgREST)
 
 ## Feedback System
 

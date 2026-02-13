@@ -257,7 +257,6 @@ These methods query the indexer for aggregated data.
 | `searchAgents` | `(query, options?) => Promise<Agent[]>` | Search agents by name/description |
 | `getLeaderboard` | `(options?) => Promise<LeaderboardEntry[]>` | Get top agents by reputation |
 | `getGlobalStats` | `() => Promise<GlobalStats>` | Get global registry statistics |
-| `getCollectionStats` | `(collection) => Promise<CollectionStats>` | Get collection statistics |
 | `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
 
 ```typescript
