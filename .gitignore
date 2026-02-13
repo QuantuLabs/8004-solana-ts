@@ -73,3 +73,6 @@ scripts/*.ts
 # Audit files (local only)
 audit.md
 formal.md
+# Local assistant settings (may contain secrets)
+.claude/settings.local.json
+

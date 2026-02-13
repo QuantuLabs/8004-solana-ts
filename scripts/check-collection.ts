@@ -1,12 +1,21 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 
+function resolveHeliusDevnetUrl(): string | null {
+  const explicit = process.env.HELIUS_DAS_URL || process.env.HELIUS_DEVNET_URL;
+  if (explicit) return explicit;
+
+  const key = process.env.HELIUS_API_KEY;
+  if (!key) return null;
+
+  return `https://devnet.helius-rpc.com/?api-key=${key}`;
+}
+
 async function main() {
-  const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
-  const PROGRAM_ID = new PublicKey('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm');
-  const MPL_CORE = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+  const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com', 'confirmed');
   const NEW_COLLECTION = new PublicKey('2KmHw8VbShuz9xfj3ecEjBM5nPKR5BcYHRDSFfK1286t');
 
-  console.log('🔍 Checking new collection on-chain...\n');
+  console.log('🔍 Checking new collection on-chain...
+');
 
   // Check collection exists
   const collectionInfo = await connection.getAccountInfo(NEW_COLLECTION);
@@ -20,11 +29,18 @@ async function main() {
     return;
   }
 
-  // Search for assets in this collection using Metaplex DAS API
-  console.log('\n📊 Searching for assets in collection via DAS API...');
+  // Search for assets in this collection using Metaplex DAS API (Helius)
+  console.log('
+📊 Searching for assets in collection via DAS API...');
+
+  const heliusUrl = resolveHeliusDevnetUrl();
+  if (!heliusUrl) {
+    console.error('Missing HELIUS_DEVNET_URL or HELIUS_API_KEY (required for DAS API getAssetsByGroup).');
+    process.exit(1);
+  }
 
   try {
-    const response = await fetch('https://devnet.helius-rpc.com/?api-key=HELIUS_API_KEY_REDACTED', {
+    const response = await fetch(heliusUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -42,7 +58,9 @@ async function main() {
 
     const data = await response.json();
     if (data.result && data.result.items) {
-      console.log(`\n✅ Found ${data.result.items.length} agents in collection:\n`);
+      console.log(`
+✅ Found ${data.result.items.length} agents in collection:
+`);
       for (const item of data.result.items) {
         console.log(`  - ${item.id}`);
         console.log(`    Name: ${item.content?.metadata?.name || 'N/A'}`);

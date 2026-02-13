@@ -21,7 +21,10 @@ import * as path from 'path';
 
 // ============ CONFIG ============
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const HELIUS_DEVNET_RPC = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+const HELIUS_DEVNET_RPC =
+  process.env.HELIUS_DEVNET_URL ||
+  (HELIUS_API_KEY ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}` : undefined);
+
 
 // Pinata JWT from 8004-solana-mcp/.env
 const PINATA_JWT = process.env.PINATA_JWT;
@@ -748,7 +751,7 @@ async function runOffchainIPFSTest(): Promise<void> {
   console.log('='.repeat(70));
 
   // Setup
-  const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC;
+  const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC || 'https://api.devnet.solana.com';
   const walletPath = process.env.SOLANA_WALLET_PATH ||
     path.join(process.env.HOME!, '.config/solana/id.json');
   const mainWallet = loadKeypair(walletPath);
@@ -759,6 +762,10 @@ async function runOffchainIPFSTest(): Promise<void> {
   console.log(`\n🔗 RPC: ${rpcUrl.includes('helius') ? 'Helius' : 'Public'}`);
   console.log(`💰 Balance: ${(balance / 1e9).toFixed(4)} SOL`);
   console.log(`📊 Scenarios to test: ${METADATA_SCENARIOS.length}`);
+
+  if (!PINATA_JWT) {
+    throw new Error('Missing PINATA_JWT. Set PINATA_JWT to run this stress test.');
+  }
 
   // IPFS Client
   const ipfs = new IPFSClient({

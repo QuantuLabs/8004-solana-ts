@@ -21,7 +21,10 @@ import * as path from 'path';
 
 // ============ CONFIG ============
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const HELIUS_DEVNET_RPC = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+const HELIUS_DEVNET_RPC =
+  process.env.HELIUS_DEVNET_URL ||
+  (HELIUS_API_KEY ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}` : undefined);
+
 
 const CONFIG = {
   INDEXER_URL: 'https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1',
@@ -365,7 +368,7 @@ async function runOffchainMetadataTest(): Promise<void> {
   console.log('='.repeat(60));
 
   // Setup
-  const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC;
+  const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC || 'https://api.devnet.solana.com';
   const walletPath = process.env.SOLANA_WALLET_PATH ||
     path.join(process.env.HOME!, '.config/solana/id.json');
   const mainWallet = loadKeypair(walletPath);

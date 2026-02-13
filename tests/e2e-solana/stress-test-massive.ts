@@ -25,7 +25,10 @@ function sha256(data: string): Buffer {
 // ============ CONFIG ============
 // Helius RPC for higher rate limits
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const HELIUS_DEVNET_RPC = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+const HELIUS_DEVNET_RPC =
+  process.env.HELIUS_DEVNET_URL ||
+  (HELIUS_API_KEY ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}` : undefined);
+
 
 const CONFIG = {
   // 🔥🔥🔥 ULTRA MASSIVE SPAM MODE 🔥🔥🔥
@@ -761,7 +764,7 @@ async function runMassiveStressTest(): Promise<StressReport> {
   console.log('='.repeat(60));
 
   // Setup - Use Helius RPC for higher rate limits
-  const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC;
+  const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC || 'https://api.devnet.solana.com';
   const indexerUrl = process.env.INDEXER_URL || CONFIG.INDEXER_URL;
 
   console.log(`\n🔗 RPC: ${rpcUrl.includes('helius') ? 'Helius (high performance)' : 'Public devnet'}`);

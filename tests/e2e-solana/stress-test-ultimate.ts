@@ -52,7 +52,12 @@ import * as http from 'http';
 
 // ============ CONFIG ============
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const HELIUS_DEVNET_RPC = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+const HELIUS_DEVNET_RPC =
+  process.env.HELIUS_DEVNET_URL ||
+  (HELIUS_API_KEY ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}` : undefined);
+
+const DEFAULT_DEVNET_RPC = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+const RPC_URL = HELIUS_DEVNET_RPC || DEFAULT_DEVNET_RPC;
 
 const CONFIG = {
   // SCALE - Adjust based on available SOL
@@ -459,7 +464,7 @@ class UltimateStressTest {
       }
 
       this.clientSdks.push(new SolanaSDK({
-        rpcUrl: HELIUS_DEVNET_RPC,
+        rpcUrl: RPC_URL,
         signer: kp,
         indexerUrl: CONFIG.INDEXER_URL,
       }));
@@ -487,7 +492,7 @@ class UltimateStressTest {
       }
 
       this.validatorSdks.push(new SolanaSDK({
-        rpcUrl: HELIUS_DEVNET_RPC,
+        rpcUrl: RPC_URL,
         signer: kp,
         indexerUrl: CONFIG.INDEXER_URL,
       }));
@@ -1030,7 +1035,7 @@ class UltimateStressTest {
 }
 
 // ============ MAIN ============
-const rpcUrl = process.env.SOLANA_RPC_URL || HELIUS_DEVNET_RPC;
+const rpcUrl = RPC_URL;
 const test = new UltimateStressTest(rpcUrl);
 
 test.run()
