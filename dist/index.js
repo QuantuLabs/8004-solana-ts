@@ -53,4 +53,8 @@ export { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeout
 export { indexedAgentToSimplified, indexedFeedbackToSolanaFeedback, indexedReputationToSummary, indexedReputationToExtendedSummary, } from './core/indexer-types.js';
 // Indexer defaults and routing (v0.4.1)
 export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
+// ============================================================================
+// Hash-chain replay & verification
+// ============================================================================
+export { chainHash, computeResponseLeaf, computeRevokeLeaf, replayFeedbackChain, replayResponseChain, replayRevokeChain, DOMAIN_FEEDBACK, DOMAIN_RESPONSE, DOMAIN_REVOKE, DOMAIN_SEAL_V1, DOMAIN_LEAF_V1, } from './core/hash-chain-replay.js';
 //# sourceMappingURL=index.js.map

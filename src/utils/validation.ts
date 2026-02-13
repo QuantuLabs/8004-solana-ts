@@ -26,6 +26,39 @@ const BLOCKED_HOSTS = [
 ];
 
 /**
+ * Extract dotted-decimal IPv4 from an IPv6-mapped address.
+ * Handles both mixed notation (::ffff:1.2.3.4) and hex notation (::ffff:7f00:1).
+ * Returns null if not an IPv6-mapped IPv4 address.
+ */
+function extractIPv6MappedIPv4(hostname: string): string | null {
+  const h = hostname.replace(/^\[|\]$/g, '');
+  const match = h.match(/^::ffff:(.+)$/i);
+  if (!match) return null;
+
+  const mapped = match[1];
+
+  // Mixed notation: ::ffff:127.0.0.1
+  if (mapped.includes('.')) return mapped;
+
+  // Hex notation: ::ffff:7f00:0001
+  const hexParts = mapped.split(':');
+  if (hexParts.length === 2) {
+    const hi = parseInt(hexParts[0], 16);
+    const lo = parseInt(hexParts[1], 16);
+    if (!isNaN(hi) && !isNaN(lo) && hi <= 0xFFFF && lo <= 0xFFFF) {
+      return [
+        (hi >> 8) & 0xFF,
+        hi & 0xFF,
+        (lo >> 8) & 0xFF,
+        lo & 0xFF,
+      ].join('.');
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse a numeric or non-standard IP notation to dotted-decimal IPv4.
  * Handles decimal (2130706433), hex (0x7f000001), and octal (0177.0.0.1) forms.
  * Returns null if the input is not a valid IP in any notation.
@@ -96,6 +129,12 @@ export function isPrivateHost(hostname: string): boolean {
   const normalized = normalizeIpAddress(h);
   if (normalized && normalized !== h) {
     return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(normalized));
+  }
+
+  // Handle IPv6-mapped IPv4 in hex notation (::ffff:7f00:0001)
+  const mappedIpv4 = extractIPv6MappedIPv4(h);
+  if (mappedIpv4) {
+    return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(mappedIpv4));
   }
 
   return false;

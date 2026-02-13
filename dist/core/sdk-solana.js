@@ -22,7 +22,7 @@ import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTra
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
-import { isBlockedUri } from '../utils/validation.js';
+import { isBlockedUri, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { buildSignedPayload, canonicalizeSignedPayload, parseSignedPayload, verifySignedPayload, } from '../utils/signing.js';
 import { ServiceType } from '../models/enums.js';
@@ -31,6 +31,7 @@ import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA, getAtomConfigPDA } from './atom-pda.js';
 // Indexer imports (v0.4.0)
 import { IndexerClient, } from './indexer-client.js';
+import { replayFeedbackChain, replayResponseChain, replayRevokeChain, } from './hash-chain-replay.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
@@ -1336,6 +1337,8 @@ export class SolanaSDK {
      */
     async readValidation(asset, validator, nonce) {
         try {
+            const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+            validateNonce(nonceNum);
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce);
             const accountData = await this.client.getAccount(validationRequestPda);
             if (!accountData) {
@@ -1482,7 +1485,7 @@ export class SolanaSDK {
      * @throws RpcNetworkError if publicKey not provided and network call fails
      */
     async verify(payloadOrUri, asset, publicKey) {
-        const payload = await this.resolveSignedPayloadInput(payloadOrUri);
+        const payload = await this.resolveSignedPayloadInput(payloadOrUri, { allowFileRead: true });
         if (payload.asset !== asset.toBase58()) {
             return false;
         }
@@ -1500,7 +1503,7 @@ export class SolanaSDK {
         }
         return verifySignedPayload(payload, verifierKey);
     }
-    async resolveSignedPayloadInput(input) {
+    async resolveSignedPayloadInput(input, options) {
         if (typeof input !== 'string') {
             return parseSignedPayload(input);
         }
@@ -1518,20 +1521,17 @@ export class SolanaSDK {
             const payload = await this.fetchJsonFromUri(trimmed, 10000);
             return parseSignedPayload(payload);
         }
+        // File system reads require explicit opt-in
+        if (!options?.allowFileRead) {
+            throw new Error('File system reads are disabled by default. ' +
+                'Pass { allowFileRead: true } to enable, or use http/ipfs URIs or JSON strings.');
+        }
         // File system operations are Node.js only
         if (typeof process === 'undefined' || !process.versions?.node) {
             throw new Error('Loading signed payloads from file paths is only available in Node.js. ' +
                 'In browser, pass the JSON string directly or use http/ipfs URIs.');
         }
-        // Dynamic import to avoid bundler resolution
-        // NOTE: Using Function('m', 'return import(m)') is intentional to:
-        // 1. Prevent bundlers (webpack, vite, esbuild) from statically analyzing the import
-        // 2. Allow fs/promises to be tree-shaken out in browser builds
-        // 3. Enable runtime-only resolution for Node.js environments
-        // This pattern is safe here because fsModule is a hardcoded string constant.
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const fsModule = 'fs/promises';
-        const { readFile } = await Function('m', 'return import(m)')(fsModule);
+        const { readFile } = await import('fs/promises');
         if (trimmed.startsWith('file://')) {
             const fileUrl = new URL(trimmed);
             const content = await readFile(fileUrl, 'utf8');
@@ -1565,14 +1565,16 @@ export class SolanaSDK {
         });
         // Follow redirects manually with SSRF re-validation (max 5 hops)
         let redirectCount = 0;
+        let currentUrl = resolvedUri;
         while (response.status >= 300 && response.status < 400 && redirectCount < 5) {
             const location = response.headers.get('location');
             if (!location)
                 break;
-            const redirectUrl = new URL(location, resolvedUri).toString();
+            const redirectUrl = new URL(location, currentUrl).toString();
             if (isBlockedUri(redirectUrl)) {
                 throw new Error('Redirect blocked: target is internal/private host');
             }
+            currentUrl = redirectUrl;
             response = await fetch(redirectUrl, {
                 signal: AbortSignal.timeout(timeoutMs),
                 redirect: 'manual',
@@ -1587,9 +1589,45 @@ export class SolanaSDK {
         if (contentLength && parseInt(contentLength, 10) > maxBytes) {
             throw new Error(`Response too large: ${contentLength} bytes (max: ${maxBytes})`);
         }
-        const text = await response.text();
-        if (text.length > maxBytes) {
-            throw new Error(`Response too large: ${text.length} bytes (max: ${maxBytes})`);
+        // Stream body with byte counting to prevent OOM from large responses
+        let text;
+        const reader = response.body?.getReader();
+        if (reader) {
+            const chunks = [];
+            let totalBytes = 0;
+            try {
+                // eslint-disable-next-line no-constant-condition
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done)
+                        break;
+                    totalBytes += value.length;
+                    if (totalBytes > maxBytes) {
+                        throw new Error(`Response too large: ${totalBytes} bytes (max: ${maxBytes})`);
+                    }
+                    chunks.push(value);
+                }
+            }
+            finally {
+                reader.releaseLock();
+            }
+            text = new TextDecoder().decode(chunks.length === 1 ? chunks[0] : (() => {
+                const merged = new Uint8Array(totalBytes);
+                let offset = 0;
+                for (const chunk of chunks) {
+                    merged.set(chunk, offset);
+                    offset += chunk.length;
+                }
+                return merged;
+            })());
+        }
+        else {
+            // Fallback for environments where response.body is not available
+            text = await response.text();
+            const textByteLength = new TextEncoder().encode(text).byteLength;
+            if (textByteLength > maxBytes) {
+                throw new Error(`Response too large: ${textByteLength} bytes (max: ${maxBytes})`);
+            }
         }
         const data = JSON.parse(text);
         if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -1846,11 +1884,21 @@ export class SolanaSDK {
             lag: 0n,
         });
         try {
+            let countRetrievalFailed = false;
+            const safeGetDigest = async (fn) => {
+                try {
+                    return await fn();
+                }
+                catch {
+                    countRetrievalFailed = true;
+                    return { digest: null, count: 0 };
+                }
+            };
             const [agent, feedbackDigest, responseDigest, revokeDigest] = await Promise.all([
                 this.loadAgent(asset),
-                this.indexerClient.getLastFeedbackDigest(assetStr),
-                this.indexerClient.getLastResponseDigest(assetStr),
-                this.indexerClient.getLastRevokeDigest(assetStr),
+                safeGetDigest(() => this.indexerClient.getLastFeedbackDigest(assetStr)),
+                safeGetDigest(() => this.indexerClient.getLastResponseDigest(assetStr)),
+                safeGetDigest(() => this.indexerClient.getLastRevokeDigest(assetStr)),
             ]);
             if (!agent) {
                 return {
@@ -1899,7 +1947,11 @@ export class SolanaSDK {
             // - If digests don't match and counts are same → corrupted
             let status;
             let trustworthy = false;
-            if (allDigestsMatch) {
+            if (countRetrievalFailed) {
+                status = 'error';
+                trustworthy = false;
+            }
+            else if (allDigestsMatch) {
                 status = 'valid';
                 trustworthy = true;
             }
@@ -2089,6 +2141,8 @@ export class SolanaSDK {
                 spotCheckResults.feedback.push({
                     index: idx,
                     exists,
+                    // Spot checks verify event existence and non-null digest, not digest value correctness.
+                    // Use full hash-chain replay (verifyIntegrityFull) for digest value verification.
                     digestMatch: exists && fb?.running_digest !== null,
                     contentValid: contentCheck.valid,
                     contentError: contentCheck.error,
@@ -2182,6 +2236,237 @@ export class SolanaSDK {
             };
         }
         return result;
+    }
+    /**
+     * Full hash-chain replay verification
+     * Replays all events and recomputes digests from scratch (or from checkpoint).
+     * Detects any event censorship, reordering, or modification by the indexer.
+     *
+     * @param asset - Agent Core asset pubkey
+     * @param options - Verification options
+     * @returns FullVerificationResult with per-chain replay details
+     */
+    async verifyIntegrityFull(asset, options = {}) {
+        const { useCheckpoints = true, batchSize = 1000, onProgress } = options;
+        const start = Date.now();
+        const assetStr = asset.toBase58();
+        const indexerUrl = this.indexerClient.getBaseUrl();
+        const toHex = (arr) => Buffer.from(arr).toString('hex');
+        try {
+            const agent = await this.loadAgent(asset);
+            if (!agent) {
+                const emptyReplay = { finalDigest: Buffer.alloc(32), count: 0, valid: true };
+                return {
+                    valid: false,
+                    status: 'error',
+                    asset: assetStr,
+                    indexerUrl,
+                    chains: {
+                        feedback: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+                        response: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+                        revoke: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+                    },
+                    totalLag: 0n,
+                    trustworthy: false,
+                    error: { message: 'Agent not found on-chain', recommendation: 'Verify the asset pubkey is correct' },
+                    replay: { feedback: emptyReplay, response: emptyReplay, revoke: emptyReplay },
+                    checkpointsUsed: false,
+                    duration: Date.now() - start,
+                };
+            }
+            const onChainFeedbackDigest = toHex(agent.feedback_digest);
+            const onChainResponseDigest = toHex(agent.response_digest);
+            const onChainRevokeDigest = toHex(agent.revoke_digest);
+            const feedbackCountOnChain = BigInt(agent.feedback_count);
+            const responseCountOnChain = BigInt(agent.response_count);
+            const revokeCountOnChain = BigInt(agent.revoke_count);
+            let checkpoints = null;
+            let checkpointsUsed = false;
+            if (useCheckpoints) {
+                try {
+                    checkpoints = await this.indexerClient.getLatestCheckpoints(assetStr);
+                }
+                catch {
+                    // Checkpoints not available, replay from zero
+                }
+            }
+            const replayChainFromIndexer = async (chainType, onChainCount) => {
+                const cp = checkpoints?.[chainType];
+                let startDigest = Buffer.alloc(32);
+                let startCount = 0;
+                if (cp && useCheckpoints) {
+                    startDigest = Buffer.from(cp.digest, 'hex');
+                    startCount = cp.event_count;
+                    checkpointsUsed = true;
+                }
+                const allEvents = [];
+                let fromCount = startCount;
+                const target = Number(onChainCount);
+                while (fromCount < target) {
+                    const toCount = Math.min(fromCount + batchSize, target);
+                    const page = await this.indexerClient.getReplayData(assetStr, chainType, fromCount, toCount, batchSize);
+                    allEvents.push(...page.events);
+                    onProgress?.(chainType, allEvents.length + startCount, target);
+                    if (!page.hasMore || page.events.length === 0)
+                        break;
+                    fromCount = page.nextFromCount;
+                }
+                if (chainType === 'feedback') {
+                    const events = allEvents.map(e => ({
+                        asset: Buffer.from(bs58.decode(e.asset)),
+                        client: Buffer.from(bs58.decode(e.client)),
+                        feedbackIndex: BigInt(e.feedback_index),
+                        sealHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+                        slot: BigInt(e.slot),
+                        storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+                    }));
+                    return replayFeedbackChain(events, startDigest, startCount);
+                }
+                else if (chainType === 'response') {
+                    const events = allEvents.map(e => ({
+                        asset: Buffer.from(bs58.decode(e.asset)),
+                        client: Buffer.from(bs58.decode(e.client)),
+                        feedbackIndex: BigInt(e.feedback_index),
+                        responder: e.responder ? Buffer.from(bs58.decode(e.responder)) : Buffer.alloc(32),
+                        responseHash: e.response_hash ? Buffer.from(e.response_hash, 'hex') : Buffer.alloc(32),
+                        feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+                        slot: BigInt(e.slot),
+                        storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+                    }));
+                    return replayResponseChain(events, startDigest, startCount);
+                }
+                else {
+                    const events = allEvents.map(e => ({
+                        asset: Buffer.from(bs58.decode(e.asset)),
+                        client: Buffer.from(bs58.decode(e.client)),
+                        feedbackIndex: BigInt(e.feedback_index),
+                        feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+                        slot: BigInt(e.slot),
+                        storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+                    }));
+                    return replayRevokeChain(events, startDigest, startCount);
+                }
+            };
+            const [feedbackReplay, responseReplay, revokeReplay] = await Promise.all([
+                replayChainFromIndexer('feedback', feedbackCountOnChain),
+                replayChainFromIndexer('response', responseCountOnChain),
+                replayChainFromIndexer('revoke', revokeCountOnChain),
+            ]);
+            const feedbackDigestMatch = feedbackReplay.finalDigest.toString('hex') === onChainFeedbackDigest;
+            const responseDigestMatch = responseReplay.finalDigest.toString('hex') === onChainResponseDigest;
+            const revokeDigestMatch = revokeReplay.finalDigest.toString('hex') === onChainRevokeDigest;
+            const feedbackCountMatch = BigInt(feedbackReplay.count) === feedbackCountOnChain;
+            const responseCountMatch = BigInt(responseReplay.count) === responseCountOnChain;
+            const revokeCountMatch = BigInt(revokeReplay.count) === revokeCountOnChain;
+            const allValid = feedbackDigestMatch && responseDigestMatch && revokeDigestMatch
+                && feedbackCountMatch && responseCountMatch && revokeCountMatch
+                && feedbackReplay.valid && responseReplay.valid && revokeReplay.valid;
+            const feedbackLag = feedbackCountOnChain - BigInt(feedbackReplay.count);
+            const responseLag = responseCountOnChain - BigInt(responseReplay.count);
+            const revokeLag = revokeCountOnChain - BigInt(revokeReplay.count);
+            const totalLag = feedbackLag + responseLag + revokeLag;
+            let status;
+            let trustworthy = false;
+            if (allValid) {
+                status = 'valid';
+                trustworthy = true;
+            }
+            else if (totalLag > 0n && feedbackReplay.valid && responseReplay.valid && revokeReplay.valid) {
+                status = 'syncing';
+                trustworthy = totalLag < 100n;
+            }
+            else {
+                status = 'corrupted';
+                trustworthy = false;
+            }
+            const result = {
+                valid: allValid,
+                status,
+                asset: assetStr,
+                indexerUrl,
+                chains: {
+                    feedback: {
+                        onChain: onChainFeedbackDigest,
+                        indexer: feedbackReplay.finalDigest.toString('hex'),
+                        countOnChain: feedbackCountOnChain,
+                        countIndexer: BigInt(feedbackReplay.count),
+                        match: feedbackDigestMatch,
+                        lag: feedbackLag,
+                    },
+                    response: {
+                        onChain: onChainResponseDigest,
+                        indexer: responseReplay.finalDigest.toString('hex'),
+                        countOnChain: responseCountOnChain,
+                        countIndexer: BigInt(responseReplay.count),
+                        match: responseDigestMatch,
+                        lag: responseLag,
+                    },
+                    revoke: {
+                        onChain: onChainRevokeDigest,
+                        indexer: revokeReplay.finalDigest.toString('hex'),
+                        countOnChain: revokeCountOnChain,
+                        countIndexer: BigInt(revokeReplay.count),
+                        match: revokeDigestMatch,
+                        lag: revokeLag,
+                    },
+                },
+                totalLag,
+                trustworthy,
+                replay: {
+                    feedback: feedbackReplay,
+                    response: responseReplay,
+                    revoke: revokeReplay,
+                },
+                checkpointsUsed,
+                duration: Date.now() - start,
+            };
+            if (status === 'corrupted') {
+                const mismatchChains = [
+                    !feedbackReplay.valid && `feedback (mismatch at event ${feedbackReplay.mismatchAt})`,
+                    !responseReplay.valid && `response (mismatch at event ${responseReplay.mismatchAt})`,
+                    !revokeReplay.valid && `revoke (mismatch at event ${revokeReplay.mismatchAt})`,
+                    !feedbackDigestMatch && feedbackReplay.valid && 'feedback (final digest mismatch)',
+                    !responseDigestMatch && responseReplay.valid && 'response (final digest mismatch)',
+                    !revokeDigestMatch && revokeReplay.valid && 'revoke (final digest mismatch)',
+                ].filter(Boolean);
+                result.error = {
+                    message: `Full replay detected corruption: ${mismatchChains.join(', ')}`,
+                    recommendation: 'Hash-chain replay failed. Events may have been censored, reordered, or modified. Switch indexers immediately.',
+                };
+            }
+            else if (status === 'syncing') {
+                result.error = {
+                    message: `Replay verified ${feedbackReplay.count + responseReplay.count + revokeReplay.count} events but indexer is ${totalLag} event(s) behind on-chain`,
+                    recommendation: trustworthy
+                        ? 'Partial verification passed. Recent events still syncing.'
+                        : 'Indexer significantly behind. Wait for sync or use another indexer.',
+                };
+            }
+            return result;
+        }
+        catch (err) {
+            const emptyReplay = { finalDigest: Buffer.alloc(32), count: 0, valid: true };
+            return {
+                valid: false,
+                status: 'error',
+                asset: assetStr,
+                indexerUrl,
+                chains: {
+                    feedback: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+                    response: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+                    revoke: { onChain: '', indexer: null, countOnChain: 0n, countIndexer: 0n, match: false, lag: 0n },
+                },
+                totalLag: 0n,
+                trustworthy: false,
+                error: {
+                    message: `Full replay failed: ${err instanceof Error ? err.message : String(err)}`,
+                    recommendation: 'Check network connectivity and try again',
+                },
+                replay: { feedback: emptyReplay, response: emptyReplay, revoke: emptyReplay },
+                checkpointsUsed: false,
+                duration: Date.now() - start,
+            };
+        }
     }
     /**
      * Compute hash for a URI

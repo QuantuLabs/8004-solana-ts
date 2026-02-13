@@ -1,0 +1,1177 @@
+/**
+ * Comprehensive tests for src/core/sdk-solana.ts (SolanaSDK)
+ * Tests constructor, read methods, write methods, indexer methods, ATOM methods, utility methods
+ */
+
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { PublicKey, Keypair, Connection } from '@solana/web3.js';
+
+// ==================== Mock Setup ====================
+
+const MOCK_BLOCKHASH = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi';
+
+// Mock config-reader
+const mockBaseCollection = PublicKey.unique();
+jest.unstable_mockModule('../../src/core/config-reader.js', () => ({
+  fetchRootConfig: jest.fn().mockResolvedValue({
+    getBaseCollectionPublicKey: () => mockBaseCollection,
+  }),
+  getBaseCollection: jest.fn().mockResolvedValue(mockBaseCollection),
+  fetchRegistryConfig: jest.fn().mockResolvedValue({
+    getCollectionPublicKey: () => mockBaseCollection,
+    getAuthorityPublicKey: () => PublicKey.unique(),
+  }),
+}));
+
+// Mock borsh-schemas
+const mockOwnerKey = PublicKey.unique();
+const mockAssetKey = PublicKey.unique();
+const mockCollectionKey = PublicKey.unique();
+
+const mockAgentAccount = {
+  getCollectionPublicKey: () => mockCollectionKey,
+  getOwnerPublicKey: () => mockOwnerKey,
+  getAssetPublicKey: () => mockAssetKey,
+  isAtomEnabled: () => false,
+  feedback_count: 5n,
+  nft_name: 'TestAgent',
+  agent_uri: 'ipfs://test-agent',
+  feedback_digest: Buffer.alloc(32),
+  response_digest: Buffer.alloc(32),
+  revoke_digest: Buffer.alloc(32),
+  response_count: 0n,
+  revoke_count: 0n,
+};
+
+const mockMetadataEntry = {
+  getAssetPublicKey: () => mockAssetKey,
+  getValueString: () => 'test-value',
+  metadata_key: 'test-key',
+  key: 'test-key',
+  value: 'test-value',
+};
+
+jest.unstable_mockModule('../../src/core/borsh-schemas.js', () => ({
+  AgentAccount: {
+    deserialize: jest.fn().mockReturnValue(mockAgentAccount),
+  },
+  MetadataEntryPda: {
+    deserialize: jest.fn().mockReturnValue(mockMetadataEntry),
+  },
+  ValidationRequest: {
+    deserialize: jest.fn().mockReturnValue({
+      getAssetPublicKey: () => mockAssetKey,
+      getValidatorPublicKey: () => PublicKey.unique(),
+      nonce: 1,
+      response: 85,
+      responded_at: 0n,
+      request_hash: Buffer.alloc(32),
+    }),
+  },
+  RegistryConfig: {
+    deserialize: jest.fn().mockReturnValue({
+      getCollectionPublicKey: () => mockBaseCollection,
+      getAuthorityPublicKey: () => PublicKey.unique(),
+    }),
+  },
+}));
+
+// Mock feedback-manager-solana
+const mockFeedbackManager = {
+  getSummary: jest.fn().mockResolvedValue({
+    totalFeedbacks: 10,
+    averageScore: 75,
+    positiveCount: 8,
+    negativeCount: 2,
+  }),
+  readFeedback: jest.fn().mockResolvedValue(null),
+  readAllFeedback: jest.fn().mockResolvedValue([]),
+  getLastIndex: jest.fn().mockResolvedValue(-1n),
+  getClients: jest.fn().mockResolvedValue([]),
+  getResponseCount: jest.fn().mockResolvedValue(0),
+  readResponses: jest.fn().mockResolvedValue([]),
+  fetchAllFeedbacks: jest.fn().mockResolvedValue(new Map()),
+  setIndexerClient: jest.fn(),
+};
+
+jest.unstable_mockModule('../../src/core/feedback-manager-solana.js', () => ({
+  SolanaFeedbackManager: jest.fn().mockImplementation(() => mockFeedbackManager),
+  SolanaFeedback: jest.fn(),
+}));
+
+// Mock indexer-client
+const mockIndexerClient = {
+  isAvailable: jest.fn().mockResolvedValue(true),
+  getAgent: jest.fn().mockResolvedValue(null),
+  getAgents: jest.fn().mockResolvedValue([]),
+  getAgentsByOwner: jest.fn().mockResolvedValue([]),
+  getAgentsByCollection: jest.fn().mockResolvedValue([]),
+  getAgentByWallet: jest.fn().mockResolvedValue(null),
+  getLeaderboard: jest.fn().mockResolvedValue([]),
+  getGlobalStats: jest.fn().mockResolvedValue({ total_agents: 0, total_feedbacks: 0 }),
+  getCollectionStats: jest.fn().mockResolvedValue(null),
+  getFeedbacks: jest.fn().mockResolvedValue([]),
+  getFeedback: jest.fn().mockResolvedValue(null),
+  getFeedbacksByEndpoint: jest.fn().mockResolvedValue([]),
+  getFeedbacksByTag: jest.fn().mockResolvedValue([]),
+  getFeedbackResponsesFor: jest.fn().mockResolvedValue([]),
+  getLastFeedbackIndex: jest.fn().mockResolvedValue(-1n),
+  searchAgents: jest.fn().mockResolvedValue([]),
+  getValidations: jest.fn().mockResolvedValue([]),
+  getValidation: jest.fn().mockResolvedValue(null),
+  getPendingValidations: jest.fn().mockResolvedValue([]),
+  getAgentReputation: jest.fn().mockResolvedValue(null),
+  getAgentMetadata: jest.fn().mockResolvedValue([]),
+};
+
+jest.unstable_mockModule('../../src/core/indexer-client.js', () => ({
+  IndexerClient: jest.fn().mockImplementation(() => mockIndexerClient),
+}));
+
+// Mock indexer-types
+jest.unstable_mockModule('../../src/core/indexer-types.js', () => ({
+  indexedFeedbackToSolanaFeedback: jest.fn().mockImplementation((f: any) => f),
+}));
+
+// Mock transaction builders
+const mockTxResult = { signature: 'mock-sig', success: true };
+const mockPreparedTx = {
+  transaction: 'base64tx',
+  blockhash: MOCK_BLOCKHASH,
+  lastValidBlockHeight: 999,
+  signer: 'mock-signer',
+  signed: false as const,
+};
+
+const mockIdentityTxBuilder = {
+  registerAgent: jest.fn().mockResolvedValue(mockTxResult),
+  setAgentUri: jest.fn().mockResolvedValue(mockTxResult),
+  setMetadata: jest.fn().mockResolvedValue(mockTxResult),
+  deleteMetadata: jest.fn().mockResolvedValue(mockTxResult),
+  transferAgent: jest.fn().mockResolvedValue(mockTxResult),
+  syncOwner: jest.fn().mockResolvedValue(mockTxResult),
+  enableAtom: jest.fn().mockResolvedValue(mockTxResult),
+  setAgentWallet: jest.fn().mockResolvedValue(mockTxResult),
+  createCollection: jest.fn().mockResolvedValue({ ...mockTxResult, collection: PublicKey.unique() }),
+  updateCollectionMetadata: jest.fn().mockResolvedValue(mockTxResult),
+  createBaseCollection: jest.fn().mockRejectedValue(new Error('deprecated')),
+};
+
+const mockReputationTxBuilder = {
+  giveFeedback: jest.fn().mockResolvedValue({ ...mockTxResult, feedbackIndex: 0n }),
+  revokeFeedback: jest.fn().mockResolvedValue(mockTxResult),
+  appendResponse: jest.fn().mockResolvedValue(mockTxResult),
+  setFeedbackTags: jest.fn().mockResolvedValue({ success: false, error: 'deprecated' }),
+};
+
+const mockValidationTxBuilder = {
+  requestValidation: jest.fn().mockResolvedValue(mockTxResult),
+  respondToValidation: jest.fn().mockResolvedValue(mockTxResult),
+  updateValidation: jest.fn().mockResolvedValue({ success: false, error: 'deprecated' }),
+  closeValidation: jest.fn().mockResolvedValue({ success: false, error: 'deprecated' }),
+};
+
+const mockAtomTxBuilder = {
+  initializeStats: jest.fn().mockResolvedValue(mockTxResult),
+  initializeConfig: jest.fn().mockResolvedValue(mockTxResult),
+  updateConfig: jest.fn().mockResolvedValue(mockTxResult),
+};
+
+jest.unstable_mockModule('../../src/core/transaction-builder.js', () => ({
+  IdentityTransactionBuilder: jest.fn().mockImplementation(() => mockIdentityTxBuilder),
+  ReputationTransactionBuilder: jest.fn().mockImplementation(() => mockReputationTxBuilder),
+  ValidationTransactionBuilder: jest.fn().mockImplementation(() => mockValidationTxBuilder),
+  AtomTransactionBuilder: jest.fn().mockImplementation(() => mockAtomTxBuilder),
+  serializeTransaction: jest.fn(),
+}));
+
+// Mock client
+const mockSolanaClient = {
+  getAccount: jest.fn().mockResolvedValue(Buffer.alloc(300)),
+  getMultipleAccounts: jest.fn().mockResolvedValue([]),
+  getProgramAccounts: jest.fn().mockResolvedValue([]),
+  getProgramAccountsWithMemcmp: jest.fn().mockResolvedValue([]),
+  getProgramAccountsBySize: jest.fn().mockResolvedValue([]),
+  getAccountInfo: jest.fn().mockResolvedValue(null),
+  accountExists: jest.fn().mockResolvedValue(false),
+  supportsAdvancedQueries: jest.fn().mockReturnValue(true),
+  requireAdvancedQueries: jest.fn(),
+  getSlot: jest.fn().mockResolvedValue(100),
+  getBlockTime: jest.fn().mockResolvedValue(1700000000),
+  getConnection: jest.fn().mockReturnValue(new Connection('https://mock.example.com')),
+  get isDefaultDevnetRpc() { return false; },
+  get rpcUrl() { return 'https://mock.example.com'; },
+};
+
+jest.unstable_mockModule('../../src/core/client.js', () => ({
+  SolanaClient: jest.fn().mockImplementation(() => mockSolanaClient),
+  createDevnetClient: jest.fn().mockReturnValue(mockSolanaClient),
+  UnsupportedRpcError: class UnsupportedRpcError extends Error {},
+  Cluster: {},
+}));
+
+// Mock atom-schemas
+jest.unstable_mockModule('../../src/core/atom-schemas.js', () => ({
+  AtomStats: {
+    deserialize: jest.fn().mockReturnValue({
+      trust_tier: 2,
+      quality_score: 7500,
+      confidence: 5000,
+      risk_score: 10,
+      diversity_ratio: 200,
+      ema_score_fast: 7000,
+      ema_score_slow: 7200,
+      ema_volatility: 500,
+      getUniqueCallersEstimate: () => 15,
+      getCollectionPublicKey: () => mockCollectionKey,
+    }),
+  },
+  AtomConfig: {
+    deserialize: jest.fn().mockReturnValue({
+      authority: PublicKey.unique(),
+    }),
+  },
+  TrustTier: { Unrated: 0, Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 },
+}));
+
+// Mock agent-mint-resolver
+jest.unstable_mockModule('../../src/core/agent-mint-resolver.js', () => ({
+  AgentMintResolver: jest.fn().mockImplementation(() => ({
+    resolve: jest.fn().mockResolvedValue(null),
+  })),
+}));
+
+// Mock endpoint-crawler
+jest.unstable_mockModule('../../src/core/endpoint-crawler.js', () => ({
+  EndpointCrawler: jest.fn().mockImplementation(() => ({
+    crawl: jest.fn().mockResolvedValue({ services: [], metadata: {} }),
+  })),
+}));
+
+// Mock signing utilities
+jest.unstable_mockModule('../../src/utils/signing.js', () => ({
+  buildSignedPayload: jest.fn().mockReturnValue('signed-payload'),
+  canonicalizeSignedPayload: jest.fn().mockReturnValue('canonical'),
+  parseSignedPayload: jest.fn().mockReturnValue({ version: 1, data: {} }),
+  verifySignedPayload: jest.fn().mockReturnValue(true),
+}));
+
+// Mock hash-chain-replay
+jest.unstable_mockModule('../../src/core/hash-chain-replay.js', () => ({
+  replayFeedbackChain: jest.fn().mockResolvedValue({ digest: '00'.repeat(32), count: 0, valid: true }),
+  replayResponseChain: jest.fn().mockResolvedValue({ digest: '00'.repeat(32), count: 0, valid: true }),
+  replayRevokeChain: jest.fn().mockResolvedValue({ digest: '00'.repeat(32), count: 0, valid: true }),
+}));
+
+// Import SolanaSDK after mocks
+const { SolanaSDK } = await import('../../src/core/sdk-solana.js');
+
+// ==================== Tests ====================
+
+describe('SolanaSDK', () => {
+  let sdk: InstanceType<typeof SolanaSDK>;
+  let signerSdk: InstanceType<typeof SolanaSDK>;
+  const signer = Keypair.generate();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    // Read-only SDK
+    sdk = new SolanaSDK();
+
+    // SDK with signer
+    signerSdk = new SolanaSDK({
+      signer,
+      rpcUrl: 'https://mock.example.com',
+    });
+  });
+
+  // ==================== Constructor ====================
+
+  describe('constructor', () => {
+    it('should create read-only SDK by default', () => {
+      const s = new SolanaSDK();
+      expect(s.isReadOnly).toBe(true);
+      expect(s.canWrite).toBe(false);
+    });
+
+    it('should create writable SDK with signer', () => {
+      const s = new SolanaSDK({ signer: Keypair.generate() });
+      expect(s.isReadOnly).toBe(false);
+      expect(s.canWrite).toBe(true);
+    });
+
+    it('should default to devnet cluster', () => {
+      const s = new SolanaSDK();
+      expect(s.getCluster()).toBe('devnet');
+    });
+
+    it('should accept custom rpcUrl', () => {
+      const s = new SolanaSDK({ rpcUrl: 'https://custom-rpc.example.com' });
+      expect(s).toBeDefined();
+    });
+
+    it('should accept useIndexer=false', () => {
+      const s = new SolanaSDK({ useIndexer: false });
+      expect(s).toBeDefined();
+    });
+
+    it('should accept forceOnChain=true', () => {
+      const s = new SolanaSDK({ forceOnChain: true });
+      expect(s).toBeDefined();
+    });
+
+    it('should accept custom indexer url and key', () => {
+      const s = new SolanaSDK({
+        indexerUrl: 'https://indexer.example.com',
+        indexerApiKey: 'test-key',
+      });
+      expect(s).toBeDefined();
+    });
+  });
+
+  // ==================== Utility / Accessor Methods ====================
+
+  describe('utility methods', () => {
+    it('chainId should return solana-cluster string', async () => {
+      const id = await sdk.chainId();
+      expect(id).toBe('solana-devnet');
+    });
+
+    it('getCluster should return cluster', () => {
+      expect(sdk.getCluster()).toBe('devnet');
+    });
+
+    it('getProgramIds should return program IDs', () => {
+      const ids = sdk.getProgramIds();
+      expect(ids.agentRegistry).toBeDefined();
+      expect(ids.atomEngine).toBeDefined();
+    });
+
+    it('registries should return registry addresses', () => {
+      const regs = sdk.registries();
+      expect(regs.IDENTITY).toBeDefined();
+      expect(regs.REPUTATION).toBeDefined();
+      expect(regs.VALIDATION).toBeDefined();
+    });
+
+    it('getSolanaClient should return client', () => {
+      const client = sdk.getSolanaClient();
+      expect(client).toBeDefined();
+    });
+
+    it('getFeedbackManager should return feedback manager', () => {
+      const fm = sdk.getFeedbackManager();
+      expect(fm).toBeDefined();
+    });
+
+    it('getIndexerClient should return indexer client', () => {
+      const ic = sdk.getIndexerClient();
+      expect(ic).toBeDefined();
+    });
+
+    it('isUsingDefaultDevnetRpc should return boolean', () => {
+      expect(typeof sdk.isUsingDefaultDevnetRpc()).toBe('boolean');
+    });
+
+    it('supportsAdvancedQueries should return boolean', () => {
+      expect(typeof sdk.supportsAdvancedQueries()).toBe('boolean');
+    });
+
+    it('getRpcUrl should return string', () => {
+      expect(typeof sdk.getRpcUrl()).toBe('string');
+    });
+  });
+
+  // ==================== Agent Read Methods ====================
+
+  describe('loadAgent', () => {
+    it('should return agent when found', async () => {
+      const result = await sdk.loadAgent(mockAssetKey);
+      expect(result).not.toBeNull();
+    });
+
+    it('should return null when not found', async () => {
+      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
+      const result = await sdk.loadAgent(mockAssetKey);
+      expect(result).toBeNull();
+    });
+
+    it('should return null on deserialization error', async () => {
+      const { AgentAccount } = await import('../../src/core/borsh-schemas.js');
+      (AgentAccount.deserialize as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('bad data');
+      });
+      const result = await sdk.loadAgent(mockAssetKey);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getAgent', () => {
+    it('should be alias for loadAgent', async () => {
+      const result = await sdk.getAgent(mockAssetKey);
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe('agentExists', () => {
+    it('should return true when agent exists', async () => {
+      const result = await sdk.agentExists(mockAssetKey);
+      expect(result).toBe(true);
+    });
+
+    it('should return false when agent not found', async () => {
+      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
+      const result = await sdk.agentExists(mockAssetKey);
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('isAgentOwner', () => {
+    it('should return true when address matches owner', async () => {
+      const result = await sdk.isAgentOwner(mockAssetKey, mockOwnerKey);
+      expect(result).toBe(true);
+    });
+
+    it('should return false when address does not match', async () => {
+      const result = await sdk.isAgentOwner(mockAssetKey, PublicKey.unique());
+      expect(result).toBe(false);
+    });
+
+    it('should return false when agent not found', async () => {
+      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
+      const result = await sdk.isAgentOwner(mockAssetKey, mockOwnerKey);
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getAgentOwner', () => {
+    it('should return owner pubkey', async () => {
+      const result = await sdk.getAgentOwner(mockAssetKey);
+      expect(result).toEqual(mockOwnerKey);
+    });
+
+    it('should return null when agent not found', async () => {
+      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
+      const result = await sdk.getAgentOwner(mockAssetKey);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getMetadata', () => {
+    it('should return metadata value when found', async () => {
+      const result = await sdk.getMetadata(mockAssetKey, 'test-key');
+      expect(result).toBe('test-value');
+    });
+
+    it('should return null when metadata not found', async () => {
+      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
+      const result = await sdk.getMetadata(mockAssetKey, 'missing-key');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getReputationSummary', () => {
+    it('should return count and averageScore', async () => {
+      const result = await sdk.getReputationSummary(mockAssetKey);
+      expect(result.count).toBe(10);
+      expect(result.averageScore).toBe(75);
+    });
+  });
+
+  // ==================== Reputation Methods ====================
+
+  describe('getSummary', () => {
+    it('should delegate to feedbackManager', async () => {
+      const result = await sdk.getSummary(mockAssetKey);
+      expect(result.totalFeedbacks).toBe(10);
+      expect(mockFeedbackManager.getSummary).toHaveBeenCalledWith(mockAssetKey, undefined, undefined);
+    });
+
+    it('should pass filters', async () => {
+      const client = PublicKey.unique();
+      await sdk.getSummary(mockAssetKey, 50, client);
+      expect(mockFeedbackManager.getSummary).toHaveBeenCalledWith(mockAssetKey, 50, client);
+    });
+  });
+
+  describe('readFeedback', () => {
+    it('should convert number to bigint', async () => {
+      await sdk.readFeedback(mockAssetKey, PublicKey.unique(), 5);
+      expect(mockFeedbackManager.readFeedback).toHaveBeenCalledWith(mockAssetKey, expect.any(PublicKey), 5n);
+    });
+
+    it('should accept bigint directly', async () => {
+      await sdk.readFeedback(mockAssetKey, PublicKey.unique(), 5n);
+      expect(mockFeedbackManager.readFeedback).toHaveBeenCalledWith(mockAssetKey, expect.any(PublicKey), 5n);
+    });
+  });
+
+  describe('getFeedback', () => {
+    it('should be alias for readFeedback', async () => {
+      await sdk.getFeedback(mockAssetKey, PublicKey.unique(), 3);
+      expect(mockFeedbackManager.readFeedback).toHaveBeenCalled();
+    });
+  });
+
+  describe('readAllFeedback', () => {
+    it('should delegate to feedbackManager', async () => {
+      await sdk.readAllFeedback(mockAssetKey);
+      expect(mockFeedbackManager.readAllFeedback).toHaveBeenCalledWith(mockAssetKey, false);
+    });
+
+    it('should pass includeRevoked flag', async () => {
+      await sdk.readAllFeedback(mockAssetKey, true);
+      expect(mockFeedbackManager.readAllFeedback).toHaveBeenCalledWith(mockAssetKey, true);
+    });
+  });
+
+  describe('getLastIndex', () => {
+    it('should delegate to feedbackManager', async () => {
+      const client = PublicKey.unique();
+      await sdk.getLastIndex(mockAssetKey, client);
+      expect(mockFeedbackManager.getLastIndex).toHaveBeenCalledWith(mockAssetKey, client);
+    });
+  });
+
+  describe('getClients', () => {
+    it('should delegate to feedbackManager', async () => {
+      await sdk.getClients(mockAssetKey);
+      expect(mockFeedbackManager.getClients).toHaveBeenCalledWith(mockAssetKey);
+    });
+  });
+
+  describe('getResponseCount', () => {
+    it('should convert number to bigint', async () => {
+      await sdk.getResponseCount(mockAssetKey, PublicKey.unique(), 3);
+      expect(mockFeedbackManager.getResponseCount).toHaveBeenCalledWith(mockAssetKey, expect.any(PublicKey), 3n);
+    });
+  });
+
+  describe('readResponses', () => {
+    it('should convert number to bigint', async () => {
+      await sdk.readResponses(mockAssetKey, PublicKey.unique(), 1);
+      expect(mockFeedbackManager.readResponses).toHaveBeenCalledWith(mockAssetKey, expect.any(PublicKey), 1n);
+    });
+  });
+
+  describe('getAllFeedbacks', () => {
+    it('should delegate to feedbackManager', async () => {
+      await sdk.getAllFeedbacks();
+      expect(mockFeedbackManager.fetchAllFeedbacks).toHaveBeenCalledWith(false);
+    });
+
+    it('should pass includeRevoked', async () => {
+      await sdk.getAllFeedbacks(true);
+      expect(mockFeedbackManager.fetchAllFeedbacks).toHaveBeenCalledWith(true);
+    });
+  });
+
+  // ==================== Collection Methods ====================
+
+  describe('getCollection', () => {
+    it('should return collection info', async () => {
+      const result = await sdk.getCollection(mockBaseCollection);
+      expect(result).not.toBeNull();
+      if (result) {
+        expect(result.collection).toBeDefined();
+        expect(result.authority).toBeDefined();
+      }
+    });
+
+    it('should return null when not found', async () => {
+      const { fetchRegistryConfig } = await import('../../src/core/config-reader.js');
+      (fetchRegistryConfig as jest.Mock).mockResolvedValueOnce(null);
+      const result = await sdk.getCollection(PublicKey.unique());
+      expect(result).toBeNull();
+    });
+  });
+
+  // ==================== ATOM Methods ====================
+
+  describe('getAtomStats', () => {
+    it('should return stats when found', async () => {
+      // Mock the connection.getAccountInfo to return data
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce({
+        data: Buffer.alloc(200),
+        executable: false,
+        lamports: 1000000,
+        owner: PublicKey.default,
+      } as any);
+
+      const result = await sdk.getAtomStats(mockAssetKey);
+      expect(result).not.toBeNull();
+    });
+
+    it('should return null when not found', async () => {
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce(null);
+
+      const result = await sdk.getAtomStats(mockAssetKey);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getTrustTier', () => {
+    it('should return Unrated when no stats', async () => {
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce(null);
+
+      const result = await sdk.getTrustTier(mockAssetKey);
+      expect(result).toBe(0); // TrustTier.Unrated
+    });
+
+    it('should return trust tier from stats', async () => {
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce({
+        data: Buffer.alloc(200),
+        executable: false,
+        lamports: 1000000,
+        owner: PublicKey.default,
+      } as any);
+
+      const result = await sdk.getTrustTier(mockAssetKey);
+      expect(result).toBe(2); // Silver
+    });
+  });
+
+  describe('getAtomConfig', () => {
+    it('should return config when found', async () => {
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce({
+        data: Buffer.alloc(100),
+        executable: false,
+        lamports: 1000000,
+        owner: PublicKey.default,
+      } as any);
+
+      const result = await sdk.getAtomConfig();
+      expect(result).not.toBeNull();
+    });
+
+    it('should return null when not found', async () => {
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce(null);
+
+      const result = await sdk.getAtomConfig();
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('initializeAtomStats', () => {
+    it('should throw when no signer and not skipSend', async () => {
+      await expect(sdk.initializeAtomStats(mockAssetKey)).rejects.toThrow('read-only');
+    });
+
+    it('should delegate to atomTxBuilder with skipSend', async () => {
+      const result = await sdk.initializeAtomStats(mockAssetKey, {
+        skipSend: true,
+        signer: PublicKey.unique(),
+      });
+      expect(mockAtomTxBuilder.initializeStats).toHaveBeenCalled();
+    });
+
+    it('should allow when signer configured', async () => {
+      await signerSdk.initializeAtomStats(mockAssetKey);
+      expect(mockAtomTxBuilder.initializeStats).toHaveBeenCalled();
+    });
+  });
+
+  describe('initializeAtomConfig', () => {
+    it('should throw when no signer and not skipSend', async () => {
+      await expect(sdk.initializeAtomConfig()).rejects.toThrow('read-only');
+    });
+
+    it('should delegate to atomTxBuilder', async () => {
+      await signerSdk.initializeAtomConfig();
+      expect(mockAtomTxBuilder.initializeConfig).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateAtomConfig', () => {
+    it('should throw when no signer and not skipSend', async () => {
+      await expect(sdk.updateAtomConfig({})).rejects.toThrow('read-only');
+    });
+
+    it('should delegate to atomTxBuilder', async () => {
+      await signerSdk.updateAtomConfig({ paused: true });
+      expect(mockAtomTxBuilder.updateConfig).toHaveBeenCalled();
+    });
+  });
+
+  // ==================== Indexer Methods ====================
+
+  describe('isIndexerAvailable', () => {
+    it('should delegate to indexerClient', async () => {
+      const result = await sdk.isIndexerAvailable();
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('searchAgents', () => {
+    it('should search by owner', async () => {
+      await sdk.searchAgents({ owner: 'test-owner' });
+      expect(mockIndexerClient.getAgentsByOwner).toHaveBeenCalledWith('test-owner');
+    });
+
+    it('should search by collection', async () => {
+      await sdk.searchAgents({ collection: 'test-collection' });
+      expect(mockIndexerClient.getAgentsByCollection).toHaveBeenCalledWith('test-collection');
+    });
+
+    it('should search by wallet', async () => {
+      mockIndexerClient.getAgentByWallet.mockResolvedValueOnce({ asset: 'mock' });
+      const result = await sdk.searchAgents({ wallet: 'test-wallet' });
+      expect(result).toHaveLength(1);
+    });
+
+    it('should return empty array for wallet not found', async () => {
+      mockIndexerClient.getAgentByWallet.mockResolvedValueOnce(null);
+      const result = await sdk.searchAgents({ wallet: 'missing' });
+      expect(result).toHaveLength(0);
+    });
+
+    it('should fall back to getAgents for general queries', async () => {
+      await sdk.searchAgents({ limit: 10 });
+      expect(mockIndexerClient.getAgents).toHaveBeenCalled();
+    });
+
+    it('should throw when forceOnChain=true', async () => {
+      const forcedSdk = new SolanaSDK({ forceOnChain: true });
+      await expect(forcedSdk.searchAgents({})).rejects.toThrow('requires indexer');
+    });
+  });
+
+  describe('getLeaderboard', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getLeaderboard({ limit: 10 });
+      expect(mockIndexerClient.getLeaderboard).toHaveBeenCalledWith({ limit: 10 });
+    });
+
+    it('should throw when forceOnChain=true', async () => {
+      const forcedSdk = new SolanaSDK({ forceOnChain: true });
+      await expect(forcedSdk.getLeaderboard()).rejects.toThrow('requires indexer');
+    });
+  });
+
+  describe('getGlobalStats', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getGlobalStats();
+      expect(mockIndexerClient.getGlobalStats).toHaveBeenCalled();
+    });
+
+    it('should throw when forceOnChain=true', async () => {
+      const forcedSdk = new SolanaSDK({ forceOnChain: true });
+      await expect(forcedSdk.getGlobalStats()).rejects.toThrow('requires indexer');
+    });
+  });
+
+  describe('getCollectionStats', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getCollectionStats('test-collection');
+      expect(mockIndexerClient.getCollectionStats).toHaveBeenCalledWith('test-collection');
+    });
+  });
+
+  describe('getFeedbacksByEndpoint', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getFeedbacksByEndpoint('/api/chat');
+      expect(mockIndexerClient.getFeedbacksByEndpoint).toHaveBeenCalledWith('/api/chat');
+    });
+  });
+
+  describe('getFeedbacksByTag', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getFeedbacksByTag('quality');
+      expect(mockIndexerClient.getFeedbacksByTag).toHaveBeenCalledWith('quality');
+    });
+  });
+
+  describe('getAgentByWallet', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getAgentByWallet('wallet-pubkey');
+      expect(mockIndexerClient.getAgentByWallet).toHaveBeenCalledWith('wallet-pubkey');
+    });
+  });
+
+  describe('getPendingValidations', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getPendingValidations('validator-pubkey');
+      expect(mockIndexerClient.getPendingValidations).toHaveBeenCalledWith('validator-pubkey');
+    });
+  });
+
+  // ==================== Write Methods ====================
+
+  describe('write methods - read-only checks', () => {
+    it('createCollection should throw without signer', async () => {
+      await expect(sdk.createCollection('name', 'uri')).rejects.toThrow('read-only');
+    });
+
+    it('updateCollectionUri should throw without signer', async () => {
+      await expect(sdk.updateCollectionUri(PublicKey.unique(), 'uri')).rejects.toThrow('read-only');
+    });
+
+    it('registerAgent should throw without signer', async () => {
+      await expect(sdk.registerAgent('ipfs://test')).rejects.toThrow('read-only');
+    });
+
+    it('setAgentUri should throw without signer', async () => {
+      await expect(sdk.setAgentUri(PublicKey.unique(), PublicKey.unique(), 'uri')).rejects.toThrow('read-only');
+    });
+
+    it('enableAtom should throw without signer', async () => {
+      await expect(sdk.enableAtom(PublicKey.unique())).rejects.toThrow('read-only');
+    });
+
+    it('setMetadata should throw without signer', async () => {
+      await expect(sdk.setMetadata(PublicKey.unique(), 'key', 'val')).rejects.toThrow('read-only');
+    });
+
+    it('deleteMetadata should throw without signer', async () => {
+      await expect(sdk.deleteMetadata(PublicKey.unique(), 'key')).rejects.toThrow('read-only');
+    });
+
+    it('giveFeedback should throw without signer', async () => {
+      await expect(sdk.giveFeedback(PublicKey.unique(), { value: '1', feedbackUri: 'ipfs://x' })).rejects.toThrow('read-only');
+    });
+
+    it('revokeFeedback should throw without signer', async () => {
+      await expect(sdk.revokeFeedback(PublicKey.unique(), 0, Buffer.alloc(32))).rejects.toThrow('read-only');
+    });
+
+    it('appendResponse should throw without signer', async () => {
+      await expect(sdk.appendResponse(
+        PublicKey.unique(), PublicKey.unique(), 0, Buffer.alloc(32), 'ipfs://r'
+      )).rejects.toThrow('read-only');
+    });
+  });
+
+  describe('write methods - with skipSend', () => {
+    it('createCollection should allow skipSend without signer', async () => {
+      await sdk.createCollection('name', 'uri', { skipSend: true, signer: PublicKey.unique() });
+      expect(mockIdentityTxBuilder.createCollection).toHaveBeenCalled();
+    });
+
+    it('registerAgent should allow skipSend', async () => {
+      await sdk.registerAgent('ipfs://test', undefined, {
+        skipSend: true,
+        signer: PublicKey.unique(),
+        assetPubkey: PublicKey.unique(),
+      });
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalled();
+    });
+
+    it('giveFeedback should allow skipSend', async () => {
+      await sdk.giveFeedback(
+        PublicKey.unique(),
+        { value: '100', feedbackUri: 'ipfs://x' },
+        { skipSend: true, signer: PublicKey.unique() }
+      );
+      expect(mockReputationTxBuilder.giveFeedback).toHaveBeenCalled();
+    });
+
+    it('revokeFeedback should convert number to bigint', async () => {
+      await sdk.revokeFeedback(
+        PublicKey.unique(), 5, Buffer.alloc(32),
+        { skipSend: true, signer: PublicKey.unique() }
+      );
+      expect(mockReputationTxBuilder.revokeFeedback).toHaveBeenCalledWith(
+        expect.any(PublicKey), 5n, expect.any(Buffer), expect.anything()
+      );
+    });
+
+    it('appendResponse should convert number to bigint', async () => {
+      await sdk.appendResponse(
+        PublicKey.unique(), PublicKey.unique(), 3, Buffer.alloc(32), 'ipfs://r',
+        undefined,
+        { skipSend: true, signer: PublicKey.unique() }
+      );
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalledWith(
+        expect.any(PublicKey), expect.any(PublicKey), 3n,
+        expect.any(Buffer), 'ipfs://r', undefined, expect.anything()
+      );
+    });
+  });
+
+  describe('write methods - with signer', () => {
+    it('registerAgent should delegate to identityTxBuilder', async () => {
+      await signerSdk.registerAgent('ipfs://test');
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalled();
+    });
+
+    it('registerAgent should auto-initialize ATOM on success', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset: PublicKey.unique(),
+      });
+      mockAtomTxBuilder.initializeStats.mockResolvedValueOnce({
+        signature: 'sig2',
+        success: true,
+      });
+
+      const result = await signerSdk.registerAgent('ipfs://test');
+      expect(mockAtomTxBuilder.initializeStats).toHaveBeenCalled();
+      if ('signatures' in result) {
+        expect(result.signatures).toHaveLength(2);
+      }
+    });
+
+    it('registerAgent should not init ATOM when atomEnabled=false', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset: PublicKey.unique(),
+      });
+
+      await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: false });
+      expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should still return success if ATOM init fails', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset: PublicKey.unique(),
+      });
+      mockAtomTxBuilder.initializeStats.mockResolvedValueOnce({
+        signature: '',
+        success: false,
+        error: 'ATOM init failed',
+      });
+
+      const result = await signerSdk.registerAgent('ipfs://test');
+      expect('success' in result && result.success).toBe(true);
+    });
+
+    it('setAgentUri should delegate to identityTxBuilder', async () => {
+      await signerSdk.setAgentUri(PublicKey.unique(), PublicKey.unique(), 'ipfs://new');
+      expect(mockIdentityTxBuilder.setAgentUri).toHaveBeenCalled();
+    });
+
+    it('enableAtom should delegate to identityTxBuilder', async () => {
+      await signerSdk.enableAtom(PublicKey.unique());
+      expect(mockIdentityTxBuilder.enableAtom).toHaveBeenCalled();
+    });
+
+    it('setMetadata should delegate to identityTxBuilder', async () => {
+      await signerSdk.setMetadata(PublicKey.unique(), 'key', 'value');
+      expect(mockIdentityTxBuilder.setMetadata).toHaveBeenCalled();
+    });
+
+    it('deleteMetadata should delegate to identityTxBuilder', async () => {
+      await signerSdk.deleteMetadata(PublicKey.unique(), 'key');
+      expect(mockIdentityTxBuilder.deleteMetadata).toHaveBeenCalled();
+    });
+
+    it('giveFeedback should delegate to reputationTxBuilder', async () => {
+      await signerSdk.giveFeedback(PublicKey.unique(), { value: '100', feedbackUri: 'ipfs://fb' });
+      expect(mockReputationTxBuilder.giveFeedback).toHaveBeenCalled();
+    });
+
+    it('revokeFeedback should delegate to reputationTxBuilder', async () => {
+      await signerSdk.revokeFeedback(PublicKey.unique(), 0n, Buffer.alloc(32));
+      expect(mockReputationTxBuilder.revokeFeedback).toHaveBeenCalled();
+    });
+
+    it('appendResponse should delegate to reputationTxBuilder', async () => {
+      await signerSdk.appendResponse(
+        PublicKey.unique(), PublicKey.unique(), 0n, Buffer.alloc(32), 'ipfs://r'
+      );
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalled();
+    });
+
+    it('updateCollectionUri should delegate to identityTxBuilder', async () => {
+      await signerSdk.updateCollectionUri(PublicKey.unique(), 'ipfs://new');
+      expect(mockIdentityTxBuilder.updateCollectionMetadata).toHaveBeenCalledWith(
+        expect.any(PublicKey), null, 'ipfs://new', undefined
+      );
+    });
+
+    it('transferAgent should delegate to identityTxBuilder', async () => {
+      await signerSdk.transferAgent(PublicKey.unique(), PublicKey.unique(), PublicKey.unique());
+      expect(mockIdentityTxBuilder.transferAgent).toHaveBeenCalled();
+    });
+
+    it('syncOwner should delegate to identityTxBuilder', async () => {
+      await signerSdk.syncOwner(PublicKey.unique());
+      expect(mockIdentityTxBuilder.syncOwner).toHaveBeenCalled();
+    });
+  });
+
+  // ==================== Static Methods ====================
+
+  describe('computeHash', () => {
+    it('should compute hash from string', async () => {
+      const hash = await SolanaSDK.computeHash('test data');
+      expect(hash.length).toBe(32);
+    });
+
+    it('should compute hash from Buffer', async () => {
+      const hash = await SolanaSDK.computeHash(Buffer.from('test data'));
+      expect(hash.length).toBe(32);
+    });
+  });
+
+  // ==================== waitForIndexerSync ====================
+
+  describe('waitForIndexerSync', () => {
+    it('should return true immediately when check passes', async () => {
+      const result = await sdk.waitForIndexerSync(
+        async () => true,
+        { timeout: 1000, initialDelay: 50 }
+      );
+      expect(result).toBe(true);
+    });
+
+    it('should return false on timeout', async () => {
+      const result = await sdk.waitForIndexerSync(
+        async () => false,
+        { timeout: 100, initialDelay: 50 }
+      );
+      expect(result).toBe(false);
+    });
+
+    it('should retry on error', async () => {
+      let callCount = 0;
+      const result = await sdk.waitForIndexerSync(
+        async () => {
+          callCount++;
+          if (callCount < 3) throw new Error('not ready');
+          return true;
+        },
+        { timeout: 5000, initialDelay: 50 }
+      );
+      expect(result).toBe(true);
+      expect(callCount).toBe(3);
+    });
+  });
+
+  // ==================== getEnrichedSummary ====================
+
+  describe('getEnrichedSummary', () => {
+    it('should return null when agent not found', async () => {
+      // loadAgent returns null, but getAtomStats and getBaseCollection also run in parallel
+      // We need to mock all: getAccount (for loadAgent), getAccountInfo (for getAtomStats), and getBaseCollection
+      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce(null);
+
+      const result = await sdk.getEnrichedSummary(mockAssetKey);
+      expect(result).toBeNull();
+    });
+
+    it('should return enriched summary with ATOM metrics', async () => {
+      // Mock getAtomStats
+      const mockConn = mockSolanaClient.getConnection();
+      jest.spyOn(mockConn, 'getAccountInfo').mockResolvedValueOnce({
+        data: Buffer.alloc(200),
+        executable: false,
+        lamports: 1000000,
+        owner: PublicKey.default,
+      } as any);
+
+      const result = await sdk.getEnrichedSummary(mockAssetKey);
+      if (result) {
+        expect(result.asset).toEqual(mockAssetKey);
+        expect(result.totalFeedbacks).toBe(10);
+        expect(result.averageScore).toBe(75);
+        expect(result.qualityScore).toBeDefined();
+      }
+    });
+  });
+
+  // ==================== Indexer Fallback Methods ====================
+
+  describe('getAgentReputationFromIndexer', () => {
+    it('should return from indexer when available', async () => {
+      const mockRep = { asset: 'test', feedback_count: 5 };
+      mockIndexerClient.getAgentReputation.mockResolvedValueOnce(mockRep);
+      const result = await sdk.getAgentReputationFromIndexer(mockAssetKey);
+      expect(result).toEqual(mockRep);
+    });
+
+    it('should fallback to on-chain when indexer fails', async () => {
+      mockIndexerClient.getAgentReputation.mockRejectedValueOnce(new Error('indexer down'));
+      const result = await sdk.getAgentReputationFromIndexer(mockAssetKey);
+      // Falls back to on-chain: builds from loadAgent + getSummary
+      expect(result).not.toBeNull();
+    });
+
+    it('should throw when noFallback and indexer fails', async () => {
+      mockIndexerClient.getAgentReputation.mockRejectedValueOnce(new Error('indexer down'));
+      await expect(
+        sdk.getAgentReputationFromIndexer(mockAssetKey, { noFallback: true })
+      ).rejects.toThrow('indexer down');
+    });
+  });
+
+  describe('getFeedbacksFromIndexer', () => {
+    it('should return from indexer', async () => {
+      mockIndexerClient.getFeedbacks.mockResolvedValueOnce([{ score: 80 }]);
+      const result = await sdk.getFeedbacksFromIndexer(mockAssetKey);
+      expect(result).toHaveLength(1);
+    });
+
+    it('should fallback to on-chain', async () => {
+      mockIndexerClient.getFeedbacks.mockRejectedValueOnce(new Error('indexer down'));
+      const result = await sdk.getFeedbacksFromIndexer(mockAssetKey);
+      expect(mockFeedbackManager.readAllFeedback).toHaveBeenCalled();
+    });
+  });
+
+  // ==================== forceOnChain Mode ====================
+
+  describe('forceOnChain mode', () => {
+    let forcedSdk: InstanceType<typeof SolanaSDK>;
+
+    beforeEach(() => {
+      forcedSdk = new SolanaSDK({ forceOnChain: true });
+    });
+
+    it('should throw on searchAgents', async () => {
+      await expect(forcedSdk.searchAgents({})).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getLeaderboard', async () => {
+      await expect(forcedSdk.getLeaderboard()).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getGlobalStats', async () => {
+      await expect(forcedSdk.getGlobalStats()).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getCollectionStats', async () => {
+      await expect(forcedSdk.getCollectionStats('x')).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getFeedbacksByEndpoint', async () => {
+      await expect(forcedSdk.getFeedbacksByEndpoint('/api')).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getFeedbacksByTag', async () => {
+      await expect(forcedSdk.getFeedbacksByTag('q')).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getAgentByWallet', async () => {
+      await expect(forcedSdk.getAgentByWallet('w')).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getPendingValidations', async () => {
+      await expect(forcedSdk.getPendingValidations('v')).rejects.toThrow('requires indexer');
+    });
+  });
+
+  // ==================== useIndexer=false Mode ====================
+
+  describe('useIndexer=false mode', () => {
+    it('should go direct to on-chain for getAgentReputationFromIndexer', async () => {
+      const noIndexerSdk = new SolanaSDK({ useIndexer: false });
+      const result = await noIndexerSdk.getAgentReputationFromIndexer(mockAssetKey);
+      // Should NOT call indexer, should build from on-chain
+      expect(result).not.toBeNull();
+    });
+  });
+});

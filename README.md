@@ -66,7 +66,7 @@ await sdk.giveFeedback(agent.asset, {
   tag1: Tag.uptime,                // 8004 standardized tag (or free text)
   tag2: Tag.day,                   // Time period
   feedbackUri: 'ipfs://QmFeedback...',
-  feedbackFileHash: Buffer.alloc(32), // Optional SHA-256 of feedback file
+  feedbackFileHash: Buffer.alloc(32), // Optional integrity hash
 });
 
 // 4. Check reputation

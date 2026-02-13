@@ -166,6 +166,49 @@ export interface IndexedRevocation {
     tx_signature: string;
     created_at: string;
 }
+export interface ReplayEventData {
+    asset: string;
+    client: string;
+    feedback_index: string;
+    slot: number;
+    running_digest: string | null;
+    feedback_hash?: string | null;
+    responder?: string;
+    response_hash?: string | null;
+    response_count?: number | null;
+    revoke_count?: number | null;
+}
+export interface ReplayDataPage {
+    events: ReplayEventData[];
+    hasMore: boolean;
+    nextFromCount: number;
+}
+export interface CheckpointData {
+    event_count: number;
+    digest: string;
+    created_at: string;
+}
+export interface CheckpointSet {
+    feedback: CheckpointData | null;
+    response: CheckpointData | null;
+    revoke: CheckpointData | null;
+}
+export interface ServerChainReplayResult {
+    chainType: string;
+    finalDigest: string;
+    count: number;
+    valid: boolean;
+    mismatchAt?: number;
+    checkpointsStored: number;
+}
+export interface ServerReplayResult {
+    agentId: string;
+    feedback: ServerChainReplayResult;
+    response: ServerChainReplayResult;
+    revoke: ServerChainReplayResult;
+    valid: boolean;
+    duration: number;
+}
 /**
  * Client for interacting with Supabase indexer
  */
@@ -380,5 +423,8 @@ export declare class IndexerClient {
      * @returns Map of revokeCount -> revocation (null if missing)
      */
     getRevocationsAtCounts(asset: string, revokeCounts: number[]): Promise<Map<number, IndexedRevocation | null>>;
+    getReplayData(asset: string, chainType: 'feedback' | 'response' | 'revoke', fromCount?: number, toCount?: number, limit?: number): Promise<ReplayDataPage>;
+    getLatestCheckpoints(asset: string): Promise<CheckpointSet>;
+    triggerReplay(asset: string): Promise<ServerReplayResult>;
 }
 //# sourceMappingURL=indexer-client.d.ts.map

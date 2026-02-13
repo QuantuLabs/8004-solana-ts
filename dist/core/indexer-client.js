@@ -4,6 +4,7 @@
  */
 import { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './indexer-errors.js';
 import { decompressBase64Value } from '../utils/compression.js';
+import { validateNonce } from '../utils/validation.js';
 // ============================================================================
 // IndexerClient Implementation
 // ============================================================================
@@ -48,6 +49,7 @@ export class IndexerClient {
                     ...options,
                     headers,
                     signal: controller.signal,
+                    redirect: 'error',
                 });
                 clearTimeout(timeoutId);
                 // Handle HTTP errors
@@ -145,7 +147,7 @@ export class IndexerClient {
                         await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
                         continue;
                     }
-                    return 0;
+                    throw new IndexerError(`getCount failed: HTTP ${response.status}`, IndexerErrorCode.SERVER_ERROR);
                 }
                 // Parse Content-Range header: "0-0/1234" or "items 0-0/1234" -> 1234
                 const contentRange = response.headers.get('Content-Range');
@@ -159,13 +161,18 @@ export class IndexerClient {
                 const data = await response.json();
                 return Array.isArray(data) ? data.length : 0;
             }
-            catch {
+            catch (error) {
                 if (attempt < this.retries) {
                     await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
                 }
+                else {
+                    throw error instanceof IndexerError
+                        ? error
+                        : new IndexerUnavailableError(error instanceof Error ? error.message : 'getCount failed after retries');
+                }
             }
         }
-        return 0;
+        throw new IndexerUnavailableError('getCount failed after retries');
     }
     // ============================================================================
     // Agents
@@ -445,6 +452,7 @@ export class IndexerClient {
      */
     async getValidation(asset, validator, nonce) {
         const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+        validateNonce(nonceNum);
         const query = this.buildQuery({
             asset: `eq.${asset}`,
             validator_address: `eq.${validator}`,
@@ -668,6 +676,29 @@ export class IndexerClient {
             result.set(Number(rev.revoke_count), rev);
         }
         return result;
+    }
+    // ============================================================================
+    // Replay Data Methods (for hash-chain full replay verification)
+    // ============================================================================
+    async getReplayData(asset, chainType, fromCount = 0, toCount = 1000, limit = 1000) {
+        const query = this.buildQuery({
+            chainType,
+            fromCount,
+            toCount,
+            limit,
+        });
+        const events = await this.request(`/events/${asset}/replay-data${query}`);
+        return {
+            events,
+            hasMore: events.length === limit,
+            nextFromCount: events.length > 0 ? fromCount + events.length : fromCount,
+        };
+    }
+    async getLatestCheckpoints(asset) {
+        return this.request(`/checkpoints/${asset}/latest`);
+    }
+    async triggerReplay(asset) {
+        return this.request(`/verify/replay/${asset}`);
     }
 }
 //# sourceMappingURL=indexer-client.js.map

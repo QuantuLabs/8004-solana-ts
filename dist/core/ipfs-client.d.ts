@@ -1,6 +1,6 @@
 /**
  * IPFS client for decentralized storage with support for multiple providers:
- * - Local IPFS nodes (via ipfs-http-client)
+ * - Local IPFS nodes (via native IPFS HTTP API)
  * - Pinata IPFS pinning service
  * - Filecoin Pin service
  */
@@ -18,13 +18,15 @@ export interface IPFSClientConfig {
 export declare class IPFSClient {
     private provider;
     private config;
-    private client?;
+    private nodeApiBaseUrl?;
     constructor(config: IPFSClientConfig);
-    /**
-     * Initialize IPFS HTTP client (lazy, only when needed)
-     */
-    private _ensureClient;
+    private _normalizeNodeApiBaseUrl;
+    private _buildNodeApiUrl;
+    private _nodeApiRequest;
+    private _readResponseWithLimit;
+    private _extractCidFromAddResponse;
     private _verifyPinataJwt;
+    private _constantTimeEqualBytes;
     /**
      * Pin data to Pinata using v3 API
      */

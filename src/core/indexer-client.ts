@@ -12,6 +12,7 @@ import {
   IndexerUnauthorizedError,
 } from './indexer-errors.js';
 import { decompressBase64Value } from '../utils/compression.js';
+import { validateNonce } from '../utils/validation.js';
 
 /**
  * Configuration for IndexerClient
@@ -796,6 +797,7 @@ export class IndexerClient {
     nonce: number | bigint
   ): Promise<IndexedValidation | null> {
     const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
+    validateNonce(nonceNum);
     const query = this.buildQuery({
       asset: `eq.${asset}`,
       validator_address: `eq.${validator}`,

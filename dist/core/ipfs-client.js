@@ -1,6 +1,6 @@
 /**
  * IPFS client for decentralized storage with support for multiple providers:
- * - Local IPFS nodes (via ipfs-http-client)
+ * - Local IPFS nodes (via native IPFS HTTP API)
  * - Pinata IPFS pinning service
  * - Filecoin Pin service
  */
@@ -21,7 +21,7 @@ const IPFS_CID_PATTERN = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,})$/;
 export class IPFSClient {
     provider;
     config;
-    client;
+    nodeApiBaseUrl;
     constructor(config) {
         this.config = config;
         // Determine provider
@@ -36,25 +36,126 @@ export class IPFSClient {
         }
         else if (config.url) {
             this.provider = 'node';
-            // Lazy initialization - client will be created on first use
+            this.nodeApiBaseUrl = this._normalizeNodeApiBaseUrl(config.url);
         }
         else {
             throw new Error('No IPFS provider configured. Specify url, pinataEnabled, or filecoinPinEnabled.');
         }
     }
-    /**
-     * Initialize IPFS HTTP client (lazy, only when needed)
-     */
-    async _ensureClient() {
-        if (this.provider === 'node' && !this.client && this.config.url) {
-            const { create } = await import('ipfs-http-client');
-            this.client = create({ url: this.config.url });
+    _normalizeNodeApiBaseUrl(url) {
+        const base = new URL(url);
+        let pathname = (base.pathname || '').replace(/\/+$/, '');
+        if (!pathname.endsWith('/api/v0')) {
+            pathname = `${pathname}/api/v0`;
         }
+        base.pathname = pathname;
+        base.search = '';
+        base.hash = '';
+        return base;
+    }
+    _buildNodeApiUrl(path, query = {}) {
+        if (!this.nodeApiBaseUrl) {
+            throw new Error('No IPFS node API URL configured');
+        }
+        const endpoint = new URL(path.replace(/^\/+/, ''), `${this.nodeApiBaseUrl.toString()}/`);
+        for (const [key, value] of Object.entries(query)) {
+            endpoint.searchParams.set(key, value);
+        }
+        return endpoint.toString();
+    }
+    async _nodeApiRequest(path, options = {}, query = {}) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.IPFS_GATEWAY);
+        try {
+            return await fetch(this._buildNodeApiUrl(path, query), {
+                ...options,
+                signal: controller.signal,
+                // Security: prevent redirect-based SSRF in case URL config is compromised.
+                redirect: 'error',
+            });
+        }
+        finally {
+            clearTimeout(timeoutId);
+        }
+    }
+    async _readResponseWithLimit(response, maxSize) {
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength, 10) > maxSize) {
+            throw new Error(`Content too large: ${contentLength} bytes > ${maxSize} max`);
+        }
+        const reader = response.body?.getReader();
+        if (!reader) {
+            throw new Error('No response body');
+        }
+        const chunks = [];
+        let totalSize = 0;
+        try {
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done)
+                    break;
+                totalSize += value.length;
+                if (totalSize > maxSize) {
+                    throw new Error(`Response exceeded max size: ${totalSize} > ${maxSize} bytes`);
+                }
+                chunks.push(value);
+            }
+        }
+        finally {
+            reader.releaseLock();
+        }
+        const out = new Uint8Array(totalSize);
+        let offset = 0;
+        for (const chunk of chunks) {
+            out.set(chunk, offset);
+            offset += chunk.length;
+        }
+        return out;
+    }
+    _extractCidFromAddResponse(responseText) {
+        const lines = responseText
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+        if (lines.length === 0) {
+            throw new Error('Empty response from IPFS add endpoint');
+        }
+        // ipfs add can return NDJSON with one object per line.
+        const parsed = lines
+            .map((line) => {
+            try {
+                return JSON.parse(line);
+            }
+            catch {
+                return null;
+            }
+        })
+            .filter((entry) => entry !== null);
+        if (parsed.length === 0) {
+            throw new Error('Invalid JSON response from IPFS add endpoint');
+        }
+        const last = parsed[parsed.length - 1];
+        const cid = last.Hash ?? last.Cid ?? last.cid;
+        if (typeof cid !== 'string' || cid.length === 0) {
+            throw new Error(`No CID returned from IPFS add endpoint: ${responseText.slice(0, 200)}`);
+        }
+        return cid;
     }
     _verifyPinataJwt() {
         if (!this.config.pinataJwt) {
             throw new Error('pinataJwt is required when pinataEnabled=true');
         }
+    }
+    _constantTimeEqualBytes(a, b) {
+        if (a.length !== b.length) {
+            return false;
+        }
+        let diff = 0;
+        for (let i = 0; i < a.length; i++) {
+            diff |= a[i] ^ b[i];
+        }
+        return diff === 0;
     }
     /**
      * Pin data to Pinata using v3 API
@@ -98,7 +199,8 @@ export class IPFSClient {
             try {
                 const verifyUrl = `https://gateway.pinata.cloud/ipfs/${cid}`;
                 const verifyResponse = await fetch(verifyUrl, {
-                    signal: AbortSignal.timeout(5000), // 5 second timeout for verification
+                    signal: AbortSignal.timeout(5000),
+                    redirect: 'error',
                 });
                 if (!verifyResponse.ok) {
                     // HTTP 429 (rate limit) is not a failure - gateway is just rate limiting
@@ -152,12 +254,15 @@ export class IPFSClient {
      * Pin data to local IPFS node
      */
     async _pinToLocalIpfs(data) {
-        await this._ensureClient();
-        if (!this.client) {
-            throw new Error('No IPFS client available');
+        const formData = new FormData();
+        formData.append('file', new Blob([data], { type: 'application/json' }), 'data.json');
+        const response = await this._nodeApiRequest('add', { method: 'POST', body: formData }, { pin: 'true' });
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(`Failed to add data to IPFS node: HTTP ${response.status} ${errorText}`);
         }
-        const result = await this.client.add(data);
-        return result.cid.toString();
+        const responseText = await response.text();
+        return this._extractCidFromAddResponse(responseText);
     }
     /**
      * Add data to IPFS and return CID
@@ -183,10 +288,7 @@ export class IPFSClient {
             throw new Error('addFile() is only available in Node.js environments. ' +
                 'For browser environments, use add() with file content directly.');
         }
-        // Dynamic import to avoid bundler resolution
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const fsModule = 'fs';
-        const fs = await Function('m', 'return import(m)')(fsModule);
+        const fs = await import('node:fs');
         const data = fs.readFileSync(filepath, 'utf-8');
         if (this.provider === 'pinata') {
             return this._pinToPinata(data);
@@ -195,14 +297,17 @@ export class IPFSClient {
             return this._pinToFilecoin(filepath);
         }
         else {
-            await this._ensureClient();
-            if (!this.client) {
-                throw new Error('No IPFS client available');
-            }
-            // For local IPFS, add file directly
+            const formData = new FormData();
             const fileContent = fs.readFileSync(filepath);
-            const result = await this.client.add(fileContent);
-            return result.cid.toString();
+            const filename = filepath.split('/').pop() || 'file';
+            formData.append('file', new Blob([fileContent]), filename);
+            const response = await this._nodeApiRequest('add', { method: 'POST', body: formData }, { pin: 'true' });
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => '');
+                throw new Error(`Failed to add file to IPFS node: HTTP ${response.status} ${errorText}`);
+            }
+            const responseText = await response.text();
+            return this._extractCidFromAddResponse(responseText);
         }
     }
     /**
@@ -222,10 +327,9 @@ export class IPFSClient {
      */
     async verifyCidV0(cid, content) {
         if (!cid.startsWith('Qm')) {
-            // CIDv1 - would need multiformats library for proper verification
-            // For now, log warning and accept (defense in depth, not sole protection)
-            logger.debug('CIDv1 hash verification not implemented, skipping');
-            return true;
+            // CIDv1 - verification not implemented; fail-closed to prevent tampered content
+            logger.warn('CIDv1 hash verification not implemented, rejecting unverifiable content');
+            return false;
         }
         // CIDv0: Qm... is base58btc encoded multihash (0x12 0x20 + SHA256)
         // We verify the SHA256 hash matches
@@ -236,20 +340,19 @@ export class IPFSClient {
             const decoded = bs58.decode(cid);
             // First 2 bytes are multihash header (0x12, 0x20), rest is the hash
             if (decoded.length !== 34) {
-                logger.warn('CIDv0 unexpected length, skipping verification');
-                return true;
+                logger.warn('CIDv0 unexpected decoded length, rejecting');
+                return false;
             }
             const expectedHash = decoded.slice(2);
-            const matches = Buffer.compare(Buffer.from(hash), Buffer.from(expectedHash)) === 0;
+            const matches = this._constantTimeEqualBytes(hash, expectedHash);
             if (!matches) {
                 logger.error('Security: IPFS content hash mismatch - possible tampering');
             }
             return matches;
         }
         catch {
-            // If bs58 decode fails, log and continue (defense in depth)
-            logger.warn('Failed to decode CID for verification');
-            return true;
+            logger.warn('Failed to decode CID for verification, rejecting');
+            return false;
         }
     }
     /**
@@ -277,15 +380,19 @@ export class IPFSClient {
         // For Pinata and Filecoin Pin, use IPFS gateways
         if (this.provider === 'pinata' || this.provider === 'filecoinPin') {
             const gateways = IPFS_GATEWAYS.map(gateway => `${gateway}${encodeURIComponent(cidOnly)}`);
-            // Security: Shared abort controller to cancel all requests when one succeeds
+            // Global controller: cancel all remaining requests when one succeeds
             const globalAbortController = new AbortController();
-            // Security: Fetch with streaming, size limit, no redirects, and proper timeout
+            // Per-gateway fetch with individual timeout, size limit, and no redirects
             const fetchWithLimit = async (gateway) => {
-                // Security: Integrate timeout directly into AbortController
-                const timeoutId = setTimeout(() => globalAbortController.abort(), TIMEOUTS.IPFS_GATEWAY);
+                const perGatewayController = new AbortController();
+                // Abort this gateway on its own timeout
+                const timeoutId = setTimeout(() => perGatewayController.abort(), TIMEOUTS.IPFS_GATEWAY);
+                // Also abort if the global controller fires (first-success cancellation)
+                const onGlobalAbort = () => perGatewayController.abort();
+                globalAbortController.signal.addEventListener('abort', onGlobalAbort);
                 try {
                     const response = await fetch(gateway, {
-                        signal: globalAbortController.signal,
+                        signal: perGatewayController.signal,
                         // Security: Block redirects to prevent SSRF via redirect to internal IPs
                         redirect: 'error',
                     });
@@ -331,6 +438,7 @@ export class IPFSClient {
                 }
                 finally {
                     clearTimeout(timeoutId);
+                    globalAbortController.signal.removeEventListener('abort', onGlobalAbort);
                 }
             };
             // Race all gateways, abort on first success
@@ -338,36 +446,53 @@ export class IPFSClient {
             let lastError = null;
             // Sequential with hedging: start next gateway after delay if no response
             const HEDGE_DELAY = 2000;
+            const MAX_CONCURRENT = 3;
+            const inFlight = [];
             for (let i = 0; i < gateways.length && !result; i++) {
+                // Cancel oldest in-flight request if at capacity
+                if (inFlight.length >= MAX_CONCURRENT) {
+                    await Promise.race(inFlight);
+                }
                 const gateway = gateways[i];
                 try {
                     const fetchPromise = fetchWithLimit(gateway);
-                    if (i < gateways.length - 1) {
-                        const raceResult = await Promise.race([
-                            fetchPromise.then((data) => ({ ok: true, data }))
-                                .catch((err) => ({ ok: false, error: err })),
-                            new Promise((resolve) => setTimeout(() => resolve({ ok: false, hedge: true }), HEDGE_DELAY)),
-                        ]);
-                        if (raceResult.ok) {
-                            result = raceResult.data;
-                            globalAbortController.abort();
-                            break;
-                        }
-                        else if ('error' in raceResult) {
-                            lastError = raceResult.error;
-                            logger.debug(`Gateway failed: ${gateway.slice(0, 30)}...`);
-                            continue;
-                        }
-                        // hedge: continue to next gateway
+                    const tracked = fetchPromise
+                        .then((data) => { if (!result) {
+                        result = data;
+                        globalAbortController.abort();
+                    } })
+                        .catch((err) => { lastError = err instanceof Error ? err : new Error(String(err)); })
+                        .finally(() => { const idx = inFlight.indexOf(tracked); if (idx >= 0)
+                        inFlight.splice(idx, 1); });
+                    inFlight.push(tracked);
+                    if (i < gateways.length - 1 && !result) {
+                        // Wait for hedge delay before launching next gateway
+                        await new Promise((resolve) => {
+                            const timer = setTimeout(resolve, HEDGE_DELAY);
+                            // Resolve early if a result arrives
+                            const check = setInterval(() => {
+                                if (result) {
+                                    clearTimeout(timer);
+                                    clearInterval(check);
+                                    resolve();
+                                }
+                            }, 50);
+                            tracked.finally(() => { clearInterval(check); });
+                        });
                     }
                     else {
-                        result = await fetchPromise;
+                        // Last gateway - wait for all in-flight to settle
+                        await Promise.allSettled(inFlight);
                     }
                 }
                 catch (err) {
                     lastError = err instanceof Error ? err : new Error(String(err));
                     logger.debug(`Gateway failed: ${gateway.slice(0, 30)}...`);
                 }
+            }
+            // Wait for remaining in-flight to settle
+            if (inFlight.length > 0) {
+                await Promise.allSettled(inFlight);
             }
             globalAbortController.abort();
             if (!result) {
@@ -381,27 +506,12 @@ export class IPFSClient {
             return new TextDecoder().decode(result);
         }
         else {
-            await this._ensureClient();
-            if (!this.client) {
-                throw new Error('No IPFS client available');
+            const response = await this._nodeApiRequest('cat', { method: 'POST' }, { arg: cidOnly });
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => '');
+                throw new Error(`Failed to fetch from IPFS node: HTTP ${response.status} ${errorText}`);
             }
-            const chunks = [];
-            let totalSize = 0;
-            for await (const chunk of this.client.cat(cidOnly)) {
-                totalSize += chunk.length;
-                // Security: Enforce size limit for local IPFS node too
-                if (totalSize > maxSize) {
-                    throw new Error(`IPFS content exceeded max size: ${totalSize} > ${maxSize} bytes`);
-                }
-                chunks.push(chunk);
-            }
-            // Concatenate chunks and convert to string
-            const result = new Uint8Array(totalSize);
-            let offset = 0;
-            for (const chunk of chunks) {
-                result.set(chunk, offset);
-                offset += chunk.length;
-            }
+            const result = await this._readResponseWithLimit(response, maxSize);
             // Security: Local IPFS node already verifies hashes, but we verify anyway
             const hashValid = await this.verifyCidV0(cidOnly, result);
             if (!hashValid) {
@@ -426,12 +536,17 @@ export class IPFSClient {
             return { pinned: [cid] };
         }
         else {
-            await this._ensureClient();
-            if (!this.client) {
-                throw new Error('No IPFS client available');
+            const response = await this._nodeApiRequest('pin/add', { method: 'POST' }, { arg: cid });
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => '');
+                throw new Error(`Failed to pin CID on IPFS node: HTTP ${response.status} ${errorText}`);
             }
-            await this.client.pin.add(cid);
-            return { pinned: [cid] };
+            const payload = (await response.json().catch(() => ({})));
+            const pins = payload.Pins;
+            const pinned = Array.isArray(pins)
+                ? pins.filter((entry) => typeof entry === 'string')
+                : [cid];
+            return { pinned };
         }
     }
     /**
@@ -443,12 +558,17 @@ export class IPFSClient {
             return { unpinned: [cid] };
         }
         else {
-            await this._ensureClient();
-            if (!this.client) {
-                throw new Error('No IPFS client available');
+            const response = await this._nodeApiRequest('pin/rm', { method: 'POST' }, { arg: cid });
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => '');
+                throw new Error(`Failed to unpin CID on IPFS node: HTTP ${response.status} ${errorText}`);
             }
-            await this.client.pin.rm(cid);
-            return { unpinned: [cid] };
+            const payload = (await response.json().catch(() => ({})));
+            const pins = payload.Pins;
+            const unpinned = Array.isArray(pins)
+                ? pins.filter((entry) => typeof entry === 'string')
+                : [cid];
+            return { unpinned };
         }
     }
     /**
@@ -476,11 +596,7 @@ export class IPFSClient {
      * Close IPFS client connection
      */
     async close() {
-        if (this.client) {
-            // IPFS HTTP client doesn't have a close method in the same way
-            // But we can clear the reference
-            this.client = undefined;
-        }
+        // No persistent socket/state in the native HTTP implementation.
     }
 }
 //# sourceMappingURL=ipfs-client.js.map

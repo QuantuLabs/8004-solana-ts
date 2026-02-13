@@ -64,10 +64,13 @@ describe('SSRF Protection', () => {
       expect(isBlockedUri(uri as string)).toBe(true);
     });
 
-    // Node's URL parser normalizes ::ffff:127.0.0.1 to ::ffff:7f00:1 (hex form),
-    // which bypasses the current dotted-decimal regex. Track as known gap.
-    it.todo('should block http://[::ffff:127.0.0.1] (IPv4-mapped loopback)');
-    it.todo('should block http://[::ffff:10.0.0.1] (IPv4-mapped class A)');
+    it('should block http://[::ffff:127.0.0.1] (IPv4-mapped loopback)', () => {
+      expect(isBlockedUri('http://[::ffff:127.0.0.1]')).toBe(true);
+    });
+
+    it('should block http://[::ffff:10.0.0.1] (IPv4-mapped class A)', () => {
+      expect(isBlockedUri('http://[::ffff:10.0.0.1]')).toBe(true);
+    });
   });
 
   describe('isBlockedUri blocks cloud metadata endpoints', () => {

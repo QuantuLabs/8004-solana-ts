@@ -1,11 +1,10 @@
 /**
  * IPFS client for decentralized storage with support for multiple providers:
- * - Local IPFS nodes (via ipfs-http-client)
+ * - Local IPFS nodes (via native IPFS HTTP API)
  * - Pinata IPFS pinning service
  * - Filecoin Pin service
  */
 
-import type { IPFSHTTPClient } from 'ipfs-http-client';
 import type { RegistrationFile } from '../models/interfaces.js';
 import { IPFS_GATEWAYS, TIMEOUTS, MAX_SIZES } from '../utils/constants.js';
 import { buildRegistrationFileJson } from '../utils/registration-file-builder.js';
@@ -34,7 +33,7 @@ export interface IPFSClientConfig {
 export class IPFSClient {
   private provider: 'pinata' | 'filecoinPin' | 'node';
   private config: IPFSClientConfig;
-  private client?: IPFSHTTPClient;
+  private nodeApiBaseUrl?: URL;
 
   constructor(config: IPFSClientConfig) {
     this.config = config;
@@ -49,26 +48,140 @@ export class IPFSClient {
       // We'll use HTTP API if available, otherwise throw error
     } else if (config.url) {
       this.provider = 'node';
-      // Lazy initialization - client will be created on first use
+      this.nodeApiBaseUrl = this._normalizeNodeApiBaseUrl(config.url);
     } else {
       throw new Error('No IPFS provider configured. Specify url, pinataEnabled, or filecoinPinEnabled.');
     }
   }
 
-  /**
-   * Initialize IPFS HTTP client (lazy, only when needed)
-   */
-  private async _ensureClient(): Promise<void> {
-    if (this.provider === 'node' && !this.client && this.config.url) {
-      const { create } = await import('ipfs-http-client');
-      this.client = create({ url: this.config.url });
+  private _normalizeNodeApiBaseUrl(url: string): URL {
+    const base = new URL(url);
+    let pathname = (base.pathname || '').replace(/\/+$/, '');
+    if (!pathname.endsWith('/api/v0')) {
+      pathname = `${pathname}/api/v0`;
     }
+    base.pathname = pathname;
+    base.search = '';
+    base.hash = '';
+    return base;
+  }
+
+  private _buildNodeApiUrl(path: string, query: Record<string, string> = {}): string {
+    if (!this.nodeApiBaseUrl) {
+      throw new Error('No IPFS node API URL configured');
+    }
+    const endpoint = new URL(path.replace(/^\/+/, ''), `${this.nodeApiBaseUrl.toString()}/`);
+    for (const [key, value] of Object.entries(query)) {
+      endpoint.searchParams.set(key, value);
+    }
+    return endpoint.toString();
+  }
+
+  private async _nodeApiRequest(
+    path: string,
+    options: RequestInit = {},
+    query: Record<string, string> = {}
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.IPFS_GATEWAY);
+    try {
+      return await fetch(this._buildNodeApiUrl(path, query), {
+        ...options,
+        signal: controller.signal,
+        // Security: prevent redirect-based SSRF in case URL config is compromised.
+        redirect: 'error',
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private async _readResponseWithLimit(response: Response, maxSize: number): Promise<Uint8Array> {
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > maxSize) {
+      throw new Error(`Content too large: ${contentLength} bytes > ${maxSize} max`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const chunks: Uint8Array[] = [];
+    let totalSize = 0;
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalSize += value.length;
+        if (totalSize > maxSize) {
+          throw new Error(`Response exceeded max size: ${totalSize} > ${maxSize} bytes`);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    const out = new Uint8Array(totalSize);
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return out;
+  }
+
+  private _extractCidFromAddResponse(responseText: string): string {
+    const lines = responseText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      throw new Error('Empty response from IPFS add endpoint');
+    }
+
+    // ipfs add can return NDJSON with one object per line.
+    const parsed = lines
+      .map((line) => {
+        try {
+          return JSON.parse(line) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is Record<string, unknown> => entry !== null);
+
+    if (parsed.length === 0) {
+      throw new Error('Invalid JSON response from IPFS add endpoint');
+    }
+
+    const last = parsed[parsed.length - 1];
+    const cid = last.Hash ?? last.Cid ?? last.cid;
+    if (typeof cid !== 'string' || cid.length === 0) {
+      throw new Error(`No CID returned from IPFS add endpoint: ${responseText.slice(0, 200)}`);
+    }
+    return cid;
   }
 
   private _verifyPinataJwt(): void {
     if (!this.config.pinataJwt) {
       throw new Error('pinataJwt is required when pinataEnabled=true');
     }
+  }
+
+  private _constantTimeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) {
+      return false;
+    }
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      diff |= a[i] ^ b[i];
+    }
+    return diff === 0;
   }
 
   /**
@@ -178,13 +291,16 @@ export class IPFSClient {
    * Pin data to local IPFS node
    */
   private async _pinToLocalIpfs(data: string): Promise<string> {
-    await this._ensureClient();
-    if (!this.client) {
-      throw new Error('No IPFS client available');
-    }
+    const formData = new FormData();
+    formData.append('file', new Blob([data], { type: 'application/json' }), 'data.json');
 
-    const result = await this.client.add(data);
-    return result.cid.toString();
+    const response = await this._nodeApiRequest('add', { method: 'POST', body: formData }, { pin: 'true' });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Failed to add data to IPFS node: HTTP ${response.status} ${errorText}`);
+    }
+    const responseText = await response.text();
+    return this._extractCidFromAddResponse(responseText);
   }
 
   /**
@@ -213,7 +329,7 @@ export class IPFSClient {
       );
     }
 
-    const fs = await import('fs');
+    const fs = await import('node:fs');
     const data = fs.readFileSync(filepath, 'utf-8');
 
     if (this.provider === 'pinata') {
@@ -221,14 +337,18 @@ export class IPFSClient {
     } else if (this.provider === 'filecoinPin') {
       return this._pinToFilecoin(filepath);
     } else {
-      await this._ensureClient();
-      if (!this.client) {
-        throw new Error('No IPFS client available');
-      }
-      // For local IPFS, add file directly
+      const formData = new FormData();
       const fileContent = fs.readFileSync(filepath);
-      const result = await this.client.add(fileContent);
-      return result.cid.toString();
+      const filename = filepath.split('/').pop() || 'file';
+      formData.append('file', new Blob([fileContent]), filename);
+
+      const response = await this._nodeApiRequest('add', { method: 'POST', body: formData }, { pin: 'true' });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Failed to add file to IPFS node: HTTP ${response.status} ${errorText}`);
+      }
+      const responseText = await response.text();
+      return this._extractCidFromAddResponse(responseText);
     }
   }
 
@@ -269,7 +389,7 @@ export class IPFSClient {
         return false;
       }
       const expectedHash = decoded.slice(2);
-      const matches = Buffer.compare(Buffer.from(hash), Buffer.from(expectedHash)) === 0;
+      const matches = this._constantTimeEqualBytes(hash, expectedHash);
       if (!matches) {
         logger.error('Security: IPFS content hash mismatch - possible tampering');
       }
@@ -443,30 +563,13 @@ export class IPFSClient {
 
       return new TextDecoder().decode(result);
     } else {
-      await this._ensureClient();
-      if (!this.client) {
-        throw new Error('No IPFS client available');
+      const response = await this._nodeApiRequest('cat', { method: 'POST' }, { arg: cidOnly });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Failed to fetch from IPFS node: HTTP ${response.status} ${errorText}`);
       }
 
-      const chunks: Uint8Array[] = [];
-      let totalSize = 0;
-
-      for await (const chunk of this.client.cat(cidOnly)) {
-        totalSize += chunk.length;
-        // Security: Enforce size limit for local IPFS node too
-        if (totalSize > maxSize) {
-          throw new Error(`IPFS content exceeded max size: ${totalSize} > ${maxSize} bytes`);
-        }
-        chunks.push(chunk);
-      }
-
-      // Concatenate chunks and convert to string
-      const result = new Uint8Array(totalSize);
-      let offset = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-      }
+      const result = await this._readResponseWithLimit(response, maxSize);
 
       // Security: Local IPFS node already verifies hashes, but we verify anyway
       const hashValid = await this.verifyCidV0(cidOnly, result);
@@ -494,12 +597,17 @@ export class IPFSClient {
       // Filecoin Pin automatically pins data, so this is a no-op
       return { pinned: [cid] };
     } else {
-      await this._ensureClient();
-      if (!this.client) {
-        throw new Error('No IPFS client available');
+      const response = await this._nodeApiRequest('pin/add', { method: 'POST' }, { arg: cid });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Failed to pin CID on IPFS node: HTTP ${response.status} ${errorText}`);
       }
-      await this.client.pin.add(cid);
-      return { pinned: [cid] };
+      const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const pins = payload.Pins;
+      const pinned = Array.isArray(pins)
+        ? pins.filter((entry): entry is string => typeof entry === 'string')
+        : [cid];
+      return { pinned };
     }
   }
 
@@ -511,12 +619,17 @@ export class IPFSClient {
       // Filecoin Pin doesn't support unpinning in the same way
       return { unpinned: [cid] };
     } else {
-      await this._ensureClient();
-      if (!this.client) {
-        throw new Error('No IPFS client available');
+      const response = await this._nodeApiRequest('pin/rm', { method: 'POST' }, { arg: cid });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Failed to unpin CID on IPFS node: HTTP ${response.status} ${errorText}`);
       }
-      await this.client.pin.rm(cid);
-      return { unpinned: [cid] };
+      const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const pins = payload.Pins;
+      const unpinned = Array.isArray(pins)
+        ? pins.filter((entry): entry is string => typeof entry === 'string')
+        : [cid];
+      return { unpinned };
     }
   }
 
@@ -552,11 +665,6 @@ export class IPFSClient {
    * Close IPFS client connection
    */
   async close(): Promise<void> {
-    if (this.client) {
-      // IPFS HTTP client doesn't have a close method in the same way
-      // But we can clear the reference
-      this.client = undefined;
-    }
+    // No persistent socket/state in the native HTTP implementation.
   }
 }
-

@@ -18,9 +18,17 @@ export default {
       },
     }],
   },
+  setupFiles: ['<rootDir>/tests/e2e-solana/setup-env.ts'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 180000, // 3 minutes for e2e tests
   maxWorkers: 1,
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.d.ts',
+    '!src/**/index.ts',
+  ],
+  coverageDirectory: 'coverage/e2e',
+  coverageReporters: ['text', 'lcov', 'html'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },

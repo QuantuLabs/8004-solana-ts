@@ -11,6 +11,7 @@
 import { deserializeUnchecked } from 'borsh';
 import { PublicKey } from '@solana/web3.js';
 import { LIMITS } from '../utils/constants.js';
+import { ACCOUNT_DISCRIMINATORS, matchesDiscriminator } from './instruction-discriminators.js';
 /**
  * Security: Pre-validate Borsh string/vec length prefixes BEFORE deserialization
  * This prevents DoS via malicious buffers with huge length values that would
@@ -130,6 +131,9 @@ export class RootConfig {
         if (data.length < 73) {
             throw new Error(`Invalid RootConfig data: expected >= 73 bytes, got ${data.length}`);
         }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.RootConfig)) {
+            throw new Error('Invalid RootConfig discriminator');
+        }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, RootConfig, accountData);
     }
@@ -176,6 +180,9 @@ export class RegistryConfig {
         // discriminator(8) + collection(32) + authority(32) + bump(1) = 73 bytes
         if (data.length < 73) {
             throw new Error(`Invalid RegistryConfig data: expected >= 73 bytes, got ${data.length}`);
+        }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.RegistryConfig)) {
+            throw new Error('Invalid RegistryConfig discriminator');
         }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, RegistryConfig, accountData);
@@ -258,6 +265,9 @@ export class AgentAccount {
         if (data.length < 227) {
             throw new Error(`Invalid AgentAccount data: expected >= 227 bytes, got ${data.length}`);
         }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.AgentAccount)) {
+            throw new Error('Invalid AgentAccount discriminator');
+        }
         const accountData = data.slice(8);
         // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
         // Layout: collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet(Option)
@@ -308,7 +318,7 @@ export class AgentAccount {
      * Check if agent has an operational wallet configured
      */
     hasAgentWallet() {
-        return this.agent_wallet !== null;
+        return this.agent_wallet != null;
     }
     // Alias for backwards compatibility
     get token_uri() {
@@ -356,6 +366,9 @@ export class MetadataEntryPda {
         // discriminator(8) + asset(32) + immutable(1) + bump(1) = 42 bytes minimum
         if (data.length < 42) {
             throw new Error(`Invalid MetadataEntryPda data: expected >= 42 bytes, got ${data.length}`);
+        }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.MetadataEntryPda)) {
+            throw new Error('Invalid MetadataEntryPda discriminator');
         }
         const accountData = data.slice(8);
         // Security: PRE-VALIDATE lengths BEFORE deserializeUnchecked to prevent OOM
@@ -436,6 +449,9 @@ export class FeedbackAccount {
         if (data.length < 83) {
             throw new Error(`Invalid FeedbackAccount data: expected >= 83 bytes, got ${data.length}`);
         }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.FeedbackAccount)) {
+            throw new Error('Invalid FeedbackAccount discriminator');
+        }
         const accountData = data.slice(8);
         const raw = deserializeUnchecked(this.schema, FeedbackAccount, accountData);
         return new FeedbackAccount({
@@ -490,6 +506,9 @@ export class FeedbackTagsPda {
         if (data.length < 9) {
             throw new Error(`Invalid FeedbackTagsPda data: expected >= 9 bytes, got ${data.length}`);
         }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.FeedbackTagsPda)) {
+            throw new Error('Invalid FeedbackTagsPda discriminator');
+        }
         const accountData = data.slice(8);
         // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
         // Layout: bump(1) + tag1(String) + tag2(String)
@@ -537,6 +556,9 @@ export class AgentReputationMetadata {
         if (data.length < 17) {
             throw new Error(`Invalid AgentReputationMetadata data: expected >= 17 bytes, got ${data.length}`);
         }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.AgentReputationMetadata)) {
+            throw new Error('Invalid AgentReputationMetadata discriminator');
+        }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, AgentReputationMetadata, accountData);
     }
@@ -571,6 +593,9 @@ export class ResponseIndexAccount {
         // discriminator(8) + next_index(8) + bump(1) = 17 bytes
         if (data.length < 17) {
             throw new Error(`Invalid ResponseIndexAccount data: expected >= 17 bytes, got ${data.length}`);
+        }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.ResponseIndexAccount)) {
+            throw new Error('Invalid ResponseIndexAccount discriminator');
         }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, ResponseIndexAccount, accountData);
@@ -608,6 +633,9 @@ export class ResponseAccount {
         // discriminator(8) + responder(32) + bump(1) = 41 bytes
         if (data.length < 41) {
             throw new Error(`Invalid ResponseAccount data: expected >= 41 bytes, got ${data.length}`);
+        }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.ResponseAccount)) {
+            throw new Error('Invalid ResponseAccount discriminator');
         }
         const accountData = data.slice(8);
         return deserializeUnchecked(this.schema, ResponseAccount, accountData);
@@ -656,6 +684,9 @@ export class ValidationRequest {
         // discriminator(8) + asset(32) + validator(32) + nonce(4) + request_hash(32) + response(1) + responded_at(8) = 117 bytes
         if (data.length < 117) {
             throw new Error(`Invalid ValidationRequest data: expected >= 117 bytes, got ${data.length}`);
+        }
+        if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.ValidationRequest)) {
+            throw new Error('Invalid ValidationRequest discriminator');
         }
         const accountData = data.slice(8);
         const raw = deserializeUnchecked(this.schema, ValidationRequest, accountData);

@@ -431,7 +431,7 @@ export class AgentAccount {
    * Check if agent has an operational wallet configured
    */
   hasAgentWallet(): boolean {
-    return this.agent_wallet !== null;
+    return this.agent_wallet != null;
   }
 
   // Alias for backwards compatibility

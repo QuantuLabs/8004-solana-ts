@@ -18,6 +18,7 @@ import type { LivenessOptions, LivenessReport } from '../models/liveness.js';
 import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { IndexerClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, CollectionStats, GlobalStats } from './indexer-client.js';
+import type { ReplayResult } from './hash-chain-replay.js';
 import type { AgentSearchParams } from './indexer-types.js';
 export interface SolanaSDKConfig {
     cluster?: Cluster;
@@ -201,6 +202,26 @@ export interface DeepIntegrityResult extends IntegrityResult {
     missingItems: number;
     /** Number of items with modified content (content hash mismatch) */
     modifiedItems: number;
+}
+/**
+ * Options for full hash-chain replay verification
+ */
+export interface FullVerificationOptions {
+    useCheckpoints?: boolean;
+    batchSize?: number;
+    onProgress?: (chain: string, count: number, total: number) => void;
+}
+/**
+ * Full verification result with replay details
+ */
+export interface FullVerificationResult extends IntegrityResult {
+    replay: {
+        feedback: ReplayResult;
+        response: ReplayResult;
+        revoke: ReplayResult;
+    };
+    checkpointsUsed: boolean;
+    duration: number;
 }
 /**
  * Options for waitForValidation
@@ -918,6 +939,16 @@ export declare class SolanaSDK {
      * - Multi-tier verification for high-value operations
      */
     verifyIntegrityDeep(asset: PublicKey, options?: DeepIntegrityOptions): Promise<DeepIntegrityResult>;
+    /**
+     * Full hash-chain replay verification
+     * Replays all events and recomputes digests from scratch (or from checkpoint).
+     * Detects any event censorship, reordering, or modification by the indexer.
+     *
+     * @param asset - Agent Core asset pubkey
+     * @param options - Verification options
+     * @returns FullVerificationResult with per-chain replay details
+     */
+    verifyIntegrityFull(asset: PublicKey, options?: FullVerificationOptions): Promise<FullVerificationResult>;
     /**
      * Compute hash for a URI
      * - IPFS/Arweave URIs: zeros (CID already contains content hash)

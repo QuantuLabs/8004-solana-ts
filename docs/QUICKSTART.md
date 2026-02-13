@@ -97,6 +97,8 @@ console.log('Operational wallet:', opWallet.publicKey.toBase58());
 await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true);
 ```
 
+If you are building a browser app, use `ipfs.add(data)` or `ipfs.addJson(data)` instead of `addFile()`.
+
 See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
 **Note on ATOM (Reputation Engine):** By default, `registerAgent()` automatically initializes on-chain reputation tracking (ATOM) which costs ~0.002 SOL rent. This enables instant feedback and trust tier calculation. If you prefer to aggregate reputation yourself via the indexer, pass `{ atomEnabled: false }` to skip ATOM initialization and save the rent cost. You can later call `enableAtom()` (one-way) followed by `initializeAtomStats()`.
@@ -136,7 +138,7 @@ await sdk.giveFeedback(agentAsset, {
   tag1: 'uptime',             // Category tag
   tag2: 'day',                // Period tag
   feedbackUri: 'ipfs://QmFeedback...',
-  feedbackHash: Buffer.alloc(32),
+  feedbackFileHash: Buffer.alloc(32), // Optional integrity hash (browser: new Uint8Array(32))
 });
 
 // Check reputation

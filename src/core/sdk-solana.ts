@@ -2206,13 +2206,15 @@ export class SolanaSDK {
 
     // Follow redirects manually with SSRF re-validation (max 5 hops)
     let redirectCount = 0;
+    let currentUrl = resolvedUri;
     while (response.status >= 300 && response.status < 400 && redirectCount < 5) {
       const location = response.headers.get('location');
       if (!location) break;
-      const redirectUrl = new URL(location, resolvedUri).toString();
+      const redirectUrl = new URL(location, currentUrl).toString();
       if (isBlockedUri(redirectUrl)) {
         throw new Error('Redirect blocked: target is internal/private host');
       }
+      currentUrl = redirectUrl;
       response = await fetch(redirectUrl, {
         signal: AbortSignal.timeout(timeoutMs),
         redirect: 'manual',

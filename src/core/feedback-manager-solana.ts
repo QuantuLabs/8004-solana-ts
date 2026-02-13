@@ -12,6 +12,7 @@ import { PublicKey } from '@solana/web3.js';
 import type { SolanaClient } from './client.js';
 import type { IPFSClient } from './ipfs-client.js';
 import type { IndexerClient, IndexedFeedback } from './indexer-client.js';
+import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 import { AtomStats } from './atom-schemas.js';
 import { getAtomStatsPDA } from './atom-pda.js';
 import { logger } from '../utils/logger.js';
@@ -120,7 +121,7 @@ export class SolanaFeedbackManager {
   ): Promise<SolanaAgentSummary> {
     try {
       // If filters are provided, must use indexer for accurate results
-      if ((minScore || clientFilter) && this.indexerClient) {
+      if ((minScore !== undefined || clientFilter) && this.indexerClient) {
         return this.getSummaryFromIndexer(asset, minScore, clientFilter);
       }
 
@@ -202,15 +203,16 @@ export class SolanaFeedbackManager {
       throw new Error('Indexer required for filtered queries');
     }
 
-    // Get feedbacks from indexer
+    // Get feedbacks from indexer (bounded)
     const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
       includeRevoked: false,
+      limit: DEFAULT_MAX_FEEDBACKS,
     });
 
     // Apply filters (score can be null)
     const filtered = feedbacks.filter(
       (f) =>
-        (!minScore || (f.score !== null && f.score >= minScore)) &&
+        (minScore === undefined || (f.score !== null && f.score >= minScore)) &&
         (!clientFilter || f.client_address === clientFilter.toBase58())
     );
 
@@ -316,21 +318,7 @@ export class SolanaFeedbackManager {
       throw new Error('Indexer required for getLastIndex in v0.4.0');
     }
 
-    // Get all feedbacks for this asset and filter by client
-    const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
-      includeRevoked: true,
-    });
-    const clientFeedbacks = feedbacks.filter((f) => f.client_address === client.toBase58());
-    // Return the actual max feedback_index using safe BigInt comparison
-    return clientFeedbacks.length > 0
-      ? clientFeedbacks.reduce(
-          (max, f) => {
-            const idx = BigInt(f.feedback_index);
-            return idx > max ? idx : max;
-          },
-          BigInt(-1)
-        )
-      : BigInt(-1);
+    return this.indexerClient.getLastFeedbackIndex(asset.toBase58(), client.toBase58());
   }
 
   /**
@@ -349,6 +337,7 @@ export class SolanaFeedbackManager {
 
     const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
       includeRevoked: true,
+      limit: DEFAULT_MAX_FEEDBACKS,
     });
 
     // Extract unique client pubkeys
@@ -424,7 +413,7 @@ export class SolanaFeedbackManager {
       }));
     } catch (error) {
       logger.error(`Error reading responses for feedback index ${feedbackIndex}`, error);
-      return [];
+      throw error;
     }
   }
 
@@ -450,30 +439,7 @@ export class SolanaFeedbackManager {
    * Helper to map IndexedFeedback to SolanaFeedback
    */
   private mapIndexedFeedback(indexed: IndexedFeedback): SolanaFeedback {
-    // Handle value as BIGINT (may come as string from Supabase)
-    const rawValue = indexed.value;
-    const value = typeof rawValue === 'string' ? BigInt(rawValue) : BigInt(rawValue ?? 0);
-
-    return {
-      asset: new PublicKey(indexed.asset),
-      client: new PublicKey(indexed.client_address),
-      feedbackIndex: BigInt(indexed.feedback_index),
-      value,
-      valueDecimals: indexed.value_decimals ?? 0,
-      score: indexed.score,
-      tag1: indexed.tag1 || '',
-      tag2: indexed.tag2 || '',
-      revoked: indexed.is_revoked,
-      isRevoked: indexed.is_revoked,
-      endpoint: indexed.endpoint || '',
-      feedbackUri: indexed.feedback_uri || '',
-      // SEAL v1: feedback_hash from indexer is now the sealHash (computed on-chain)
-      sealHash: indexed.feedback_hash
-        ? Buffer.from(indexed.feedback_hash, 'hex')
-        : undefined,
-      blockSlot: BigInt(indexed.block_slot),
-      txSignature: indexed.tx_signature,
-    };
+    return indexedFeedbackToSolanaFeedback(indexed);
   }
 
   /**

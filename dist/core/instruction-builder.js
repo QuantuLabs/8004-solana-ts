@@ -389,6 +389,12 @@ export class ReputationInstructionBuilder {
      * SEAL v1: Client must provide seal_hash from the original feedback
      */
     buildAppendResponse(responder, agentAccount, asset, client, feedbackIndex, responseUri, responseHash, sealHash) {
+        if (responseHash.length !== 32) {
+            throw new Error(`responseHash must be 32 bytes, got ${responseHash.length}`);
+        }
+        if (sealHash.length !== 32) {
+            throw new Error(`sealHash must be 32 bytes, got ${sealHash.length}`);
+        }
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.appendResponse,
             asset.toBuffer(),

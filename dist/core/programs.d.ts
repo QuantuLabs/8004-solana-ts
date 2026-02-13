@@ -73,12 +73,9 @@ export declare const ACCOUNT_SIZES: {
     readonly validationRequest: 147;
 };
 /**
- * Rent cost per byte (lamports)
- * Standard Solana rent-exempt rate
- */
-export declare const LAMPORTS_PER_BYTE_YEAR = 6965;
-/**
- * Calculate rent-exempt minimum for an account
+ * Calculate rent-exempt minimum for an account (approximation).
+ * Uses the standard Solana formula: (accountSize + 128) * 3480 * 2
+ * For exact values, use connection.getMinimumBalanceForRentExemption().
  */
 export declare function calculateRentExempt(accountSize: number): number;
 /**

@@ -10,12 +10,10 @@ export interface McpCapabilities {
 export interface A2aCapabilities {
     a2aSkills?: string[];
 }
-/**
- * Crawls MCP and A2A endpoints to fetch capabilities
- */
 export declare class EndpointCrawler {
     private timeout;
     constructor(timeout?: number);
+    private readLimitedText;
     /**
      * Fetch MCP capabilities (tools, prompts, resources) from an MCP server
      */

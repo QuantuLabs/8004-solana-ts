@@ -34,6 +34,7 @@ test-ledger/
 # Temporary files
 *.tmp
 *.temp
+.tmp-skill-validate/
 
 # Package manager locks (uncomment if you want to ignore)
 # package-lock.json

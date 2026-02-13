@@ -15,7 +15,7 @@ await sdk.giveFeedback(agent.asset, {
   tag2: 'month',                  // secondary qualifier (day/week/month/year)
   endpoint: '/api/v1/generate',   // endpoint called (max 250 bytes)
   feedbackUri: 'ipfs://Qm...',    // detailed feedback file
-  feedbackHash: Buffer.alloc(32), // SHA-256 of feedback content
+  feedbackFileHash: Buffer.alloc(32), // SHA-256 of feedback content
 });
 ```
 
@@ -30,7 +30,7 @@ await sdk.giveFeedback(agent.asset, {
 | `tag2` | `string` | Secondary qualifier (max 32 bytes) |
 | `endpoint` | `string` | Agent endpoint that was called (max 250 bytes) |
 | `feedbackUri` | `string` | IPFS/HTTP link to detailed feedback |
-| `feedbackHash` | `Buffer` | SHA-256 hash for integrity verification |
+| `feedbackFileHash` | `Buffer` | SHA-256 hash for integrity verification |
 
 ## Tag Helper
 
@@ -207,7 +207,7 @@ Then reference it:
 
 ```typescript
 const feedbackContent = JSON.stringify(feedbackJson);
-const feedbackHash = crypto.createHash('sha256').update(feedbackContent).digest();
+const feedbackFileHash = crypto.createHash('sha256').update(feedbackContent).digest();
 const cid = await ipfs.addJson(feedbackJson);
 
 await sdk.giveFeedback(agent.asset, {
@@ -216,7 +216,7 @@ await sdk.giveFeedback(agent.asset, {
   valueDecimals: 2,
   tag1: 'revenues',
   feedbackUri: `ipfs://${cid}`,
-  feedbackHash,
+  feedbackFileHash,
 });
 ```
 

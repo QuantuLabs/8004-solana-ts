@@ -68,7 +68,13 @@ export function normalizeSignData(input: unknown, seen: Set<object> = new Set())
   }
 
   if (Array.isArray(input)) {
-    return input.map((entry) => normalizeSignData(entry, seen));
+    if (seen.has(input)) {
+      throw new Error('Circular reference detected in signed data');
+    }
+    seen.add(input);
+    const result = input.map((entry) => normalizeSignData(entry, seen));
+    seen.delete(input);
+    return result;
   }
 
   if (typeof input === 'object') {

@@ -1,5 +1,7 @@
 # Changelog
 
+> Note: Canonical release changelog is maintained in the repository root `CHANGELOG.md`.
+
 ## v0.4.0 (Current)
 
 **New Features:**

@@ -10,7 +10,10 @@ import type { SolanaClient } from '../../src/core/client.js';
 import type { IndexerClient, IndexedFeedback } from '../../src/core/indexer-client.js';
 
 // Mock IndexerClient
-const createMockIndexerClient = (feedbacks: Partial<IndexedFeedback>[]): IndexerClient => ({
+const createMockIndexerClient = (
+  feedbacks: Partial<IndexedFeedback>[],
+  overrides?: Partial<Record<string, unknown>>
+): IndexerClient => ({
   getFeedbacks: jest.fn().mockResolvedValue(
     feedbacks.map(f => ({
       asset: f.asset || 'mockAsset',
@@ -35,12 +38,13 @@ const createMockIndexerClient = (feedbacks: Partial<IndexedFeedback>[]): Indexer
   getGlobalStats: jest.fn(),
   getFeedback: jest.fn(),
   getFeedbackResponsesFor: jest.fn().mockResolvedValue([]),
-  getLastFeedbackIndex: jest.fn(),
+  getLastFeedbackIndex: jest.fn().mockResolvedValue(-1n),
   isAvailable: jest.fn(),
   searchAgents: jest.fn(),
   getValidations: jest.fn(),
   getValidation: jest.fn(),
   getAgentMetadata: jest.fn(),
+  ...overrides,
 } as unknown as IndexerClient);
 
 // Mock SolanaClient
@@ -55,14 +59,11 @@ describe('SolanaFeedbackManager', () => {
     const mockClient = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 
     it('should handle feedback_index > 2^53 without precision loss', async () => {
-      // Create a feedback_index that exceeds Number.MAX_SAFE_INTEGER
-      // Number.MAX_SAFE_INTEGER = 9007199254740991 (2^53 - 1)
-      const largeIndex = '9007199254740993'; // 2^53 + 1, loses precision as Number
+      const largeIndex = '9007199254740993'; // 2^53 + 1
 
-      const mockIndexer = createMockIndexerClient([
-        { client_address: mockClient.toBase58(), feedback_index: largeIndex },
-        { client_address: mockClient.toBase58(), feedback_index: '1' },
-      ]);
+      const mockIndexer = createMockIndexerClient([], {
+        getLastFeedbackIndex: jest.fn().mockResolvedValue(BigInt(largeIndex)),
+      });
 
       const feedbackManager = new SolanaFeedbackManager(
         createMockSolanaClient(),
@@ -72,18 +73,14 @@ describe('SolanaFeedbackManager', () => {
 
       const result = await feedbackManager.getLastIndex(mockAsset, mockClient);
 
-      // Must match exactly as BigInt, no precision loss
       expect(result).toBe(BigInt(largeIndex));
-      // Verify it's NOT the truncated Number value
       expect(result).not.toBe(BigInt(Number(largeIndex)));
     });
 
     it('should find max index among multiple feedbacks', async () => {
-      const mockIndexer = createMockIndexerClient([
-        { client_address: mockClient.toBase58(), feedback_index: '100' },
-        { client_address: mockClient.toBase58(), feedback_index: '500' },
-        { client_address: mockClient.toBase58(), feedback_index: '250' },
-      ]);
+      const mockIndexer = createMockIndexerClient([], {
+        getLastFeedbackIndex: jest.fn().mockResolvedValue(500n),
+      });
 
       const feedbackManager = new SolanaFeedbackManager(
         createMockSolanaClient(),
@@ -92,11 +89,13 @@ describe('SolanaFeedbackManager', () => {
       );
 
       const result = await feedbackManager.getLastIndex(mockAsset, mockClient);
-      expect(result).toBe(BigInt(500));
+      expect(result).toBe(500n);
     });
 
     it('should return -1n when no feedbacks exist', async () => {
-      const mockIndexer = createMockIndexerClient([]);
+      const mockIndexer = createMockIndexerClient([], {
+        getLastFeedbackIndex: jest.fn().mockResolvedValue(-1n),
+      });
 
       const feedbackManager = new SolanaFeedbackManager(
         createMockSolanaClient(),
@@ -105,17 +104,14 @@ describe('SolanaFeedbackManager', () => {
       );
 
       const result = await feedbackManager.getLastIndex(mockAsset, mockClient);
-      expect(result).toBe(BigInt(-1));
+      expect(result).toBe(-1n);
     });
 
-    it('should filter by client address', async () => {
-      const otherClient = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
-
-      const mockIndexer = createMockIndexerClient([
-        { client_address: mockClient.toBase58(), feedback_index: '10' },
-        { client_address: otherClient.toBase58(), feedback_index: '999' },
-        { client_address: mockClient.toBase58(), feedback_index: '5' },
-      ]);
+    it('should delegate to indexerClient.getLastFeedbackIndex', async () => {
+      const mockGetLastFeedbackIndex = jest.fn().mockResolvedValue(10n);
+      const mockIndexer = createMockIndexerClient([], {
+        getLastFeedbackIndex: mockGetLastFeedbackIndex,
+      });
 
       const feedbackManager = new SolanaFeedbackManager(
         createMockSolanaClient(),
@@ -124,17 +120,19 @@ describe('SolanaFeedbackManager', () => {
       );
 
       const result = await feedbackManager.getLastIndex(mockAsset, mockClient);
-      // Should only consider feedbacks from mockClient, not otherClient
-      expect(result).toBe(BigInt(10));
+      expect(result).toBe(10n);
+      expect(mockGetLastFeedbackIndex).toHaveBeenCalledWith(
+        mockAsset.toBase58(),
+        mockClient.toBase58()
+      );
     });
 
     it('should handle extremely large feedback indices', async () => {
-      // Test with a very large number that's well beyond Number precision
       const extremeIndex = '9999999999999999999'; // ~10^19
 
-      const mockIndexer = createMockIndexerClient([
-        { client_address: mockClient.toBase58(), feedback_index: extremeIndex },
-      ]);
+      const mockIndexer = createMockIndexerClient([], {
+        getLastFeedbackIndex: jest.fn().mockResolvedValue(BigInt(extremeIndex)),
+      });
 
       const feedbackManager = new SolanaFeedbackManager(
         createMockSolanaClient(),
