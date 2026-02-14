@@ -13,13 +13,17 @@ import {
 } from './indexer-errors.js';
 
 import type {
+  CheckpointSet,
   GlobalStats,
   IndexedAgent,
   IndexedAgentReputation,
   IndexedFeedback,
   IndexedFeedbackResponse,
+  IndexedRevocation,
   IndexedValidation,
   IndexerReadClient,
+  ReplayDataPage,
+  ReplayEventData,
 } from './indexer-client.js';
 
 export interface IndexerGraphQLClientConfig {
@@ -50,6 +54,14 @@ function toIntSafe(v: unknown, fallback = 0): number {
   const n = typeof v === 'string' ? Number.parseInt(v, 10) : (typeof v === 'number' ? v : NaN);
   if (!Number.isFinite(n)) return fallback;
   return Math.trunc(n);
+}
+
+function normalizeHexDigest(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  let s = v.trim();
+  if (s.startsWith('\\x') || s.startsWith('0x')) s = s.slice(2);
+  if (!s) return null;
+  return s.toLowerCase();
 }
 
 function clampInt(n: number, min: number, max: number): number {
@@ -87,11 +99,45 @@ function mapValidationStatus(status: unknown): 'PENDING' | 'RESPONDED' {
   return 'RESPONDED';
 }
 
+type GqlHashChainHead = { digest: string | null; count: string };
+type GqlHashChainHeads = {
+  feedback: GqlHashChainHead;
+  response: GqlHashChainHead;
+  revoke: GqlHashChainHead;
+};
+
+type GqlHashChainCheckpoint = { eventCount: string; digest: string; createdAt: string };
+type GqlHashChainCheckpointSet = {
+  feedback: GqlHashChainCheckpoint | null;
+  response: GqlHashChainCheckpoint | null;
+  revoke: GqlHashChainCheckpoint | null;
+};
+
+type GqlHashChainReplayEvent = {
+  asset: string;
+  client: string;
+  feedbackIndex: string;
+  slot: string;
+  runningDigest: string | null;
+  feedbackHash: string | null;
+  responder?: string | null;
+  responseHash?: string | null;
+  responseCount?: string | null;
+  revokeCount?: string | null;
+};
+
+type GqlHashChainReplayPage = {
+  events: GqlHashChainReplayEvent[];
+  hasMore: boolean;
+  nextFromCount: string;
+};
+
 export class IndexerGraphQLClient implements IndexerReadClient {
   private readonly graphqlUrl: string;
   private readonly headers: Record<string, string>;
   private readonly timeout: number;
   private readonly retries: number;
+  private readonly hashChainHeadsInFlight = new Map<string, Promise<GqlHashChainHeads>>();
 
   constructor(config: IndexerGraphQLClientConfig) {
     this.graphqlUrl = config.graphqlUrl.replace(/\/$/, '');
@@ -211,6 +257,30 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     } catch {
       return false;
     }
+  }
+
+  private loadHashChainHeads(asset: string): Promise<GqlHashChainHeads> {
+    const key = asset;
+    const existing = this.hashChainHeadsInFlight.get(key);
+    if (existing) return existing;
+
+    const pending = this.request<{ hashChainHeads: GqlHashChainHeads }>(
+      `query($agent: ID!) {
+        hashChainHeads(agent: $agent) {
+          feedback { digest count }
+          response { digest count }
+          revoke { digest count }
+        }
+      }`,
+      { agent: agentId(asset) }
+    )
+      .then((d) => d.hashChainHeads)
+      .finally(() => {
+        this.hashChainHeadsInFlight.delete(key);
+      });
+
+    this.hashChainHeadsInFlight.set(key, pending);
+    return pending;
   }
 
   // ============================================================================
@@ -910,5 +980,236 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   async getAgentReputation(_asset: string): Promise<IndexedAgentReputation | null> {
     // Not exposed by GraphQL v2. Prefer on-chain fallback in SolanaSDK.getAgentReputationFromIndexer().
     return null;
+  }
+
+  // ============================================================================
+  // Integrity (hash-chain)
+  // ============================================================================
+
+  async getLastFeedbackDigest(asset: string): Promise<{ digest: string | null; count: number }> {
+    const heads = await this.loadHashChainHeads(asset);
+    return {
+      digest: normalizeHexDigest(heads.feedback.digest),
+      count: toIntSafe(heads.feedback.count, 0),
+    };
+  }
+
+  async getLastResponseDigest(asset: string): Promise<{ digest: string | null; count: number }> {
+    const heads = await this.loadHashChainHeads(asset);
+    return {
+      digest: normalizeHexDigest(heads.response.digest),
+      count: toIntSafe(heads.response.count, 0),
+    };
+  }
+
+  async getLastRevokeDigest(asset: string): Promise<{ digest: string | null; count: number }> {
+    const heads = await this.loadHashChainHeads(asset);
+    return {
+      digest: normalizeHexDigest(heads.revoke.digest),
+      count: toIntSafe(heads.revoke.count, 0),
+    };
+  }
+
+  async getLatestCheckpoints(asset: string): Promise<CheckpointSet> {
+    const data = await this.request<{ hashChainLatestCheckpoints: GqlHashChainCheckpointSet }>(
+      `query($agent: ID!) {
+        hashChainLatestCheckpoints(agent: $agent) {
+          feedback { eventCount digest createdAt }
+          response { eventCount digest createdAt }
+          revoke { eventCount digest createdAt }
+        }
+      }`,
+      { agent: agentId(asset) }
+    );
+
+    const mapCp = (cp: GqlHashChainCheckpoint | null) => {
+      if (!cp) return null;
+      return {
+        event_count: toIntSafe(cp.eventCount, 0),
+        digest: normalizeHexDigest(cp.digest) ?? cp.digest,
+        created_at: toIsoFromUnixSeconds(cp.createdAt),
+      };
+    };
+
+    return {
+      feedback: mapCp(data.hashChainLatestCheckpoints.feedback),
+      response: mapCp(data.hashChainLatestCheckpoints.response),
+      revoke: mapCp(data.hashChainLatestCheckpoints.revoke),
+    };
+  }
+
+  async getReplayData(
+    asset: string,
+    chainType: 'feedback' | 'response' | 'revoke',
+    fromCount: number = 0,
+    toCount: number = 1000,
+    limit: number = 1000,
+  ): Promise<ReplayDataPage> {
+    const first = clampInt(limit, 1, 1000);
+
+    const data = await this.request<{ hashChainReplayData: GqlHashChainReplayPage }>(
+      `query($agent: ID!, $chainType: HashChainType!, $fromCount: BigInt!, $toCount: BigInt, $first: Int!) {
+        hashChainReplayData(
+          agent: $agent,
+          chainType: $chainType,
+          fromCount: $fromCount,
+          toCount: $toCount,
+          first: $first
+        ) {
+          hasMore
+          nextFromCount
+          events {
+            asset
+            client
+            feedbackIndex
+            slot
+            runningDigest
+            feedbackHash
+            responder
+            responseHash
+            responseCount
+            revokeCount
+          }
+        }
+      }`,
+      {
+        agent: agentId(asset),
+        chainType: chainType.toUpperCase(),
+        fromCount: String(fromCount),
+        toCount: toCount != null ? String(toCount) : null,
+        first,
+      }
+    );
+
+    const page = data.hashChainReplayData;
+
+    const events: ReplayEventData[] = page.events.map((e) => ({
+      asset: e.asset,
+      client: e.client,
+      feedback_index: String(e.feedbackIndex),
+      slot: toNumberSafe(e.slot, 0),
+      running_digest: normalizeHexDigest(e.runningDigest) ?? null,
+      feedback_hash: e.feedbackHash ?? null,
+      responder: e.responder ?? undefined,
+      response_hash: e.responseHash ?? null,
+      response_count: e.responseCount != null ? toNumberSafe(e.responseCount, 0) : null,
+      revoke_count: e.revokeCount != null ? toNumberSafe(e.revokeCount, 0) : null,
+    }));
+
+    return {
+      events,
+      hasMore: Boolean(page.hasMore),
+      nextFromCount: toNumberSafe(page.nextFromCount, fromCount),
+    };
+  }
+
+  async getFeedbacksAtIndices(
+    asset: string,
+    indices: number[]
+  ): Promise<Map<number, IndexedFeedback | null>> {
+    const result = new Map<number, IndexedFeedback | null>();
+    if (indices.length === 0) return result;
+
+    for (const idx of indices) {
+      result.set(idx, null);
+    }
+
+    await Promise.all(indices.map(async (idx) => {
+      const page = await this.getReplayData(asset, 'feedback', idx, idx + 1, 1);
+      const e = page.events[0];
+      if (!e) return;
+      result.set(idx, {
+        id: '',
+        asset,
+        client_address: e.client,
+        feedback_index: toIntSafe(e.feedback_index, 0),
+        value: '0',
+        value_decimals: 0,
+        score: null,
+        tag1: null,
+        tag2: null,
+        endpoint: null,
+        feedback_uri: null,
+        running_digest: e.running_digest,
+        feedback_hash: e.feedback_hash ?? null,
+        is_revoked: false,
+        revoked_at: null,
+        block_slot: e.slot,
+        tx_signature: '',
+        created_at: new Date(0).toISOString(),
+      });
+    }));
+
+    return result;
+  }
+
+  async getResponsesAtOffsets(
+    asset: string,
+    offsets: number[]
+  ): Promise<Map<number, IndexedFeedbackResponse | null>> {
+    const result = new Map<number, IndexedFeedbackResponse | null>();
+    if (offsets.length === 0) return result;
+
+    for (const offset of offsets) {
+      result.set(offset, null);
+    }
+
+    await Promise.all(offsets.map(async (offset) => {
+      const page = await this.getReplayData(asset, 'response', offset, offset + 1, 1);
+      const e = page.events[0];
+      if (!e) return;
+      result.set(offset, {
+        id: '',
+        asset,
+        client_address: e.client,
+        feedback_index: toIntSafe(e.feedback_index, 0),
+        responder: e.responder ?? '',
+        response_uri: null,
+        response_hash: e.response_hash ?? null,
+        running_digest: e.running_digest,
+        block_slot: e.slot,
+        tx_signature: '',
+        created_at: new Date(0).toISOString(),
+      });
+    }));
+
+    return result;
+  }
+
+  async getRevocationsAtCounts(
+    asset: string,
+    revokeCounts: number[]
+  ): Promise<Map<number, IndexedRevocation | null>> {
+    const result = new Map<number, IndexedRevocation | null>();
+    if (revokeCounts.length === 0) return result;
+
+    for (const c of revokeCounts) {
+      result.set(c, null);
+    }
+
+    await Promise.all(revokeCounts.map(async (c) => {
+      if (!Number.isFinite(c) || c < 1) return;
+      const idx = c - 1;
+      const page = await this.getReplayData(asset, 'revoke', idx, idx + 1, 1);
+      const e = page.events[0];
+      if (!e) return;
+      result.set(c, {
+        id: '',
+        asset,
+        client_address: e.client,
+        feedback_index: toIntSafe(e.feedback_index, 0),
+        feedback_hash: e.feedback_hash ?? null,
+        slot: e.slot,
+        original_score: null,
+        atom_enabled: false,
+        had_impact: false,
+        running_digest: e.running_digest,
+        revoke_count: e.revoke_count ?? idx,
+        tx_signature: '',
+        created_at: new Date(0).toISOString(),
+      });
+    }));
+
+    return result;
   }
 }
