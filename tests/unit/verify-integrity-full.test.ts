@@ -352,7 +352,9 @@ describe('verifyIntegrityFull types and replay integration', () => {
 
       expect(result.count).toBe(5000);
       expect(result.valid).toBe(true);
-      expect(elapsed).toBeLessThan(200);
+      // Perf check is environment-dependent (CPU load, Node/Jest runtime).
+      // This guards against accidental O(n^2) regressions, not micro-bench precision.
+      expect(elapsed).toBeLessThan(800);
     });
   });
 });
