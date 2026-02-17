@@ -1,5 +1,5 @@
 /**
- * Feedback Example - Solana SDK v0.5.0+
+ * Feedback Example
  *
  * Demonstrates feedback submission, reading, and responses
  */
@@ -26,7 +26,7 @@ async function main() {
       console.log(`  [${i}] Score: ${fb.score}, Tags: ${fb.tag1 || '-'}, ${fb.tag2 || '-'}`);
     });
   } catch (e) {
-    console.log('Note: readAllFeedback requires custom RPC (Helius free tier)');
+    console.log('Note: readAllFeedback requires an indexer to be configured');
   }
 
   // === SUBMIT FEEDBACK ===
@@ -45,16 +45,19 @@ async function main() {
     tag1: 'fast',
     tag2: 'reliable',
     feedbackUri: 'ipfs://QmDetailedFeedback',
-    feedbackHash: Buffer.alloc(32),
+    feedbackFileHash: Buffer.alloc(32),
   });
   console.log(`Feedback submitted! Index: ${result.feedbackIndex}`);
 
   // Append response to feedback (as agent owner)
+  const clientPubkey = signer.publicKey; // client who gave the feedback
+  const sealHash = Buffer.alloc(32);     // from readFeedback().sealHash
   await writeSdk.appendResponse(
     agentAsset,
+    clientPubkey,
     0, // feedback index
+    sealHash,
     'ipfs://QmThankYouResponse',
-    Buffer.alloc(32)
   );
   console.log('Response appended to feedback #0');
 }

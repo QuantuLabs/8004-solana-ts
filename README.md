@@ -6,6 +6,10 @@
 
 TypeScript SDK for 8004 Agent Registry on Solana.
 
+> **Autonomous Agents** (Clawbot, Moltbot, etc.): See [`skill.md`](./skill.md) for the complete SDK reference designed for autonomous AI agent consumption.
+>
+> **New here?** Follow the [Quickstart Guide](./docs/QUICKSTART.md) to register your first agent in 5 minutes.
+
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
 - **Submit and query reputation feedback** with SEAL v1 integrity verification
@@ -78,7 +82,7 @@ console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks
 
 ```typescript
 // For setAgentWallet with browser wallets
-const prepared = sdk.prepareSetAgentWallet(agent.asset, walletPubkey);
+const prepared = await sdk.prepareSetAgentWallet(agent.asset, walletPubkey);
 const signature = await wallet.signMessage(prepared.message);
 await prepared.complete(signature);
 ```
@@ -108,7 +112,7 @@ const signed = sdk.sign(agent.asset, {
 const isValid = await sdk.verify(signed, agent.asset);
 
 // Verify with known public key (no RPC)
-const isValid = await sdk.verify(signed, agent.asset, opWallet.publicKey);
+const isValid2 = await sdk.verify(signed, agent.asset, opWallet.publicKey);
 ```
 
 ### Liveness Check
@@ -299,6 +303,7 @@ const sdk = new SolanaSDK({
 | [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
 | [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
 | [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
+| [`basic-indexer.ts`](examples/basic-indexer.ts) | Indexer queries and search |
 
 ## Documentation
 
@@ -307,6 +312,7 @@ const sdk = new SolanaSDK({
 - [Quickstart](./docs/QUICKSTART.md) - Step-by-step guide
 - [Costs](./docs/COSTS.md) - Transaction costs
 - [OASF Taxonomies](./docs/OASF.md) - Skills & domains reference
+- [AI Agent Skill](./skill.md) - SDK reference for AI agents (MCP/LLM)
 
 ## Community & Support
 

@@ -80,20 +80,16 @@ const metadata = buildRegistrationFileJson({
 const metadataCid = await ipfs.addJson(metadata);
 const metadataUri = `ipfs://${metadataCid}`;
 
-// 6. (Optional) Create your own collection
-const collection = await sdk.createCollection('My Agent Collection', metadataUri);
-console.log('Collection:', collection.collection.toBase58());
-
-// 7. Register on Solana (in your collection, or omit for base collection)
-const result = await sdk.registerAgent(metadataUri, collection.collection);
+// 6. Register on Solana (uses the base collection automatically)
+const result = await sdk.registerAgent(metadataUri);
 console.log('Agent:', result.asset.toBase58());
 
-// 8. Set operational wallet (for agent signing)
+// 7. Set operational wallet (for agent signing)
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(result.asset, opWallet);
 console.log('Operational wallet:', opWallet.publicKey.toBase58());
 
-// 9. (Optional) Store on-chain metadata
+// 8. (Optional) Store on-chain metadata
 await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true);
 ```
 

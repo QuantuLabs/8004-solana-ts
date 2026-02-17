@@ -47,7 +47,7 @@ class TransactionServer {
         tag1,
         tag2,
         feedbackUri: fileUri,
-        feedbackHash: Buffer.alloc(32), // In production: compute actual hash
+        feedbackFileHash: Buffer.alloc(32), // In production: compute actual hash
       },
       {
         skipSend: true,
@@ -70,9 +70,10 @@ class TransactionServer {
   async buildRegisterTransaction(params: {
     tokenUri: string;
     userWallet: string;
-    collection?: string; // Optional: specific collection to register in
+    assetPubkey: string; // Client generates Keypair locally, sends pubkey to server
+    collection?: string;
   }): Promise<PreparedTransaction & { asset: PublicKey }> {
-    const { tokenUri, userWallet, collection } = params;
+    const { tokenUri, userWallet, assetPubkey, collection } = params;
 
     const prepared = await this.sdk.registerAgent(
       tokenUri,
@@ -80,6 +81,7 @@ class TransactionServer {
       {
         skipSend: true,
         signer: new PublicKey(userWallet),
+        assetPubkey: new PublicKey(assetPubkey),
       }
     );
 

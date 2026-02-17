@@ -2,7 +2,7 @@
 name: 8004-solana-sdk
 description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
 version: 0.6.3
-homepage: "https://github.com/CasterCorp/agent0-ts-solana"
+homepage: "https://github.com/QuantuLabs/8004-solana-ts"
 metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
 
@@ -633,14 +633,11 @@ const top = await sdk.getLeaderboard({
 });
 ```
 
-### Global & collection stats
+### Global stats
 
 ```typescript
 const global = await sdk.getGlobalStats();
 // global.total_agents, total_feedbacks, platinum_agents, gold_agents, avg_quality
-
-const colStats = await sdk.getCollectionStats('base58...');
-// colStats.agent_count, total_feedbacks, avg_score
 ```
 
 ### Find agent by wallet
