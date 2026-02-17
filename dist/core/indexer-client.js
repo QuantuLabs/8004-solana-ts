@@ -140,6 +140,7 @@ export class IndexerClient {
                         'Prefer': 'count=exact',
                     },
                     signal: controller.signal,
+                    redirect: 'error',
                 });
                 clearTimeout(timeoutId);
                 if (!response.ok) {

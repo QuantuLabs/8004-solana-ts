@@ -209,6 +209,7 @@ export class IPFSClient {
         headers,
         body: formData,
         signal: controller.signal,
+        redirect: 'error',
       });
 
       if (!response.ok) {

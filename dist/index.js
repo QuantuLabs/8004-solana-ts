@@ -48,11 +48,12 @@ export { getAtomConfigPDA, getAtomStatsPDA, } from './core/atom-pda.js';
 // ============================================================================
 // Indexer client
 export { IndexerClient } from './core/indexer-client.js';
+export { IndexerGraphQLClient } from './core/indexer-graphql-client.js';
 // Indexer errors
 export { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './core/indexer-errors.js';
 export { indexedAgentToSimplified, indexedFeedbackToSolanaFeedback, indexedReputationToSummary, indexedReputationToExtendedSummary, } from './core/indexer-types.js';
 // Indexer defaults and routing (v0.4.1)
-export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
+export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_INDEXER_GRAPHQL_URL, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
 // ============================================================================
 // Hash-chain replay & verification
 // ============================================================================

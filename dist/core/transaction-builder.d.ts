@@ -11,7 +11,7 @@
 import { PublicKey, Transaction, Connection, Keypair, TransactionSignature } from '@solana/web3.js';
 import { UpdateAtomConfigParams } from './instruction-builder.js';
 export type { UpdateAtomConfigParams };
-import type { IndexerClient } from './indexer-client.js';
+import type { IndexerReadClient } from './indexer-client.js';
 import type { GiveFeedbackParams } from '../models/interfaces.js';
 export interface TransactionResult {
     signature: TransactionSignature;
@@ -199,7 +199,7 @@ export declare class ReputationTransactionBuilder {
     private payer?;
     private indexerClient?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: IndexerClient | undefined);
+    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: IndexerReadClient | undefined);
     /**
      * Give feedback - v0.5.0
      * @param asset - Agent Core asset

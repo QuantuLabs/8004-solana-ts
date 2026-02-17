@@ -30,11 +30,12 @@ export { fetchRegistryConfig, fetchRegistryConfigByPda, getBaseRegistryPda, getB
 export { AtomStats, AtomConfig, TrustTier, ATOM_STATS_SCHEMA, ATOM_CONFIG_SCHEMA, trustTierToString, } from './core/atom-schemas.js';
 export { getAtomConfigPDA, getAtomStatsPDA, } from './core/atom-pda.js';
 export { IndexerClient } from './core/indexer-client.js';
-export type { IndexerClientConfig, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedMetadata, IndexedValidation, IndexedFeedbackResponse, CollectionStats, GlobalStats, ReplayEventData, ReplayDataPage, CheckpointData, CheckpointSet, ServerReplayResult, } from './core/indexer-client.js';
+export { IndexerGraphQLClient } from './core/indexer-graphql-client.js';
+export type { IndexerClientConfig, IndexerReadClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedMetadata, IndexedValidation, IndexedFeedbackResponse, CollectionStats, GlobalStats, ReplayEventData, ReplayDataPage, CheckpointData, CheckpointSet, ServerReplayResult, } from './core/indexer-client.js';
 export { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './core/indexer-errors.js';
 export type { AgentSearchParams, FeedbackSearchParams, ExtendedAgentSummary, } from './core/indexer-types.js';
 export { indexedAgentToSimplified, indexedFeedbackToSolanaFeedback, indexedReputationToSummary, indexedReputationToExtendedSummary, } from './core/indexer-types.js';
-export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
+export { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_INDEXER_GRAPHQL_URL, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './core/indexer-defaults.js';
 export { chainHash, computeResponseLeaf, computeRevokeLeaf, replayFeedbackChain, replayResponseChain, replayRevokeChain, DOMAIN_FEEDBACK, DOMAIN_RESPONSE, DOMAIN_REVOKE, DOMAIN_SEAL_V1, DOMAIN_LEAF_V1, } from './core/hash-chain-replay.js';
 export type { ReplayResult, FeedbackReplayEvent, ResponseReplayEvent, RevokeReplayEvent, } from './core/hash-chain-replay.js';
 //# sourceMappingURL=index.d.ts.map

@@ -42,6 +42,16 @@ export function chainHash(prevDigest, domain, leaf) {
  * Mirrors `compute_response_leaf()` in chain.rs.
  */
 export function computeResponseLeaf(asset, client, feedbackIndex, responder, responseHash, feedbackHash, slot) {
+    if (asset.length !== 32)
+        throw new Error(`asset must be 32 bytes (got ${asset.length})`);
+    if (client.length !== 32)
+        throw new Error(`client must be 32 bytes (got ${client.length})`);
+    if (responder.length !== 32)
+        throw new Error(`responder must be 32 bytes (got ${responder.length})`);
+    if (responseHash.length !== 32)
+        throw new Error(`responseHash must be 32 bytes (got ${responseHash.length})`);
+    if (feedbackHash.length !== 32)
+        throw new Error(`feedbackHash must be 32 bytes (got ${feedbackHash.length})`);
     const indexBuf = Buffer.alloc(8);
     indexBuf.writeBigUInt64LE(feedbackIndex);
     const slotBuf = Buffer.alloc(8);
@@ -56,6 +66,12 @@ export function computeResponseLeaf(asset, client, feedbackIndex, responder, res
  * Mirrors `compute_revoke_leaf()` in chain.rs.
  */
 export function computeRevokeLeaf(asset, client, feedbackIndex, feedbackHash, slot) {
+    if (asset.length !== 32)
+        throw new Error(`asset must be 32 bytes (got ${asset.length})`);
+    if (client.length !== 32)
+        throw new Error(`client must be 32 bytes (got ${client.length})`);
+    if (feedbackHash.length !== 32)
+        throw new Error(`feedbackHash must be 32 bytes (got ${feedbackHash.length})`);
     const indexBuf = Buffer.alloc(8);
     indexBuf.writeBigUInt64LE(feedbackIndex);
     const slotBuf = Buffer.alloc(8);

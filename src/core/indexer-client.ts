@@ -482,6 +482,7 @@ export class IndexerClient implements IndexerReadClient {
             'Prefer': 'count=exact',
           },
           signal: controller.signal,
+          redirect: 'error',
         });
 
         clearTimeout(timeoutId);

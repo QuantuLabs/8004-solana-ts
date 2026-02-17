@@ -155,16 +155,14 @@ describe('value-encoding', () => {
         expect(r.valueDecimals).toBe(2);
       });
 
-      it('should clamp to i64 max', () => {
+      it('should throw on i64 overflow', () => {
         const overMax = 9223372036854775807n + 1n;
-        const r = encodeReputationValue(overMax);
-        expect(r.value).toBe(9223372036854775807n);
+        expect(() => encodeReputationValue(overMax)).toThrow('exceeds i64 range');
       });
 
-      it('should clamp to i64 min', () => {
+      it('should throw on i64 underflow', () => {
         const underMin = -9223372036854775808n - 1n;
-        const r = encodeReputationValue(underMin);
-        expect(r.value).toBe(-9223372036854775808n);
+        expect(() => encodeReputationValue(underMin)).toThrow('exceeds i64 range');
       });
 
       it('should throw on invalid decimals for bigint', () => {

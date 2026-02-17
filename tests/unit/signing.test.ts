@@ -124,8 +124,8 @@ describe('Signing and Verification', () => {
     const filePath = join(dir, 'payload.json');
     await writeFile(filePath, payload, 'utf8');
 
-    const okPath = await sdk.verify(filePath, asset, signer.publicKey);
-    const okUrl = await sdk.verify(pathToFileURL(filePath).toString(), asset, signer.publicKey);
+    const okPath = await sdk.verify(filePath, asset, signer.publicKey, { allowFileRead: true });
+    const okUrl = await sdk.verify(pathToFileURL(filePath).toString(), asset, signer.publicKey, { allowFileRead: true });
 
     expect(okPath).toBe(true);
     expect(okUrl).toBe(true);

@@ -2115,15 +2115,17 @@ export class SolanaSDK {
    * @param payloadOrUri - Signed payload or URI to fetch it from
    * @param asset - Agent Core asset pubkey
    * @param publicKey - Optional: verifier public key (avoids network call if provided)
+   * @param options - Optional settings (allowFileRead: enable loading from file paths, disabled by default)
    * @returns True if signature is valid
    * @throws RpcNetworkError if publicKey not provided and network call fails
    */
   async verify(
     payloadOrUri: string | SignedPayloadV1,
     asset: PublicKey,
-    publicKey?: PublicKey
+    publicKey?: PublicKey,
+    options?: { allowFileRead?: boolean }
   ): Promise<boolean> {
-    const payload = await this.resolveSignedPayloadInput(payloadOrUri, { allowFileRead: true });
+    const payload = await this.resolveSignedPayloadInput(payloadOrUri, { allowFileRead: options?.allowFileRead });
 
     if (payload.asset !== asset.toBase58()) {
       return false;

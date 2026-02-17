@@ -12,6 +12,7 @@
  * - Clamps to i64 range
  */
 const MAX_VALUE_DECIMALS = 6;
+const MAX_EXPONENT = 20;
 const I64_MAX = 9223372036854775807n;
 const I64_MIN = -9223372036854775808n;
 /**
@@ -54,11 +55,17 @@ function normalizeDecimalString(input) {
         if (digits === '0')
             return '0';
         if (shift >= 0) {
+            if (shift > MAX_EXPONENT) {
+                throw new Error(`Exponent too large: ${input} (max shift ${MAX_EXPONENT})`);
+            }
             return sign + digits + '0'.repeat(shift);
         }
         const pos = digits.length + shift;
         if (pos > 0) {
             return sign + digits.slice(0, pos) + '.' + digits.slice(pos);
+        }
+        if (-pos > MAX_EXPONENT) {
+            throw new Error(`Exponent too large: ${input} (max shift ${MAX_EXPONENT})`);
         }
         return sign + '0.' + '0'.repeat(-pos) + digits;
     }
@@ -95,11 +102,10 @@ export function encodeReputationValue(input, explicitDecimals) {
         if (!Number.isInteger(decimals) || decimals < 0 || decimals > MAX_VALUE_DECIMALS) {
             throw new Error(`valueDecimals must be integer 0-${MAX_VALUE_DECIMALS}`);
         }
-        let value = input;
-        if (value > I64_MAX)
-            value = I64_MAX;
-        if (value < I64_MIN)
-            value = I64_MIN;
+        const value = input;
+        if (value > I64_MAX || value < I64_MIN) {
+            throw new Error(`Value ${value} exceeds i64 range (${I64_MIN} to ${I64_MAX})`);
+        }
         return {
             value,
             valueDecimals: decimals,
@@ -116,11 +122,10 @@ export function encodeReputationValue(input, explicitDecimals) {
         if (!Number.isSafeInteger(input)) {
             throw new Error(`Integer ${input} exceeds safe integer range. Use bigint for large values.`);
         }
-        let value = BigInt(input);
-        if (value > I64_MAX)
-            value = I64_MAX;
-        if (value < I64_MIN)
-            value = I64_MIN;
+        const value = BigInt(input);
+        if (value > I64_MAX || value < I64_MIN) {
+            throw new Error(`Value ${value} exceeds i64 range (${I64_MIN} to ${I64_MAX})`);
+        }
         return {
             value,
             valueDecimals: decimals,
@@ -159,11 +164,9 @@ export function encodeReputationValue(input, explicitDecimals) {
         raw = raw + 1n;
     if (negative)
         raw = -raw;
-    // Clamp to i64 range
-    if (raw > I64_MAX)
-        raw = I64_MAX;
-    if (raw < I64_MIN)
-        raw = I64_MIN;
+    if (raw > I64_MAX || raw < I64_MIN) {
+        throw new Error(`Encoded value ${raw} exceeds i64 range (${I64_MIN} to ${I64_MAX})`);
+    }
     return {
         value: raw,
         valueDecimals: decimals,

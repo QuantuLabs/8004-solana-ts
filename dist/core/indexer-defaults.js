@@ -4,11 +4,17 @@
  * Browser-compatible - guards process.env access
  *
  * Override via environment variables:
+ * - INDEXER_GRAPHQL_URL: Custom GraphQL v2 endpoint (recommended)
+ *
+ * Legacy (REST v1 / Supabase PostgREST):
  * - INDEXER_URL: Custom Supabase REST API URL
  * - INDEXER_API_KEY: Custom anon key
  * - FORCE_ON_CHAIN: Set to 'true' to bypass indexer
  */
-// Hardcoded defaults (public anon key - safe to commit)
+// Hardcoded defaults
+// - GraphQL v2 reference deployment (public read-only)
+const HARDCODED_INDEXER_GRAPHQL_URL = 'https://8004-indexer-production.up.railway.app/v2/graphql';
+// - Legacy REST v1 (deprecated; kept for backward compatibility)
 const HARDCODED_INDEXER_URL = 'https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1';
 const HARDCODED_INDEXER_API_KEY = 'sb_publishable_i-ycBRGiolBr8GMdiVq1rA_nwt7N2bq';
 /**
@@ -23,6 +29,7 @@ function getEnv(key) {
 // Export with env override
 export const DEFAULT_INDEXER_URL = getEnv('INDEXER_URL') || HARDCODED_INDEXER_URL;
 export const DEFAULT_INDEXER_API_KEY = getEnv('INDEXER_API_KEY') || HARDCODED_INDEXER_API_KEY;
+export const DEFAULT_INDEXER_GRAPHQL_URL = getEnv('INDEXER_GRAPHQL_URL') || HARDCODED_INDEXER_GRAPHQL_URL;
 /**
  * Force on-chain mode (bypass indexer):
  * - false (default): Smart routing - RPC for small queries, indexer for large

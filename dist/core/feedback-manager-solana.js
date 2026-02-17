@@ -123,6 +123,37 @@ export class SolanaFeedbackManager {
         if (!this.indexerClient) {
             throw new Error('Indexer required for filtered queries');
         }
+        // Fast path: for unfiltered summaries, prefer the aggregated agent record.
+        // This avoids fetching feedback rows and is compatible with GraphQL backends that
+        // enforce strict query complexity limits.
+        if (minScore === undefined && !clientFilter) {
+            const indexedAgent = await this.indexerClient.getAgent(asset.toBase58());
+            if (!indexedAgent) {
+                return {
+                    averageScore: 0,
+                    totalFeedbacks: 0,
+                    nextFeedbackIndex: 0,
+                    totalClients: 0,
+                    positiveCount: 0,
+                    negativeCount: 0,
+                };
+            }
+            const totalFeedbacks = indexedAgent.feedback_count ?? 0;
+            const averageScore = (indexedAgent.quality_score ?? 0) / 100;
+            // We do not have an exact positive/negative split from the agent record alone.
+            // Provide a consistent approximation based on ATOM quality score.
+            const positiveRatio = (indexedAgent.quality_score ?? 0) / 10000;
+            const positiveCount = Math.round(totalFeedbacks * positiveRatio);
+            const negativeCount = totalFeedbacks - positiveCount;
+            return {
+                averageScore,
+                totalFeedbacks,
+                nextFeedbackIndex: totalFeedbacks,
+                totalClients: 0,
+                positiveCount,
+                negativeCount,
+            };
+        }
         // Get feedbacks from indexer (bounded)
         const feedbacks = await this.indexerClient.getFeedbacks(asset.toBase58(), {
             includeRevoked: false,

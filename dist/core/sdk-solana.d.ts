@@ -17,7 +17,7 @@ import { TransactionResult, WriteOptions, GiveFeedbackOptions, RegisterAgentOpti
 import type { LivenessOptions, LivenessReport } from '../models/liveness.js';
 import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
-import { IndexerClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, CollectionStats, GlobalStats } from './indexer-client.js';
+import { IndexerReadClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, GlobalStats } from './indexer-client.js';
 import type { ReplayResult } from './hash-chain-replay.js';
 import type { AgentSearchParams } from './indexer-types.js';
 export interface SolanaSDKConfig {
@@ -25,9 +25,17 @@ export interface SolanaSDKConfig {
     rpcUrl?: string;
     signer?: Keypair;
     ipfsClient?: IPFSClient;
-    /** Supabase REST API URL (default: hardcoded, override via INDEXER_URL env) */
+    /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or hardcoded Railway deployment) */
+    indexerGraphqlUrl?: string;
+    /**
+     * @deprecated Legacy Supabase REST API URL (override via INDEXER_URL env)
+     * Prefer `indexerGraphqlUrl` (GraphQL v2).
+     */
     indexerUrl?: string;
-    /** Supabase anon key (default: hardcoded, override via INDEXER_API_KEY env) */
+    /**
+     * @deprecated Legacy Supabase anon key (override via INDEXER_API_KEY env)
+     * Prefer `indexerGraphqlUrl` (GraphQL v2).
+     */
     indexerApiKey?: string;
     /** Use indexer for read operations (default: true) */
     useIndexer?: boolean;
@@ -522,7 +530,7 @@ export declare class SolanaSDK {
     /**
      * Get the indexer client for direct access
      */
-    getIndexerClient(): IndexerClient;
+    getIndexerClient(): IndexerReadClient;
     /**
      * Helper: Throws if forceOnChain=true for indexer-only methods
      */
@@ -553,12 +561,6 @@ export declare class SolanaSDK {
      * @returns Global stats (total agents, feedbacks, etc.)
      */
     getGlobalStats(): Promise<GlobalStats>;
-    /**
-     * Get collection statistics - indexer only
-     * @param collection - Collection pubkey string
-     * @returns Collection stats or null if not found
-     */
-    getCollectionStats(collection: string): Promise<CollectionStats | null>;
     /**
      * Get feedbacks by endpoint - indexer only
      * @param endpoint - Endpoint string (e.g., '/api/chat')
@@ -841,10 +843,13 @@ export declare class SolanaSDK {
      * @param payloadOrUri - Signed payload or URI to fetch it from
      * @param asset - Agent Core asset pubkey
      * @param publicKey - Optional: verifier public key (avoids network call if provided)
+     * @param options - Optional settings (allowFileRead: enable loading from file paths, disabled by default)
      * @returns True if signature is valid
      * @throws RpcNetworkError if publicKey not provided and network call fails
      */
-    verify(payloadOrUri: string | SignedPayloadV1, asset: PublicKey, publicKey?: PublicKey): Promise<boolean>;
+    verify(payloadOrUri: string | SignedPayloadV1, asset: PublicKey, publicKey?: PublicKey, options?: {
+        allowFileRead?: boolean;
+    }): Promise<boolean>;
     private resolveSignedPayloadInput;
     private fetchJsonFromUri;
     private normalizeRegistrationServices;

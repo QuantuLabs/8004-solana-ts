@@ -4,12 +4,16 @@
  * Browser-compatible - guards process.env access
  *
  * Override via environment variables:
+ * - INDEXER_GRAPHQL_URL: Custom GraphQL v2 endpoint (recommended)
+ *
+ * Legacy (REST v1 / Supabase PostgREST):
  * - INDEXER_URL: Custom Supabase REST API URL
  * - INDEXER_API_KEY: Custom anon key
  * - FORCE_ON_CHAIN: Set to 'true' to bypass indexer
  */
 export declare const DEFAULT_INDEXER_URL: string;
 export declare const DEFAULT_INDEXER_API_KEY: string;
+export declare const DEFAULT_INDEXER_GRAPHQL_URL: string;
 /**
  * Force on-chain mode (bypass indexer):
  * - false (default): Smart routing - RPC for small queries, indexer for large

@@ -31,10 +31,17 @@ import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA, getAtomConfigPDA } from './atom-pda.js';
 // Indexer imports (v0.4.0)
 import { IndexerClient, } from './indexer-client.js';
+import { IndexerGraphQLClient } from './indexer-graphql-client.js';
 import { replayFeedbackChain, replayResponseChain, replayRevokeChain, } from './hash-chain-replay.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
-import { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
+import { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_INDEXER_GRAPHQL_URL, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
+function getEnv(key) {
+    if (typeof process !== 'undefined' && process.env) {
+        return process.env[key];
+    }
+    return undefined;
+}
 /**
  * Main SDK class for Solana 8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
@@ -73,13 +80,25 @@ export class SolanaSDK {
             : createDevnetClient();
         // Initialize feedback manager
         this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
-        // Initialize indexer client first (v0.4.1)
-        const indexerUrl = config.indexerUrl ?? DEFAULT_INDEXER_URL;
-        const indexerApiKey = config.indexerApiKey ?? DEFAULT_INDEXER_API_KEY;
-        this.indexerClient = new IndexerClient({
-            baseUrl: indexerUrl,
-            apiKey: indexerApiKey,
-        });
+        // Initialize indexer client first (v0.7.0)
+        // Default: GraphQL v2 (Railway reference deployment)
+        // Legacy: REST v1 (only if explicitly configured via config or env)
+        const envRestUrl = getEnv('INDEXER_URL');
+        const envRestKey = getEnv('INDEXER_API_KEY');
+        const envGraphqlUrl = getEnv('INDEXER_GRAPHQL_URL');
+        const restBaseUrl = config.indexerUrl ?? envRestUrl;
+        const restApiKey = config.indexerApiKey ?? envRestKey;
+        if (restBaseUrl || restApiKey) {
+            this.indexerClient = new IndexerClient({
+                baseUrl: restBaseUrl ?? DEFAULT_INDEXER_URL,
+                apiKey: restApiKey ?? DEFAULT_INDEXER_API_KEY,
+            });
+        }
+        else {
+            this.indexerClient = new IndexerGraphQLClient({
+                graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? DEFAULT_INDEXER_GRAPHQL_URL,
+            });
+        }
         // Initialize transaction builders (v0.4.0)
         const connection = this.client.getConnection();
         this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
@@ -926,15 +945,6 @@ export class SolanaSDK {
         return this.indexerClient.getGlobalStats();
     }
     /**
-     * Get collection statistics - indexer only
-     * @param collection - Collection pubkey string
-     * @returns Collection stats or null if not found
-     */
-    async getCollectionStats(collection) {
-        this.requireIndexer('getCollectionStats');
-        return this.indexerClient.getCollectionStats(collection);
-    }
-    /**
      * Get feedbacks by endpoint - indexer only
      * @param endpoint - Endpoint string (e.g., '/api/chat')
      * @returns Array of feedbacks for this endpoint
@@ -1481,11 +1491,12 @@ export class SolanaSDK {
      * @param payloadOrUri - Signed payload or URI to fetch it from
      * @param asset - Agent Core asset pubkey
      * @param publicKey - Optional: verifier public key (avoids network call if provided)
+     * @param options - Optional settings (allowFileRead: enable loading from file paths, disabled by default)
      * @returns True if signature is valid
      * @throws RpcNetworkError if publicKey not provided and network call fails
      */
-    async verify(payloadOrUri, asset, publicKey) {
-        const payload = await this.resolveSignedPayloadInput(payloadOrUri, { allowFileRead: true });
+    async verify(payloadOrUri, asset, publicKey, options) {
+        const payload = await this.resolveSignedPayloadInput(payloadOrUri, { allowFileRead: options?.allowFileRead });
         if (payload.asset !== asset.toBase58()) {
             return false;
         }
@@ -1884,6 +1895,28 @@ export class SolanaSDK {
             lag: 0n,
         });
         try {
+            const getLastFeedbackDigest = this.indexerClient.getLastFeedbackDigest;
+            const getLastResponseDigest = this.indexerClient.getLastResponseDigest;
+            const getLastRevokeDigest = this.indexerClient.getLastRevokeDigest;
+            if (!getLastFeedbackDigest || !getLastResponseDigest || !getLastRevokeDigest) {
+                return {
+                    valid: false,
+                    status: 'error',
+                    asset: assetStr,
+                    indexerUrl,
+                    chains: {
+                        feedback: emptyChain('feedback'),
+                        response: emptyChain('response'),
+                        revoke: emptyChain('revoke'),
+                    },
+                    totalLag: 0n,
+                    trustworthy: false,
+                    error: {
+                        message: 'Integrity verification is not supported by this indexer backend.',
+                        recommendation: 'Configure the legacy REST indexer (INDEXER_URL + INDEXER_API_KEY) or use forceOnChain=true.',
+                    },
+                };
+            }
             let countRetrievalFailed = false;
             const safeGetDigest = async (fn) => {
                 try {
@@ -1896,9 +1929,9 @@ export class SolanaSDK {
             };
             const [agent, feedbackDigest, responseDigest, revokeDigest] = await Promise.all([
                 this.loadAgent(asset),
-                safeGetDigest(() => this.indexerClient.getLastFeedbackDigest(assetStr)),
-                safeGetDigest(() => this.indexerClient.getLastResponseDigest(assetStr)),
-                safeGetDigest(() => this.indexerClient.getLastRevokeDigest(assetStr)),
+                safeGetDigest(() => getLastFeedbackDigest(assetStr)),
+                safeGetDigest(() => getLastResponseDigest(assetStr)),
+                safeGetDigest(() => getLastRevokeDigest(assetStr)),
             ]);
             if (!agent) {
                 return {
@@ -2112,6 +2145,22 @@ export class SolanaSDK {
             return Array.from(indices).sort((a, b) => a - b);
         };
         try {
+            const getFeedbacksAtIndices = this.indexerClient.getFeedbacksAtIndices;
+            const getResponsesAtOffsets = this.indexerClient.getResponsesAtOffsets;
+            const getRevocationsAtCounts = this.indexerClient.getRevocationsAtCounts;
+            if (!getFeedbacksAtIndices || !getResponsesAtOffsets || !getRevocationsAtCounts) {
+                return {
+                    ...basicResult,
+                    spotChecks: spotCheckResults,
+                    spotChecksPassed: false,
+                    missingItems: -1,
+                    modifiedItems: 0,
+                    error: {
+                        message: 'Deep integrity verification is not supported by this indexer backend.',
+                        recommendation: 'Configure the legacy REST indexer (INDEXER_URL + INDEXER_API_KEY) to enable spot checks.',
+                    },
+                };
+            }
             // Generate indices for spot checks (safe to use Number for array indexing)
             const feedbackIndices = getRandomIndices(Number(basicResult.chains.feedback.countIndexer), spotChecks);
             const responseOffsets = getRandomIndices(Number(basicResult.chains.response.countIndexer), spotChecks);
@@ -2119,13 +2168,13 @@ export class SolanaSDK {
             // Parallel spot checks
             const [feedbackMap, responseMap, revokeMap] = await Promise.all([
                 feedbackIndices.length > 0
-                    ? this.indexerClient.getFeedbacksAtIndices(basicResult.asset, feedbackIndices)
+                    ? getFeedbacksAtIndices(basicResult.asset, feedbackIndices)
                     : new Map(),
                 responseOffsets.length > 0
-                    ? this.indexerClient.getResponsesAtOffsets(basicResult.asset, responseOffsets)
+                    ? getResponsesAtOffsets(basicResult.asset, responseOffsets)
                     : new Map(),
                 revokeIndices.length > 0
-                    ? this.indexerClient.getRevocationsAtCounts(basicResult.asset, revokeIndices.map(i => i + 1))
+                    ? getRevocationsAtCounts(basicResult.asset, revokeIndices.map(i => i + 1))
                     : new Map(),
             ]);
             // Process feedback spot checks
@@ -2280,11 +2329,37 @@ export class SolanaSDK {
             const feedbackCountOnChain = BigInt(agent.feedback_count);
             const responseCountOnChain = BigInt(agent.response_count);
             const revokeCountOnChain = BigInt(agent.revoke_count);
+            const getReplayData = this.indexerClient.getReplayData;
+            if (!getReplayData) {
+                const emptyReplay = { finalDigest: Buffer.alloc(32), count: 0, valid: true };
+                return {
+                    valid: false,
+                    status: 'error',
+                    asset: assetStr,
+                    indexerUrl,
+                    chains: {
+                        feedback: { onChain: onChainFeedbackDigest, indexer: null, countOnChain: feedbackCountOnChain, countIndexer: 0n, match: false, lag: feedbackCountOnChain },
+                        response: { onChain: onChainResponseDigest, indexer: null, countOnChain: responseCountOnChain, countIndexer: 0n, match: false, lag: responseCountOnChain },
+                        revoke: { onChain: onChainRevokeDigest, indexer: null, countOnChain: revokeCountOnChain, countIndexer: 0n, match: false, lag: revokeCountOnChain },
+                    },
+                    totalLag: feedbackCountOnChain + responseCountOnChain + revokeCountOnChain,
+                    trustworthy: false,
+                    error: {
+                        message: 'Full replay verification is not supported by this indexer backend.',
+                        recommendation: 'Configure the legacy REST indexer (INDEXER_URL + INDEXER_API_KEY) to enable full hash-chain replay.',
+                    },
+                    replay: { feedback: emptyReplay, response: emptyReplay, revoke: emptyReplay },
+                    checkpointsUsed: false,
+                    duration: Date.now() - start,
+                };
+            }
             let checkpoints = null;
             let checkpointsUsed = false;
             if (useCheckpoints) {
                 try {
-                    checkpoints = await this.indexerClient.getLatestCheckpoints(assetStr);
+                    if (this.indexerClient.getLatestCheckpoints) {
+                        checkpoints = await this.indexerClient.getLatestCheckpoints(assetStr);
+                    }
                 }
                 catch {
                     // Checkpoints not available, replay from zero
@@ -2304,7 +2379,7 @@ export class SolanaSDK {
                 const target = Number(onChainCount);
                 while (fromCount < target) {
                     const toCount = Math.min(fromCount + batchSize, target);
-                    const page = await this.indexerClient.getReplayData(assetStr, chainType, fromCount, toCount, batchSize);
+                    const page = await getReplayData(assetStr, chainType, fromCount, toCount, batchSize);
                     allEvents.push(...page.events);
                     onProgress?.(chainType, allEvents.length + startCount, target);
                     if (!page.hasMore || page.events.length === 0)

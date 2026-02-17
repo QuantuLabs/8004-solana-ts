@@ -10,7 +10,7 @@
 import { PublicKey } from '@solana/web3.js';
 import type { SolanaClient } from './client.js';
 import type { IPFSClient } from './ipfs-client.js';
-import type { IndexerClient } from './indexer-client.js';
+import type { IndexerReadClient } from './indexer-client.js';
 export interface FeedbackQueryOptions {
     /**
      * Maximum feedbacks to return (default: 1000)
@@ -71,11 +71,11 @@ export declare class SolanaFeedbackManager {
     private client;
     private ipfsClient?;
     private indexerClient?;
-    constructor(client: SolanaClient, ipfsClient?: IPFSClient | undefined, indexerClient?: IndexerClient);
+    constructor(client: SolanaClient, ipfsClient?: IPFSClient | undefined, indexerClient?: IndexerReadClient);
     /**
      * Set the indexer client (for late binding)
      */
-    setIndexerClient(indexerClient: IndexerClient): void;
+    setIndexerClient(indexerClient: IndexerReadClient): void;
     /**
      * 1. getSummary - Get agent reputation summary - v0.4.0
      * @param asset - Agent Core asset pubkey
