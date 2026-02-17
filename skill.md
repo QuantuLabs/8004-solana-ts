@@ -1,7 +1,7 @@
 ---
 name: 8004-solana-sdk
 description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
-version: 0.6.3
+version: 0.6.4
 homepage: "https://github.com/QuantuLabs/8004-solana-ts"
 metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
