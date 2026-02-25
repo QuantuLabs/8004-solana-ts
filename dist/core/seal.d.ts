@@ -15,9 +15,9 @@ export declare const MAX_URI_LEN = 250;
  * Parameters for SEAL hash computation
  */
 export interface SealParams {
-    /** Metric value - MUST be bigint for correct i64 serialization */
+    /** Metric value - MUST be bigint for correct i128 serialization */
     value: bigint;
-    /** Decimal precision (0-6) */
+    /** Decimal precision (0-18) */
     valueDecimals: number;
     /** Quality score (0-100) or null */
     score: number | null;
@@ -41,17 +41,17 @@ export declare function validateSealInputs(params: SealParams): void;
  * Compute SEAL hash (mirrors on-chain computation EXACTLY)
  * CRITICAL: Must produce identical output to Rust compute_seal_hash()
  *
- * Binary format: FIXED FIELDS (28 bytes) then DYNAMIC FIELDS
+ * Binary format: FIXED FIELDS (36 bytes) then DYNAMIC FIELDS
  *
  * FIXED (offset known):
  * - DOMAIN_SEAL_V1 (16 bytes)         offset 0
- * - value (8 bytes, i64 LE)           offset 16
- * - value_decimals (1 byte)           offset 24
- * - score_flag (1 byte: 0=None, 1=Some) offset 25
- * - score_value (1 byte)              offset 26
- * - file_hash_flag (1 byte)           offset 27
+ * - value (16 bytes, i128 LE)         offset 16
+ * - value_decimals (1 byte)           offset 32
+ * - score_flag (1 byte: 0=None, 1=Some) offset 33
+ * - score_value (1 byte)              offset 34
+ * - file_hash_flag (1 byte)           offset 35
  *
- * DYNAMIC (after offset 28):
+ * DYNAMIC (after offset 36):
  * - file_hash (32 bytes, only if flag=1)
  * - tag1_len (2 bytes, u16 LE) + tag1_bytes
  * - tag2_len (2 bytes, u16 LE) + tag2_bytes

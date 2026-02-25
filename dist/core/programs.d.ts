@@ -4,8 +4,13 @@
  */
 import { PublicKey } from '@solana/web3.js';
 /**
- * Consolidated AgentRegistry8004 Program ID
+ * Consolidated AgentRegistry8004 Program ID (devnet default)
  * Single program containing Identity, Reputation, and Validation modules
+ */
+export declare const DEVNET_AGENT_REGISTRY_PROGRAM_ID: PublicKey;
+/**
+ * Backward-compatible alias for devnet default Agent Registry ID.
+ * Override in SDK config for localnet/mainnet deployments.
  */
 export declare const PROGRAM_ID: PublicKey;
 /**
@@ -14,22 +19,43 @@ export declare const PROGRAM_ID: PublicKey;
  */
 export declare const MPL_CORE_PROGRAM_ID: PublicKey;
 /**
- * ATOM Engine Program ID
+ * ATOM Engine Program ID (devnet default)
  * Agent Trust On-chain Model - reputation computation engine
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
+export declare const DEVNET_ATOM_ENGINE_PROGRAM_ID: PublicKey;
+/**
+ * Backward-compatible alias for devnet default ATOM Engine ID.
+ * Override in SDK config for localnet/mainnet deployments.
+ */
 export declare const ATOM_ENGINE_PROGRAM_ID: PublicKey;
+export type ProgramIdInput = PublicKey | string;
+export interface ProgramIdOverrides {
+    identityRegistry?: ProgramIdInput;
+    reputationRegistry?: ProgramIdInput;
+    validationRegistry?: ProgramIdInput;
+    agentRegistry?: ProgramIdInput;
+    atomEngine?: ProgramIdInput;
+    mplCore?: ProgramIdInput;
+}
+export interface ProgramIdSet {
+    identityRegistry: PublicKey;
+    reputationRegistry: PublicKey;
+    validationRegistry: PublicKey;
+    agentRegistry: PublicKey;
+    atomEngine: PublicKey;
+    mplCore: PublicKey;
+}
+/**
+ * Resolve program IDs.
+ * Defaults target devnet and can be overridden per SDK instance.
+ */
+export declare function getProgramIds(overrides?: ProgramIdOverrides): ProgramIdSet;
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
- * Program IDs for devnet deployment (legacy 3-program architecture)
+ * Program IDs resolved to devnet defaults (legacy 3-program naming)
  */
-export declare const PROGRAM_IDS: {
-    readonly identityRegistry: PublicKey;
-    readonly reputationRegistry: PublicKey;
-    readonly validationRegistry: PublicKey;
-    readonly agentRegistry: PublicKey;
-    readonly atomEngine: PublicKey;
-};
+export declare const PROGRAM_IDS: ProgramIdSet;
 /**
  * Get program ID
  */
@@ -37,13 +63,6 @@ export declare function getProgramId(): PublicKey;
 /**
  * @deprecated Use getProgramId() instead
  */
-export declare function getProgramIds(): {
-    readonly identityRegistry: PublicKey;
-    readonly reputationRegistry: PublicKey;
-    readonly validationRegistry: PublicKey;
-    readonly agentRegistry: PublicKey;
-    readonly atomEngine: PublicKey;
-};
 /**
  * Account discriminators (first 8 bytes of account data)
  * Used for account type identification

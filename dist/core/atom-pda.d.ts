@@ -6,16 +6,18 @@ import { PublicKey } from '@solana/web3.js';
 /**
  * Get AtomConfig PDA
  * Seeds: ["atom_config"]
+ * @param atomEngineProgramId - Optional ATOM Engine program ID override
  * @returns [PDA address, bump]
  */
-export declare function getAtomConfigPDA(): [PublicKey, number];
+export declare function getAtomConfigPDA(atomEngineProgramId?: PublicKey): [PublicKey, number];
 /**
  * Get AtomStats PDA for an agent
  * Seeds: ["atom_stats", asset.key()]
  * @param asset - Agent Core asset pubkey
+ * @param atomEngineProgramId - Optional ATOM Engine program ID override
  * @returns [PDA address, bump]
  */
-export declare function getAtomStatsPDA(asset: PublicKey): [PublicKey, number];
+export declare function getAtomStatsPDA(asset: PublicKey, atomEngineProgramId?: PublicKey): [PublicKey, number];
 /**
  * Derive AtomStats PDA with explicit program ID
  * Useful for testing with different program IDs

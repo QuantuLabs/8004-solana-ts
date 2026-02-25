@@ -33,6 +33,10 @@ export const IDENTITY_DISCRIMINATORS = {
   transferAgent: Buffer.from([137, 80, 56, 147, 107, 99, 39, 192]),
   ownerOf: Buffer.from([165, 85, 46, 249, 100, 61, 249, 112]),
   setAgentWallet: Buffer.from([154, 87, 251, 23, 51, 12, 4, 150]),
+  setCollectionPointer: Buffer.from([14, 56, 210, 16, 123, 165, 157, 124]),
+  setCollectionPointerWithOptions: Buffer.from([141, 4, 149, 182, 0, 171, 218, 182]),
+  setParentAsset: Buffer.from([14, 229, 85, 57, 214, 63, 197, 52]),
+  setParentAssetWithOptions: Buffer.from([254, 47, 83, 24, 41, 87, 242, 222]),
 } as const;
 
 /**
@@ -101,6 +105,7 @@ export const ACCOUNT_DISCRIMINATORS = {
   ValidationRequest: Buffer.from([130, 174, 153, 111, 74, 241, 40, 140]),
 
   // ATOM Engine accounts
-  AtomStats: Buffer.from([56, 69, 179, 48, 35, 229, 171, 236]),
-  AtomConfig: Buffer.from([156, 210, 241, 155, 72, 182, 4, 63]),
+  // NOTE: Keep aligned with 8004-atom IDL account discriminators
+  AtomStats: Buffer.from([190, 187, 50, 59, 203, 39, 136, 244]),
+  AtomConfig: Buffer.from([239, 137, 245, 161, 255, 250, 190, 145]),
 } as const;

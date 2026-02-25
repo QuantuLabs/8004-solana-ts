@@ -159,6 +159,28 @@ describe('IndexerClient', () => {
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('order=created_at.desc');
     });
+
+    it('should apply creator/pointer/parent filters', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([]));
+
+      await client.getAgents({
+        creator: 'creator1',
+        collectionPointer: 'c1:abc123',
+        parentAsset: 'parent1',
+        parentCreator: 'parentCreator1',
+        colLocked: true,
+        parentLocked: false,
+      });
+
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('creator=eq.creator1');
+      expect(url).toContain('collection_pointer=eq.c1%3Aabc123');
+      expect(url).toContain('parent_asset=eq.parent1');
+      expect(url).toContain('parent_creator=eq.parentCreator1');
+      expect(url).toContain('col_locked=eq.true');
+      expect(url).toContain('parent_locked=eq.false');
+    });
   });
 
   describe('getAgentsByOwner', () => {

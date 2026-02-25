@@ -2,6 +2,22 @@
 
 > Note: Canonical release changelog is maintained in the repository root `CHANGELOG.md`.
 
+## v0.6.5 (2026-02-25)
+
+**Collection + Parent/Child:**
+- Added CID-first collection flow docs: `createCollectionData()` then `createCollection()` upload result (`cid`, `uri`, `pointer`).
+- Documented canonical `c1:` collection pointer rules and the `<= 128 bytes` max pointer size.
+- Added parent-child association rules and lock semantics for `setCollectionPointer()` and `setParentAsset()`.
+- Clarified that `collection pointer` is a string field on agent account and differs from base registry pubkey.
+
+**Indexer + E2E:**
+- Added indexer matrix tooling docs and runlog artifacts for classic/substream REST/GraphQL checks.
+- Added guidance for parity checks and comparison reports between indexers.
+
+**Developer Experience:**
+- Added collection read-method docs (`getCollection`, `getCollections`, `getCollectionAgents`) for advanced RPC setups.
+- Updated examples and quickstart flow for easier collection onboarding.
+
 ## v0.4.0 (Current)
 
 **New Features:**
@@ -15,8 +31,8 @@
 - `fileUri/fileHash` renamed to `feedbackUri/feedbackHash`
 
 **Program ID (Devnet):**
-- Agent Registry: `8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm`
-- ATOM Engine: `AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ`
+- Agent Registry: `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C`
+- ATOM Engine: `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF`
 
 ## v0.3.0 - Asset-based API
 

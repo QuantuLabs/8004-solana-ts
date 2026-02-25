@@ -12,12 +12,14 @@ import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaClient, Cluster } from './client.js';
 import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
+import { type ProgramIdOverrides } from './programs.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { TransactionResult, WriteOptions, GiveFeedbackOptions, RegisterAgentOptions, PreparedTransaction, UpdateAtomConfigParams } from './transaction-builder.js';
 import type { LivenessOptions, LivenessReport } from '../models/liveness.js';
 import type { SignOptions, SignedPayloadV1 } from '../models/signatures.js';
+import type { CollectionMetadataInput, CollectionMetadataJson } from '../models/collection-metadata.js';
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
-import { IndexerReadClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, GlobalStats } from './indexer-client.js';
+import { IndexerReadClient, IndexedAgent, IndexedFeedback, IndexedAgentReputation, IndexedValidation, GlobalStats, CollectionPointerRecord } from './indexer-client.js';
 import type { ReplayResult } from './hash-chain-replay.js';
 import type { AgentSearchParams } from './indexer-types.js';
 export interface SolanaSDKConfig {
@@ -41,6 +43,8 @@ export interface SolanaSDKConfig {
     useIndexer?: boolean;
     /** Fallback to on-chain if indexer unavailable (default: true) */
     indexerFallback?: boolean;
+    /** Program IDs override (defaults target devnet IDs) */
+    programIds?: ProgramIdOverrides;
     /**
      * Force all queries on-chain, bypass indexer (default: false, or FORCE_ON_CHAIN=true env)
      * When true, indexer-only methods (getLeaderboard, etc.) will throw
@@ -94,6 +98,34 @@ export interface EnrichedSummary {
 export interface CollectionInfo {
     collection: PublicKey;
     authority: PublicKey;
+}
+export interface SetCollectionPointerOptions extends WriteOptions {
+    /**
+     * Lock pointer after set (default: true).
+     * If false, creator can update later via set_collection_pointer_with_options.
+     */
+    lock?: boolean;
+}
+export interface SetParentAssetOptions extends WriteOptions {
+    /**
+     * Lock parent after set (default: true).
+     * If false, owner can update later via set_parent_asset_with_options.
+     */
+    lock?: boolean;
+}
+export interface CreateCollectionUploadOptions {
+    /** Upload JSON to IPFS using configured ipfsClient (default: true) */
+    uploadToIpfs?: boolean;
+}
+export interface CreateCollectionUploadResult {
+    /** JSON document generated from collection input */
+    metadata: CollectionMetadataJson;
+    /** Raw CID returned by IPFS provider (when uploaded) */
+    cid?: string;
+    /** Convenience URI form: ipfs://<cid> (when uploaded) */
+    uri?: string;
+    /** Canonical collection pointer: c1:<normalized_cid_v1_base32> (when uploaded) */
+    pointer?: string;
 }
 /**
  * Normalized validation data for user-friendly access
@@ -274,7 +306,7 @@ export declare class SolanaSDK {
      */
     private initializeMintResolver;
     /**
-     * Get the current base collection pubkey
+     * Get the current base registry collection pubkey
      */
     getBaseCollection(): Promise<PublicKey | null>;
     /**
@@ -350,8 +382,8 @@ export declare class SolanaSDK {
         averageScore: number;
     }>;
     /**
-     * Get collection details by collection pubkey - v0.6.0
-     * @param collection - Collection (Metaplex Core collection) public key
+     * Get collection details by base-registry collection pubkey - v0.6.0
+     * @param collection - Base registry Metaplex Core collection public key
      * @returns Collection info or null if not registered
      */
     getCollection(collection: PublicKey): Promise<CollectionInfo | null>;
@@ -363,12 +395,12 @@ export declare class SolanaSDK {
      */
     getCollections(): Promise<CollectionInfo[]>;
     /**
-     * Get all agents in a collection (on-chain) - v0.4.0
+     * Get all agents in a base-registry collection (on-chain) - v0.4.0
      * Returns full AgentAccount data with metadata extensions.
      *
      * For faster queries, use `getLeaderboard({ collection: 'xxx' })` which uses the indexer.
      *
-     * @param collection - Collection public key
+     * @param collection - Base registry collection public key
      * @param options - Optional settings for additional data fetching
      * @returns Array of agents with metadata (and optionally feedbacks)
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
@@ -542,6 +574,29 @@ export declare class SolanaSDK {
      */
     searchAgents(params: AgentSearchParams): Promise<IndexedAgent[]>;
     /**
+     * Get canonical collection pointer rows from indexer.
+     */
+    getCollectionPointers(options?: {
+        col?: string;
+        creator?: string;
+        firstSeenAsset?: string;
+        limit?: number;
+        offset?: number;
+    }): Promise<CollectionPointerRecord[]>;
+    /**
+     * Count assets associated with a collection pointer (and optional creator scope).
+     */
+    getCollectionAssetCount(col: string, creator?: string): Promise<number>;
+    /**
+     * Get assets associated with a collection pointer.
+     */
+    getCollectionAssets(col: string, options?: {
+        creator?: string;
+        limit?: number;
+        offset?: number;
+        order?: string;
+    }): Promise<IndexedAgent[]>;
+    /**
      * Get leaderboard (top agents by sort_key) - indexer only
      * Uses keyset pagination for scale (millions of agents)
      * @param options.collection - Optional collection filter
@@ -613,24 +668,27 @@ export declare class SolanaSDK {
      */
     get canWrite(): boolean;
     /**
-     * Create a new user collection (write operation) - v0.4.1
-     * Users can create their own collections to organize agents.
-     * Agents registered to user collections still use the same reputation system.
-     *
-     * @param name - Collection name (max 32 bytes)
-     * @param uri - Collection metadata URI (max 250 bytes)
-     * @param options - Write options (skipSend, signer, collectionPubkey)
-     * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
+     * Build a collection metadata document that conforms to SDK collection schema.
+     * Useful when you want to inspect/edit JSON before upload.
+     */
+    createCollectionData(input: CollectionMetadataInput): CollectionMetadataJson;
+    /**
+     * Build + upload collection metadata JSON to IPFS and return CID/URI/pointer.
+     * This is the standard off-chain flow before asset creation.
      *
      * @example
      * ```typescript
-     * // Create a new collection
-     * const result = await sdk.createCollection('MyAgents', 'ipfs://Qm...');
-     * console.log('Collection:', result.collection?.toBase58());
-     *
-     * // Register agent in user collection
-     * await sdk.registerAgent('ipfs://agent-uri', result.collection);
+     * const { cid, uri } = await sdk.createCollection({
+     *   name: 'Caster Agents',
+     *   description: 'Main collection'
+     * });
+     * // use `uri`/`cid` during asset creation flow
      * ```
+     */
+    createCollection(data: CollectionMetadataInput, options?: CreateCollectionUploadOptions): Promise<CreateCollectionUploadResult>;
+    /**
+     * Legacy on-chain user collection API (removed in protocol v0.6.0).
+     * Kept for backward compatibility only.
      */
     createCollection(name: string, uri: string, options?: WriteOptions & {
         collectionPubkey?: PublicKey;
@@ -642,7 +700,7 @@ export declare class SolanaSDK {
      * Update metadata URI for a user-owned collection.
      * Only the collection owner can update. Collection name is immutable.
      *
-     * @param collection - Collection pubkey to update
+     * @param collection - Base registry collection pubkey to update
      * @param newUri - New collection URI (max 250 bytes)
      * @param options - Write options (skipSend, signer)
      * @returns Transaction result, or PreparedTransaction if skipSend
@@ -661,7 +719,7 @@ export declare class SolanaSDK {
      * Register a new agent (write operation) - v0.3.0
      *
      * @param tokenUri - Token URI pointing to agent metadata JSON (IPFS, Arweave, or HTTP)
-     * @param collection - Optional collection pubkey (defaults to base registry, only creator can register)
+     * @param collection - Optional base registry collection pubkey override (defaults to root-config base collection)
      * @param options - Optional settings for server mode:
      *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
      *   - `signer`: PublicKey of the signer (required with skipSend)
@@ -675,8 +733,8 @@ export declare class SolanaSDK {
      * const result = await sdk.registerAgent('ipfs://QmMetadata...');
      *
      * @example
-     * // With collection
-     * const result = await sdk.registerAgent('ipfs://QmMetadata...', myCollection);
+     * // With explicit base registry override (legacy)
+     * const result = await sdk.registerAgent('ipfs://QmMetadata...', myBaseRegistryCollection);
      */
     registerAgent(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
@@ -686,12 +744,28 @@ export declare class SolanaSDK {
     })>;
     /**
      * Set agent URI (write operation) - v0.3.0
-     * @param asset - Agent Core asset pubkey
-     * @param collection - Collection pubkey for the agent
-     * @param newUri - New URI
-     * @param options - Write options (skipSend, signer)
+     * Overload 1 (recommended): base collection is resolved automatically.
+     */
+    setAgentUri(asset: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set agent URI (write operation) - v0.3.0
+     * Overload 2 (legacy): pass base registry collection pubkey explicitly.
      */
     setAgentUri(asset: PublicKey, collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set collection pointer (write operation)
+     * @param asset - Agent Core asset pubkey
+     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param options - Write options (skipSend, signer, lock)
+     */
+    setCollectionPointer(asset: PublicKey, col: string, options?: SetCollectionPointerOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set parent asset (write operation)
+     * @param asset - Child agent Core asset pubkey
+     * @param parentAsset - Parent Core asset pubkey
+     * @param options - Write options (skipSend, signer, lock)
+     */
+    setParentAsset(asset: PublicKey, parentAsset: PublicKey, options?: SetParentAssetOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Enable ATOM for an agent (one-way) - v0.4.4
      * @param asset - Agent Core asset pubkey
@@ -745,10 +819,11 @@ export declare class SolanaSDK {
      * Revoke feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
-     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
+     * @param sealHash - Optional SEAL hash from original feedback.
+     * Legacy compatibility: if omitted, SDK uses all-zero hash.
      * @param options - Write options (skipSend, signer)
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, sealHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, sealHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback (write operation)
      * @param asset - Agent Core asset pubkey
@@ -811,10 +886,12 @@ export declare class SolanaSDK {
     waitForValidation(asset: PublicKey, validator: PublicKey, nonce: number | bigint, options?: WaitForValidationOptions): Promise<NormalizedValidation | null>;
     /**
      * Transfer agent ownership (write operation) - v0.3.0
-     * @param asset - Agent Core asset pubkey
-     * @param collection - Collection pubkey for the agent
-     * @param newOwner - New owner public key
-     * @param options - Write options (skipSend, signer)
+     * Overload 1 (recommended): base collection is resolved automatically.
+     */
+    transferAgent(asset: PublicKey, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Transfer agent ownership (write operation) - v0.3.0
+     * Overload 2 (legacy): pass base registry collection pubkey explicitly.
      */
     transferAgent(asset: PublicKey, collection: PublicKey, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
@@ -871,13 +948,7 @@ export declare class SolanaSDK {
     /**
      * Get program IDs for current cluster
      */
-    getProgramIds(): {
-        readonly identityRegistry: PublicKey;
-        readonly reputationRegistry: PublicKey;
-        readonly validationRegistry: PublicKey;
-        readonly agentRegistry: PublicKey;
-        readonly atomEngine: PublicKey;
-    };
+    getProgramIds(): import("./programs.js").ProgramIdSet;
     /**
      * Get registry addresses (for parity with agent0-ts)
      */

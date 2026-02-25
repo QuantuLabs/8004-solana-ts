@@ -103,7 +103,7 @@ describe('Input Validation', () => {
 
   describe('PublicKey validation', () => {
     it('should accept valid base58 public key', () => {
-      const validKey = '8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm';
+      const validKey = '8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C';
 
       expect(() => new PublicKey(validKey)).not.toThrow();
     });

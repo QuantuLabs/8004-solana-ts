@@ -130,6 +130,121 @@ describe('IdentityInstructionBuilder', () => {
     });
   });
 
+  describe('buildSetCollectionPointer', () => {
+    it('should create instruction with correct accounts and serialized col', () => {
+      const agentAccount = pk();
+      const asset = pk();
+      const owner = pk();
+      const col = 'c1:abc123';
+
+      const ix = builder.buildSetCollectionPointer(agentAccount, asset, owner, col);
+
+      expect(ix.programId).toEqual(PROGRAM_ID);
+      expect(ix.keys).toHaveLength(3);
+      expect(ix.keys[0].pubkey).toEqual(agentAccount);
+      expect(ix.keys[0].isWritable).toBe(true);
+      expect(ix.keys[1].pubkey).toEqual(asset);
+      expect(ix.keys[1].isWritable).toBe(false);
+      expect(ix.keys[2].pubkey).toEqual(owner);
+      expect(ix.keys[2].isSigner).toBe(true);
+      expect(ix.keys[2].isWritable).toBe(true);
+
+      expect(Array.from(ix.data.slice(0, 8))).toEqual([14, 56, 210, 16, 123, 165, 157, 124]);
+      const colLen = ix.data.readUInt32LE(8);
+      expect(colLen).toBe(Buffer.byteLength(col, 'utf8'));
+      expect(ix.data.slice(12, 12 + colLen).toString('utf8')).toBe(col);
+    });
+  });
+
+  describe('buildSetCollectionPointerWithOptions', () => {
+    it('should serialize col and lock=true', () => {
+      const col = 'c1:abc123';
+      const ix = builder.buildSetCollectionPointerWithOptions(pk(), pk(), pk(), col, true);
+
+      expect(ix.keys).toHaveLength(3);
+      expect(Array.from(ix.data.slice(0, 8))).toEqual([141, 4, 149, 182, 0, 171, 218, 182]);
+      const colLen = ix.data.readUInt32LE(8);
+      expect(ix.data.slice(12, 12 + colLen).toString('utf8')).toBe(col);
+      expect(ix.data[12 + colLen]).toBe(1);
+    });
+
+    it('should serialize lock=false as 0', () => {
+      const col = 'c1:abc123';
+      const ix = builder.buildSetCollectionPointerWithOptions(pk(), pk(), pk(), col, false);
+
+      const colLen = ix.data.readUInt32LE(8);
+      expect(ix.data[12 + colLen]).toBe(0);
+    });
+  });
+
+  describe('buildSetParentAsset', () => {
+    it('should create instruction with correct accounts and serialized parentAsset', () => {
+      const agentAccount = pk();
+      const asset = pk();
+      const parentAsset = pk();
+      const parentAgentAccount = pk();
+      const owner = pk();
+
+      const ix = builder.buildSetParentAsset(
+        agentAccount,
+        asset,
+        parentAgentAccount,
+        parentAsset,
+        owner,
+        parentAsset
+      );
+
+      expect(ix.programId).toEqual(PROGRAM_ID);
+      expect(ix.keys).toHaveLength(5);
+      expect(ix.keys[0].pubkey).toEqual(agentAccount);
+      expect(ix.keys[0].isWritable).toBe(true);
+      expect(ix.keys[1].pubkey).toEqual(asset);
+      expect(ix.keys[2].pubkey).toEqual(parentAgentAccount);
+      expect(ix.keys[3].pubkey).toEqual(parentAsset);
+      expect(ix.keys[4].pubkey).toEqual(owner);
+      expect(ix.keys[4].isSigner).toBe(true);
+      expect(ix.keys[4].isWritable).toBe(true);
+
+      expect(Array.from(ix.data.slice(0, 8))).toEqual([14, 229, 85, 57, 214, 63, 197, 52]);
+      expect(ix.data.slice(8, 40)).toEqual(parentAsset.toBuffer());
+    });
+  });
+
+  describe('buildSetParentAssetWithOptions', () => {
+    it('should serialize parentAsset and lock=true', () => {
+      const parentAsset = pk();
+      const ix = builder.buildSetParentAssetWithOptions(
+        pk(),
+        pk(),
+        pk(),
+        parentAsset,
+        pk(),
+        parentAsset,
+        true
+      );
+
+      expect(ix.keys).toHaveLength(5);
+      expect(Array.from(ix.data.slice(0, 8))).toEqual([254, 47, 83, 24, 41, 87, 242, 222]);
+      expect(ix.data.slice(8, 40)).toEqual(parentAsset.toBuffer());
+      expect(ix.data[40]).toBe(1);
+    });
+
+    it('should serialize lock=false as 0', () => {
+      const parentAsset = pk();
+      const ix = builder.buildSetParentAssetWithOptions(
+        pk(),
+        pk(),
+        pk(),
+        parentAsset,
+        pk(),
+        parentAsset,
+        false
+      );
+
+      expect(ix.data[40]).toBe(0);
+    });
+  });
+
   describe('buildSetMetadata', () => {
     it('should create instruction with 5 accounts', () => {
       const keyHash = Buffer.alloc(16, 0xab);
@@ -331,7 +446,7 @@ describe('ReputationInstructionBuilder', () => {
       expect(() => builder.buildGiveFeedback(
         args.client, args.agentAccount, args.asset, args.collection,
         null, null, null,
-        args.value, 7, args.score, args.feedbackFileHash,
+        args.value, 19, args.score, args.feedbackFileHash,
         args.feedbackIndex, args.tag1, args.tag2, args.endpoint, args.feedbackUri
       )).toThrow('valueDecimals');
     });
@@ -408,15 +523,15 @@ describe('ReputationInstructionBuilder', () => {
       )).toThrow('ATOM accounts');
     });
 
-    it('should reject value exceeding i64 range', () => {
+    it('should reject value exceeding i128 range', () => {
       const args = validArgs();
-      const tooLarge = 2n ** 63n;
+      const tooLarge = 1n << 127n;
       expect(() => builder.buildGiveFeedback(
         args.client, args.agentAccount, args.asset, args.collection,
         null, null, null,
         tooLarge, args.valueDecimals, args.score, args.feedbackFileHash,
         args.feedbackIndex, args.tag1, args.tag2, args.endpoint, args.feedbackUri
-      )).toThrow('i64');
+      )).toThrow('i128');
     });
   });
 

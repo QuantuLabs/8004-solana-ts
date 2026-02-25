@@ -50,10 +50,10 @@ describe('value-encoding', () => {
         expect(r.valueDecimals).toBe(2);
       });
 
-      it('should truncate to max 6 decimals with rounding', () => {
+      it('should preserve up to 18 decimals', () => {
         const r = encodeReputationValue('1.1234567');
-        expect(r.valueDecimals).toBe(6);
-        expect(r.value).toBe(1123457n); // rounded up
+        expect(r.valueDecimals).toBe(7);
+        expect(r.value).toBe(11234567n);
       });
 
       it('should handle exponential notation', () => {
@@ -130,7 +130,7 @@ describe('value-encoding', () => {
 
       it('should throw on invalid explicitDecimals for number', () => {
         expect(() => encodeReputationValue(100, -1)).toThrow('valueDecimals must be');
-        expect(() => encodeReputationValue(100, 7)).toThrow('valueDecimals must be');
+        expect(() => encodeReputationValue(100, 19)).toThrow('valueDecimals must be');
       });
 
       it('should reject unsafe integers with explicitDecimals', () => {
@@ -155,19 +155,19 @@ describe('value-encoding', () => {
         expect(r.valueDecimals).toBe(2);
       });
 
-      it('should throw on i64 overflow', () => {
-        const overMax = 9223372036854775807n + 1n;
-        expect(() => encodeReputationValue(overMax)).toThrow('exceeds i64 range');
+      it('should throw on i128 overflow', () => {
+        const overMax = (1n << 127n);
+        expect(() => encodeReputationValue(overMax)).toThrow('exceeds i128 range');
       });
 
-      it('should throw on i64 underflow', () => {
-        const underMin = -9223372036854775808n - 1n;
-        expect(() => encodeReputationValue(underMin)).toThrow('exceeds i64 range');
+      it('should throw on i128 underflow', () => {
+        const underMin = -(1n << 127n) - 1n;
+        expect(() => encodeReputationValue(underMin)).toThrow('exceeds i128 range');
       });
 
       it('should throw on invalid decimals for bigint', () => {
         expect(() => encodeReputationValue(100n, -1)).toThrow('valueDecimals must be');
-        expect(() => encodeReputationValue(100n, 7)).toThrow('valueDecimals must be');
+        expect(() => encodeReputationValue(100n, 19)).toThrow('valueDecimals must be');
       });
     });
   });

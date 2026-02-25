@@ -72,6 +72,7 @@ export declare class RegistryConfig {
  */
 export declare class AgentAccount {
     collection: Uint8Array;
+    creator: Uint8Array;
     owner: Uint8Array;
     asset: Uint8Array;
     bump: number;
@@ -83,10 +84,15 @@ export declare class AgentAccount {
     response_count: bigint;
     revoke_digest: Uint8Array;
     revoke_count: bigint;
+    parent_asset: Uint8Array | null;
+    parent_locked: number;
+    col_locked: number;
     agent_uri: string;
     nft_name: string;
+    col: string;
     constructor(fields: {
         collection: Uint8Array;
+        creator: Uint8Array;
         owner: Uint8Array;
         asset: Uint8Array;
         bump: number;
@@ -98,13 +104,27 @@ export declare class AgentAccount {
         response_count: bigint;
         revoke_digest: Uint8Array;
         revoke_count: bigint;
+        parent_asset: Uint8Array | null;
+        parent_locked: number;
+        col_locked: number;
         agent_uri: string;
         nft_name: string;
+        col: string;
     });
     static schema: Schema;
     static deserialize(data: Buffer): AgentAccount;
     getCollectionPublicKey(): PublicKey;
     getOwnerPublicKey(): PublicKey;
+    getCreatorPublicKey(): PublicKey;
+    /**
+     * Alias list for compatibility with clients expecting `creators`.
+     * On-chain AgentAccount stores a single immutable creator snapshot.
+     */
+    getCreatorsPublicKeys(): PublicKey[];
+    /**
+     * Backward-compatible property alias (`creators`) for SDK consumers.
+     */
+    get creators(): PublicKey[];
     getAssetPublicKey(): PublicKey;
     /**
      * Get the agent's operational wallet if set
@@ -116,6 +136,9 @@ export declare class AgentAccount {
      * Check if agent has an operational wallet configured
      */
     hasAgentWallet(): boolean;
+    getParentAssetPublicKey(): PublicKey | null;
+    isParentLocked(): boolean;
+    isCollectionPointerLocked(): boolean;
     get token_uri(): string;
     get metadata(): MetadataEntry[];
 }

@@ -112,7 +112,7 @@ describe('computeSealHash', () => {
     });
     // Cross-validated against Rust (seal-vectors.test.ts)
     expect(hash.toString('hex')).toBe(
-      '95e4e651a4833ff431d6a290307d37bb3402e4bbad49b0252625b105195b40b6',
+      '98f98e22c278d9b7fe8163399aefd87d2ab0c9e27701fcb0c40b6249501a76eb',
     );
   });
 
@@ -128,7 +128,7 @@ describe('computeSealHash', () => {
       feedbackFileHash: Buffer.alloc(32, 0x01),
     });
     expect(hash.toString('hex')).toBe(
-      '12cb1b6d1351b3a79ff15440d6c41e098a4fb69077670ce6b21c636adf98f04a',
+      'e3a20d8bea1ef7a0a7684d885dc99267c972ef8a9854a1552039198bd186c18f',
     );
   });
 
@@ -159,7 +159,7 @@ describe('computeSealHash', () => {
       feedbackFileHash: null,
     });
     expect(hash.toString('hex')).toBe(
-      'cc81c864e771056c9b0e5fc4401035f0189142d3d44364acf8e5a6597c469c2e',
+      'b4aaf59d1fa5cc6a3c0ba0c95d2aa363895952172e7b16330c5dc0d1d8c15383',
     );
   });
 
@@ -171,7 +171,7 @@ describe('computeSealHash', () => {
       feedbackFileHash: null,
     });
     expect(hash.toString('hex')).toBe(
-      '84be87fdff6ff50a53c30188026d69f28b4888bf4ae9bd93d27cc341520fe6e6',
+      '28af8ce8d3689e87398c6e9e0dd12f84e87c533dc6eccddaf4c6df83da4aa7e2',
     );
   });
 });
@@ -182,7 +182,7 @@ describe('computeSealHash', () => {
 
 describe('computeFeedbackLeafV1', () => {
   const sealHash = Buffer.from(
-    '95e4e651a4833ff431d6a290307d37bb3402e4bbad49b0252625b105195b40b6',
+    '98f98e22c278d9b7fe8163399aefd87d2ab0c9e27701fcb0c40b6249501a76eb',
     'hex',
   );
 
@@ -192,7 +192,7 @@ describe('computeFeedbackLeafV1', () => {
     expect(a.equals(b)).toBe(true);
     // Cross-validated against Rust
     expect(a.toString('hex')).toBe(
-      'f23e92ed586f8308ea256ecf95772531a89bd75a6782f5ab7cc99bc6c1fb5270',
+      'f78cdf372fa01d5c228e5e71e2d738fd1d705c3165f4b2797bd5effac0dd2627',
     );
   });
 

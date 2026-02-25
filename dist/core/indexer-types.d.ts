@@ -11,10 +11,22 @@ import type { IndexedAgent, IndexedFeedback, IndexedAgentReputation } from './in
 export interface AgentSearchParams {
     /** Filter by owner pubkey */
     owner?: string;
-    /** Filter by collection pubkey */
+    /** Filter by immutable creator snapshot pubkey */
+    creator?: string;
+    /** Filter by base registry collection pubkey */
     collection?: string;
+    /** Filter by collection pointer (e.g., c1:<cid_norm>) */
+    collectionPointer?: string;
     /** Filter by agent wallet pubkey */
     wallet?: string;
+    /** Filter by parent asset pubkey */
+    parentAsset?: string;
+    /** Filter by parent creator pubkey */
+    parentCreator?: string;
+    /** Filter by collection pointer lock status */
+    colLocked?: boolean;
+    /** Filter by parent lock status */
+    parentLocked?: boolean;
     /** Filter by minimum reputation score */
     minScore?: number;
     /** Maximum number of results */

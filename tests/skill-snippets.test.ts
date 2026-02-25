@@ -880,7 +880,7 @@ describe('Section 21: Error Handling', () => {
 describe('Section 24: Program IDs', () => {
   test('PROGRAM_ID (Agent Registry)', () => {
     expect(PROGRAM_ID).toBeInstanceOf(PublicKey);
-    expect(PROGRAM_ID.toBase58()).toBe('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm');
+    expect(PROGRAM_ID.toBase58()).toBe('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
   });
 
   test('MPL_CORE_PROGRAM_ID (Metaplex Core)', () => {
@@ -890,7 +890,7 @@ describe('Section 24: Program IDs', () => {
 
   test('ATOM_ENGINE_PROGRAM_ID', () => {
     expect(ATOM_ENGINE_PROGRAM_ID).toBeInstanceOf(PublicKey);
-    expect(ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ');
+    expect(ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
   });
 });
 

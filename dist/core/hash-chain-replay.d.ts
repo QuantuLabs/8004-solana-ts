@@ -19,6 +19,10 @@ export declare const DOMAIN_REVOKE: Buffer<ArrayBuffer>;
 export declare const DOMAIN_SEAL_V1: Buffer<ArrayBuffer>;
 /** 16 bytes — seal.rs DOMAIN_LEAF_V1 */
 export declare const DOMAIN_LEAF_V1: Buffer<ArrayBuffer>;
+/** 16 bytes — chain.rs DOMAIN_RESPONSE_LEAF_V1 */
+export declare const DOMAIN_RESPONSE_LEAF_V1: Buffer<ArrayBuffer>;
+/** 16 bytes — chain.rs DOMAIN_REVOKE_LEAF_V1 */
+export declare const DOMAIN_REVOKE_LEAF_V1: Buffer<ArrayBuffer>;
 /**
  * Chain hash: `keccak256(prevDigest || domain || leaf)`
  *
@@ -26,7 +30,7 @@ export declare const DOMAIN_LEAF_V1: Buffer<ArrayBuffer>;
  */
 export declare function chainHash(prevDigest: Buffer, domain: Buffer, leaf: Buffer): Buffer;
 /**
- * Compute response leaf (no domain prefix).
+ * Compute response leaf (with response-leaf domain prefix).
  *
  * Format: `keccak256(asset || client || feedbackIndex(u64 LE) || responder || responseHash || feedbackHash || slot(u64 LE))`
  *
@@ -34,7 +38,7 @@ export declare function chainHash(prevDigest: Buffer, domain: Buffer, leaf: Buff
  */
 export declare function computeResponseLeaf(asset: Buffer, client: Buffer, feedbackIndex: bigint, responder: Buffer, responseHash: Buffer, feedbackHash: Buffer, slot: bigint): Buffer;
 /**
- * Compute revoke leaf (no domain prefix).
+ * Compute revoke leaf (with revoke-leaf domain prefix).
  *
  * Format: `keccak256(asset || client || feedbackIndex(u64 LE) || feedbackHash || slot(u64 LE))`
  *

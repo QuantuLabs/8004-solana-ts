@@ -365,7 +365,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       // Wait for response PDA to be created on-chain (can take time on devnet)
       const synced = await sdk.waitForIndexerSync(async () => {
-        const cnt = await sdk.getResponseCount(agentAsset, feedbackIndex);
+        const cnt = await sdk.getResponseCount(agentAsset, clientKeypair.publicKey, feedbackIndex);
         return cnt > 0;
       }, { timeout: 60000 });
 
@@ -374,7 +374,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
         return; // Skip verification gracefully
       }
 
-      const count = await sdk.getResponseCount(agentAsset, feedbackIndex);
+      const count = await sdk.getResponseCount(agentAsset, clientKeypair.publicKey, feedbackIndex);
 
       expect(count).toBeGreaterThanOrEqual(1);
       console.log(`✅ Response count: ${count}`);
@@ -385,7 +385,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
 
       // Wait for response PDA to be created on-chain (can take time on devnet)
       const synced = await sdk.waitForIndexerSync(async () => {
-        const resps = await sdk.readResponses(agentAsset, feedbackIndex);
+        const resps = await sdk.readResponses(agentAsset, clientKeypair.publicKey, feedbackIndex);
         return resps.length > 0;
       }, { timeout: 60000 });
 
@@ -394,7 +394,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
         return; // Skip verification gracefully
       }
 
-      const responses = await sdk.readResponses(agentAsset, feedbackIndex);
+      const responses = await sdk.readResponses(agentAsset, clientKeypair.publicKey, feedbackIndex);
 
       expect(Array.isArray(responses)).toBe(true);
       expect(responses.length).toBeGreaterThanOrEqual(1);

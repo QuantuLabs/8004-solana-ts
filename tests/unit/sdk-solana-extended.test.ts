@@ -144,6 +144,10 @@ const mockTxResult = { signature: 'mock-sig', success: true };
 const mockIdentityTxBuilder = {
   registerAgent: jest.fn().mockResolvedValue(mockTxResult),
   setAgentUri: jest.fn().mockResolvedValue(mockTxResult),
+  setCollectionPointer: jest.fn().mockResolvedValue(mockTxResult),
+  setCollectionPointerWithOptions: jest.fn().mockResolvedValue(mockTxResult),
+  setParentAsset: jest.fn().mockResolvedValue(mockTxResult),
+  setParentAssetWithOptions: jest.fn().mockResolvedValue(mockTxResult),
   setMetadata: jest.fn().mockResolvedValue(mockTxResult),
   deleteMetadata: jest.fn().mockResolvedValue(mockTxResult),
   transferAgent: jest.fn().mockResolvedValue(mockTxResult),
@@ -586,6 +590,66 @@ describe('SolanaSDK extended', () => {
       const sig = new Uint8Array(64);
       await expect(sdk.setAgentWallet(mockAssetKey, wallet, sig, 1700000060n))
         .rejects.toThrow('read-only');
+    });
+  });
+
+  describe('setCollectionPointer', () => {
+    it('should delegate to identityTxBuilder', async () => {
+      await signerSdk.setCollectionPointer(mockAssetKey, 'c1:abc123');
+      expect(mockIdentityTxBuilder.setCollectionPointer).toHaveBeenCalledWith(
+        mockAssetKey,
+        'c1:abc123',
+        undefined
+      );
+    });
+
+    it('should use withOptions path when lock=false', async () => {
+      await signerSdk.setCollectionPointer(mockAssetKey, 'c1:abc123', { lock: false });
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).toHaveBeenCalledWith(
+        mockAssetKey,
+        'c1:abc123',
+        false,
+        undefined
+      );
+    });
+
+    it('should throw without signer', async () => {
+      await expect(sdk.setCollectionPointer(mockAssetKey, 'c1:abc123'))
+        .rejects.toThrow('read-only');
+    });
+  });
+
+  describe('setParentAsset', () => {
+    it('should delegate to identityTxBuilder', async () => {
+      const parentAsset = PublicKey.unique();
+      await signerSdk.setParentAsset(mockAssetKey, parentAsset);
+      expect(mockIdentityTxBuilder.setParentAsset).toHaveBeenCalledWith(
+        mockAssetKey,
+        parentAsset,
+        undefined
+      );
+    });
+
+    it('should reject self-parenting in SDK precheck', async () => {
+      await expect(signerSdk.setParentAsset(mockAssetKey, mockAssetKey))
+        .rejects.toThrow('must be different');
+    });
+
+    it('should use withOptions path when lock=false', async () => {
+      const parentAsset = PublicKey.unique();
+      await signerSdk.setParentAsset(mockAssetKey, parentAsset, { lock: false });
+      expect(mockIdentityTxBuilder.setParentAssetWithOptions).toHaveBeenCalledWith(
+        mockAssetKey,
+        parentAsset,
+        false,
+        undefined
+      );
+    });
+
+    it('should reject non-boolean lock in SDK precheck', async () => {
+      const parentAsset = PublicKey.unique();
+      await expect(signerSdk.setParentAsset(mockAssetKey, parentAsset, { lock: 'true' as any }))
+        .rejects.toThrow('lock must be a boolean');
     });
   });
 

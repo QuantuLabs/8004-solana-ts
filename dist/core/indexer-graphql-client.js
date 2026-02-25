@@ -37,6 +37,59 @@ function clampInt(n, min, max) {
 function agentId(asset) {
     return `sol:${asset}`;
 }
+function mapGqlAgent(agent, fallbackAsset = '') {
+    return {
+        asset: agent?.solana?.assetPubkey ?? fallbackAsset,
+        owner: agent?.owner ?? '',
+        creator: agent?.creator ?? null,
+        agent_uri: agent?.agentURI ?? null,
+        agent_wallet: agent?.agentWallet ?? null,
+        collection: agent?.solana?.collection ?? '',
+        collection_pointer: agent?.collectionPointer ?? null,
+        col_locked: Boolean(agent?.colLocked),
+        parent_asset: agent?.parentAsset ?? null,
+        parent_creator: agent?.parentCreator ?? null,
+        parent_locked: Boolean(agent?.parentLocked),
+        nft_name: null,
+        atom_enabled: Boolean(agent?.solana?.atomEnabled),
+        trust_tier: toNumberSafe(agent?.solana?.trustTier, 0),
+        quality_score: toNumberSafe(agent?.solana?.qualityScore, 0),
+        confidence: toNumberSafe(agent?.solana?.confidence, 0),
+        risk_score: toNumberSafe(agent?.solana?.riskScore, 0),
+        diversity_ratio: toNumberSafe(agent?.solana?.diversityRatio, 0),
+        feedback_count: toNumberSafe(agent?.totalFeedback, 0),
+        raw_avg_score: 0,
+        sort_key: '0',
+        block_slot: 0,
+        tx_signature: '',
+        created_at: toIsoFromUnixSeconds(agent?.createdAt),
+        updated_at: toIsoFromUnixSeconds(agent?.updatedAt),
+    };
+}
+function buildAgentWhere(options) {
+    if (!options)
+        return {};
+    const where = {};
+    if (options.owner)
+        where.owner = options.owner;
+    if (options.creator)
+        where.creator = options.creator;
+    if (options.collection)
+        where.collection = options.collection;
+    if (options.collectionPointer)
+        where.collectionPointer = options.collectionPointer;
+    if (options.wallet)
+        where.agentWallet = options.wallet;
+    if (options.parentAsset)
+        where.parentAsset = options.parentAsset;
+    if (options.parentCreator)
+        where.parentCreator = options.parentCreator;
+    if (options.colLocked !== undefined)
+        where.colLocked = options.colLocked;
+    if (options.parentLocked !== undefined)
+        where.parentLocked = options.parentLocked;
+    return where;
+}
 function feedbackId(asset, client, index) {
     return `sol:${asset}:${client}:${index.toString()}`;
 }
@@ -196,8 +249,14 @@ export class IndexerGraphQLClient {
         agent(id: $id) {
           id
           owner
+          creator
           agentURI
           agentWallet
+          collectionPointer
+          colLocked
+          parentAsset
+          parentCreator
+          parentLocked
           createdAt
           updatedAt
           totalFeedback
@@ -206,28 +265,7 @@ export class IndexerGraphQLClient {
       }`, { id: agentId(asset) });
         if (!data.agent)
             return null;
-        const a = data.agent;
-        return {
-            asset: a?.solana?.assetPubkey ?? asset,
-            owner: a.owner,
-            agent_uri: a.agentURI ?? null,
-            agent_wallet: a.agentWallet ?? null,
-            collection: a?.solana?.collection ?? '',
-            nft_name: null,
-            atom_enabled: Boolean(a?.solana?.atomEnabled),
-            trust_tier: toNumberSafe(a?.solana?.trustTier, 0),
-            quality_score: toNumberSafe(a?.solana?.qualityScore, 0),
-            confidence: toNumberSafe(a?.solana?.confidence, 0),
-            risk_score: toNumberSafe(a?.solana?.riskScore, 0),
-            diversity_ratio: toNumberSafe(a?.solana?.diversityRatio, 0),
-            feedback_count: toNumberSafe(a?.totalFeedback, 0),
-            raw_avg_score: 0,
-            sort_key: '0',
-            block_slot: 0,
-            tx_signature: '',
-            created_at: toIsoFromUnixSeconds(a?.createdAt),
-            updated_at: toIsoFromUnixSeconds(a?.updatedAt),
-        };
+        return mapGqlAgent(data.agent, asset);
     }
     async getAgents(options) {
         const limit = clampInt(options?.limit ?? 100, 0, 500);
@@ -235,129 +273,51 @@ export class IndexerGraphQLClient {
         // Legacy order string (PostgREST-style) mapping
         const order = options?.order ?? 'created_at.desc';
         const orderDirection = order.includes('.asc') ? 'asc' : 'desc';
-        const data = await this.request(`query($dir: OrderDirection!) {
-        agents(first: ${limit}, skip: ${offset}, orderBy: createdAt, orderDirection: $dir) {
+        const where = buildAgentWhere(options);
+        const data = await this.request(`query($dir: OrderDirection!, $where: AgentFilter) {
+        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: createdAt, orderDirection: $dir) {
           id
           owner
+          creator
           agentURI
           agentWallet
+          collectionPointer
+          colLocked
+          parentAsset
+          parentCreator
+          parentLocked
           createdAt
           updatedAt
           totalFeedback
           solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
         }
-      }`, { dir: orderDirection });
-        return data.agents.map((a) => ({
-            asset: a?.solana?.assetPubkey ?? '',
-            owner: a.owner,
-            agent_uri: a.agentURI ?? null,
-            agent_wallet: a.agentWallet ?? null,
-            collection: a?.solana?.collection ?? '',
-            nft_name: null,
-            atom_enabled: Boolean(a?.solana?.atomEnabled),
-            trust_tier: toNumberSafe(a?.solana?.trustTier, 0),
-            quality_score: toNumberSafe(a?.solana?.qualityScore, 0),
-            confidence: toNumberSafe(a?.solana?.confidence, 0),
-            risk_score: toNumberSafe(a?.solana?.riskScore, 0),
-            diversity_ratio: toNumberSafe(a?.solana?.diversityRatio, 0),
-            feedback_count: toNumberSafe(a?.totalFeedback, 0),
-            raw_avg_score: 0,
-            sort_key: '0',
-            block_slot: 0,
-            tx_signature: '',
-            created_at: toIsoFromUnixSeconds(a?.createdAt),
-            updated_at: toIsoFromUnixSeconds(a?.updatedAt),
-        }));
+      }`, {
+            dir: orderDirection,
+            where: Object.keys(where).length ? where : null,
+        });
+        return data.agents.map((a) => mapGqlAgent(a));
     }
     async getAgentsByOwner(owner) {
-        const data = await this.request(`query($owner: String!) {
-        agents(first: 250, where: { owner: $owner }, orderBy: createdAt, orderDirection: desc) {
-          owner agentURI agentWallet createdAt updatedAt totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`, { owner });
-        return data.agents.map((a) => ({
-            asset: a?.solana?.assetPubkey ?? '',
-            owner: a.owner,
-            agent_uri: a.agentURI ?? null,
-            agent_wallet: a.agentWallet ?? null,
-            collection: a?.solana?.collection ?? '',
-            nft_name: null,
-            atom_enabled: Boolean(a?.solana?.atomEnabled),
-            trust_tier: toNumberSafe(a?.solana?.trustTier, 0),
-            quality_score: toNumberSafe(a?.solana?.qualityScore, 0),
-            confidence: toNumberSafe(a?.solana?.confidence, 0),
-            risk_score: toNumberSafe(a?.solana?.riskScore, 0),
-            diversity_ratio: toNumberSafe(a?.solana?.diversityRatio, 0),
-            feedback_count: toNumberSafe(a?.totalFeedback, 0),
-            raw_avg_score: 0,
-            sort_key: '0',
-            block_slot: 0,
-            tx_signature: '',
-            created_at: toIsoFromUnixSeconds(a?.createdAt),
-            updated_at: toIsoFromUnixSeconds(a?.updatedAt),
-        }));
+        return this.getAgents({
+            owner,
+            limit: 250,
+            order: 'created_at.desc',
+        });
     }
     async getAgentsByCollection(collection) {
-        const data = await this.request(`query($collection: String!) {
-        agents(first: 250, where: { collection: $collection }, orderBy: createdAt, orderDirection: desc) {
-          owner agentURI agentWallet createdAt updatedAt totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`, { collection });
-        return data.agents.map((a) => ({
-            asset: a?.solana?.assetPubkey ?? '',
-            owner: a.owner,
-            agent_uri: a.agentURI ?? null,
-            agent_wallet: a.agentWallet ?? null,
-            collection: a?.solana?.collection ?? '',
-            nft_name: null,
-            atom_enabled: Boolean(a?.solana?.atomEnabled),
-            trust_tier: toNumberSafe(a?.solana?.trustTier, 0),
-            quality_score: toNumberSafe(a?.solana?.qualityScore, 0),
-            confidence: toNumberSafe(a?.solana?.confidence, 0),
-            risk_score: toNumberSafe(a?.solana?.riskScore, 0),
-            diversity_ratio: toNumberSafe(a?.solana?.diversityRatio, 0),
-            feedback_count: toNumberSafe(a?.totalFeedback, 0),
-            raw_avg_score: 0,
-            sort_key: '0',
-            block_slot: 0,
-            tx_signature: '',
-            created_at: toIsoFromUnixSeconds(a?.createdAt),
-            updated_at: toIsoFromUnixSeconds(a?.updatedAt),
-        }));
+        return this.getAgents({
+            collection,
+            limit: 250,
+            order: 'created_at.desc',
+        });
     }
     async getAgentByWallet(wallet) {
-        const data = await this.request(`query($wallet: String!) {
-        agents(first: 1, where: { agentWallet: $wallet }, orderBy: createdAt, orderDirection: desc) {
-          owner agentURI agentWallet createdAt updatedAt totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`, { wallet });
-        if (!data.agents || data.agents.length === 0)
-            return null;
-        const a = data.agents[0];
-        return {
-            asset: a?.solana?.assetPubkey ?? '',
-            owner: a.owner,
-            agent_uri: a.agentURI ?? null,
-            agent_wallet: a.agentWallet ?? null,
-            collection: a?.solana?.collection ?? '',
-            nft_name: null,
-            atom_enabled: Boolean(a?.solana?.atomEnabled),
-            trust_tier: toNumberSafe(a?.solana?.trustTier, 0),
-            quality_score: toNumberSafe(a?.solana?.qualityScore, 0),
-            confidence: toNumberSafe(a?.solana?.confidence, 0),
-            risk_score: toNumberSafe(a?.solana?.riskScore, 0),
-            diversity_ratio: toNumberSafe(a?.solana?.diversityRatio, 0),
-            feedback_count: toNumberSafe(a?.totalFeedback, 0),
-            raw_avg_score: 0,
-            sort_key: '0',
-            block_slot: 0,
-            tx_signature: '',
-            created_at: toIsoFromUnixSeconds(a?.createdAt),
-            updated_at: toIsoFromUnixSeconds(a?.updatedAt),
-        };
+        const agents = await this.getAgents({
+            wallet,
+            limit: 1,
+            order: 'created_at.desc',
+        });
+        return agents[0] ?? null;
     }
     async getLeaderboard(options) {
         const limit = clampInt(options?.limit ?? 50, 0, 200);
@@ -368,31 +328,11 @@ export class IndexerGraphQLClient {
             where.trustTier_gte = options.minTier;
         const data = await this.request(`query($where: AgentFilter) {
         agents(first: ${limit}, where: $where, orderBy: qualityScore, orderDirection: desc) {
-          owner agentURI agentWallet createdAt updatedAt totalFeedback
+          owner creator agentURI agentWallet collectionPointer colLocked parentAsset parentCreator parentLocked createdAt updatedAt totalFeedback
           solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
         }
       }`, { where: Object.keys(where).length ? where : null });
-        return data.agents.map((a) => ({
-            asset: a?.solana?.assetPubkey ?? '',
-            owner: a.owner,
-            agent_uri: a.agentURI ?? null,
-            agent_wallet: a.agentWallet ?? null,
-            collection: a?.solana?.collection ?? '',
-            nft_name: null,
-            atom_enabled: Boolean(a?.solana?.atomEnabled),
-            trust_tier: toNumberSafe(a?.solana?.trustTier, 0),
-            quality_score: toNumberSafe(a?.solana?.qualityScore, 0),
-            confidence: toNumberSafe(a?.solana?.confidence, 0),
-            risk_score: toNumberSafe(a?.solana?.riskScore, 0),
-            diversity_ratio: toNumberSafe(a?.solana?.diversityRatio, 0),
-            feedback_count: toNumberSafe(a?.totalFeedback, 0),
-            raw_avg_score: 0,
-            sort_key: '0',
-            block_slot: 0,
-            tx_signature: '',
-            created_at: toIsoFromUnixSeconds(a?.createdAt),
-            updated_at: toIsoFromUnixSeconds(a?.updatedAt),
-        }));
+        return data.agents.map((a) => mapGqlAgent(a));
     }
     async getGlobalStats() {
         const data = await this.request(`query {
@@ -408,6 +348,97 @@ export class IndexerGraphQLClient {
             gold_agents: 0,
             avg_quality: null,
         };
+    }
+    async getCollectionPointers(options) {
+        const first = clampInt(options?.limit ?? 100, 0, 500);
+        const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
+        const data = await this.request(`query($first: Int!, $skip: Int!, $col: String, $creator: String) {
+        collectionPointers(first: $first, skip: $skip, col: $col, creator: $creator) {
+          col
+          creator
+          firstSeenAsset
+          firstSeenAt
+          firstSeenSlot
+          firstSeenTxSignature
+          lastSeenAt
+          lastSeenSlot
+          lastSeenTxSignature
+          assetCount
+        }
+      }`, {
+            first,
+            skip,
+            col: options?.col ?? null,
+            creator: options?.creator ?? null,
+        });
+        return data.collectionPointers.map((p) => ({
+            col: p.col,
+            creator: p.creator,
+            first_seen_asset: p.firstSeenAsset,
+            first_seen_at: toIsoFromUnixSeconds(p.firstSeenAt),
+            first_seen_slot: String(p.firstSeenSlot ?? '0'),
+            first_seen_tx_signature: p.firstSeenTxSignature ?? null,
+            last_seen_at: toIsoFromUnixSeconds(p.lastSeenAt),
+            last_seen_slot: String(p.lastSeenSlot ?? '0'),
+            last_seen_tx_signature: p.lastSeenTxSignature ?? null,
+            asset_count: String(p.assetCount ?? '0'),
+        }));
+    }
+    async getCollectionAssetCount(col, creator) {
+        const data = await this.request(`query($col: String!, $creator: String) {
+        collectionAssetCount(col: $col, creator: $creator)
+      }`, {
+            col,
+            creator: creator ?? null,
+        });
+        return toIntSafe(data.collectionAssetCount, 0);
+    }
+    async getCollectionAssets(col, options) {
+        const first = clampInt(options?.limit ?? 100, 0, 500);
+        const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
+        const order = options?.order ?? 'created_at.desc';
+        const orderDirection = order.includes('.asc') ? 'asc' : 'desc';
+        const orderBy = order.startsWith('updated_at')
+            ? 'updatedAt'
+            : order.startsWith('total_feedback')
+                ? 'totalFeedback'
+                : order.startsWith('quality_score')
+                    ? 'qualityScore'
+                    : order.startsWith('trust_tier')
+                        ? 'trustTier'
+                        : 'createdAt';
+        const data = await this.request(`query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+        collectionAssets(
+          col: $col,
+          creator: $creator,
+          first: $first,
+          skip: $skip,
+          orderBy: $orderBy,
+          orderDirection: $dir
+        ) {
+          owner
+          creator
+          agentURI
+          agentWallet
+          collectionPointer
+          colLocked
+          parentAsset
+          parentCreator
+          parentLocked
+          createdAt
+          updatedAt
+          totalFeedback
+          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+        }
+      }`, {
+            col,
+            creator: options?.creator ?? null,
+            first,
+            skip,
+            orderBy,
+            dir: orderDirection,
+        });
+        return data.collectionAssets.map((a) => mapGqlAgent(a));
     }
     // ============================================================================
     // Feedbacks

@@ -8,8 +8,8 @@
  *   "-5.5"  → { value: -55n, valueDecimals: 1 }
  *
  * - Supports negatives (for yields, PnL, etc.)
- * - Max 6 decimals (Solana program limit)
- * - Clamps to i64 range
+ * - Max 18 decimals (Solana program limit)
+ * - Clamps to i128 range
  */
 export interface EncodedValue {
     value: bigint;

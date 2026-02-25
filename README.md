@@ -22,25 +22,58 @@ TypeScript SDK for 8004 Agent Registry on Solana.
 npm install 8004-solana
 ```
 
-## Program IDs (Devnet)
+## Program IDs (Devnet Defaults)
 
-- **Agent Registry**: `8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm`
-- **ATOM Engine**: `AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ`
+- **Agent Registry**: `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C`
+- **ATOM Engine**: `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF`
+
+For localnet/mainnet, override per SDK instance:
+
+```typescript
+const sdk = new SolanaSDK({
+  rpcUrl: 'http://127.0.0.1:8899',
+  signer,
+  programIds: {
+    agentRegistry: 'YourLocalnetRegistryProgramId',
+    atomEngine: 'YourLocalnetAtomProgramId',
+    // mplCore is optional (defaults to canonical Metaplex Core ID)
+  },
+});
+```
 
 ## Quick Start
 
 ```typescript
-import { SolanaSDK } from '8004-solana';
+import {
+  SolanaSDK,
+  IPFSClient,
+  buildRegistrationFileJson,
+  ServiceType,
+  Tag,
+} from '8004-solana';
 import { Keypair } from '@solana/web3.js';
 
 const signer = Keypair.fromSecretKey(/* your key */);
-const sdk = new SolanaSDK({ cluster: 'devnet', signer });
+const pinataJwt = process.env.PINATA_JWT;
+const ipfs = pinataJwt
+  ? new IPFSClient({ pinataEnabled: true, pinataJwt })
+  : new IPFSClient({ url: 'http://localhost:5001' });
+const sdk = new SolanaSDK({ cluster: 'devnet', signer, ipfsClient: ipfs });
 
-// 1. Build agent metadata
-import { buildRegistrationFileJson, ServiceType, IPFSClient } from '8004-solana';
+// 1. Create collection metadata + upload (off-chain)
+const collection = await sdk.createCollection({
+  name: 'CasterCorp Agents',
+  symbol: 'CAST',
+  description: 'Main collection for CasterCorp agents',
+  image: 'ipfs://QmCollectionImage...',
+  socials: { website: 'https://castercorp.ai', x: '@castercorp' },
+});
 
-const ipfs = new IPFSClient({ pinataEnabled: true, pinataJwt: process.env.PINATA_JWT });
+console.log('Collection CID:', collection.cid);   // <- reuse this in your asset workflow
+console.log('Collection URI:', collection.uri);   // ipfs://<cid>
+console.log('Collection Pointer:', collection.pointer); // c1:b...
 
+// 2. Build agent metadata
 const agentMeta = buildRegistrationFileJson({
   name: 'My AI Agent',
   description: 'Autonomous agent for task automation',
@@ -53,18 +86,20 @@ const agentMeta = buildRegistrationFileJson({
   skills: ['natural_language_processing/text_generation/text_generation'],
   domains: ['technology/software_engineering/software_engineering'],
 });
-// Upload and register (uses the base collection automatically)
+
+// 3. Upload and register (uses the base collection automatically)
 const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
 const agent = await sdk.registerAgent(agentUri);
 console.log('Agent:', agent.asset.toBase58());
 
-// 2. Set operational wallet
+// 4. (Advanced) Link agent to canonical collection pointer on-chain
+await sdk.setCollectionPointer(agent.asset, collection.pointer!); // lock=true by default
+
+// 5. Set operational wallet
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(agent.asset, opWallet);
 
-// 3. Give feedback - accepts decimal strings or raw values
-import { Tag } from '8004-solana';
-
+// 6. Give feedback - accepts decimal strings or raw values
 await sdk.giveFeedback(agent.asset, {
   value: '99.77',                  // Decimal string -> auto-encoded to 9977, decimals=2
   tag1: Tag.uptime,                // 8004 standardized tag (or free text)
@@ -73,10 +108,45 @@ await sdk.giveFeedback(agent.asset, {
   feedbackFileHash: Buffer.alloc(32), // Optional integrity hash
 });
 
-// 4. Check reputation
+// 7. Check reputation
 const summary = await sdk.getSummary(agent.asset);
 console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
 ```
+
+### Create Collection (CID-first flow)
+
+```typescript
+const collectionUpload = await sdk.createCollection({
+  name: 'My Collection',
+  description: 'Collection metadata stored on IPFS',
+});
+
+// Returned by createCollection()
+const cid = collectionUpload.cid;          // e.g. Qm...
+const uri = collectionUpload.uri;          // ipfs://Qm...
+const pointer = collectionUpload.pointer;  // c1:b...
+
+// Use `cid` / `uri` in your asset creation pipeline.
+// Keep `setCollectionPointer()` separate for advanced on-chain linking.
+```
+
+Legacy on-chain collection APIs are still callable for backward compatibility but are inactive on current programs:
+- `sdk.createCollection(name, uri, options?)`
+- `sdk.updateCollectionUri(collection, newUri, options?)`
+
+On protocol `v0.6.x` (single-collection architecture), they return `success: false` with an error message.
+
+### Collection + Parent Association Rules
+
+- Use the canonical pointer returned by `sdk.createCollection(...)` (`c1:b...`).
+- Pointer constraints enforced on-chain: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
+- `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
+- `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
+- For editable workflows, call once with `{ lock: false }`, then finalize later with default `lock: true`.
+- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child asset and must equal the parent agent creator snapshot.
+- Parent constraints enforced on-chain: parent asset must exist/live, child cannot point to itself, and `parent_locked` behaves like `col_locked`.
+- `loadAgent()` exposes all related fields (`creator`, `creators`, `col`, `parent_asset`, `col_locked`, `parent_locked`).
+- `c1:...` collection pointer is a string, not a pubkey (base-registry pubkey is an internal on-chain account; standard `setAgentUri`/`transferAgent` calls auto-resolve it).
 
 ### Web3 Wallet (Phantom, Solflare)
 

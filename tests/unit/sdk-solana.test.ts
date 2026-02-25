@@ -107,6 +107,9 @@ const mockIndexerClient = {
   getAgentsByOwner: jest.fn().mockResolvedValue([]),
   getAgentsByCollection: jest.fn().mockResolvedValue([]),
   getAgentByWallet: jest.fn().mockResolvedValue(null),
+  getCollectionPointers: jest.fn().mockResolvedValue([]),
+  getCollectionAssetCount: jest.fn().mockResolvedValue(0),
+  getCollectionAssets: jest.fn().mockResolvedValue([]),
   getLeaderboard: jest.fn().mockResolvedValue([]),
   getGlobalStats: jest.fn().mockResolvedValue({ total_agents: 0, total_feedbacks: 0 }),
   getCollectionStats: jest.fn().mockResolvedValue(null),
@@ -141,6 +144,10 @@ const mockPreparedTx = {
   lastValidBlockHeight: 999,
   signer: 'mock-signer',
   signed: false as const,
+};
+
+const mockIpfsClient = {
+  addJson: jest.fn().mockResolvedValue('QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG'),
 };
 
 const mockIdentityTxBuilder = {
@@ -275,6 +282,7 @@ describe('SolanaSDK', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIpfsClient.addJson.mockResolvedValue('QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG');
 
     // Read-only SDK
     sdk = new SolanaSDK({
@@ -351,6 +359,19 @@ describe('SolanaSDK', () => {
       const ids = sdk.getProgramIds();
       expect(ids.agentRegistry).toBeDefined();
       expect(ids.atomEngine).toBeDefined();
+    });
+
+    it('should apply programIds overrides from config', () => {
+      const customSdk = new SolanaSDK({
+        programIds: {
+          agentRegistry: '11111111111111111111111111111111',
+          atomEngine: 'SysvarRent111111111111111111111111111111111',
+        },
+      });
+      const ids = customSdk.getProgramIds();
+      expect(ids.agentRegistry.toBase58()).toBe('11111111111111111111111111111111');
+      expect(ids.identityRegistry.toBase58()).toBe('11111111111111111111111111111111');
+      expect(ids.atomEngine.toBase58()).toBe('SysvarRent111111111111111111111111111111111');
     });
 
     it('registries should return registry addresses', () => {
@@ -717,22 +738,26 @@ describe('SolanaSDK', () => {
   describe('searchAgents', () => {
     it('should search by owner', async () => {
       await sdk.searchAgents({ owner: 'test-owner' });
-      expect(mockIndexerClient.getAgentsByOwner).toHaveBeenCalledWith('test-owner');
+      expect(mockIndexerClient.getAgents).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: 'test-owner' })
+      );
     });
 
     it('should search by collection', async () => {
       await sdk.searchAgents({ collection: 'test-collection' });
-      expect(mockIndexerClient.getAgentsByCollection).toHaveBeenCalledWith('test-collection');
+      expect(mockIndexerClient.getAgents).toHaveBeenCalledWith(
+        expect.objectContaining({ collection: 'test-collection' })
+      );
     });
 
     it('should search by wallet', async () => {
-      mockIndexerClient.getAgentByWallet.mockResolvedValueOnce({ asset: 'mock' });
+      mockIndexerClient.getAgents.mockResolvedValueOnce([{ asset: 'mock' }]);
       const result = await sdk.searchAgents({ wallet: 'test-wallet' });
       expect(result).toHaveLength(1);
     });
 
     it('should return empty array for wallet not found', async () => {
-      mockIndexerClient.getAgentByWallet.mockResolvedValueOnce(null);
+      mockIndexerClient.getAgents.mockResolvedValueOnce([]);
       const result = await sdk.searchAgents({ wallet: 'missing' });
       expect(result).toHaveLength(0);
     });
@@ -742,9 +767,58 @@ describe('SolanaSDK', () => {
       expect(mockIndexerClient.getAgents).toHaveBeenCalled();
     });
 
+    it('should forward extended pointer and parent filters', async () => {
+      await sdk.searchAgents({
+        creator: 'creator-pubkey',
+        collectionPointer: 'c1:abc123',
+        parentAsset: 'parent-asset',
+        parentCreator: 'parent-creator',
+        colLocked: true,
+        parentLocked: false,
+      });
+
+      expect(mockIndexerClient.getAgents).toHaveBeenCalledWith(
+        expect.objectContaining({
+          creator: 'creator-pubkey',
+          collectionPointer: 'c1:abc123',
+          parentAsset: 'parent-asset',
+          parentCreator: 'parent-creator',
+          colLocked: true,
+          parentLocked: false,
+        })
+      );
+    });
+
+    it('should apply minScore on indexed quality score', async () => {
+      mockIndexerClient.getAgents.mockResolvedValueOnce([
+        { asset: 'a', quality_score: 40, raw_avg_score: 40 },
+        { asset: 'b', quality_score: 80, raw_avg_score: 80 },
+      ]);
+
+      const result = await sdk.searchAgents({ minScore: 50 });
+      expect(result).toEqual([{ asset: 'b', quality_score: 80, raw_avg_score: 80 }]);
+    });
+
     it('should throw when forceOnChain=true', async () => {
       const forcedSdk = new SolanaSDK({ forceOnChain: true });
       await expect(forcedSdk.searchAgents({})).rejects.toThrow('requires indexer');
+    });
+  });
+
+  describe('collection pointer indexer helpers', () => {
+    it('should delegate getCollectionPointers to indexer client', async () => {
+      await sdk.getCollectionPointers({ col: 'c1:abc' });
+      expect(mockIndexerClient.getCollectionPointers).toHaveBeenCalledWith({ col: 'c1:abc' });
+    });
+
+    it('should delegate getCollectionAssetCount to indexer client', async () => {
+      await sdk.getCollectionAssetCount('c1:abc', 'creator');
+      expect(mockIndexerClient.getCollectionAssetCount).toHaveBeenCalledWith('c1:abc', 'creator');
+    });
+
+    it('should delegate getCollectionAssets to indexer client', async () => {
+      await sdk.getCollectionAssets('c1:abc', { limit: 10 });
+      expect(mockIndexerClient.getCollectionAssets).toHaveBeenCalledWith('c1:abc', { limit: 10 });
     });
   });
 
@@ -802,6 +876,56 @@ describe('SolanaSDK', () => {
 
   // ==================== Write Methods ====================
 
+  describe('collection metadata flow (off-chain)', () => {
+    it('createCollectionData should build schema-compliant json', () => {
+      const data = signerSdk.createCollectionData({
+        name: 'Caster Agents',
+        description: 'Main collection',
+      });
+
+      expect(data.version).toBe('1.0.0');
+      expect(data.name).toBe('Caster Agents');
+      expect(data.description).toBe('Main collection');
+    });
+
+    it('createCollection(data, { uploadToIpfs:false }) should return metadata only', async () => {
+      const result = await signerSdk.createCollection(
+        { name: 'Caster Agents', description: 'Main collection' },
+        { uploadToIpfs: false }
+      );
+
+      expect(result.metadata.name).toBe('Caster Agents');
+      expect(result.cid).toBeUndefined();
+      expect(mockIpfsClient.addJson).not.toHaveBeenCalled();
+    });
+
+    it('createCollection(data) should upload to IPFS and return cid/uri/pointer', async () => {
+      const sdkWithIpfs = new SolanaSDK({
+        signer,
+        ipfsClient: mockIpfsClient as any,
+        indexerUrl: 'https://example.supabase.co/rest/v1',
+        indexerApiKey: 'test-key',
+      });
+
+      const result = await sdkWithIpfs.createCollection({
+        name: 'Caster Agents',
+        description: 'Main collection',
+      });
+
+      expect(mockIpfsClient.addJson).toHaveBeenCalled();
+      expect(result.cid).toBe('QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG');
+      expect(result.uri).toBe('ipfs://QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG');
+      expect(result.pointer).toMatch(/^c1:b[a-z2-7]+$/);
+      expect((result.pointer || '').length).toBeLessThanOrEqual(128);
+    });
+
+    it('createCollection(data) should require ipfsClient for upload', async () => {
+      await expect(
+        signerSdk.createCollection({ name: 'No IPFS' })
+      ).rejects.toThrow('ipfsClient is required');
+    });
+  });
+
   describe('write methods - read-only checks', () => {
     it('createCollection should throw without signer', async () => {
       await expect(sdk.createCollection('name', 'uri')).rejects.toThrow('read-only');
@@ -817,6 +941,10 @@ describe('SolanaSDK', () => {
 
     it('setAgentUri should throw without signer', async () => {
       await expect(sdk.setAgentUri(PublicKey.unique(), PublicKey.unique(), 'uri')).rejects.toThrow('read-only');
+    });
+
+    it('setAgentUri (base collection auto) should throw without signer', async () => {
+      await expect(sdk.setAgentUri(PublicKey.unique(), 'uri')).rejects.toThrow('read-only');
     });
 
     it('enableAtom should throw without signer', async () => {
@@ -949,6 +1077,17 @@ describe('SolanaSDK', () => {
       expect(mockIdentityTxBuilder.setAgentUri).toHaveBeenCalled();
     });
 
+    it('setAgentUri should auto-resolve base collection when not provided', async () => {
+      const asset = PublicKey.unique();
+      await signerSdk.setAgentUri(asset, 'ipfs://auto');
+      expect(mockIdentityTxBuilder.setAgentUri).toHaveBeenCalledWith(
+        asset,
+        mockBaseCollection,
+        'ipfs://auto',
+        undefined
+      );
+    });
+
     it('enableAtom should delegate to identityTxBuilder', async () => {
       await signerSdk.enableAtom(PublicKey.unique());
       expect(mockIdentityTxBuilder.enableAtom).toHaveBeenCalled();
@@ -991,6 +1130,18 @@ describe('SolanaSDK', () => {
     it('transferAgent should delegate to identityTxBuilder', async () => {
       await signerSdk.transferAgent(PublicKey.unique(), PublicKey.unique(), PublicKey.unique());
       expect(mockIdentityTxBuilder.transferAgent).toHaveBeenCalled();
+    });
+
+    it('transferAgent should auto-resolve base collection when not provided', async () => {
+      const asset = PublicKey.unique();
+      const newOwner = PublicKey.unique();
+      await signerSdk.transferAgent(asset, newOwner);
+      expect(mockIdentityTxBuilder.transferAgent).toHaveBeenCalledWith(
+        asset,
+        mockBaseCollection,
+        newOwner,
+        undefined
+      );
     });
 
     it('syncOwner should delegate to identityTxBuilder', async () => {

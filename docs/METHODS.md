@@ -20,6 +20,10 @@ const sdk = new SolanaSDK({
   cluster: 'devnet',      // 'devnet' | 'mainnet-beta'
   rpcUrl: 'https://...',  // Optional custom RPC
   signer: keypair,        // Optional signer for write operations
+  programIds: {           // Optional: override devnet defaults
+    agentRegistry: '...',
+    atomEngine: '...',
+  },
 });
 ```
 
@@ -73,47 +77,130 @@ await sdk.verify('https://example.com/signed-payload.json', asset);
 await sdk.verify('./signed-payload.json', asset);
 ```
 
-## Collection Write Methods
+## Collection + Parent Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `createCollection` | `(name, uri, options?) => Promise<TransactionResult>` | Create user-owned collection |
-| `updateCollectionUri` | `(collection, newUri, options?) => Promise<TransactionResult>` | Update collection URI (name immutable) |
+| `createCollectionData` | `(input: CollectionMetadataInput) => CollectionMetadataJson` | Build collection schema JSON only (no upload) |
+| `createCollection` | `(data: CollectionMetadataInput, options?: { uploadToIpfs?: boolean }) => Promise<CreateCollectionUploadResult>` | Build metadata JSON and optionally upload to IPFS |
+| `createCollection` (legacy) | `(name: string, uri: string, options?) => Promise<TransactionResult & { collection?: PublicKey }>` | Legacy on-chain API, kept for compatibility only |
+| `setCollectionPointer` | `(asset, col, options?: SetCollectionPointerOptions) => Promise<TransactionResult \| PreparedTransaction>` | Set canonical collection pointer (`c1:<cid>`) |
+| `setParentAsset` | `(asset, parentAsset, options?: SetParentAssetOptions) => Promise<TransactionResult \| PreparedTransaction>` | Set parent asset relationship for hierarchy |
+| `updateCollectionUri` (legacy) | `(collection, newUri, options?) => Promise<TransactionResult>` | Legacy on-chain API, kept for compatibility only |
 
 ```typescript
-// Agents register into the base collection by default
-await sdk.registerAgent('ipfs://QmAgent1...');
+// 1) Create schema-compliant JSON only
+const collectionData = sdk.createCollectionData({
+  name: 'CasterCorp Agents',
+  symbol: 'CAST',
+  description: 'Main collection metadata',
+});
 
-// Custom collections are still supported
-const result = await sdk.createCollection('My AI Agents', 'ipfs://QmMeta...');
-const collection = result.collection;
-await sdk.registerAgent('ipfs://QmAgent2...', collection);
+// 2) Create + upload (CID-first flow)
+const upload = await sdk.createCollection(collectionData);
+// upload.metadata -> JSON
+// upload.cid      -> CID (when uploaded)
+// upload.uri      -> ipfs://<cid>
+// upload.pointer  -> canonical c1:b... pointer
 
-// Update URI (name is immutable)
-await sdk.updateCollectionUri(collection, 'ipfs://QmNewMeta...');
+// 3) Register agent (base collection is still automatic)
+const result = await sdk.registerAgent('ipfs://QmAgentMetadata...');
+
+// 4) Advanced: set canonical pointer on the agent account
+await sdk.setCollectionPointer(result.asset, upload.pointer!); // lock=true by default
+
+// 5) Advanced: parent link (hierarchy)
+await sdk.setParentAsset(result.asset, parentAssetPubkey, { lock: false });
+```
+
+> Legacy note: on protocol `v0.6.x` (single-collection architecture), legacy on-chain collection APIs return `success: false` with an error. Use CID-first metadata flow + pointer methods above.
+
+### Collection + Parent Association Rules (on-chain)
+
+- Collection pointer must start with `c1:`, payload must be non-empty lowercase alphanumeric, and total size must be <= `128` bytes.
+- `setCollectionPointer`: signer must equal immutable `AgentAccount.creator`.
+- `setParentAsset`: signer must be current owner of child asset and must equal the parent agent creator snapshot.
+- Parent asset must be live/valid and self-parenting is rejected.
+- Both methods default to `lock=true`. Pass `{ lock: false }` to keep pointer/parent mutable until final lock.
+- Lock flags are persisted in `AgentAccount.col_locked` and `AgentAccount.parent_locked`.
+
+Pointer vs Pubkey:
+- `collection pointer` (`c1:...`) is a string stored in `AgentAccount.col`.
+- `base registry pubkey` is the on-chain Metaplex collection account used internally by asset instructions.
+
+### Collection Read Methods
+
+> These methods use program-account scans and require advanced RPC (`requireAdvancedQueries`).
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `getCollection` | `(collection: PublicKey) => Promise<CollectionInfo \| null>` | Read one registry/collection config |
+| `getCollections` | `() => Promise<CollectionInfo[]>` | List all registry/collection configs |
+| `getCollectionAgents` | `(collection: PublicKey, options?) => Promise<AgentAccount[]>` | List agents linked to one registry/collection |
+
+```typescript
+const baseRegistry = await sdk.getBaseCollection();
+if (baseRegistry) {
+  const one = await sdk.getCollection(baseRegistry);
+  const all = await sdk.getCollections();
+  const agents = await sdk.getCollectionAgents(baseRegistry, { limit: 50 });
+  console.log(one?.registryType, all.length, agents.length);
+}
 ```
 
 ## Agent Read Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `loadAgent` | `(asset: PublicKey) => Promise<AgentAccount \| null>` | Load agent data |
+| `loadAgent` | `(asset: PublicKey) => Promise<AgentAccount \| null>` | Load full on-chain `AgentAccount` |
 | `getAgent` | `(asset: PublicKey) => Promise<AgentAccount \| null>` | Alias for loadAgent |
 | `agentExists` | `(asset: PublicKey) => Promise<boolean>` | Check if agent exists |
 | `getAgentOwner` | `(asset: PublicKey) => Promise<PublicKey \| null>` | Get agent owner |
 | `isAgentOwner` | `(asset, address) => Promise<boolean>` | Check ownership |
 | `getMetadata` | `(asset, key) => Promise<string \| null>` | Read metadata entry |
 
+### `loadAgent()` Important Fields
+
+```typescript
+const agent = await sdk.loadAgent(assetPubkey);
+if (!agent) return;
+
+agent.getAssetPublicKey();              // Core asset pubkey
+agent.getCollectionPublicKey();         // Base registry pubkey (not c1 pointer)
+agent.getOwnerPublicKey();              // Cached owner snapshot
+agent.getCreatorPublicKey();            // Immutable creator snapshot
+agent.getCreatorsPublicKeys();          // [creator]
+agent.creators;                         // alias for compatibility
+agent.getParentAssetPublicKey();        // parent asset or null
+agent.isParentLocked();                 // parent lock state
+agent.col;                              // canonical collection pointer (c1:...)
+agent.isCollectionPointerLocked();      // collection pointer lock state
+agent.getAgentWalletPublicKey();        // operational wallet or null
+```
+
 ## Agent Write Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `registerAgent` | `(tokenUri?, collection?) => Promise<TransactionResult>` | Register new agent |
+| `registerAgent` | `(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions) => Promise<TransactionResult \| PreparedTransaction>` | Register new agent (base collection default) |
 | `enableAtom` | `(asset) => Promise<TransactionResult>` | Enable ATOM one-way for an existing agent |
-| `transferAgent` | `(asset, collection, newOwner) => Promise<TransactionResult>` | Transfer ownership |
-| `setAgentUri` | `(asset, collection, newUri) => Promise<TransactionResult>` | Update agent URI |
+| `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base collection auto-resolved) |
+| `transferAgent` (legacy) | `(asset, collection, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership with explicit base registry pubkey |
+| `syncOwner` | `(asset, options?) => Promise<TransactionResult \| PreparedTransaction>` | Sync cached owner with live Core owner |
+| `setAgentUri` | `(asset, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update agent URI (base collection auto-resolved) |
+| `setAgentUri` (legacy) | `(asset, collection, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update URI with explicit base registry pubkey |
+| `setCollectionPointer` | `(asset, col, options?: SetCollectionPointerOptions)` | Set canonical collection pointer (`c1:<cid>`) |
+| `setParentAsset` | `(asset, parentAsset, options?: SetParentAssetOptions)` | Set parent relationship |
 | `setMetadata` | `(asset, key, value, immutable?) => Promise<TransactionResult>` | Set/update on-chain metadata |
 | `deleteMetadata` | `(asset, key) => Promise<TransactionResult>` | Delete mutable metadata |
+
+### `registerAgent()` Options
+
+`registerAgent(tokenUri?, collection?, options?)` supports:
+- `skipSend`: return unsigned transaction payload instead of sending.
+- `signer`: signer pubkey required in `skipSend` mode when SDK has no signer.
+- `assetPubkey`: pre-generated asset keypair pubkey required in `skipSend` mode.
+- `atomEnabled`: defaults to `true`; set `false` to skip ATOM auto-init at registration time.
 
 ### On-chain Metadata
 
@@ -142,6 +229,11 @@ await sdk.setMetadata(agentAsset, 'certification', 'verified', true);
 // await sdk.deleteMetadata(agentAsset, 'certification'); // Error: MetadataImmutable
 ```
 
+Limits enforced on-chain:
+- `agent_uri` max `250` bytes
+- metadata key max `32` bytes
+- metadata value max `250` bytes
+
 **Cost Summary:**
 - Create: ~0.00319 SOL (rent for MetadataEntryPda)
 - Update: ~0.000005 SOL (TX fee only)
@@ -157,7 +249,7 @@ await sdk.setMetadata(agentAsset, 'certification', 'verified', true);
 | `getFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Read feedback |
 | `readFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Alias |
 | `revokeFeedback` | `(asset, index, feedbackHash) => Promise<TransactionResult>` | Revoke feedback (feedbackHash = sealHash) |
-| `getLastIndex` | `(asset, client) => Promise<bigint>` | Get feedback count |
+| `getLastIndex` | `(asset, client) => Promise<bigint>` | Get last feedback index for a client (`-1` when none) |
 | `appendResponse` | `(asset, client, index, feedbackHash, uri, hash?) => Promise<TransactionResult>` | Add response (feedbackHash = sealHash) |
 
 ### Feedback Data
@@ -254,14 +346,32 @@ These methods query the indexer for aggregated data.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `searchAgents` | `(query, options?) => Promise<Agent[]>` | Search agents by name/description |
+| `searchAgents` | `(params: AgentSearchParams) => Promise<IndexedAgent[]>` | Search agents by owner/creator/base collection/pointer/parent filters |
+| `getCollectionPointers` | `(options?) => Promise<CollectionPointerRecord[]>` | Read canonical `c1:` collection-pointer rows |
+| `getCollectionAssetCount` | `(col: string, creator?) => Promise<number>` | Count assets attached to one pointer |
+| `getCollectionAssets` | `(col: string, options?) => Promise<IndexedAgent[]>` | List assets attached to one pointer |
 | `getLeaderboard` | `(options?) => Promise<LeaderboardEntry[]>` | Get top agents by reputation |
 | `getGlobalStats` | `() => Promise<GlobalStats>` | Get global registry statistics |
 | `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
 
 ```typescript
-// Search agents
-const results = await sdk.searchAgents('trading bot', { limit: 20 });
+// Search agents with explicit filters
+const results = await sdk.searchAgents({
+  owner: 'OwnerPubkey...',
+  creator: 'CreatorPubkey...',
+  collection: 'BaseRegistryCollectionPubkey...',
+  collectionPointer: 'c1:bafybeigdyr...',
+  parentAsset: 'ParentAssetPubkey...',
+  colLocked: true,
+  limit: 20,
+});
+
+// Query canonical collection pointers
+const pointers = await sdk.getCollectionPointers({ creator: 'CreatorPubkey...' });
+
+// Count + list assets for one pointer
+const count = await sdk.getCollectionAssetCount('c1:bafybeigdyr...', 'CreatorPubkey...');
+const assets = await sdk.getCollectionAssets('c1:bafybeigdyr...', { limit: 50 });
 
 // Get leaderboard
 const top = await sdk.getLeaderboard({ minTier: 2, limit: 50 });

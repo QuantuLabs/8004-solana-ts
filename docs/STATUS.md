@@ -1,6 +1,6 @@
-# Project Status - agent0-ts-solana v0.6.0
+# Project Status - agent0-ts-solana v0.6.4
 
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-25
 
 ## Completed Features
 
@@ -38,10 +38,11 @@
 - 4 cross-validation vectors (Rust/TypeScript parity)
 
 ### Collections
-- `createCollection()` - Custom collections
-- `updateCollectionUri()` - Update collection URI
-- `getCollection()` - Read collection info
-- `getCollectionAgents()` - Get agents in collection
+- `createCollectionData()` - Build collection schema JSON
+- `createCollection(data)` - CID-first metadata upload flow
+- `setCollectionPointer()` - Canonical `c1:` pointer association
+- `setParentAsset()` - Parent hierarchy association
+- Legacy on-chain collection methods kept for compatibility but inactive on `v0.6.x`
 
 ### ATOM Reputation Engine
 - Auto-initialization with `registerAgent()`
@@ -65,12 +66,18 @@ Raw feedback data uses event-driven storage:
 
 ## Version History
 
-### v0.6.0 (Current)
+### v0.6.0
 - SEAL v1 - on-chain feedback authenticity layer
 - Single-collection architecture (removed user registries)
 - `sealHash` required for `revokeFeedback()` / `appendResponse()`
 - `feedbackHash` renamed to `feedbackFileHash` in `giveFeedback()`
 - SSRF protection improvements
+
+### v0.6.4
+- Added CID-first collection helpers (`createCollectionData`, `createCollection(data)`)
+- Added canonical collection pointer normalization (`c1:` with CIDv1 base32)
+- Added parent/collection association helpers with lock options
+- Added `AgentAccount.creators` alias compatibility field
 
 ### v0.5.0
 - Rich feedback metrics (value, valueDecimals)

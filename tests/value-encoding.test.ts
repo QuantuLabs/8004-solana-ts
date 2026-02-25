@@ -42,11 +42,10 @@ describe('encodeReputationValue', () => {
     expect(result.valueDecimals).toBe(0);
   });
 
-  test('truncates to 6 decimals with rounding', () => {
+  test('keeps up to 18 decimals', () => {
     const result = encodeReputationValue('1.12345678');
-    expect(result.valueDecimals).toBe(6);
-    // 1.123457 rounded (8 >= 5)
-    expect(result.value).toBe(1123457n);
+    expect(result.valueDecimals).toBe(8);
+    expect(result.value).toBe(112345678n);
   });
 
   test('scientific notation "1.5e2" → 150', () => {
@@ -70,11 +69,11 @@ describe('encodeReputationValue', () => {
   });
 
   test('throws on non-integer explicitDecimals for bigint', () => {
-    expect(() => encodeReputationValue(9977n, 1.5)).toThrow('valueDecimals must be integer 0-6');
+    expect(() => encodeReputationValue(9977n, 1.5)).toThrow('valueDecimals must be integer 0-18');
   });
 
   test('throws on non-integer explicitDecimals for number', () => {
-    expect(() => encodeReputationValue(9977, 2.5)).toThrow('valueDecimals must be integer 0-6');
+    expect(() => encodeReputationValue(9977, 2.5)).toThrow('valueDecimals must be integer 0-18');
   });
 
   test('throws on unsafe integer with explicitDecimals', () => {

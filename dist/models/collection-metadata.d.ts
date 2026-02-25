@@ -1,20 +1,28 @@
 /**
  * Collection Metadata Builder
- * Builds 8004-compliant JSON for collection URI
+ * Builds JSON for collection URI (IPFS collection document v1 + SDK legacy fields)
  */
+export declare const COLLECTION_DOCUMENT_VERSION: "1.0.0";
 /**
  * Collection category types
  */
 export type CollectionCategory = 'assistant' | 'coding' | 'data-analysis' | 'creative' | 'research' | 'automation' | 'finance' | 'healthcare' | 'education' | 'gaming' | 'other';
 /**
- * Social links for project
+ * Social links for collection/project
  */
-export interface ProjectSocials {
+export interface CollectionSocials {
     website?: string;
     x?: string;
+    twitter?: string;
     discord?: string;
     telegram?: string;
     github?: string;
+    farcaster?: string;
+    instagram?: string;
+    youtube?: string;
+    [key: string]: string | undefined;
+}
+export interface ProjectSocials extends CollectionSocials {
 }
 /**
  * Project info for collection
@@ -34,30 +42,42 @@ export interface CollectionAttribute {
  * Input for building collection metadata
  */
 export interface CollectionMetadataInput {
-    /** Collection display name (max 32 characters) */
+    /** Collection document name (max 128 characters) */
     name: string;
-    /** Collection description */
-    description: string;
+    /** Collection symbol (max 16 characters) */
+    symbol?: string;
+    /** Collection description (max 4096 characters) */
+    description?: string;
     /** Collection logo/image URL (IPFS, Arweave, or HTTPS) */
     image?: string;
-    /** Website or documentation URL */
+    /** Collection banner image URL */
+    banner_image?: string;
+    /** Top-level socials for collection document v1 */
+    socials?: CollectionSocials;
+    /** Legacy SDK website or documentation URL */
     external_url?: string;
-    /** Project info for this collection */
+    /** Legacy SDK project info */
     project?: CollectionProject;
-    /** Primary category of agents in this collection */
+    /** Legacy SDK category */
     category?: CollectionCategory;
-    /** Searchable tags for discovery (max 10) */
+    /** Legacy SDK searchable tags (max 10) */
     tags?: string[];
-    /** Custom attributes (NFT-style) */
+    /** Legacy SDK custom attributes (NFT-style) */
     attributes?: CollectionAttribute[];
+    /** Explicitly unsupported by this builder */
+    parent?: never;
 }
 /**
  * Output JSON format for collection metadata
  */
 export interface CollectionMetadataJson {
+    version: typeof COLLECTION_DOCUMENT_VERSION;
     name: string;
-    description: string;
+    symbol?: string;
+    description?: string;
     image?: string;
+    banner_image?: string;
+    socials?: CollectionSocials;
     external_url?: string;
     project?: CollectionProject;
     category?: string;
@@ -69,29 +89,7 @@ export interface CollectionMetadataJson {
  *
  * @param input - Collection metadata input
  * @returns JSON object ready for IPFS upload
- * @throws Error if name or description is missing/invalid
- *
- * @example
- * ```typescript
- * const metadata = buildCollectionMetadataJson({
- *   name: 'My AI Agents',
- *   description: 'Production AI agents for automation',
- *   image: 'ipfs://QmLogo...',
- *   category: 'automation',
- *   tags: ['enterprise', 'api'],
- *   project: {
- *     name: 'Acme Corp',
- *     socials: {
- *       website: 'https://acme.ai',
- *       x: 'acme_ai',
- *       github: 'acme-ai'
- *     }
- *   }
- * });
- *
- * // Upload to IPFS
- * const cid = await ipfs.addJson(metadata);
- * ```
+ * @throws Error if input contains invalid values or unsupported fields
  */
 export declare function buildCollectionMetadataJson(input: CollectionMetadataInput): CollectionMetadataJson;
 //# sourceMappingURL=collection-metadata.d.ts.map

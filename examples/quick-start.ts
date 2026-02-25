@@ -41,7 +41,30 @@ async function main() {
   }
 
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
-  const writeSdk = new SolanaSDK({ signer });
+  const pinataJwt = process.env.PINATA_JWT;
+  const ipfs = pinataJwt
+    ? new IPFSClient({
+        pinataEnabled: true,
+        pinataJwt,
+      })
+    : new IPFSClient({
+        url: process.env.IPFS_API_URL || 'http://localhost:5001',
+      });
+  const writeSdk = new SolanaSDK({ signer, ipfsClient: ipfs });
+
+  // === COLLECTION (CID-first) ===
+  const collectionUpload = await writeSdk.createCollection({
+    name: 'Quickstart Agents',
+    symbol: 'QSA',
+    description: 'Collection metadata for quickstart examples',
+    socials: {
+      website: 'https://example.com',
+      x: '@example',
+    },
+  });
+  console.log(`Collection CID: ${collectionUpload.cid}`);
+  console.log(`Collection URI: ${collectionUpload.uri}`);
+  console.log(`Collection Pointer: ${collectionUpload.pointer}`);
 
   // Build 8004 compliant metadata
   const agentData: RegistrationFile = {
@@ -59,27 +82,20 @@ async function main() {
   console.log('Metadata:', JSON.stringify(metadata, null, 2));
 
   // === IPFS UPLOAD ===
-  // Get a free Pinata JWT at https://pinata.cloud
-  if (process.env.PINATA_JWT) {
-    const ipfs = new IPFSClient({
-      pinataEnabled: true,
-      pinataJwt: process.env.PINATA_JWT,
-    });
+  // Upload metadata to IPFS
+  const metadataCid = await ipfs.addJson(metadata);
+  const metadataUri = `ipfs://${metadataCid}`;
+  console.log(`Metadata uploaded to: ${metadataUri}`);
 
-    // Upload metadata to IPFS
-    const metadataCid = await ipfs.addJson(metadata);
-    const metadataUri = `ipfs://${metadataCid}`;
-    console.log(`Metadata uploaded to: ${metadataUri}`);
-
-    // === REGISTER AGENT ===
-    // Uncomment to register a new agent (returns { asset, signature })
-    // const result = await writeSdk.registerAgent(metadataUri);
-    // console.log(`Registered agent with asset: ${result.asset.toBase58()}`);
-  } else {
-    console.log('Set PINATA_JWT to upload metadata to IPFS');
-    // Alternative: use web URL
-    // const result = await writeSdk.registerAgent('https://my-server.com/metadata.json');
-  }
+  // === REGISTER AGENT ===
+  // Uncomment to register a new agent (returns { asset, signature })
+  // const result = await writeSdk.registerAgent(metadataUri);
+  // console.log(`Registered agent with asset: ${result.asset.toBase58()}`);
+  //
+  // Optional advanced association flows:
+  // await writeSdk.setCollectionPointer(result.asset, collectionUpload.pointer!); // lock=true (default)
+  // await writeSdk.setCollectionPointer(result.asset, collectionUpload.pointer!, { lock: false });
+  // await writeSdk.setParentAsset(result.asset, new PublicKey('ParentAgentAssetPubkey...'), { lock: false });
 
   // === GIVE FEEDBACK ===
   // Submit feedback for an existing agent (value required)

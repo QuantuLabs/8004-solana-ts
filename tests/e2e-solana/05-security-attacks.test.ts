@@ -21,6 +21,10 @@ import { Keypair, PublicKey, Transaction, TransactionInstruction, SystemProgram 
 import { SolanaSDK } from '../../src/core/sdk-solana';
 import nacl from 'tweetnacl';
 
+// Validation module is archived on-chain since v0.5.x.
+const VALIDATION_ONCHAIN_ENABLED = false;
+const describeValidation = VALIDATION_ONCHAIN_ENABLED ? describe : describe.skip;
+
 describe('Security & Attack Scenarios (13 Tests)', () => {
   let sdk: SolanaSDK;
   let attackerSdk: SolanaSDK;
@@ -316,7 +320,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
   // 10: Validation Integrity
   // ============================================================================
 
-  describe('Validation Integrity (1 Test)', () => {
+  describeValidation('Validation Integrity (1 Test)', () => {
     describe('Test #10: Validation Request Immutability', () => {
       it('should confirm no close_validation method exists (8004 compliance)', async () => {
         // Verify SDK does not expose validation deletion methods
@@ -407,17 +411,19 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
         expect(result.error).toMatch(/AccountNotInitialized|InvalidAccount|InvalidAsset|Agent not found/);
         console.log('✅ Invalid MPL asset structure rejected');
 
-        // Try to request validation from fake agent
-        const validator = Keypair.generate().publicKey;
-        const validationResult = await sdk.requestValidation(
-          fakeAgent,
-          validator,
-          `ipfs://fake_validation_${Date.now()}`
-        );
+        if (VALIDATION_ONCHAIN_ENABLED) {
+          // Try to request validation from fake agent
+          const validator = Keypair.generate().publicKey;
+          const validationResult = await sdk.requestValidation(
+            fakeAgent,
+            validator,
+            `ipfs://fake_validation_${Date.now()}`
+          );
 
-        expect(validationResult.success).toBe(false);
-        expect(validationResult.error).toMatch(/AccountNotInitialized|InvalidAccount/);
-        console.log('✅ Fake asset rejected for validation operations');
+          expect(validationResult.success).toBe(false);
+          expect(validationResult.error).toMatch(/AccountNotInitialized|InvalidAccount/);
+          console.log('✅ Fake asset rejected for validation operations');
+        }
       });
     });
   });
@@ -448,7 +454,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
       });
     });
 
-    describe('Self-Validation Rejection', () => {
+    describeValidation('Self-Validation Rejection', () => {
       it('should reject validation request where validator == agent owner', async () => {
         const result = await sdk.requestValidation(
           agent,
@@ -489,6 +495,11 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
       });
 
       it('should reject score > 100 for validation', async () => {
+        if (!VALIDATION_ONCHAIN_ENABLED) {
+          console.log('⏭️  Validation module archived on-chain (v0.5+), skipping');
+          return;
+        }
+
         const validator = Keypair.generate().publicKey;
 
         // Request validation first

@@ -16,6 +16,43 @@ export interface IndexerClientConfig {
     retries?: number;
 }
 /**
+ * Query options for /agents indexer reads.
+ * Supports base registry collection filters and collection pointer filters.
+ */
+export interface AgentQueryOptions {
+    limit?: number;
+    offset?: number;
+    order?: string;
+    owner?: string;
+    creator?: string;
+    collection?: string;
+    collectionPointer?: string;
+    wallet?: string;
+    parentAsset?: string;
+    parentCreator?: string;
+    colLocked?: boolean;
+    parentLocked?: boolean;
+}
+/**
+ * Query options for canonical collection pointer reads.
+ */
+export interface CollectionPointerQueryOptions {
+    col?: string;
+    creator?: string;
+    firstSeenAsset?: string;
+    limit?: number;
+    offset?: number;
+}
+/**
+ * Query options for assets scoped to a collection pointer.
+ */
+export interface CollectionAssetsQueryOptions {
+    creator?: string;
+    limit?: number;
+    offset?: number;
+    order?: string;
+}
+/**
  * Read-only indexer client contract used by the SDK.
  *
  * The SDK supports multiple backends (REST v1 / GraphQL v2). This interface
@@ -25,11 +62,7 @@ export interface IndexerReadClient {
     getBaseUrl(): string;
     isAvailable(): Promise<boolean>;
     getAgent(asset: string): Promise<IndexedAgent | null>;
-    getAgents(options?: {
-        limit?: number;
-        offset?: number;
-        order?: string;
-    }): Promise<IndexedAgent[]>;
+    getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
     getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
     getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;
     getAgentByWallet(wallet: string): Promise<IndexedAgent | null>;
@@ -39,6 +72,11 @@ export interface IndexerReadClient {
         limit?: number;
         cursorSortKey?: string;
     }): Promise<IndexedAgent[]>;
+    getCollectionPointers?(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]>;
+    getCollectionAssetCount?(col: string, creator?: string): Promise<number>;
+    getCollectionAssets?(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]>;
+    getCollectionStats?(collection: string): Promise<CollectionStats | null>;
+    getAllCollectionStats?(): Promise<CollectionStats[]>;
     getGlobalStats(): Promise<GlobalStats>;
     getFeedbacks(asset: string, options?: {
         includeRevoked?: boolean;
@@ -83,9 +121,15 @@ export interface IndexerReadClient {
 export interface IndexedAgent {
     asset: string;
     owner: string;
+    creator?: string | null;
     agent_uri: string | null;
     agent_wallet: string | null;
     collection: string;
+    collection_pointer?: string | null;
+    col_locked?: boolean;
+    parent_asset?: string | null;
+    parent_creator?: string | null;
+    parent_locked?: boolean;
     nft_name: string | null;
     atom_enabled?: boolean;
     trust_tier: number;
@@ -181,10 +225,26 @@ export interface IndexedValidation {
  */
 export interface CollectionStats {
     collection: string;
+    registry_type?: string | null;
     authority: string | null;
     agent_count: number;
     total_feedbacks: number;
     avg_score: number | null;
+}
+/**
+ * Canonical collection pointer record from `/collection_pointers`.
+ */
+export interface CollectionPointerRecord {
+    col: string;
+    creator: string;
+    first_seen_asset: string;
+    first_seen_at: string;
+    first_seen_slot: string;
+    first_seen_tx_signature: string | null;
+    last_seen_at: string;
+    last_seen_slot: string;
+    last_seen_tx_signature: string | null;
+    asset_count: string;
 }
 /**
  * Global statistics from `global_stats` view
@@ -304,11 +364,7 @@ export declare class IndexerClient implements IndexerReadClient {
     /**
      * Get all agents with pagination
      */
-    getAgents(options?: {
-        limit?: number;
-        offset?: number;
-        order?: string;
-    }): Promise<IndexedAgent[]>;
+    getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
     /**
      * Get agents by owner
      */
@@ -417,6 +473,18 @@ export declare class IndexerClient implements IndexerReadClient {
      * Returns full validation data including URIs (not available on-chain)
      */
     getValidation(asset: string, validator: string, nonce: number | bigint): Promise<IndexedValidation | null>;
+    /**
+     * Get canonical collection pointer rows.
+     */
+    getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]>;
+    /**
+     * Count assets attached to a collection pointer (optionally scoped by creator).
+     */
+    getCollectionAssetCount(col: string, creator?: string): Promise<number>;
+    /**
+     * Get assets by collection pointer (optionally scoped by creator).
+     */
+    getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]>;
     /**
      * Get stats for a specific collection
      */

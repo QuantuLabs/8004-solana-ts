@@ -143,6 +143,7 @@ describe('RegistryConfig', () => {
 describe('AgentAccount', () => {
   function buildAgentPayload(opts: {
     collection?: Uint8Array;
+    creator?: Uint8Array;
     owner?: Uint8Array;
     asset?: Uint8Array;
     bump?: number;
@@ -154,11 +155,16 @@ describe('AgentAccount', () => {
     responseCount?: bigint;
     revokeDigest?: Uint8Array;
     revokeCount?: bigint;
+    parentAsset?: Uint8Array | null;
+    parentLocked?: number;
+    colLocked?: number;
     agentUri?: string;
     nftName?: string;
+    col?: string;
   }): Buffer {
     const parts: Buffer[] = [
       Buffer.from(opts.collection ?? pubkeyBytes(1)),
+      Buffer.from(opts.creator ?? pubkeyBytes(9)),
       Buffer.from(opts.owner ?? pubkeyBytes(2)),
       Buffer.from(opts.asset ?? pubkeyBytes(3)),
       Buffer.from([opts.bump ?? 255]),
@@ -189,9 +195,20 @@ describe('AgentAccount', () => {
     rvBuf.writeBigUInt64LE(opts.revokeCount ?? 0n);
     parts.push(rvBuf);
 
+    // parent_asset Option<Pubkey>
+    if (opts.parentAsset) {
+      parts.push(Buffer.from([1])); // Some
+      parts.push(Buffer.from(opts.parentAsset));
+    } else {
+      parts.push(Buffer.from([0])); // None
+    }
+    parts.push(Buffer.from([opts.parentLocked ?? 0]));
+    parts.push(Buffer.from([opts.colLocked ?? 0]));
+
     // Strings
     parts.push(borshString(opts.agentUri ?? 'https://example.com'));
     parts.push(borshString(opts.nftName ?? 'TestAgent'));
+    parts.push(borshString(opts.col ?? ''));
 
     return Buffer.concat(parts);
   }
@@ -208,10 +225,17 @@ describe('AgentAccount', () => {
     expect(agent.agent_uri).toBe('https://example.com');
     expect(agent.token_uri).toBe('https://example.com');
     expect(agent.nft_name).toBe('TestAgent');
+    expect(agent.col).toBe('');
     expect(agent.metadata).toEqual([]);
     expect(agent.getCollectionPublicKey()).toEqual(new PublicKey(pubkeyBytes(1)));
+    expect(agent.getCreatorPublicKey()).toEqual(new PublicKey(pubkeyBytes(9)));
+    expect(agent.getCreatorsPublicKeys()).toEqual([new PublicKey(pubkeyBytes(9))]);
+    expect(agent.creators).toEqual([new PublicKey(pubkeyBytes(9))]);
     expect(agent.getOwnerPublicKey()).toEqual(new PublicKey(pubkeyBytes(2)));
     expect(agent.getAssetPublicKey()).toEqual(new PublicKey(pubkeyBytes(3)));
+    expect(agent.getParentAssetPublicKey()).toBeNull();
+    expect(agent.isParentLocked()).toBe(false);
+    expect(agent.isCollectionPointerLocked()).toBe(false);
   });
 
   it('should deserialize valid data with wallet', () => {
@@ -243,7 +267,7 @@ describe('AgentAccount', () => {
   });
 
   it('should reject data too short', () => {
-    expect(() => AgentAccount.deserialize(Buffer.alloc(226))).toThrow('expected >= 227');
+    expect(() => AgentAccount.deserialize(Buffer.alloc(265))).toThrow('expected >= 266');
   });
 
   it('should reject wrong discriminator', () => {
@@ -267,16 +291,18 @@ describe('AgentAccount', () => {
 
   it('should reject invalid Option tag', () => {
     const payload = buildAgentPayload({});
-    // Corrupt the option tag (at offset 98 in account data = after collection+owner+asset+bump+atom_enabled)
+    // Corrupt wallet option tag at account-data offset 130:
+    // collection(32)+creator(32)+owner(32)+asset(32)+bump(1)+atom_enabled(1)
     const data = buildAccountBuffer(ACCOUNT_DISCRIMINATORS.AgentAccount, payload);
-    // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) = 106
-    data[106] = 2; // invalid option tag
+    // plus discriminator(8) => absolute offset 138
+    data[138] = 2; // invalid option tag
     expect(() => AgentAccount.deserialize(data)).toThrow('Invalid Option tag');
   });
 
   it('should handle getAgentWalletPublicKey with undefined wallet', () => {
     const agent = new AgentAccount({
       collection: pubkeyBytes(1),
+      creator: pubkeyBytes(9),
       owner: pubkeyBytes(2),
       asset: pubkeyBytes(3),
       bump: 255,
@@ -288,8 +314,12 @@ describe('AgentAccount', () => {
       response_count: 0n,
       revoke_digest: Buffer.alloc(32),
       revoke_count: 0n,
+      parent_asset: null,
+      parent_locked: 0,
+      col_locked: 0,
       agent_uri: '',
       nft_name: '',
+      col: '',
     });
     // Force undefined to test defensive check
     (agent as any).agent_wallet = undefined;

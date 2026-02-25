@@ -253,6 +253,90 @@ describe('IdentityTransactionBuilder', () => {
     });
   });
 
+  describe('setCollectionPointer', () => {
+    it('should reject missing c1: prefix', async () => {
+      await expect(builder.setCollectionPointer(PublicKey.unique(), 'abc123'))
+        .rejects.toThrow('c1:');
+    });
+
+    it('should reject empty payload', async () => {
+      await expect(builder.setCollectionPointer(PublicKey.unique(), 'c1:'))
+        .rejects.toThrow('cannot be empty');
+    });
+
+    it('should reject invalid payload chars', async () => {
+      await expect(builder.setCollectionPointer(PublicKey.unique(), 'c1:abc-123'))
+        .rejects.toThrow('[a-z0-9]');
+    });
+
+    it('should reject UTF-8 length > 128 bytes', async () => {
+      const tooLong = `c1:${'a'.repeat(126)}`; // 129 bytes total
+      await expect(builder.setCollectionPointer(PublicKey.unique(), tooLong))
+        .rejects.toThrow('<= 128 bytes');
+    });
+
+    it('should return PreparedTransaction when skipSend', async () => {
+      const result = await builder.setCollectionPointer(
+        PublicKey.unique(),
+        'c1:abc123',
+        { skipSend: true, signer: payer.publicKey }
+      );
+
+      expect('transaction' in result).toBe(true);
+    });
+  });
+
+  describe('setCollectionPointerWithOptions', () => {
+    it('should reject missing c1: prefix', async () => {
+      await expect(builder.setCollectionPointerWithOptions(PublicKey.unique(), 'abc123', true))
+        .rejects.toThrow('c1:');
+    });
+
+    it('should return PreparedTransaction when skipSend', async () => {
+      const result = await builder.setCollectionPointerWithOptions(
+        PublicKey.unique(),
+        'c1:abc123',
+        true,
+        { skipSend: true, signer: payer.publicKey }
+      );
+
+      expect('transaction' in result).toBe(true);
+    });
+  });
+
+  describe('setParentAsset', () => {
+    it('should return PreparedTransaction when skipSend', async () => {
+      const result = await builder.setParentAsset(
+        PublicKey.unique(),
+        PublicKey.unique(),
+        { skipSend: true, signer: payer.publicKey }
+      );
+
+      expect('transaction' in result).toBe(true);
+    });
+  });
+
+  describe('setParentAssetWithOptions', () => {
+    it('should reject non-boolean lock', async () => {
+      await expect(builder.setParentAssetWithOptions(
+        PublicKey.unique(),
+        PublicKey.unique(),
+        'true' as any
+      )).rejects.toThrow('lock must be a boolean');
+    });
+
+    it('should return PreparedTransaction when skipSend', async () => {
+      const result = await builder.setParentAssetWithOptions(
+        PublicKey.unique(),
+        PublicKey.unique(),
+        true,
+        { skipSend: true, signer: payer.publicKey }
+      );
+
+      expect('transaction' in result).toBe(true);
+    });
+  });
+
   describe('setMetadata', () => {
     it('should reject reserved agentWallet key', async () => {
       await expect(builder.setMetadata(

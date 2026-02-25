@@ -30,10 +30,12 @@ const DEFAULT_MAX_ACCOUNTS = 1000;
 export class AgentMintResolver {
     assetCache = new Map();
     connection;
+    programId;
     cacheLoaded = false;
     loadingPromise = null;
-    constructor(connection, _collectionMint) {
+    constructor(connection, _collectionMint, programId = IDENTITY_PROGRAM_ID) {
         this.connection = connection;
+        this.programId = programId;
     }
     /**
      * @deprecated Use asset pubkey directly. In v0.3.0, agents are identified by asset, not agent_id.
@@ -58,7 +60,7 @@ export class AgentMintResolver {
             return this.assetCache.get(cacheKey);
         }
         // Derive AgentAccount PDA
-        const [agentPda] = PDAHelpers.getAgentPDA(asset);
+        const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programId);
         try {
             const accountInfo = await this.connection.getAccountInfo(agentPda);
             if (!accountInfo) {
@@ -97,7 +99,7 @@ export class AgentMintResolver {
         const strictParsing = options.strictParsing ?? false;
         try {
             const discriminatorBytes = bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount);
-            const accounts = await this.connection.getProgramAccounts(IDENTITY_PROGRAM_ID, {
+            const accounts = await this.connection.getProgramAccounts(this.programId, {
                 filters: [
                     {
                         memcmp: {

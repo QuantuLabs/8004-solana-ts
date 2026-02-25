@@ -29,6 +29,46 @@ export interface IndexerClientConfig {
 }
 
 /**
+ * Query options for /agents indexer reads.
+ * Supports base registry collection filters and collection pointer filters.
+ */
+export interface AgentQueryOptions {
+  limit?: number;
+  offset?: number;
+  order?: string;
+  owner?: string;
+  creator?: string;
+  collection?: string;
+  collectionPointer?: string;
+  wallet?: string;
+  parentAsset?: string;
+  parentCreator?: string;
+  colLocked?: boolean;
+  parentLocked?: boolean;
+}
+
+/**
+ * Query options for canonical collection pointer reads.
+ */
+export interface CollectionPointerQueryOptions {
+  col?: string;
+  creator?: string;
+  firstSeenAsset?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Query options for assets scoped to a collection pointer.
+ */
+export interface CollectionAssetsQueryOptions {
+  creator?: string;
+  limit?: number;
+  offset?: number;
+  order?: string;
+}
+
+/**
  * Read-only indexer client contract used by the SDK.
  *
  * The SDK supports multiple backends (REST v1 / GraphQL v2). This interface
@@ -40,7 +80,7 @@ export interface IndexerReadClient {
 
   // Agents
   getAgent(asset: string): Promise<IndexedAgent | null>;
-  getAgents(options?: { limit?: number; offset?: number; order?: string }): Promise<IndexedAgent[]>;
+  getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
   getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
   getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;
   getAgentByWallet(wallet: string): Promise<IndexedAgent | null>;
@@ -50,6 +90,11 @@ export interface IndexerReadClient {
     limit?: number;
     cursorSortKey?: string;
   }): Promise<IndexedAgent[]>;
+  getCollectionPointers?(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]>;
+  getCollectionAssetCount?(col: string, creator?: string): Promise<number>;
+  getCollectionAssets?(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]>;
+  getCollectionStats?(collection: string): Promise<CollectionStats | null>;
+  getAllCollectionStats?(): Promise<CollectionStats[]>;
   getGlobalStats(): Promise<GlobalStats>;
 
   // Feedbacks
@@ -104,9 +149,15 @@ export interface IndexerReadClient {
 export interface IndexedAgent {
   asset: string;
   owner: string;
+  creator?: string | null;
   agent_uri: string | null;
   agent_wallet: string | null;
   collection: string;
+  collection_pointer?: string | null;
+  col_locked?: boolean;
+  parent_asset?: string | null;
+  parent_creator?: string | null;
+  parent_locked?: boolean;
   nft_name: string | null;
   atom_enabled?: boolean;
   // ATOM Stats
@@ -210,10 +261,27 @@ export interface IndexedValidation {
  */
 export interface CollectionStats {
   collection: string;
+  registry_type?: string | null;
   authority: string | null;
   agent_count: number;
   total_feedbacks: number;
   avg_score: number | null;
+}
+
+/**
+ * Canonical collection pointer record from `/collection_pointers`.
+ */
+export interface CollectionPointerRecord {
+  col: string;
+  creator: string;
+  first_seen_asset: string;
+  first_seen_at: string;
+  first_seen_slot: string;
+  first_seen_tx_signature: string | null;
+  last_seen_at: string;
+  last_seen_slot: string;
+  last_seen_tx_signature: string | null;
+  asset_count: string;
 }
 
 /**
@@ -542,15 +610,20 @@ export class IndexerClient implements IndexerReadClient {
   /**
    * Get all agents with pagination
    */
-  async getAgents(options?: {
-    limit?: number;
-    offset?: number;
-    order?: string;
-  }): Promise<IndexedAgent[]> {
+  async getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]> {
     const query = this.buildQuery({
       limit: options?.limit,
       offset: options?.offset,
       order: options?.order || 'created_at.desc',
+      owner: options?.owner ? `eq.${options.owner}` : undefined,
+      creator: options?.creator ? `eq.${options.creator}` : undefined,
+      collection: options?.collection ? `eq.${options.collection}` : undefined,
+      collection_pointer: options?.collectionPointer ? `eq.${options.collectionPointer}` : undefined,
+      agent_wallet: options?.wallet ? `eq.${options.wallet}` : undefined,
+      parent_asset: options?.parentAsset ? `eq.${options.parentAsset}` : undefined,
+      parent_creator: options?.parentCreator ? `eq.${options.parentCreator}` : undefined,
+      col_locked: options?.colLocked !== undefined ? `eq.${options.colLocked}` : undefined,
+      parent_locked: options?.parentLocked !== undefined ? `eq.${options.parentLocked}` : undefined,
     });
     return this.request<IndexedAgent[]>(`/agents${query}`);
   }
@@ -876,6 +949,49 @@ export class IndexerClient implements IndexerReadClient {
   // ============================================================================
   // Stats (Views)
   // ============================================================================
+
+  /**
+   * Get canonical collection pointer rows.
+   */
+  async getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]> {
+    const query = this.buildQuery({
+      col: options?.col ? `eq.${options.col}` : undefined,
+      creator: options?.creator ? `eq.${options.creator}` : undefined,
+      first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
+      limit: options?.limit,
+      offset: options?.offset,
+    });
+    return this.request<CollectionPointerRecord[]>(`/collection_pointers${query}`);
+  }
+
+  /**
+   * Count assets attached to a collection pointer (optionally scoped by creator).
+   */
+  async getCollectionAssetCount(col: string, creator?: string): Promise<number> {
+    const query = this.buildQuery({
+      col: `eq.${col}`,
+      creator: creator ? `eq.${creator}` : undefined,
+    });
+    const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${query}`);
+    const raw = row?.asset_count;
+    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'string') return Number.parseInt(raw, 10) || 0;
+    return 0;
+  }
+
+  /**
+   * Get assets by collection pointer (optionally scoped by creator).
+   */
+  async getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]> {
+    const query = this.buildQuery({
+      col: `eq.${col}`,
+      creator: options?.creator ? `eq.${options.creator}` : undefined,
+      limit: options?.limit,
+      offset: options?.offset,
+      order: options?.order,
+    });
+    return this.request<IndexedAgent[]>(`/collection_assets${query}`);
+  }
 
   /**
    * Get stats for a specific collection

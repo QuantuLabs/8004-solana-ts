@@ -194,6 +194,15 @@ export class IndexerClient {
             limit: options?.limit,
             offset: options?.offset,
             order: options?.order || 'created_at.desc',
+            owner: options?.owner ? `eq.${options.owner}` : undefined,
+            creator: options?.creator ? `eq.${options.creator}` : undefined,
+            collection: options?.collection ? `eq.${options.collection}` : undefined,
+            collection_pointer: options?.collectionPointer ? `eq.${options.collectionPointer}` : undefined,
+            agent_wallet: options?.wallet ? `eq.${options.wallet}` : undefined,
+            parent_asset: options?.parentAsset ? `eq.${options.parentAsset}` : undefined,
+            parent_creator: options?.parentCreator ? `eq.${options.parentCreator}` : undefined,
+            col_locked: options?.colLocked !== undefined ? `eq.${options.colLocked}` : undefined,
+            parent_locked: options?.parentLocked !== undefined ? `eq.${options.parentLocked}` : undefined,
         });
         return this.request(`/agents${query}`);
     }
@@ -465,6 +474,48 @@ export class IndexerClient {
     // ============================================================================
     // Stats (Views)
     // ============================================================================
+    /**
+     * Get canonical collection pointer rows.
+     */
+    async getCollectionPointers(options) {
+        const query = this.buildQuery({
+            col: options?.col ? `eq.${options.col}` : undefined,
+            creator: options?.creator ? `eq.${options.creator}` : undefined,
+            first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
+            limit: options?.limit,
+            offset: options?.offset,
+        });
+        return this.request(`/collection_pointers${query}`);
+    }
+    /**
+     * Count assets attached to a collection pointer (optionally scoped by creator).
+     */
+    async getCollectionAssetCount(col, creator) {
+        const query = this.buildQuery({
+            col: `eq.${col}`,
+            creator: creator ? `eq.${creator}` : undefined,
+        });
+        const row = await this.request(`/collection_asset_count${query}`);
+        const raw = row?.asset_count;
+        if (typeof raw === 'number')
+            return raw;
+        if (typeof raw === 'string')
+            return Number.parseInt(raw, 10) || 0;
+        return 0;
+    }
+    /**
+     * Get assets by collection pointer (optionally scoped by creator).
+     */
+    async getCollectionAssets(col, options) {
+        const query = this.buildQuery({
+            col: `eq.${col}`,
+            creator: options?.creator ? `eq.${options.creator}` : undefined,
+            limit: options?.limit,
+            offset: options?.offset,
+            order: options?.order,
+        });
+        return this.request(`/collection_assets${query}`);
+    }
     /**
      * Get stats for a specific collection
      */

@@ -2,7 +2,7 @@
  * Indexer Client for GraphQL v2 API
  * Implements the IndexerReadClient contract used by the SDK.
  */
-import type { CheckpointSet, GlobalStats, IndexedAgent, IndexedAgentReputation, IndexedFeedback, IndexedFeedbackResponse, IndexedRevocation, IndexedValidation, IndexerReadClient, ReplayDataPage } from './indexer-client.js';
+import type { AgentQueryOptions, CheckpointSet, CollectionAssetsQueryOptions, CollectionPointerQueryOptions, CollectionPointerRecord, GlobalStats, IndexedAgent, IndexedAgentReputation, IndexedFeedback, IndexedFeedbackResponse, IndexedRevocation, IndexedValidation, IndexerReadClient, ReplayDataPage } from './indexer-client.js';
 export interface IndexerGraphQLClientConfig {
     /** GraphQL endpoint (e.g., https://host/v2/graphql) */
     graphqlUrl: string;
@@ -25,11 +25,7 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     isAvailable(): Promise<boolean>;
     private loadHashChainHeads;
     getAgent(asset: string): Promise<IndexedAgent | null>;
-    getAgents(options?: {
-        limit?: number;
-        offset?: number;
-        order?: string;
-    }): Promise<IndexedAgent[]>;
+    getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
     getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
     getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;
     getAgentByWallet(wallet: string): Promise<IndexedAgent | null>;
@@ -40,6 +36,9 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
         cursorSortKey?: string;
     }): Promise<IndexedAgent[]>;
     getGlobalStats(): Promise<GlobalStats>;
+    getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]>;
+    getCollectionAssetCount(col: string, creator?: string): Promise<number>;
+    getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]>;
     getFeedbacks(asset: string, options?: {
         includeRevoked?: boolean;
         limit?: number;

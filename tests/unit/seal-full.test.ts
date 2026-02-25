@@ -52,8 +52,8 @@ describe('seal (full coverage)', () => {
     });
 
     it('should throw for valueDecimals out of range', () => {
-      expect(() => validateSealInputs({ ...baseSealParams, valueDecimals: -1 })).toThrow('valueDecimals must be 0-6');
-      expect(() => validateSealInputs({ ...baseSealParams, valueDecimals: 7 })).toThrow('valueDecimals must be 0-6');
+      expect(() => validateSealInputs({ ...baseSealParams, valueDecimals: -1 })).toThrow('valueDecimals must be 0-18');
+      expect(() => validateSealInputs({ ...baseSealParams, valueDecimals: 19 })).toThrow('valueDecimals must be 0-18');
     });
 
     it('should throw for score out of range', () => {

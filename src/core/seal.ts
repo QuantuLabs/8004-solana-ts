@@ -24,9 +24,9 @@ export const MAX_URI_LEN = 250;
  * Parameters for SEAL hash computation
  */
 export interface SealParams {
-  /** Metric value - MUST be bigint for correct i64 serialization */
+  /** Metric value - MUST be bigint for correct i128 serialization */
   value: bigint;
-  /** Decimal precision (0-6) */
+  /** Decimal precision (0-18) */
   valueDecimals: number;
   /** Quality score (0-100) or null */
   score: number | null;
@@ -64,8 +64,8 @@ export function validateSealInputs(params: SealParams): void {
   if (uriBytes.length > MAX_URI_LEN) {
     throw new Error(`feedbackUri exceeds ${MAX_URI_LEN} bytes (got ${uriBytes.length})`);
   }
-  if (params.valueDecimals < 0 || params.valueDecimals > 6) {
-    throw new Error(`valueDecimals must be 0-6 (got ${params.valueDecimals})`);
+  if (params.valueDecimals < 0 || params.valueDecimals > 18) {
+    throw new Error(`valueDecimals must be 0-18 (got ${params.valueDecimals})`);
   }
   if (params.score !== null && (params.score < 0 || params.score > 100)) {
     throw new Error(`score must be 0-100 or null (got ${params.score})`);
@@ -76,17 +76,17 @@ export function validateSealInputs(params: SealParams): void {
  * Compute SEAL hash (mirrors on-chain computation EXACTLY)
  * CRITICAL: Must produce identical output to Rust compute_seal_hash()
  *
- * Binary format: FIXED FIELDS (28 bytes) then DYNAMIC FIELDS
+ * Binary format: FIXED FIELDS (36 bytes) then DYNAMIC FIELDS
  *
  * FIXED (offset known):
  * - DOMAIN_SEAL_V1 (16 bytes)         offset 0
- * - value (8 bytes, i64 LE)           offset 16
- * - value_decimals (1 byte)           offset 24
- * - score_flag (1 byte: 0=None, 1=Some) offset 25
- * - score_value (1 byte)              offset 26
- * - file_hash_flag (1 byte)           offset 27
+ * - value (16 bytes, i128 LE)         offset 16
+ * - value_decimals (1 byte)           offset 32
+ * - score_flag (1 byte: 0=None, 1=Some) offset 33
+ * - score_value (1 byte)              offset 34
+ * - file_hash_flag (1 byte)           offset 35
  *
- * DYNAMIC (after offset 28):
+ * DYNAMIC (after offset 36):
  * - file_hash (32 bytes, only if flag=1)
  * - tag1_len (2 bytes, u16 LE) + tag1_bytes
  * - tag2_len (2 bytes, u16 LE) + tag2_bytes
@@ -101,30 +101,28 @@ export function computeSealHash(params: SealParams): Buffer {
 
   const parts: Buffer[] = [];
 
-  // === FIXED FIELDS (28 bytes, known offsets) ===
+  // === FIXED FIELDS (36 bytes, known offsets) ===
 
   // offset 0: Domain (16 bytes)
   parts.push(DOMAIN_SEAL_V1);
 
-  // offset 16: Value (8 bytes, i64 LE)
-  const valueBuf = Buffer.alloc(8);
-  valueBuf.writeBigInt64LE(params.value);
-  parts.push(valueBuf);
+  // offset 16: Value (16 bytes, i128 LE)
+  parts.push(serializeI128LE(params.value));
 
-  // offset 24: Decimals (1 byte)
+  // offset 32: Decimals (1 byte)
   parts.push(Buffer.from([params.valueDecimals]));
 
-  // offset 25-26: Score (2 bytes, fixed layout)
+  // offset 33-34: Score (2 bytes, fixed layout)
   if (params.score === null) {
     parts.push(Buffer.from([0, 0])); // flag=0, placeholder=0
   } else {
     parts.push(Buffer.from([1, params.score])); // flag=1, value
   }
 
-  // offset 27: File hash flag (1 byte)
+  // offset 35: File hash flag (1 byte)
   parts.push(Buffer.from([params.feedbackFileHash === null ? 0 : 1]));
 
-  // === DYNAMIC FIELDS (after offset 28) ===
+  // === DYNAMIC FIELDS (after offset 36) ===
 
   // File hash (32 bytes if present)
   if (params.feedbackFileHash !== null) {
@@ -234,4 +232,23 @@ export function createSealParams(
     feedbackUri,
     feedbackFileHash: feedbackFileHash ?? null,
   };
+}
+
+function serializeI128LE(value: bigint): Buffer {
+  const min = -(1n << 127n);
+  const max = (1n << 127n) - 1n;
+  if (value < min || value > max) {
+    throw new Error(`value exceeds i128 range (${min} to ${max})`);
+  }
+
+  let encoded = value;
+  if (encoded < 0n) {
+    encoded = (1n << 128n) + encoded;
+  }
+
+  const out = Buffer.alloc(16);
+  for (let i = 0; i < 16; i++) {
+    out[i] = Number((encoded >> BigInt(i * 8)) & 0xffn);
+  }
+  return out;
 }

@@ -34,9 +34,10 @@ export interface LoadAgentsOptions {
 export declare class AgentMintResolver {
     private assetCache;
     private connection;
+    private programId;
     private cacheLoaded;
     private loadingPromise;
-    constructor(connection: Connection, _collectionMint?: PublicKey);
+    constructor(connection: Connection, _collectionMint?: PublicKey, programId?: PublicKey);
     /**
      * @deprecated Use asset pubkey directly. In v0.3.0, agents are identified by asset, not agent_id.
      *

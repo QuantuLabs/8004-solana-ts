@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 
-const PROGRAM_ID = new PublicKey('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm');
+const PROGRAM_ID = new PublicKey('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
 
 async function getRootConfig() {
   const connection = new Connection('https://api.devnet.solana.com', 'confirmed');

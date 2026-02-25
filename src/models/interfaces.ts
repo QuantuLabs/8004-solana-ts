@@ -118,12 +118,12 @@ export interface GiveFeedbackParams {
    * - Raw bigint/int: 9977n with valueDecimals=2 → used directly
    *
    * Supports negative values for yields, PnL, etc.
-   * Range: i64 (-9223372036854775808 to 9223372036854775807)
-   * Max 6 decimal places.
+   * Range: i128 (-(2^127) to 2^127-1)
+   * Max 18 decimal places.
    */
   value: string | number | bigint;
   /**
-   * Decimal precision (0-6) - only needed when value is raw integer/bigint.
+   * Decimal precision (0-18) - only needed when value is raw integer/bigint.
    * Auto-detected when value is a decimal string like "99.77".
    */
   valueDecimals?: number;
@@ -197,4 +197,3 @@ export interface SearchResultMeta {
     averagePerChainMs?: number;
   };
 }
-

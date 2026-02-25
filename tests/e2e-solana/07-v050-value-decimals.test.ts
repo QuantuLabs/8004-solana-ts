@@ -2,8 +2,8 @@
  * E2E Tests - v0.5.0 Value/Decimals Features
  *
  * Tests new EVM-compatible feedback signature:
- * - value: i64 (supports negative for yields/PnL)
- * - valueDecimals: u8 (0-6)
+ * - value: i128 (supports negative for yields/PnL)
+ * - valueDecimals: u8 (0-18)
  * - score: Option<u8> (null = derive from tag/default to 50)
  *
  * Attack scenarios:
@@ -13,10 +13,10 @@
  */
 
 import { describe, it, expect, beforeAll } from '@jest/globals';
-import { Keypair, PublicKey, Connection, LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
+import { Keypair, PublicKey, Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createHash } from 'crypto';
 import { SolanaSDK } from '../../src/core/sdk-solana';
-import { loadTestWallets, fundNewKeypair } from './devnet-setup';
+import { loadTestWallets } from './devnet-setup';
 
 function createFeedbackHash(feedbackUri: string): Buffer {
   return createHash('sha256').update(feedbackUri).digest();
@@ -45,6 +45,17 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
 
     console.log(`Agent wallet: ${agentWallet.publicKey.toBase58()}`);
     console.log(`Client wallet: ${clientWallet.publicKey.toBase58()}`);
+
+    // Localnet safety: devnet fixture wallets may be empty on a fresh validator.
+    if (rpcUrl.includes('127.0.0.1') || rpcUrl.includes('localhost')) {
+      for (const wallet of [agentWallet, clientWallet]) {
+        const balance = await connection.getBalance(wallet.publicKey);
+        if (balance < LAMPORTS_PER_SOL) {
+          const sig = await connection.requestAirdrop(wallet.publicKey, 10 * LAMPORTS_PER_SOL);
+          await connection.confirmTransaction(sig, 'confirmed');
+        }
+      }
+    }
 
     sdk = new SolanaSDK({
       rpcUrl,
@@ -136,10 +147,10 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
   });
 
   // ============================================================================
-  // 2. Value Ranges (i64)
+  // 2. Value Ranges (i128)
   // ============================================================================
 
-  describe('Value Ranges (i64)', () => {
+  describe('Value Ranges (i128)', () => {
     it('should accept value = 0', async () => {
       const uri = `ipfs://value0_${Date.now()}`;
       const result = await clientSdk.giveFeedback(
@@ -216,16 +227,16 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
       console.log('✅ Large negative value accepted');
     });
 
-    it('should accept i64 MAX value', async () => {
-      const uri = `ipfs://i64max_${Date.now()}`;
-      const I64_MAX = 9223372036854775807n;
+    it('should accept i128 MAX value', async () => {
+      const uri = `ipfs://i128max_${Date.now()}`;
+      const I128_MAX = (1n << 127n) - 1n;
       const result = await clientSdk.giveFeedback(
         agent,
         {
-          value: I64_MAX,
+          value: I128_MAX,
           valueDecimals: 0,
           score: 100,
-          tag1: 'i64-max',
+          tag1: 'i128-max',
           feedbackUri: uri,
           feedbackHash: createFeedbackHash(uri),
         },
@@ -233,19 +244,19 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
       );
 
       expect(result.success).toBe(true);
-      console.log('✅ i64 MAX value accepted');
+      console.log('✅ i128 MAX value accepted');
     });
 
-    it('should accept i64 MIN value', async () => {
-      const uri = `ipfs://i64min_${Date.now()}`;
-      const I64_MIN = -9223372036854775808n;
+    it('should accept i128 MIN value', async () => {
+      const uri = `ipfs://i128min_${Date.now()}`;
+      const I128_MIN = -(1n << 127n);
       const result = await clientSdk.giveFeedback(
         agent,
         {
-          value: I64_MIN,
+          value: I128_MIN,
           valueDecimals: 0,
           score: 0,
-          tag1: 'i64-min',
+          tag1: 'i128-min',
           feedbackUri: uri,
           feedbackHash: createFeedbackHash(uri),
         },
@@ -253,12 +264,12 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
       );
 
       expect(result.success).toBe(true);
-      console.log('✅ i64 MIN value accepted');
+      console.log('✅ i128 MIN value accepted');
     });
 
-    it('should reject value exceeding i64 MAX', async () => {
+    it('should reject value exceeding i128 MAX', async () => {
       const uri = `ipfs://overflow_${Date.now()}`;
-      const OVERFLOW = 9223372036854775808n; // i64 MAX + 1
+      const OVERFLOW = (1n << 127n); // i128 MAX + 1
 
       try {
         const result = await clientSdk.giveFeedback(
@@ -275,16 +286,16 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
         );
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain('i64 range');
+        expect(result.error).toContain('i128 range');
       } catch (error: any) {
-        expect(error.message).toContain('i64 range');
+        expect(error.message).toContain('i128 range');
       }
-      console.log('✅ i64 overflow rejected');
+      console.log('✅ i128 overflow rejected');
     });
 
-    it('should reject value below i64 MIN', async () => {
+    it('should reject value below i128 MIN', async () => {
       const uri = `ipfs://underflow_${Date.now()}`;
-      const UNDERFLOW = -9223372036854775809n; // i64 MIN - 1
+      const UNDERFLOW = -(1n << 127n) - 1n; // i128 MIN - 1
 
       try {
         const result = await clientSdk.giveFeedback(
@@ -301,11 +312,11 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
         );
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain('i64 range');
+        expect(result.error).toContain('i128 range');
       } catch (error: any) {
-        expect(error.message).toContain('i64 range');
+        expect(error.message).toContain('i128 range');
       }
-      console.log('✅ i64 underflow rejected');
+      console.log('✅ i128 underflow rejected');
     });
   });
 
@@ -352,13 +363,13 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
       console.log('✅ valueDecimals=2 accepted');
     });
 
-    it('should accept valueDecimals = 6 (maximum)', async () => {
-      const uri = `ipfs://dec6_${Date.now()}`;
+    it('should accept valueDecimals = 18 (maximum)', async () => {
+      const uri = `ipfs://dec18_${Date.now()}`;
       const result = await clientSdk.giveFeedback(
         agent,
         {
-          value: 9977000n, // 9.977000
-          valueDecimals: 6,
+          value: 9977000000000000000n, // 9.977000000000000000
+          valueDecimals: 18,
           score: 99,
           tag1: 'microseconds',
           feedbackUri: uri,
@@ -368,18 +379,18 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
       );
 
       expect(result.success).toBe(true);
-      console.log('✅ valueDecimals=6 accepted');
+      console.log('✅ valueDecimals=18 accepted');
     });
 
-    it('should reject valueDecimals > 6', async () => {
-      const uri = `ipfs://dec7_${Date.now()}`;
+    it('should reject valueDecimals > 18', async () => {
+      const uri = `ipfs://dec19_${Date.now()}`;
 
       try {
         const result = await clientSdk.giveFeedback(
           agent,
           {
             value: 9977n,
-            valueDecimals: 7, // Invalid
+            valueDecimals: 19, // Invalid
             score: 99,
             tag1: 'invalid-dec',
             feedbackUri: uri,
@@ -389,11 +400,11 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
         );
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain('0-6');
+        expect(result.error).toContain('0-18');
       } catch (error: any) {
-        expect(error.message).toContain('0-6');
+        expect(error.message).toContain('0-18');
       }
-      console.log('✅ valueDecimals=7 rejected');
+      console.log('✅ valueDecimals=19 rejected');
     });
 
     it('should reject negative valueDecimals', async () => {
@@ -415,7 +426,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
 
         expect(result.success).toBe(false);
       } catch (error: any) {
-        expect(error.message).toContain('0-6');
+        expect(error.message).toContain('0-18');
       }
       console.log('✅ Negative valueDecimals rejected');
     });

@@ -282,6 +282,7 @@ export class RegistryConfig {
  */
 export class AgentAccount {
   collection: Uint8Array; // Pubkey - collection this agent belongs to
+  creator: Uint8Array; // Pubkey - immutable creator snapshot
   owner: Uint8Array; // Pubkey - cached from Core asset
   asset: Uint8Array; // Pubkey - unique identifier (Metaplex Core asset)
   bump: number;
@@ -294,12 +295,17 @@ export class AgentAccount {
   response_count: bigint; // u64 - total response count
   revoke_digest: Uint8Array; // [u8; 32] - hash-chain of all revocations
   revoke_count: bigint; // u64 - total revocation count
+  parent_asset: Uint8Array | null; // Option<Pubkey>
+  parent_locked: number; // bool (u8)
+  col_locked: number; // bool (u8)
   // Dynamic-size fields last
   agent_uri: string; // max 250 bytes
   nft_name: string; // max 32 bytes
+  col: string; // canonical collection pointer (c1:<cid>)
 
   constructor(fields: {
     collection: Uint8Array;
+    creator: Uint8Array;
     owner: Uint8Array;
     asset: Uint8Array;
     bump: number;
@@ -311,10 +317,15 @@ export class AgentAccount {
     response_count: bigint;
     revoke_digest: Uint8Array;
     revoke_count: bigint;
+    parent_asset: Uint8Array | null;
+    parent_locked: number;
+    col_locked: number;
     agent_uri: string;
     nft_name: string;
+    col: string;
   }) {
     this.collection = fields.collection;
+    this.creator = fields.creator;
     this.owner = fields.owner;
     this.asset = fields.asset;
     this.bump = fields.bump;
@@ -326,8 +337,12 @@ export class AgentAccount {
     this.response_count = fields.response_count;
     this.revoke_digest = fields.revoke_digest;
     this.revoke_count = fields.revoke_count;
+    this.parent_asset = fields.parent_asset;
+    this.parent_locked = fields.parent_locked;
+    this.col_locked = fields.col_locked;
     this.agent_uri = fields.agent_uri;
     this.nft_name = fields.nft_name;
+    this.col = fields.col;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -337,7 +352,8 @@ export class AgentAccount {
       {
         kind: 'struct',
         fields: [
-          ['collection', [32]], // Collection pubkey
+          ['collection', [32]], // Base registry collection pubkey
+          ['creator', [32]], // Immutable creator snapshot
           ['owner', [32]],
           ['asset', [32]],
           ['bump', 'u8'],
@@ -349,20 +365,25 @@ export class AgentAccount {
           ['response_count', 'u64'],
           ['revoke_digest', [32]], // Hash-chain for revocations
           ['revoke_count', 'u64'],
+          ['parent_asset', { kind: 'option', type: [32] }],
+          ['parent_locked', 'u8'],
+          ['col_locked', 'u8'],
           ['agent_uri', 'string'],
           ['nft_name', 'string'],
+          ['col', 'string'],
         ],
       },
     ],
   ]);
 
   static deserialize(data: Buffer): AgentAccount {
-    // discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1)
+    // discriminator(8) + collection(32) + creator(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1)
     // + agent_wallet option tag(1) + feedback_digest(32) + feedback_count(8)
     // + response_digest(32) + response_count(8) + revoke_digest(32) + revoke_count(8) = 227 bytes minimum
-    // With Some(wallet): 227 + 32 = 259 bytes minimum
-    if (data.length < 227) {
-      throw new Error(`Invalid AgentAccount data: expected >= 227 bytes, got ${data.length}`);
+    // + parent_asset option tag(1) + parent_locked(1) + col_locked(1) = 257 bytes minimum
+    // + agent_uri len(4) + nft_name len(4) + col len(4) = 269 bytes minimum
+    if (data.length < 266) {
+      throw new Error(`Invalid AgentAccount data: expected >= 266 bytes, got ${data.length}`);
     }
     if (!matchesDiscriminator(data, ACCOUNT_DISCRIMINATORS.AgentAccount)) {
       throw new Error('Invalid AgentAccount discriminator');
@@ -370,24 +391,37 @@ export class AgentAccount {
     const accountData = data.slice(8);
 
     // Security: PRE-VALIDATE string lengths BEFORE deserializeUnchecked to prevent OOM
-    // Layout: collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet(Option)
+    // Layout: collection(32) + creator(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1) + agent_wallet(Option)
     //         + feedback_digest(32) + feedback_count(8) + response_digest(32) + response_count(8)
-    //         + revoke_digest(32) + revoke_count(8) + agent_uri(String) + nft_name(String)
-    let offset = 32 + 32 + 32 + 1 + 1; // = 98, at agent_wallet Option tag
+    //         + revoke_digest(32) + revoke_count(8) + parent_asset(Option) + parent_locked(1) + col_locked(1)
+    //         + agent_uri(String) + nft_name(String) + col(String)
+    let offset = 32 + 32 + 32 + 32 + 1 + 1; // = 130, at agent_wallet Option tag
 
     // Pre-validate Option<Pubkey>
-    const optionResult = preValidateBorshOption(accountData, offset, 32);
-    offset += optionResult.consumedBytes;
+    const walletOption = preValidateBorshOption(accountData, offset, 32);
+    offset += walletOption.consumedBytes;
 
     // Skip hash-chain fixed fields: feedback_digest(32) + feedback_count(8) + response_digest(32) + response_count(8) + revoke_digest(32) + revoke_count(8) = 120 bytes
     offset += 32 + 8 + 32 + 8 + 32 + 8;
+
+    // Pre-validate parent_asset Option<Pubkey>
+    const parentOption = preValidateBorshOption(accountData, offset, 32);
+    offset += parentOption.consumedBytes;
+
+    // parent_locked(u8) + col_locked(u8)
+    offset += 1 + 1;
 
     // Pre-validate agent_uri string length
     const agentUriLen = preValidateBorshLength(accountData, offset, LIMITS.MAX_URI_LENGTH, 'agent_uri');
     offset += 4 + agentUriLen;
 
     // Pre-validate nft_name string length
-    preValidateBorshLength(accountData, offset, LIMITS.MAX_NFT_NAME_LENGTH, 'nft_name');
+    const nftNameLen = preValidateBorshLength(accountData, offset, LIMITS.MAX_NFT_NAME_LENGTH, 'nft_name');
+    offset += 4 + nftNameLen;
+
+    // Pre-validate canonical collection pointer length (CID-v1 max target)
+    const MAX_COLLECTION_POINTER_LENGTH = 128;
+    preValidateBorshLength(accountData, offset, MAX_COLLECTION_POINTER_LENGTH, 'col');
 
     // Now safe to deserialize - lengths are validated
     const result = deserializeUnchecked(this.schema, AgentAccount, accountData);
@@ -395,6 +429,7 @@ export class AgentAccount {
     // Post-validation backup (defense in depth)
     validateStringLength(result.agent_uri, LIMITS.MAX_URI_LENGTH, 'agent_uri');
     validateStringLength(result.nft_name, LIMITS.MAX_NFT_NAME_LENGTH, 'nft_name');
+    validateStringLength(result.col, 128, 'col');
 
     return result;
   }
@@ -405,6 +440,25 @@ export class AgentAccount {
 
   getOwnerPublicKey(): PublicKey {
     return new PublicKey(this.owner);
+  }
+
+  getCreatorPublicKey(): PublicKey {
+    return new PublicKey(this.creator);
+  }
+
+  /**
+   * Alias list for compatibility with clients expecting `creators`.
+   * On-chain AgentAccount stores a single immutable creator snapshot.
+   */
+  getCreatorsPublicKeys(): PublicKey[] {
+    return [this.getCreatorPublicKey()];
+  }
+
+  /**
+   * Backward-compatible property alias (`creators`) for SDK consumers.
+   */
+  get creators(): PublicKey[] {
+    return this.getCreatorsPublicKeys();
   }
 
   getAssetPublicKey(): PublicKey {
@@ -432,6 +486,21 @@ export class AgentAccount {
    */
   hasAgentWallet(): boolean {
     return this.agent_wallet != null;
+  }
+
+  getParentAssetPublicKey(): PublicKey | null {
+    if (this.parent_asset === null || this.parent_asset === undefined) {
+      return null;
+    }
+    return new PublicKey(this.parent_asset);
+  }
+
+  isParentLocked(): boolean {
+    return this.parent_locked !== 0;
+  }
+
+  isCollectionPointerLocked(): boolean {
+    return this.col_locked !== 0;
   }
 
   // Alias for backwards compatibility

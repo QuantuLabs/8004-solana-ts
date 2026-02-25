@@ -8,14 +8,14 @@
  *   "-5.5"  → { value: -55n, valueDecimals: 1 }
  *
  * - Supports negatives (for yields, PnL, etc.)
- * - Max 6 decimals (Solana program limit)
- * - Clamps to i64 range
+ * - Max 18 decimals (Solana program limit)
+ * - Clamps to i128 range
  */
 
-const MAX_VALUE_DECIMALS = 6;
+const MAX_VALUE_DECIMALS = 18;
 const MAX_EXPONENT = 20;
-const I64_MAX = 9223372036854775807n;
-const I64_MIN = -9223372036854775808n;
+const I128_MAX = (1n << 127n) - 1n;
+const I128_MIN = -(1n << 127n);
 
 export interface EncodedValue {
   value: bigint;
@@ -119,8 +119,8 @@ export function encodeReputationValue(
       throw new Error(`valueDecimals must be integer 0-${MAX_VALUE_DECIMALS}`);
     }
     const value = input;
-    if (value > I64_MAX || value < I64_MIN) {
-      throw new Error(`Value ${value} exceeds i64 range (${I64_MIN} to ${I64_MAX})`);
+    if (value > I128_MAX || value < I128_MIN) {
+      throw new Error(`Value ${value} exceeds i128 range (${I128_MIN} to ${I128_MAX})`);
     }
     return {
       value,
@@ -140,8 +140,8 @@ export function encodeReputationValue(
       throw new Error(`Integer ${input} exceeds safe integer range. Use bigint for large values.`);
     }
     const value = BigInt(input);
-    if (value > I64_MAX || value < I64_MIN) {
-      throw new Error(`Value ${value} exceeds i64 range (${I64_MIN} to ${I64_MAX})`);
+    if (value > I128_MAX || value < I128_MIN) {
+      throw new Error(`Value ${value} exceeds i128 range (${I128_MIN} to ${I128_MAX})`);
     }
     return {
       value,
@@ -184,8 +184,8 @@ export function encodeReputationValue(
   if (nextDigit >= 5) raw = raw + 1n;
   if (negative) raw = -raw;
 
-  if (raw > I64_MAX || raw < I64_MIN) {
-    throw new Error(`Encoded value ${raw} exceeds i64 range (${I64_MIN} to ${I64_MAX})`);
+  if (raw > I128_MAX || raw < I128_MIN) {
+    throw new Error(`Encoded value ${raw} exceeds i128 range (${I128_MIN} to ${I128_MAX})`);
   }
 
   return {

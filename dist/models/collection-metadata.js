@@ -1,68 +1,124 @@
 /**
  * Collection Metadata Builder
- * Builds 8004-compliant JSON for collection URI
+ * Builds JSON for collection URI (IPFS collection document v1 + SDK legacy fields)
  */
+export const COLLECTION_DOCUMENT_VERSION = '1.0.0';
+function normalizeOptionalText(value) {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+}
+function normalizeSocials(value) {
+    if (!value) {
+        return undefined;
+    }
+    const entries = [];
+    for (const [key, socialValue] of Object.entries(value)) {
+        if (typeof socialValue !== 'string') {
+            continue;
+        }
+        const trimmed = socialValue.trim();
+        if (trimmed.length === 0) {
+            continue;
+        }
+        entries.push([key, trimmed]);
+    }
+    if (entries.length === 0) {
+        return undefined;
+    }
+    return Object.fromEntries(entries);
+}
+function mergeSocials(projectSocials, directSocials) {
+    if (!projectSocials && !directSocials) {
+        return undefined;
+    }
+    return normalizeSocials({
+        ...(projectSocials ?? {}),
+        ...(directSocials ?? {}),
+    });
+}
 /**
  * Build collection metadata JSON for IPFS upload
  *
  * @param input - Collection metadata input
  * @returns JSON object ready for IPFS upload
- * @throws Error if name or description is missing/invalid
- *
- * @example
- * ```typescript
- * const metadata = buildCollectionMetadataJson({
- *   name: 'My AI Agents',
- *   description: 'Production AI agents for automation',
- *   image: 'ipfs://QmLogo...',
- *   category: 'automation',
- *   tags: ['enterprise', 'api'],
- *   project: {
- *     name: 'Acme Corp',
- *     socials: {
- *       website: 'https://acme.ai',
- *       x: 'acme_ai',
- *       github: 'acme-ai'
- *     }
- *   }
- * });
- *
- * // Upload to IPFS
- * const cid = await ipfs.addJson(metadata);
- * ```
+ * @throws Error if input contains invalid values or unsupported fields
  */
 export function buildCollectionMetadataJson(input) {
-    // Validate required fields
-    if (!input.name) {
+    const rawInput = input;
+    if (Object.prototype.hasOwnProperty.call(rawInput, 'parent')) {
+        const parentValue = rawInput.parent;
+        if (parentValue !== undefined && parentValue !== null && parentValue !== '') {
+            throw new Error('Collection metadata field "parent" is not supported');
+        }
+    }
+    const name = normalizeOptionalText(input.name);
+    if (!name) {
         throw new Error('Collection name is required');
     }
-    if (input.name.length > 32) {
-        throw new Error('Collection name must be <= 32 characters');
+    if (name.length > 128) {
+        throw new Error('Collection name must be <= 128 characters');
     }
-    if (!input.description) {
-        throw new Error('Collection description is required');
+    const symbol = normalizeOptionalText(input.symbol);
+    if (symbol && symbol.length > 16) {
+        throw new Error('Collection symbol must be <= 16 characters');
     }
-    // Build metadata object
+    const description = normalizeOptionalText(input.description);
+    if (description && description.length > 4096) {
+        throw new Error('Collection description must be <= 4096 characters');
+    }
+    const projectSocials = normalizeSocials(input.project?.socials);
+    const directSocials = normalizeSocials(input.socials);
+    const mergedSocials = mergeSocials(projectSocials, directSocials);
     const metadata = {
-        name: input.name,
-        description: input.description,
+        version: COLLECTION_DOCUMENT_VERSION,
+        name,
     };
-    // Add optional fields
+    if (symbol) {
+        metadata.symbol = symbol;
+    }
+    if (description) {
+        metadata.description = description;
+    }
     if (input.image) {
         metadata.image = input.image;
+    }
+    if (input.banner_image) {
+        metadata.banner_image = input.banner_image;
+    }
+    if (mergedSocials) {
+        metadata.socials = mergedSocials;
     }
     if (input.external_url) {
         metadata.external_url = input.external_url;
     }
     if (input.project) {
-        metadata.project = input.project;
+        const projectName = normalizeOptionalText(input.project.name);
+        const projectMetadata = {};
+        if (projectName) {
+            projectMetadata.name = projectName;
+        }
+        if (projectSocials) {
+            projectMetadata.socials = projectSocials;
+        }
+        if (Object.keys(projectMetadata).length > 0) {
+            metadata.project = projectMetadata;
+        }
     }
     if (input.category) {
         metadata.category = input.category;
     }
     if (input.tags && input.tags.length > 0) {
-        // Limit to 10 tags, each max 32 chars
-        metadata.tags = input.tags.slice(0, 10).map((tag) => tag.slice(0, 32));
+        metadata.tags = input.tags
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0)
+            .slice(0, 10)
+            .map((tag) => tag.slice(0, 32));
+        if (metadata.tags.length === 0) {
+            delete metadata.tags;
+        }
     }
     if (input.attributes && input.attributes.length > 0) {
         metadata.attributes = input.attributes;

@@ -11,7 +11,9 @@ metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA
 You are an AI agent with access to the `8004-solana` TypeScript SDK. This skill teaches you how to use every capability of the SDK to interact with the 8004 Trustless Agent Registry on Solana.
 
 Version note (SDK `0.6.x`):
-- Single-collection architecture is active. `createCollection()` and `updateCollectionUri()` are deprecated and return `{ success: false, error }`.
+- Single-collection architecture is active for on-chain registry accounts.
+- Use CID-first collection flow: `createCollectionData()` then `createCollection(data)`.
+- Legacy on-chain overloads `createCollection(name, uri)` and `updateCollectionUri()` return `{ success: false, error }` on protocol `v0.6.x`.
 - Feedback reads (`readAllFeedback`, `getClients`, `getLastIndex`, `readFeedback`, etc.) rely on the indexer.
 
 ## Install
@@ -134,6 +136,11 @@ const sdk = new SolanaSDK({
   cluster: 'devnet',
   rpcUrl: 'https://...',
   signer: keypair,
+  // Optional: override devnet defaults for localnet/mainnet
+  programIds: {
+    agentRegistry: '...',
+    atomEngine: '...',
+  },
   indexerUrl: 'https://xxx.supabase.co/rest/v1',
   indexerApiKey: process.env.INDEXER_API_KEY, // if your indexer requires an API key, keep it in env
   useIndexer: true,
@@ -198,13 +205,37 @@ const opWallet = Keypair.generate();
 await sdk.setAgentWallet(result.asset, opWallet);
 ```
 
-### Collection (v0.6.x: single-collection)
+### Collection + Parent Association (CID-first)
 
-All agents register into the base collection automatically. `createCollection()` and `updateCollectionUri()` are deprecated and return `{ success: false }`.
+All agents register into the base collection automatically. Collection metadata now follows an off-chain CID-first flow:
 
 ```typescript
-const baseCollection = await sdk.getBaseCollection();
+// Build JSON only
+const collectionJson = sdk.createCollectionData({
+  name: 'CasterCorp Agents',
+  symbol: 'CAST',
+  description: 'Main collection metadata',
+});
+
+// Build + upload to IPFS
+const collection = await sdk.createCollection(collectionJson);
+// collection.cid
+// collection.uri
+// collection.pointer -> canonical c1:b... string
+
+// Advanced on-chain association (string pointer, not pubkey)
+await sdk.setCollectionPointer(result.asset, collection.pointer!); // lock=true default
+
+// Parent hierarchy (advanced)
+await sdk.setParentAsset(childAsset, parentAsset, { lock: false });
 ```
+
+Rules enforced on-chain:
+- Collection pointer must be `c1:<payload>`, lowercase alphanumeric payload, max 128 bytes.
+- `setCollectionPointer`: signer must match immutable `AgentAccount.creator`.
+- `setParentAsset`: signer must own child asset and match parent creator snapshot.
+- Parent must be a live asset and self-parent is forbidden.
+- `lock` defaults to `true` for both methods (`col_locked` / `parent_locked`).
 
 ---
 
@@ -242,7 +273,7 @@ const myAgents = await sdk.getAgentsByOwner(ownerPubkey);
 
 ```typescript
 // Update metadata URI
-await sdk.setAgentUri(assetPubkey, collectionPubkey, `ipfs://${newCid}`);
+await sdk.setAgentUri(assetPubkey, `ipfs://${newCid}`); // base registry account auto-resolved
 
 // Set on-chain key-value metadata
 await sdk.setMetadata(assetPubkey, 'version', '2.0.0');
@@ -255,7 +286,7 @@ await sdk.setMetadata(assetPubkey, 'certification', 'audited-2026', true);
 await sdk.deleteMetadata(assetPubkey, 'version');
 
 // Transfer ownership
-await sdk.transferAgent(assetPubkey, collectionPubkey, newOwnerPubkey);
+await sdk.transferAgent(assetPubkey, newOwnerPubkey); // base registry account auto-resolved
 
 // Sync owner after external NFT transfer
 await sdk.syncOwner(assetPubkey);
@@ -616,8 +647,12 @@ const full = await sdk.verifyIntegrityFull(assetPubkey, {
 ```typescript
 const results = await sdk.searchAgents({
   owner: 'base58...',
-  collection: 'base58...',
+  creator: 'base58...',
+  collection: 'base58...',              // base registry collection pubkey
+  collectionPointer: 'c1:bafybeigdyr...',
+  parentAsset: 'base58...',
   wallet: 'base58...',
+  colLocked: true,
   limit: 20,
   offset: 0,
 });
@@ -1101,8 +1136,8 @@ if (!integrity.trustworthy) {
 
 ```typescript
 import {
-  PROGRAM_ID,            // Agent Registry: 8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm
+  PROGRAM_ID,            // Agent Registry (devnet default): 8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C
   MPL_CORE_PROGRAM_ID,   // Metaplex Core: CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
-  ATOM_ENGINE_PROGRAM_ID, // ATOM: AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ
+  ATOM_ENGINE_PROGRAM_ID, // ATOM (devnet default): AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF
 } from '8004-solana';
 ```

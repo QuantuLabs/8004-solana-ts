@@ -23,6 +23,10 @@ export const DOMAIN_REVOKE = Buffer.from('8004_REVOKE_V1');
 export const DOMAIN_SEAL_V1 = Buffer.from('8004_SEAL_V1____');
 /** 16 bytes — seal.rs DOMAIN_LEAF_V1 */
 export const DOMAIN_LEAF_V1 = Buffer.from('8004_LEAF_V1____');
+/** 16 bytes — chain.rs DOMAIN_RESPONSE_LEAF_V1 */
+export const DOMAIN_RESPONSE_LEAF_V1 = Buffer.from('8004_RSP_LEAF_V1');
+/** 16 bytes — chain.rs DOMAIN_REVOKE_LEAF_V1 */
+export const DOMAIN_REVOKE_LEAF_V1 = Buffer.from('8004_RVK_LEAF_V1');
 // ---------------------------------------------------------------------------
 // Primitive hash functions
 // ---------------------------------------------------------------------------
@@ -35,7 +39,7 @@ export function chainHash(prevDigest, domain, leaf) {
     return keccak256(Buffer.concat([prevDigest, domain, leaf]));
 }
 /**
- * Compute response leaf (no domain prefix).
+ * Compute response leaf (with response-leaf domain prefix).
  *
  * Format: `keccak256(asset || client || feedbackIndex(u64 LE) || responder || responseHash || feedbackHash || slot(u64 LE))`
  *
@@ -56,10 +60,10 @@ export function computeResponseLeaf(asset, client, feedbackIndex, responder, res
     indexBuf.writeBigUInt64LE(feedbackIndex);
     const slotBuf = Buffer.alloc(8);
     slotBuf.writeBigUInt64LE(slot);
-    return keccak256(Buffer.concat([asset, client, indexBuf, responder, responseHash, feedbackHash, slotBuf]));
+    return keccak256(Buffer.concat([DOMAIN_RESPONSE_LEAF_V1, asset, client, indexBuf, responder, responseHash, feedbackHash, slotBuf]));
 }
 /**
- * Compute revoke leaf (no domain prefix).
+ * Compute revoke leaf (with revoke-leaf domain prefix).
  *
  * Format: `keccak256(asset || client || feedbackIndex(u64 LE) || feedbackHash || slot(u64 LE))`
  *
@@ -76,7 +80,7 @@ export function computeRevokeLeaf(asset, client, feedbackIndex, feedbackHash, sl
     indexBuf.writeBigUInt64LE(feedbackIndex);
     const slotBuf = Buffer.alloc(8);
     slotBuf.writeBigUInt64LE(slot);
-    return keccak256(Buffer.concat([asset, client, indexBuf, feedbackHash, slotBuf]));
+    return keccak256(Buffer.concat([DOMAIN_REVOKE_LEAF_V1, asset, client, indexBuf, feedbackHash, slotBuf]));
 }
 // ---------------------------------------------------------------------------
 // Replay functions

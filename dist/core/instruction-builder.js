@@ -16,8 +16,10 @@ import { validateByteLength } from '../utils/validation.js';
  */
 export class IdentityInstructionBuilder {
     programId;
-    constructor() {
-        this.programId = PROGRAM_ID;
+    mplCoreProgramId;
+    constructor(programId = PROGRAM_ID, mplCoreProgramId = MPL_CORE_PROGRAM_ID) {
+        this.programId = programId;
+        this.mplCoreProgramId = mplCoreProgramId;
     }
     /**
      * Build register instruction (Metaplex Core)
@@ -39,7 +41,7 @@ export class IdentityInstructionBuilder {
                 { pubkey: collection, isSigner: false, isWritable: true },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: this.mplCoreProgramId, isSigner: false, isWritable: false },
             ],
             data,
         });
@@ -66,7 +68,7 @@ export class IdentityInstructionBuilder {
                 { pubkey: collection, isSigner: false, isWritable: true },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: this.mplCoreProgramId, isSigner: false, isWritable: false },
             ],
             data,
         });
@@ -106,7 +108,89 @@ export class IdentityInstructionBuilder {
                 { pubkey: collection, isSigner: false, isWritable: true },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: this.mplCoreProgramId, isSigner: false, isWritable: false },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build setCollectionPointer instruction
+     * Accounts: agent_account (mut), asset, owner (signer, mut)
+     */
+    buildSetCollectionPointer(agentAccount, asset, owner, col) {
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.setCollectionPointer,
+            serializeString(col),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: owner, isSigner: true, isWritable: true },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build setCollectionPointerWithOptions instruction
+     * Accounts: agent_account (mut), asset, owner (signer, mut)
+     */
+    buildSetCollectionPointerWithOptions(agentAccount, asset, owner, col, lock) {
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.setCollectionPointerWithOptions,
+            serializeString(col),
+            Buffer.from([lock ? 1 : 0]),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: owner, isSigner: true, isWritable: true },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build setParentAsset instruction
+     * Accounts: agent_account (mut), asset, parent_agent_account, parent_asset_account, owner (signer, mut)
+     */
+    buildSetParentAsset(agentAccount, asset, parentAgentAccount, parentAssetAccount, owner, parentAsset) {
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.setParentAsset,
+            parentAsset.toBuffer(),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: parentAgentAccount, isSigner: false, isWritable: false },
+                { pubkey: parentAssetAccount, isSigner: false, isWritable: false },
+                { pubkey: owner, isSigner: true, isWritable: true },
+            ],
+            data,
+        });
+    }
+    /**
+     * Build setParentAssetWithOptions instruction
+     * Accounts: agent_account (mut), asset, parent_agent_account, parent_asset_account, owner (signer, mut)
+     */
+    buildSetParentAssetWithOptions(agentAccount, asset, parentAgentAccount, parentAssetAccount, owner, parentAsset, lock) {
+        const data = Buffer.concat([
+            IDENTITY_DISCRIMINATORS.setParentAssetWithOptions,
+            parentAsset.toBuffer(),
+            Buffer.from([lock ? 1 : 0]),
+        ]);
+        return new TransactionInstruction({
+            programId: this.programId,
+            keys: [
+                { pubkey: agentAccount, isSigner: false, isWritable: true },
+                { pubkey: asset, isSigner: false, isWritable: false },
+                { pubkey: parentAgentAccount, isSigner: false, isWritable: false },
+                { pubkey: parentAssetAccount, isSigner: false, isWritable: false },
+                { pubkey: owner, isSigner: true, isWritable: true },
             ],
             data,
         });
@@ -172,7 +256,7 @@ export class IdentityInstructionBuilder {
                 { pubkey: collection, isSigner: false, isWritable: true },
                 { pubkey: owner, isSigner: true, isWritable: true },
                 { pubkey: newOwner, isSigner: false, isWritable: false },
-                { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: this.mplCoreProgramId, isSigner: false, isWritable: false },
             ],
             data: IDENTITY_DISCRIMINATORS.transferAgent,
         });
@@ -250,9 +334,9 @@ export class IdentityInstructionBuilder {
         return Buffer.concat([Buffer.from([1]), serializer(value)]); // Some
     }
 }
-// i64 bounds for validation
-const I64_MIN = -(2n ** 63n);
-const I64_MAX = 2n ** 63n - 1n;
+// i128 bounds for feedback value serialization
+const I128_MIN = -(1n << 127n);
+const I128_MAX = (1n << 127n) - 1n;
 /**
  * Instruction builder for Reputation Registry
  * v0.5.0 - value/valueDecimals support (EVM compatibility)
@@ -260,8 +344,10 @@ const I64_MAX = 2n ** 63n - 1n;
  */
 export class ReputationInstructionBuilder {
     programId;
-    constructor() {
-        this.programId = PROGRAM_ID;
+    atomEngineProgramId;
+    constructor(programId = PROGRAM_ID, atomEngineProgramId = ATOM_ENGINE_PROGRAM_ID) {
+        this.programId = programId;
+        this.atomEngineProgramId = atomEngineProgramId;
     }
     /**
      * Build giveFeedback instruction - v0.6.0 (SEAL v1)
@@ -274,14 +360,14 @@ export class ReputationInstructionBuilder {
         if (typeof value !== 'bigint') {
             throw new Error(`value must be bigint, got ${typeof value}. Use BigInt(n) or validateValue().`);
         }
-        if (!Number.isInteger(valueDecimals) || valueDecimals < 0 || valueDecimals > 6) {
-            throw new Error('valueDecimals must be integer 0-6');
+        if (!Number.isInteger(valueDecimals) || valueDecimals < 0 || valueDecimals > 18) {
+            throw new Error('valueDecimals must be integer 0-18');
         }
         if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) {
             throw new Error('score must be integer 0-100 or null');
         }
-        if (value < I64_MIN || value > I64_MAX) {
-            throw new Error(`value ${value} exceeds i64 range`);
+        if (value < I128_MIN || value > I128_MAX) {
+            throw new Error(`value ${value} exceeds i128 range`);
         }
         if (feedbackFileHash !== null && feedbackFileHash.length !== 32) {
             throw new Error(`feedbackFileHash must be 32 bytes or null (got ${feedbackFileHash.length})`);
@@ -291,7 +377,7 @@ export class ReputationInstructionBuilder {
         // SEAL v1: feedback_file_hash is Option<[u8; 32]>
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.giveFeedback,
-            this.serializeI64(value),
+            this.serializeI128(value),
             Buffer.from([valueDecimals]),
             this.serializeOptionU8(score),
             this.serializeOption32Bytes(feedbackFileHash),
@@ -312,7 +398,7 @@ export class ReputationInstructionBuilder {
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ];
         if (hasAtomAccounts) {
-            keys.push({ pubkey: atomConfig, isSigner: false, isWritable: false }, { pubkey: atomStats, isSigner: false, isWritable: true }, { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false }, { pubkey: registryAuthority, isSigner: false, isWritable: false });
+            keys.push({ pubkey: atomConfig, isSigner: false, isWritable: false }, { pubkey: atomStats, isSigner: false, isWritable: true }, { pubkey: this.atomEngineProgramId, isSigner: false, isWritable: false }, { pubkey: registryAuthority, isSigner: false, isWritable: false });
         }
         return new TransactionInstruction({
             programId: this.programId,
@@ -320,13 +406,20 @@ export class ReputationInstructionBuilder {
             data,
         });
     }
-    serializeI64(value) {
-        if (value < I64_MIN || value > I64_MAX) {
-            throw new Error(`Value ${value} exceeds i64 range`);
+    serializeI128(value) {
+        if (value < I128_MIN || value > I128_MAX) {
+            throw new Error(`Value ${value} exceeds i128 range`);
         }
-        const buf = Buffer.alloc(8);
-        buf.writeBigInt64LE(value);
-        return buf;
+        // Two's complement i128, little-endian.
+        let encoded = value;
+        if (encoded < 0n) {
+            encoded = (1n << 128n) + encoded;
+        }
+        const out = Buffer.alloc(16);
+        for (let i = 0; i < 16; i++) {
+            out[i] = Number((encoded >> BigInt(i * 8)) & 0xffn);
+        }
+        return out;
     }
     serializeOptionU8(value) {
         if (value === null) {
@@ -374,7 +467,7 @@ export class ReputationInstructionBuilder {
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ];
         if (hasAtomAccounts) {
-            keys.push({ pubkey: atomConfig, isSigner: false, isWritable: false }, { pubkey: atomStats, isSigner: false, isWritable: true }, { pubkey: ATOM_ENGINE_PROGRAM_ID, isSigner: false, isWritable: false }, { pubkey: registryAuthority, isSigner: false, isWritable: false });
+            keys.push({ pubkey: atomConfig, isSigner: false, isWritable: false }, { pubkey: atomStats, isSigner: false, isWritable: true }, { pubkey: this.atomEngineProgramId, isSigner: false, isWritable: false }, { pubkey: registryAuthority, isSigner: false, isWritable: false });
         }
         return new TransactionInstruction({
             programId: this.programId,
@@ -397,7 +490,6 @@ export class ReputationInstructionBuilder {
         }
         const data = Buffer.concat([
             REPUTATION_DISCRIMINATORS.appendResponse,
-            asset.toBuffer(),
             client.toBuffer(),
             this.serializeU64(feedbackIndex),
             serializeString(responseUri),
@@ -436,8 +528,8 @@ export class ReputationInstructionBuilder {
  */
 export class ValidationInstructionBuilder {
     programId;
-    constructor() {
-        this.programId = PROGRAM_ID;
+    constructor(programId = PROGRAM_ID) {
+        this.programId = programId;
     }
     /**
      * Build requestValidation instruction
@@ -537,8 +629,8 @@ export class ValidationInstructionBuilder {
  */
 export class AtomInstructionBuilder {
     programId;
-    constructor() {
-        this.programId = ATOM_ENGINE_PROGRAM_ID;
+    constructor(programId = ATOM_ENGINE_PROGRAM_ID) {
+        this.programId = programId;
     }
     /**
      * Build initializeStats instruction

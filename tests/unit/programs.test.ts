@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
+import { PublicKey } from '@solana/web3.js';
 import {
   PROGRAM_ID,
   MPL_CORE_PROGRAM_ID,
@@ -16,7 +17,7 @@ import {
 describe('programs', () => {
   describe('constants', () => {
     it('should have valid PROGRAM_ID', () => {
-      expect(PROGRAM_ID.toBase58()).toBe('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm');
+      expect(PROGRAM_ID.toBase58()).toBe('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
     });
 
     it('should have valid MPL_CORE_PROGRAM_ID', () => {
@@ -24,7 +25,7 @@ describe('programs', () => {
     });
 
     it('should have valid ATOM_ENGINE_PROGRAM_ID', () => {
-      expect(ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ');
+      expect(ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
     });
 
     it('should have PROGRAM_IDS pointing to consolidated program', () => {
@@ -33,6 +34,7 @@ describe('programs', () => {
       expect(PROGRAM_IDS.validationRegistry.equals(PROGRAM_ID)).toBe(true);
       expect(PROGRAM_IDS.agentRegistry.equals(PROGRAM_ID)).toBe(true);
       expect(PROGRAM_IDS.atomEngine.equals(ATOM_ENGINE_PROGRAM_ID)).toBe(true);
+      expect(PROGRAM_IDS.mplCore.equals(MPL_CORE_PROGRAM_ID)).toBe(true);
     });
   });
 
@@ -47,6 +49,23 @@ describe('programs', () => {
       const ids = getProgramIds();
       expect(ids.agentRegistry).toBeDefined();
       expect(ids.atomEngine).toBeDefined();
+      expect(ids.mplCore).toBeDefined();
+    });
+
+    it('should support runtime overrides for localnet/mainnet', () => {
+      const customAgent = new PublicKey('11111111111111111111111111111111');
+      const customAtom = new PublicKey('SysvarRent111111111111111111111111111111111');
+
+      const ids = getProgramIds({
+        agentRegistry: customAgent,
+        atomEngine: customAtom,
+      });
+
+      expect(ids.agentRegistry.equals(customAgent)).toBe(true);
+      expect(ids.identityRegistry.equals(customAgent)).toBe(true);
+      expect(ids.reputationRegistry.equals(customAgent)).toBe(true);
+      expect(ids.validationRegistry.equals(customAgent)).toBe(true);
+      expect(ids.atomEngine.equals(customAtom)).toBe(true);
     });
   });
 

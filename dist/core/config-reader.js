@@ -9,11 +9,12 @@ import { logger } from '../utils/logger.js';
 /**
  * Fetch the Root Config from on-chain - v0.3.0
  * @param connection - Solana RPC connection
+ * @param programId - Optional agent-registry program ID override
  * @returns RootConfig or null if not initialized
  */
-export async function fetchRootConfig(connection) {
+export async function fetchRootConfig(connection, programId) {
     try {
-        const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
+        const [rootConfigPda] = PDAHelpers.getRootConfigPDA(programId);
         const accountInfo = await connection.getAccountInfo(rootConfigPda);
         if (!accountInfo || accountInfo.data.length === 0) {
             return null;
@@ -28,12 +29,13 @@ export async function fetchRootConfig(connection) {
 /**
  * Fetch a Registry Config from on-chain - v0.3.0
  * @param connection - Solana RPC connection
- * @param collection - Collection pubkey for the registry
+ * @param collection - Base registry collection pubkey
+ * @param programId - Optional agent-registry program ID override
  * @returns RegistryConfig or null if not initialized
  */
-export async function fetchRegistryConfig(connection, collection) {
+export async function fetchRegistryConfig(connection, collection, programId) {
     try {
-        const [configPda] = PDAHelpers.getRegistryConfigPDA(collection);
+        const [configPda] = PDAHelpers.getRegistryConfigPDA(collection, programId);
         const accountInfo = await connection.getAccountInfo(configPda);
         if (!accountInfo || accountInfo.data.length === 0) {
             return null;
@@ -68,20 +70,22 @@ export async function fetchRegistryConfigByPda(connection, registryConfigPda) {
 /**
  * Check if the Root Registry has been initialized - v0.3.0
  * @param connection - Solana RPC connection
+ * @param programId - Optional agent-registry program ID override
  * @returns true if initialized, false otherwise
  */
-export async function isRegistryInitialized(connection) {
-    const rootConfig = await fetchRootConfig(connection);
+export async function isRegistryInitialized(connection, programId) {
+    const rootConfig = await fetchRootConfig(connection, programId);
     return rootConfig !== null;
 }
 /**
  * Get the base collection from root config - v0.6.0
  * Single-collection architecture: RootConfig.base_collection IS the collection directly
  * @param connection - Solana RPC connection
- * @returns Base collection pubkey or null if not initialized
+ * @param programId - Optional agent-registry program ID override
+ * @returns Base registry collection pubkey or null if not initialized
  */
-export async function getBaseCollection(connection) {
-    const rootConfig = await fetchRootConfig(connection);
+export async function getBaseCollection(connection, programId) {
+    const rootConfig = await fetchRootConfig(connection, programId);
     if (!rootConfig) {
         return null;
     }
@@ -91,7 +95,7 @@ export async function getBaseCollection(connection) {
  * @deprecated Removed in v0.6.0 - single-collection architecture stores collection directly in RootConfig
  * Use getBaseCollection() instead
  */
-export async function getBaseRegistryPda(connection) {
-    return getBaseCollection(connection);
+export async function getBaseRegistryPda(connection, programId) {
+    return getBaseCollection(connection, programId);
 }
 //# sourceMappingURL=config-reader.js.map

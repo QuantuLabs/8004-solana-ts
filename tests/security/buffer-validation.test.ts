@@ -15,32 +15,31 @@ import {
 describe('Buffer Bounds Validation', () => {
   describe('AgentAccount.deserialize', () => {
     it('should reject buffers smaller than minimum size', () => {
-      // Minimum: discriminator(8) + collection(32) + owner(32) + asset(32) + bump(1) + atom_enabled(1)
-      //        + agent_wallet option(1+32) + digests(3*32) + counts(3*8) + token_uri(4+) = 227 bytes
+      // Minimum is 266 bytes for the current AgentAccount layout.
       const tooSmall = Buffer.alloc(50);
       expect(() => AgentAccount.deserialize(tooSmall)).toThrow(
-        /Invalid AgentAccount data: expected >= 227 bytes, got 50/
+        /Invalid AgentAccount data: expected >= 266 bytes, got 50/
       );
     });
 
     it('should reject empty buffer', () => {
       const empty = Buffer.alloc(0);
       expect(() => AgentAccount.deserialize(empty)).toThrow(
-        /Invalid AgentAccount data: expected >= 227 bytes, got 0/
+        /Invalid AgentAccount data: expected >= 266 bytes, got 0/
       );
     });
 
-    it('should reject buffer at boundary (226 bytes)', () => {
-      const boundary = Buffer.alloc(226);
+    it('should reject buffer at boundary (265 bytes)', () => {
+      const boundary = Buffer.alloc(265);
       expect(() => AgentAccount.deserialize(boundary)).toThrow(
-        /Invalid AgentAccount data: expected >= 227 bytes, got 226/
+        /Invalid AgentAccount data: expected >= 266 bytes, got 265/
       );
     });
 
-    it('should accept buffer at minimum size (227 bytes)', () => {
-      const minimal = Buffer.alloc(227);
+    it('should accept buffer at minimum size (266 bytes)', () => {
+      const minimal = Buffer.alloc(266);
       expect(() => AgentAccount.deserialize(minimal)).not.toThrow(
-        /Invalid AgentAccount data: expected >= 227 bytes/
+        /Invalid AgentAccount data: expected >= 266 bytes/
       );
     });
   });

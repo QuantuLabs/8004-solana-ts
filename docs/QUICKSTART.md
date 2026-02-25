@@ -20,7 +20,7 @@ Export your Solana wallet private key (devnet only for now):
 
 ```bash
 export SOLANA_PRIVATE_KEY='[1,2,3,...,64]'  # JSON array format
-export PINATA_JWT='your-jwt-token'          # Optional: for IPFS uploads
+export PINATA_JWT='your-jwt-token'          # Optional: required only when pinataEnabled=true
 ```
 
 - [Phantom: Export Key](https://support.phantom.app/hc/en-us/articles/12988493966227-How-to-export-your-private-key)
@@ -28,7 +28,7 @@ export PINATA_JWT='your-jwt-token'          # Optional: for IPFS uploads
 
 ---
 
-## 3. Create & Register Agent
+## 3. Create Collection Metadata (CID-first)
 
 Create a new file `register.ts` and run with `npx tsx register.ts`:
 
@@ -40,13 +40,46 @@ import { Keypair } from '@solana/web3.js';
 const signer = Keypair.fromSecretKey(
   Uint8Array.from(JSON.parse(process.env.SOLANA_PRIVATE_KEY!))
 );
-const sdk = new SolanaSDK({ signer });
+const pinataJwt = process.env.PINATA_JWT;
+const ipfs = pinataJwt
+  ? new IPFSClient({ pinataEnabled: true, pinataJwt })
+  : new IPFSClient({ url: 'http://localhost:5001' });
+// Defaults use devnet program IDs.
+// For localnet/mainnet, add:
+// programIds: { agentRegistry: '...', atomEngine: '...' }
+const sdk = new SolanaSDK({ signer, ipfsClient: ipfs });
 
-// 2. Setup IPFS client (for image & metadata upload)
-const ipfs = new IPFSClient({
-  pinataEnabled: true,
-  pinataJwt: process.env.PINATA_JWT!,
+// 2. Build + upload collection metadata
+const collection = await sdk.createCollection({
+  name: 'CasterCorp Agents',
+  symbol: 'CAST',
+  description: 'Main collection metadata',
+  socials: { website: 'https://castercorp.ai', x: '@castercorp' },
 });
+
+console.log('Collection CID:', collection.cid);       // reuse for your asset workflow
+console.log('Collection URI:', collection.uri);       // ipfs://<cid>
+console.log('Collection Pointer:', collection.pointer); // c1:b...
+```
+
+If you only want the JSON (no upload), use:
+
+```typescript
+const data = sdk.createCollectionData({
+  name: 'CasterCorp Agents',
+  description: 'Main collection metadata',
+});
+```
+
+Legacy on-chain collection APIs (`sdk.createCollection(name, uri)` and `sdk.updateCollectionUri`) are deprecated on protocol `v0.6.x` and return `success: false`.
+
+---
+
+## 4. Create & Register Agent
+
+```typescript
+import { buildRegistrationFileJson, ServiceType } from '8004-solana';
+import { PublicKey } from '@solana/web3.js';
 
 // 3. Upload your agent's avatar image
 const imageCid = await ipfs.addFile('./my-agent-avatar.png');
@@ -84,12 +117,24 @@ const metadataUri = `ipfs://${metadataCid}`;
 const result = await sdk.registerAgent(metadataUri);
 console.log('Agent:', result.asset.toBase58());
 
-// 7. Set operational wallet (for agent signing)
+// 7. (Advanced) Set canonical collection pointer on-chain
+await sdk.setCollectionPointer(result.asset, collection.pointer!); // lock=true by default
+
+// Optional editable workflow:
+// await sdk.setCollectionPointer(result.asset, collection.pointer!, { lock: false });
+// ...later finalize and lock:
+// await sdk.setCollectionPointer(result.asset, collection.pointer!);
+
+// 7b. (Advanced) Link a parent agent
+const parentAsset = new PublicKey('ParentAgentAssetPubkey...');
+await sdk.setParentAsset(result.asset, parentAsset, { lock: false }); // lock=true by default when omitted
+
+// 8. Set operational wallet (for agent signing)
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(result.asset, opWallet);
 console.log('Operational wallet:', opWallet.publicKey.toBase58());
 
-// 8. (Optional) Store on-chain metadata
+// 9. (Optional) Store on-chain metadata
 await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true);
 ```
 
@@ -99,11 +144,21 @@ See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
 **Note on ATOM (Reputation Engine):** By default, `registerAgent()` automatically initializes on-chain reputation tracking (ATOM) which costs ~0.002 SOL rent. This enables instant feedback and trust tier calculation. If you prefer to aggregate reputation yourself via the indexer, pass `{ atomEnabled: false }` to skip ATOM initialization and save the rent cost. You can later call `enableAtom()` (one-way) followed by `initializeAtomStats()`.
 
-**Note on Metadata:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching.
+**Note on Metadata:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching. Limits: metadata key max `32` bytes, metadata value max `250` bytes, and `agent_uri` max `250` bytes.
+
+### Association Rules (Collection + Parent)
+
+- Canonical collection pointer is `c1:<cid>` (use the `pointer` returned by `sdk.createCollection(...)`).
+- Pointer validation is strict on-chain: must start with `c1:`, CID payload must be non-empty lowercase alphanumeric, max total size `128` bytes.
+- `setCollectionPointer`: only immutable agent creator can sign this instruction.
+- `setParentAsset`: signer must own the child asset and must equal the parent agent creator snapshot.
+- Parent must be a live Core asset and self-parenting is forbidden.
+- Both methods support `{ lock?: boolean }`; default `lock=true` makes first valid write final (`col_locked` / `parent_locked`).
+- `c1:...` collection pointer is a string (not a pubkey). Explicit base-registry pubkeys are only needed for legacy overloads; standard `setAgentUri` / `transferAgent` auto-resolve base collection.
 
 ---
 
-## 4. Verify Your Agent
+## 5. Verify Your Agent
 
 Load your agent to confirm it was registered correctly:
 
@@ -142,8 +197,7 @@ const summary = await sdk.getSummary(agentAsset);
 console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
 
 // Update URI
-const agent = await sdk.loadAgent(agentAsset);
-await sdk.setAgentUri(agentAsset, agent.getCollectionPublicKey(), 'ipfs://newCid');
+await sdk.setAgentUri(agentAsset, 'ipfs://newCid'); // base collection auto-resolved
 
 // Sign data with agent's operational wallet
 const signed = sdk.sign(agentAsset, { action: 'authorize', user: 'alice' });
@@ -154,6 +208,7 @@ const isValid = await sdk.verify(signed, agentAsset);
 
 - [Full API Reference](./METHODS.md)
 - [Examples](https://github.com/QuantuLabs/8004-solana-ts/tree/main/examples)
+- [Create Collection Example](../examples/create-collection.ts)
 - [Explorer](https://x402synthex.xyz)
 - [Telegram](https://t.me/sol8004)
 - [X / Twitter](https://x.com/Quantu_AI)

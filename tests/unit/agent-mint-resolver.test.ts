@@ -18,7 +18,7 @@ jest.unstable_mockModule('../../src/core/pda-helpers.js', () => ({
   PDAHelpers: {
     getAgentPDA: jest.fn().mockReturnValue([new PublicKey('11111111111111111111111111111111'), 255]),
   },
-  IDENTITY_PROGRAM_ID: new PublicKey('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm'),
+  IDENTITY_PROGRAM_ID: new PublicKey('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C'),
 }));
 
 jest.unstable_mockModule('../../src/utils/logger.js', () => ({

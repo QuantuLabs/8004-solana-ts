@@ -28,6 +28,10 @@ export declare const IDENTITY_DISCRIMINATORS: {
     readonly transferAgent: Buffer<ArrayBuffer>;
     readonly ownerOf: Buffer<ArrayBuffer>;
     readonly setAgentWallet: Buffer<ArrayBuffer>;
+    readonly setCollectionPointer: Buffer<ArrayBuffer>;
+    readonly setCollectionPointerWithOptions: Buffer<ArrayBuffer>;
+    readonly setParentAsset: Buffer<ArrayBuffer>;
+    readonly setParentAssetWithOptions: Buffer<ArrayBuffer>;
 };
 /**
  * Reputation Registry instruction discriminators

@@ -11,7 +11,8 @@ import { PublicKey, TransactionInstruction } from '@solana/web3.js';
  */
 export declare class IdentityInstructionBuilder {
     private programId;
-    constructor();
+    private mplCoreProgramId;
+    constructor(programId?: PublicKey, mplCoreProgramId?: PublicKey);
     /**
      * Build register instruction (Metaplex Core)
      * v0.6.0 accounts: root_config, registry_config, agent_account, asset (signer),
@@ -36,6 +37,26 @@ export declare class IdentityInstructionBuilder {
      *                   owner (signer), system_program, mpl_core_program
      */
     buildSetAgentUri(registryConfig: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, owner: PublicKey, newUri: string): TransactionInstruction;
+    /**
+     * Build setCollectionPointer instruction
+     * Accounts: agent_account (mut), asset, owner (signer, mut)
+     */
+    buildSetCollectionPointer(agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, col: string): TransactionInstruction;
+    /**
+     * Build setCollectionPointerWithOptions instruction
+     * Accounts: agent_account (mut), asset, owner (signer, mut)
+     */
+    buildSetCollectionPointerWithOptions(agentAccount: PublicKey, asset: PublicKey, owner: PublicKey, col: string, lock: boolean): TransactionInstruction;
+    /**
+     * Build setParentAsset instruction
+     * Accounts: agent_account (mut), asset, parent_agent_account, parent_asset_account, owner (signer, mut)
+     */
+    buildSetParentAsset(agentAccount: PublicKey, asset: PublicKey, parentAgentAccount: PublicKey, parentAssetAccount: PublicKey, owner: PublicKey, parentAsset: PublicKey): TransactionInstruction;
+    /**
+     * Build setParentAssetWithOptions instruction
+     * Accounts: agent_account (mut), asset, parent_agent_account, parent_asset_account, owner (signer, mut)
+     */
+    buildSetParentAssetWithOptions(agentAccount: PublicKey, asset: PublicKey, parentAgentAccount: PublicKey, parentAssetAccount: PublicKey, owner: PublicKey, parentAsset: PublicKey, lock: boolean): TransactionInstruction;
     /**
      * Build setMetadata instruction (v0.2.0 - uses MetadataEntryPda)
      * Accounts: metadata_entry, agent_account, asset, owner (signer), system_program
@@ -83,7 +104,8 @@ export declare class IdentityInstructionBuilder {
  */
 export declare class ReputationInstructionBuilder {
     private programId;
-    constructor();
+    private atomEngineProgramId;
+    constructor(programId?: PublicKey, atomEngineProgramId?: PublicKey);
     /**
      * Build giveFeedback instruction - v0.6.0 (SEAL v1)
      * Matches: give_feedback(value, value_decimals, score, feedback_file_hash, tag1, tag2, endpoint, feedback_uri)
@@ -92,7 +114,7 @@ export declare class ReputationInstructionBuilder {
      * SEAL v1: The program computes seal_hash on-chain. feedbackFileHash is optional.
      */
     buildGiveFeedback(client: PublicKey, agentAccount: PublicKey, asset: PublicKey, collection: PublicKey, atomConfig: PublicKey | null, atomStats: PublicKey | null, registryAuthority: PublicKey | null, value: bigint, valueDecimals: number, score: number | null, feedbackFileHash: Buffer | null, feedbackIndex: bigint, tag1: string, tag2: string, endpoint: string, feedbackUri: string): TransactionInstruction;
-    private serializeI64;
+    private serializeI128;
     private serializeOptionU8;
     /**
      * Serialize Option<[u8; 32]> for SEAL v1
@@ -128,7 +150,7 @@ export declare class ReputationInstructionBuilder {
  */
 export declare class ValidationInstructionBuilder {
     private programId;
-    constructor();
+    constructor(programId?: PublicKey);
     /**
      * Build requestValidation instruction
      * Accounts: validation_config, requester (signer), payer (signer), agent_account, asset, validation_request, system_program
@@ -160,7 +182,7 @@ export declare class ValidationInstructionBuilder {
  */
 export declare class AtomInstructionBuilder {
     private programId;
-    constructor();
+    constructor(programId?: PublicKey);
     /**
      * Build initializeStats instruction
      * Initializes AtomStats PDA for an agent (must be called before any feedback)

@@ -26,6 +26,7 @@ import { isBlockedUri, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { buildSignedPayload, canonicalizeSignedPayload, parseSignedPayload, verifySignedPayload, } from '../utils/signing.js';
 import { ServiceType } from '../models/enums.js';
+import { buildCollectionMetadataJson } from '../models/collection-metadata.js';
 // ATOM Engine imports (v0.4.0)
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA, getAtomConfigPDA } from './atom-pda.js';
@@ -41,6 +42,83 @@ function getEnv(key) {
         return process.env[key];
     }
     return undefined;
+}
+const CID_V0_PATTERN = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
+const CID_V1_BASE32_PATTERN = /^b[a-z2-7]+$/;
+const COLLECTION_POINTER_PREFIX = 'c1:';
+const COLLECTION_POINTER_PATTERN = /^c1:b[a-z2-7]+$/;
+const COLLECTION_POINTER_MIN_LENGTH = 62;
+const COLLECTION_POINTER_MAX_LENGTH = 128;
+function extractCidCandidate(value) {
+    const trimmed = value.trim();
+    const withoutScheme = trimmed
+        .replace(/^ipfs:\/\//i, '')
+        .replace(/^\/ipfs\//i, '');
+    const cid = withoutScheme.split(/[/?#]/)[0] || '';
+    if (!cid) {
+        throw new Error('Invalid CID input: empty value');
+    }
+    return cid;
+}
+function base32EncodeLowerNoPad(bytes) {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+    let value = 0n;
+    let bits = 0;
+    let output = '';
+    for (const byte of bytes) {
+        value = (value << 8n) | BigInt(byte);
+        bits += 8;
+        while (bits >= 5) {
+            const shift = BigInt(bits - 5);
+            const index = Number((value >> shift) & 31n);
+            output += alphabet[index];
+            bits -= 5;
+        }
+    }
+    if (bits > 0) {
+        const index = Number((value << BigInt(5 - bits)) & 31n);
+        output += alphabet[index];
+    }
+    return output;
+}
+function cidV0ToCidV1Base32(cidV0) {
+    if (!CID_V0_PATTERN.test(cidV0)) {
+        throw new Error('Invalid CIDv0 format');
+    }
+    let decoded;
+    try {
+        decoded = bs58.decode(cidV0);
+    }
+    catch {
+        throw new Error('Invalid CIDv0 base58 encoding');
+    }
+    // CIDv0 is a multihash SHA-256 digest: 0x12 0x20 + 32-byte hash.
+    if (decoded.length !== 34 || decoded[0] !== 0x12 || decoded[1] !== 0x20) {
+        throw new Error('Invalid CIDv0 multihash payload');
+    }
+    // CIDv1 bytes: version(0x01) + codec(dag-pb=0x70) + multihash payload.
+    const cidV1Bytes = Uint8Array.from([0x01, 0x70, ...decoded]);
+    return `b${base32EncodeLowerNoPad(cidV1Bytes)}`;
+}
+function normalizeCollectionCid(cidOrUri) {
+    const cid = extractCidCandidate(cidOrUri);
+    const lowered = cid.toLowerCase();
+    if (CID_V1_BASE32_PATTERN.test(lowered)) {
+        return lowered;
+    }
+    if (CID_V0_PATTERN.test(cid)) {
+        return cidV0ToCidV1Base32(cid);
+    }
+    throw new Error('Unsupported CID format. Use CIDv0 (Qm...) or CIDv1 base32 (b...)');
+}
+function toCollectionPointer(cidOrUri) {
+    const pointer = `${COLLECTION_POINTER_PREFIX}${normalizeCollectionCid(cidOrUri)}`;
+    if (pointer.length < COLLECTION_POINTER_MIN_LENGTH ||
+        pointer.length > COLLECTION_POINTER_MAX_LENGTH ||
+        !COLLECTION_POINTER_PATTERN.test(pointer)) {
+        throw new Error('Normalized collection pointer does not match extension schema');
+    }
+    return pointer;
 }
 /**
  * Main SDK class for Solana 8004 implementation
@@ -68,7 +146,7 @@ export class SolanaSDK {
     forceOnChain;
     constructor(config = {}) {
         this.cluster = config.cluster || 'devnet';
-        this.programIds = getProgramIds();
+        this.programIds = getProgramIds(config.programIds);
         this.signer = config.signer;
         this.ipfsClient = config.ipfsClient;
         // Initialize Solana client (devnet only)
@@ -101,10 +179,10 @@ export class SolanaSDK {
         }
         // Initialize transaction builders (v0.4.0)
         const connection = this.client.getConnection();
-        this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer);
-        this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer, this.indexerClient);
-        this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer);
-        this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer);
+        this.identityTxBuilder = new IdentityTransactionBuilder(connection, this.signer, this.programIds);
+        this.reputationTxBuilder = new ReputationTransactionBuilder(connection, this.signer, this.indexerClient, this.programIds);
+        this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer, this.programIds);
+        this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer, this.programIds);
         this.feedbackManager.setIndexerClient(this.indexerClient);
         this.useIndexer = config.useIndexer ?? true;
         this.indexerFallback = config.indexerFallback ?? true;
@@ -134,11 +212,11 @@ export class SolanaSDK {
             try {
                 const connection = this.client.getConnection();
                 // v0.3.0: Get base collection from RootConfig
-                this.baseCollection = await getBaseCollection(connection) || undefined;
+                this.baseCollection = await getBaseCollection(connection, this.programIds.agentRegistry) || undefined;
                 if (!this.baseCollection) {
                     throw new Error('Registry not initialized. Root config not found.');
                 }
-                this.mintResolver = new AgentMintResolver(connection);
+                this.mintResolver = new AgentMintResolver(connection, undefined, this.programIds.agentRegistry);
             }
             catch (error) {
                 // Clear promise on failure so retry is possible
@@ -149,7 +227,7 @@ export class SolanaSDK {
         return this._initPromise;
     }
     /**
-     * Get the current base collection pubkey
+     * Get the current base registry collection pubkey
      */
     async getBaseCollection() {
         await this.initializeMintResolver();
@@ -163,7 +241,7 @@ export class SolanaSDK {
      */
     async loadAgent(asset) {
         // Derive PDA from asset
-        const [agentPDA] = PDAHelpers.getAgentPDA(asset);
+        const [agentPDA] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
         // Fetch account data - RpcNetworkError propagates for network issues
         const data = await this.client.getAccount(agentPDA);
         if (!data) {
@@ -190,7 +268,7 @@ export class SolanaSDK {
             const keyHashFull = await sha256(key);
             const keyHash = Buffer.from(keyHashFull.slice(0, 16));
             // Derive metadata entry PDA (v0.3.0 - uses asset)
-            const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
+            const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash, this.programIds.agentRegistry);
             // Fetch metadata account
             const metadataData = await this.client.getAccount(metadataEntry);
             if (!metadataData) {
@@ -428,14 +506,14 @@ export class SolanaSDK {
     }
     // ==================== Collection Methods (v0.6.0) ====================
     /**
-     * Get collection details by collection pubkey - v0.6.0
-     * @param collection - Collection (Metaplex Core collection) public key
+     * Get collection details by base-registry collection pubkey - v0.6.0
+     * @param collection - Base registry Metaplex Core collection public key
      * @returns Collection info or null if not registered
      */
     async getCollection(collection) {
         try {
             const connection = this.client.getConnection();
-            const registryConfig = await fetchRegistryConfig(connection, collection);
+            const registryConfig = await fetchRegistryConfig(connection, collection, this.programIds.agentRegistry);
             if (!registryConfig) {
                 return null;
             }
@@ -482,12 +560,12 @@ export class SolanaSDK {
         }
     }
     /**
-     * Get all agents in a collection (on-chain) - v0.4.0
+     * Get all agents in a base-registry collection (on-chain) - v0.4.0
      * Returns full AgentAccount data with metadata extensions.
      *
      * For faster queries, use `getLeaderboard({ collection: 'xxx' })` which uses the indexer.
      *
-     * @param collection - Collection public key
+     * @param collection - Base registry collection public key
      * @param options - Optional settings for additional data fetching
      * @returns Array of agents with metadata (and optionally feedbacks)
      * @throws UnsupportedRpcError if using default devnet RPC (requires getProgramAccounts)
@@ -699,7 +777,7 @@ export class SolanaSDK {
      */
     async getAtomStats(asset) {
         try {
-            const [atomStatsPDA] = getAtomStatsPDA(asset);
+            const [atomStatsPDA] = getAtomStatsPDA(asset, this.programIds.atomEngine);
             const connection = this.client.getConnection();
             const accountInfo = await connection.getAccountInfo(atomStatsPDA);
             if (!accountInfo || !accountInfo.data) {
@@ -732,7 +810,7 @@ export class SolanaSDK {
      */
     async getAtomConfig() {
         try {
-            const [atomConfigPDA] = getAtomConfigPDA();
+            const [atomConfigPDA] = getAtomConfigPDA(this.programIds.atomEngine);
             const connection = this.client.getConnection();
             const accountInfo = await connection.getAccountInfo(atomConfigPDA);
             if (!accountInfo || !accountInfo.data) {
@@ -905,23 +983,62 @@ export class SolanaSDK {
      */
     async searchAgents(params) {
         this.requireIndexer('searchAgents');
-        // Build query based on params
-        if (params.owner) {
-            return this.indexerClient.getAgentsByOwner(params.owner);
-        }
-        if (params.collection) {
-            return this.indexerClient.getAgentsByCollection(params.collection);
-        }
-        if (params.wallet) {
-            const agent = await this.indexerClient.getAgentByWallet(params.wallet);
-            return agent ? [agent] : [];
-        }
-        // General query with pagination
-        return this.indexerClient.getAgents({
+        const agents = await this.indexerClient.getAgents({
+            owner: params.owner,
+            creator: params.creator,
+            collection: params.collection,
+            collectionPointer: params.collectionPointer,
+            wallet: params.wallet,
+            parentAsset: params.parentAsset,
+            parentCreator: params.parentCreator,
+            colLocked: params.colLocked,
+            parentLocked: params.parentLocked,
             limit: params.limit,
             offset: params.offset,
             order: params.orderBy,
         });
+        if (params.minScore === undefined) {
+            return agents;
+        }
+        return agents.filter((agent) => {
+            const score = Number.isFinite(agent.quality_score)
+                ? agent.quality_score
+                : agent.raw_avg_score;
+            return score >= params.minScore;
+        });
+    }
+    /**
+     * Get canonical collection pointer rows from indexer.
+     */
+    async getCollectionPointers(options) {
+        this.requireIndexer('getCollectionPointers');
+        const method = this.indexerClient.getCollectionPointers;
+        if (!method) {
+            throw new Error('getCollectionPointers is not available on current indexer client');
+        }
+        return method.call(this.indexerClient, options);
+    }
+    /**
+     * Count assets associated with a collection pointer (and optional creator scope).
+     */
+    async getCollectionAssetCount(col, creator) {
+        this.requireIndexer('getCollectionAssetCount');
+        const method = this.indexerClient.getCollectionAssetCount;
+        if (!method) {
+            throw new Error('getCollectionAssetCount is not available on current indexer client');
+        }
+        return method.call(this.indexerClient, col, creator);
+    }
+    /**
+     * Get assets associated with a collection pointer.
+     */
+    async getCollectionAssets(col, options) {
+        this.requireIndexer('getCollectionAssets');
+        const method = this.indexerClient.getCollectionAssets;
+        if (!method) {
+            throw new Error('getCollectionAssets is not available on current indexer client');
+        }
+        return method.call(this.indexerClient, col, options);
     }
     /**
      * Get leaderboard (top agents by sort_key) - indexer only
@@ -1042,37 +1159,50 @@ export class SolanaSDK {
         return this.signer !== undefined;
     }
     /**
-     * Create a new user collection (write operation) - v0.4.1
-     * Users can create their own collections to organize agents.
-     * Agents registered to user collections still use the same reputation system.
-     *
-     * @param name - Collection name (max 32 bytes)
-     * @param uri - Collection metadata URI (max 250 bytes)
-     * @param options - Write options (skipSend, signer, collectionPubkey)
-     * @returns Transaction result with collection pubkey, or PreparedTransaction if skipSend
-     *
-     * @example
-     * ```typescript
-     * // Create a new collection
-     * const result = await sdk.createCollection('MyAgents', 'ipfs://Qm...');
-     * console.log('Collection:', result.collection?.toBase58());
-     *
-     * // Register agent in user collection
-     * await sdk.registerAgent('ipfs://agent-uri', result.collection);
-     * ```
+     * Build a collection metadata document that conforms to SDK collection schema.
+     * Useful when you want to inspect/edit JSON before upload.
      */
-    async createCollection(name, uri, options) {
+    createCollectionData(input) {
+        return buildCollectionMetadataJson(input);
+    }
+    async createCollection(dataOrName, uriOrOptions, maybeOptions) {
+        // New off-chain flow: createCollection(data[, { uploadToIpfs }])
+        if (typeof dataOrName !== 'string') {
+            const metadata = this.createCollectionData(dataOrName);
+            const uploadToIpfs = uriOrOptions?.uploadToIpfs ?? true;
+            if (!uploadToIpfs) {
+                return { metadata };
+            }
+            if (!this.ipfsClient) {
+                throw new Error('ipfsClient is required to upload collection metadata');
+            }
+            const cid = await this.ipfsClient.addJson(metadata);
+            const pointer = toCollectionPointer(cid);
+            return {
+                metadata,
+                cid,
+                uri: `ipfs://${cid}`,
+                pointer,
+            };
+        }
+        // Legacy on-chain flow: createCollection(name, uri, options)
+        const name = dataOrName;
+        if (typeof uriOrOptions !== 'string') {
+            throw new Error('Legacy createCollection(name, uri, options) requires a URI string');
+        }
+        const uri = uriOrOptions;
+        const options = maybeOptions;
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
-        return await this.identityTxBuilder.createCollection(name, uri, options);
+        return this.identityTxBuilder.createCollection(name, uri, options);
     }
     /**
      * Update collection URI (write operation) - v0.4.2
      * Update metadata URI for a user-owned collection.
      * Only the collection owner can update. Collection name is immutable.
      *
-     * @param collection - Collection pubkey to update
+     * @param collection - Base registry collection pubkey to update
      * @param newUri - New collection URI (max 250 bytes)
      * @param options - Write options (skipSend, signer)
      * @returns Transaction result, or PreparedTransaction if skipSend
@@ -1097,7 +1227,7 @@ export class SolanaSDK {
      * Register a new agent (write operation) - v0.3.0
      *
      * @param tokenUri - Token URI pointing to agent metadata JSON (IPFS, Arweave, or HTTP)
-     * @param collection - Optional collection pubkey (defaults to base registry, only creator can register)
+     * @param collection - Optional base registry collection pubkey override (defaults to root-config base collection)
      * @param options - Optional settings for server mode:
      *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
      *   - `signer`: PublicKey of the signer (required with skipSend)
@@ -1111,8 +1241,8 @@ export class SolanaSDK {
      * const result = await sdk.registerAgent('ipfs://QmMetadata...');
      *
      * @example
-     * // With collection
-     * const result = await sdk.registerAgent('ipfs://QmMetadata...', myCollection);
+     * // With explicit base registry override (legacy)
+     * const result = await sdk.registerAgent('ipfs://QmMetadata...', myBaseRegistryCollection);
      */
     async registerAgent(tokenUri, collection, options) {
         // For non-skipSend operations, require signer
@@ -1144,18 +1274,76 @@ export class SolanaSDK {
         }
         return result;
     }
-    /**
-     * Set agent URI (write operation) - v0.3.0
-     * @param asset - Agent Core asset pubkey
-     * @param collection - Collection pubkey for the agent
-     * @param newUri - New URI
-     * @param options - Write options (skipSend, signer)
-     */
-    async setAgentUri(asset, collection, newUri, options) {
+    async setAgentUri(asset, collectionOrUri, newUriOrOptions, maybeOptions) {
+        let collection;
+        let newUri;
+        let options;
+        if (typeof collectionOrUri === 'string') {
+            newUri = collectionOrUri;
+            options = newUriOrOptions;
+            const baseCollection = await this.getBaseCollection();
+            if (!baseCollection) {
+                throw new Error('Base collection not found');
+            }
+            collection = baseCollection;
+        }
+        else {
+            collection = collectionOrUri;
+            if (typeof newUriOrOptions !== 'string') {
+                throw new Error('newUri must be provided when base registry collection pubkey is passed explicitly');
+            }
+            newUri = newUriOrOptions;
+            options = maybeOptions;
+        }
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         return await this.identityTxBuilder.setAgentUri(asset, collection, newUri, options);
+    }
+    /**
+     * Set collection pointer (write operation)
+     * @param asset - Agent Core asset pubkey
+     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param options - Write options (skipSend, signer, lock)
+     */
+    async setCollectionPointer(asset, col, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        const lock = options?.lock ?? true;
+        if (typeof lock !== 'boolean') {
+            throw new Error('lock must be a boolean');
+        }
+        const { lock: _lock, ...txOptions } = options ?? {};
+        const writeOptions = Object.keys(txOptions).length > 0 ? txOptions : undefined;
+        if (lock) {
+            return this.identityTxBuilder.setCollectionPointer(asset, col, writeOptions);
+        }
+        return this.identityTxBuilder.setCollectionPointerWithOptions(asset, col, false, writeOptions);
+    }
+    /**
+     * Set parent asset (write operation)
+     * @param asset - Child agent Core asset pubkey
+     * @param parentAsset - Parent Core asset pubkey
+     * @param options - Write options (skipSend, signer, lock)
+     */
+    async setParentAsset(asset, parentAsset, options) {
+        if (asset.equals(parentAsset)) {
+            throw new Error('parentAsset must be different from asset');
+        }
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        const lock = options?.lock ?? true;
+        if (typeof lock !== 'boolean') {
+            throw new Error('lock must be a boolean');
+        }
+        const { lock: _lock, ...txOptions } = options ?? {};
+        const writeOptions = Object.keys(txOptions).length > 0 ? txOptions : undefined;
+        if (lock) {
+            return this.identityTxBuilder.setParentAsset(asset, parentAsset, writeOptions);
+        }
+        return this.identityTxBuilder.setParentAssetWithOptions(asset, parentAsset, false, writeOptions);
     }
     /**
      * Enable ATOM for an agent (one-way) - v0.4.4
@@ -1262,7 +1450,8 @@ export class SolanaSDK {
      * Revoke feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
-     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
+     * @param sealHash - Optional SEAL hash from original feedback.
+     * Legacy compatibility: if omitted, SDK uses all-zero hash.
      * @param options - Write options (skipSend, signer)
      */
     async revokeFeedback(asset, feedbackIndex, sealHash, options) {
@@ -1349,7 +1538,7 @@ export class SolanaSDK {
         try {
             const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
             validateNonce(nonceNum);
-            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce);
+            const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, validator, nonce, this.programIds.agentRegistry);
             const accountData = await this.client.getAccount(validationRequestPda);
             if (!accountData) {
                 return null;
@@ -1400,14 +1589,24 @@ export class SolanaSDK {
         }
         return null;
     }
-    /**
-     * Transfer agent ownership (write operation) - v0.3.0
-     * @param asset - Agent Core asset pubkey
-     * @param collection - Collection pubkey for the agent
-     * @param newOwner - New owner public key
-     * @param options - Write options (skipSend, signer)
-     */
-    async transferAgent(asset, collection, newOwner, options) {
+    async transferAgent(asset, collectionOrNewOwner, newOwnerOrOptions, maybeOptions) {
+        let collection;
+        let newOwner;
+        let options;
+        if (newOwnerOrOptions instanceof PublicKey) {
+            collection = collectionOrNewOwner;
+            newOwner = newOwnerOrOptions;
+            options = maybeOptions;
+        }
+        else {
+            newOwner = collectionOrNewOwner;
+            options = newOwnerOrOptions;
+            const baseCollection = await this.getBaseCollection();
+            if (!baseCollection) {
+                throw new Error('Base collection not found');
+            }
+            collection = baseCollection;
+        }
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }

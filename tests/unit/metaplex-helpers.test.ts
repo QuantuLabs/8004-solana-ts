@@ -9,7 +9,7 @@ import {
 
 describe('metaplex-helpers', () => {
   const mint = new PublicKey('So11111111111111111111111111111111111111112');
-  const programId = new PublicKey('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm');
+  const programId = new PublicKey('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
 
   describe('TOKEN_METADATA_PROGRAM_ID', () => {
     it('should be the correct Metaplex Token Metadata program', () => {

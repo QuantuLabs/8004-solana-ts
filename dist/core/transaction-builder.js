@@ -27,6 +27,27 @@ import { encodeReputationValue } from '../utils/value-encoding.js';
  */
 /** Default compute unit limit for complex transactions */
 const DEFAULT_COMPUTE_UNITS = 400_000;
+const COLLECTION_POINTER_PREFIX = 'c1:';
+const COLLECTION_POINTER_MAX_BYTES = 128;
+const COLLECTION_POINTER_PAYLOAD_RE = /^[a-z0-9]+$/;
+function validateCollectionPointer(col) {
+    if (typeof col !== 'string') {
+        throw new Error('col must be a string');
+    }
+    if (!col.startsWith(COLLECTION_POINTER_PREFIX)) {
+        throw new Error(`col must start with "${COLLECTION_POINTER_PREFIX}"`);
+    }
+    if (Buffer.byteLength(col, 'utf8') > COLLECTION_POINTER_MAX_BYTES) {
+        throw new Error(`col must be <= ${COLLECTION_POINTER_MAX_BYTES} bytes (UTF-8)`);
+    }
+    const payload = col.slice(COLLECTION_POINTER_PREFIX.length);
+    if (payload.length === 0) {
+        throw new Error('col payload cannot be empty after "c1:"');
+    }
+    if (!COLLECTION_POINTER_PAYLOAD_RE.test(payload)) {
+        throw new Error('col payload must contain only [a-z0-9]');
+    }
+}
 /**
  * Serialize a transaction for later signing and sending
  * @param transaction - The transaction to serialize
@@ -60,16 +81,18 @@ export class IdentityTransactionBuilder {
     connection;
     payer;
     instructionBuilder;
-    constructor(connection, payer) {
+    programIds;
+    constructor(connection, payer, programIds) {
         this.connection = connection;
         this.payer = payer;
-        this.instructionBuilder = new IdentityInstructionBuilder();
+        this.programIds = getProgramIds(programIds);
+        this.instructionBuilder = new IdentityInstructionBuilder(this.programIds.agentRegistry, this.programIds.mplCore);
     }
     /**
      * Register a new agent (Metaplex Core) - v0.3.0
      * @param agentUri - Optional agent URI
      * @param metadata - Optional metadata entries (key-value pairs)
-     * @param collection - Optional collection pubkey (defaults to base registry collection)
+     * @param collection - Optional base registry collection pubkey (defaults to root-config base collection)
      * @param options - Write options (skipSend, signer, assetPubkey, atomEnabled)
      * @returns Transaction result with asset and all signatures
      */
@@ -81,12 +104,12 @@ export class IdentityTransactionBuilder {
                 throw new Error('signer required when SDK has no signer configured');
             }
             // v0.6.0 single-collection: always use base collection from RootConfig
-            const [rootConfigPda] = PDAHelpers.getRootConfigPDA();
-            const rootConfig = await fetchRootConfig(this.connection);
+            const [rootConfigPda] = PDAHelpers.getRootConfigPDA(this.programIds.agentRegistry);
+            const rootConfig = await fetchRootConfig(this.connection, this.programIds.agentRegistry);
             if (!rootConfig) {
                 throw new Error('Root config not initialized. Please initialize the registry first.');
             }
-            const collectionPubkey = collection || rootConfig.getBaseCollectionPublicKey();
+            const baseCollectionPubkey = collection || rootConfig.getBaseCollectionPublicKey();
             // Determine the asset pubkey (Metaplex Core asset)
             let assetPubkey;
             let assetKeypair;
@@ -106,12 +129,12 @@ export class IdentityTransactionBuilder {
                 assetPubkey = assetKeypair.publicKey;
             }
             // Derive PDAs
-            const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collectionPubkey);
-            const [agentPda] = PDAHelpers.getAgentPDA(assetPubkey);
+            const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(baseCollectionPubkey, this.programIds.agentRegistry);
+            const [agentPda] = PDAHelpers.getAgentPDA(assetPubkey, this.programIds.agentRegistry);
             // v0.6.0: root_config and registry_config are always required
             const registerInstruction = options?.atomEnabled === false
-                ? this.instructionBuilder.buildRegisterWithOptions(rootConfigPda, registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '', false)
-                : this.instructionBuilder.buildRegister(rootConfigPda, registryConfigPda, agentPda, assetPubkey, collectionPubkey, signerPubkey, agentUri || '');
+                ? this.instructionBuilder.buildRegisterWithOptions(rootConfigPda, registryConfigPda, agentPda, assetPubkey, baseCollectionPubkey, signerPubkey, agentUri || '', false)
+                : this.instructionBuilder.buildRegister(rootConfigPda, registryConfigPda, agentPda, assetPubkey, baseCollectionPubkey, signerPubkey, agentUri || '');
             // Create transaction with compute budget (configurable via options)
             const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
                 units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
@@ -154,7 +177,7 @@ export class IdentityTransactionBuilder {
     /**
      * Set agent URI by asset (Metaplex Core) - v0.3.0
      * @param asset - Agent Core asset
-     * @param collection - Collection pubkey for the agent
+     * @param collection - Base registry collection pubkey for the agent
      * @param newUri - New URI
      * @param options - Write options (skipSend, signer)
      */
@@ -166,8 +189,8 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collection);
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [registryConfigPda] = PDAHelpers.getRegistryConfigPDA(collection, this.programIds.agentRegistry);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildSetAgentUri(registryConfigPda, agentPda, asset, collection, signerPubkey, newUri);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -176,6 +199,150 @@ export class IdentityTransactionBuilder {
                 return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
             }
             // Normal mode: send transaction
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Set collection pointer for an agent
+     * @param asset - Agent Core asset
+     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param options - Write options (skipSend, signer)
+     */
+    async setCollectionPointer(asset, col, options) {
+        validateCollectionPointer(col);
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
+            const instruction = this.instructionBuilder.buildSetCollectionPointer(agentPda, asset, signerPubkey, col);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Set collection pointer with lock option for an agent
+     * @param asset - Agent Core asset
+     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param lock - Whether to lock the collection pointer
+     * @param options - Write options (skipSend, signer)
+     */
+    async setCollectionPointerWithOptions(asset, col, lock, options) {
+        validateCollectionPointer(col);
+        if (typeof lock !== 'boolean') {
+            throw new Error('lock must be a boolean');
+        }
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
+            const instruction = this.instructionBuilder.buildSetCollectionPointerWithOptions(agentPda, asset, signerPubkey, col, lock);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Set parent asset for an agent
+     * @param asset - Child agent Core asset
+     * @param parentAsset - Parent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    async setParentAsset(asset, parentAsset, options) {
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
+            const [parentAgentPda] = PDAHelpers.getAgentPDA(parentAsset, this.programIds.agentRegistry);
+            const instruction = this.instructionBuilder.buildSetParentAsset(agentPda, asset, parentAgentPda, parentAsset, signerPubkey, parentAsset);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
+            if (!this.payer) {
+                throw new Error('No signer configured - SDK is read-only');
+            }
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            return { signature, success: true };
+        }
+        catch (error) {
+            return {
+                signature: '',
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    /**
+     * Set parent asset with lock option
+     * @param asset - Child agent Core asset
+     * @param parentAsset - Parent Core asset
+     * @param lock - Whether to lock parent link after setting
+     * @param options - Write options (skipSend, signer)
+     */
+    async setParentAssetWithOptions(asset, parentAsset, lock, options) {
+        if (typeof lock !== 'boolean') {
+            throw new Error('lock must be a boolean');
+        }
+        try {
+            const signerPubkey = options?.signer || this.payer?.publicKey;
+            if (!signerPubkey) {
+                throw new Error('signer required when SDK has no signer configured');
+            }
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
+            const [parentAgentPda] = PDAHelpers.getAgentPDA(parentAsset, this.programIds.agentRegistry);
+            const instruction = this.instructionBuilder.buildSetParentAssetWithOptions(agentPda, asset, parentAgentPda, parentAsset, signerPubkey, parentAsset, lock);
+            const transaction = new Transaction().add(instruction);
+            if (options?.skipSend) {
+                const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+                return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+            }
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }
@@ -212,12 +379,12 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             // Compute key hash (SHA256(key)[0..16]) - v1.9 security update
             const keyHashFull = await sha256(key);
             const keyHash = Buffer.from(keyHashFull.slice(0, 16));
             // Derive metadata entry PDA (v0.3.0 - uses asset, not agent_id)
-            const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
+            const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildSetMetadata(metadataEntry, agentPda, asset, signerPubkey, keyHash, key, value, immutable);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -253,12 +420,12 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             // Compute key hash (SHA256(key)[0..16]) - v1.9 security update
             const keyHashFull = await sha256(key);
             const keyHash = Buffer.from(keyHashFull.slice(0, 16));
             // Derive metadata entry PDA (v0.3.0 - uses asset, not agent_id)
-            const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash);
+            const [metadataEntry] = PDAHelpers.getMetadataEntryPDA(asset, keyHash, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildDeleteMetadata(metadataEntry, agentPda, asset, signerPubkey, keyHash);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -284,7 +451,7 @@ export class IdentityTransactionBuilder {
     /**
      * Transfer agent to another owner (Metaplex Core) - v0.3.0
      * @param asset - Agent Core asset
-     * @param collection - Collection pubkey for the agent
+     * @param collection - Base registry collection pubkey for the agent
      * @param toOwner - New owner public key
      * @param options - Write options (skipSend, signer)
      */
@@ -294,7 +461,7 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildTransferAgent(agentPda, asset, collection, signerPubkey, toOwner);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -329,7 +496,7 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildSyncOwner(agentPda, asset);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -363,7 +530,7 @@ export class IdentityTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildEnableAtom(agentPda, asset, signerPubkey);
             const transaction = new Transaction().add(instruction);
             if (options?.skipSend) {
@@ -425,7 +592,7 @@ export class IdentityTransactionBuilder {
                 writeBigUInt64LE(deadline), // Security: use unsigned for u64 deadline
             ]);
             // Derive PDAs
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             // Build Ed25519 verify instruction (must be immediately before setAgentWallet)
             // Ed25519 instruction data layout (fixed by Solana Ed25519 program):
             // See: https://docs.solana.com/developing/runtime-facilities/programs#ed25519-program
@@ -575,11 +742,51 @@ export class ReputationTransactionBuilder {
     payer;
     indexerClient;
     instructionBuilder;
-    constructor(connection, payer, indexerClient) {
+    txSalt = 0;
+    programIds;
+    constructor(connection, payer, indexerClient, programIds) {
         this.connection = connection;
         this.payer = payer;
         this.indexerClient = indexerClient;
-        this.instructionBuilder = new ReputationInstructionBuilder();
+        this.programIds = getProgramIds(programIds);
+        this.instructionBuilder = new ReputationInstructionBuilder(this.programIds.agentRegistry, this.programIds.atomEngine);
+    }
+    nextComputeUnitLimit(baseUnits) {
+        // Ensure otherwise-identical concurrent txs do not share the same signature.
+        const salt = this.txSalt++ % 32;
+        return Math.min(baseUnits + salt, 1_400_000);
+    }
+    async sendWithRetry(transaction, signers, maxRetries = 3) {
+        let lastError = null;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const signature = await sendAndConfirmTransaction(this.connection, transaction, signers);
+                return signature;
+            }
+            catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                const errorMsg = lastError.message;
+                const isPermanentError = errorMsg.includes('InstructionError') ||
+                    errorMsg.includes('custom program error') ||
+                    errorMsg.includes('insufficient funds') ||
+                    errorMsg.includes('account not found') ||
+                    errorMsg.includes('invalid account data') ||
+                    errorMsg.includes('ConstraintViolation') ||
+                    errorMsg.includes('AccountNotInitialized') ||
+                    errorMsg.includes('InvalidProgramId');
+                if (isPermanentError) {
+                    logger.warn(`Transaction failed with permanent error (not retrying): ${errorMsg}`);
+                    throw lastError;
+                }
+                logger.warn(`Transaction attempt ${attempt}/${maxRetries} failed (transient): ${errorMsg}`);
+                if (attempt < maxRetries) {
+                    const delay = Math.pow(2, attempt - 1) * 1000;
+                    logger.debug(`Retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+        throw lastError || new Error('Transaction failed after retries');
     }
     /**
      * Give feedback - v0.5.0
@@ -615,7 +822,7 @@ export class ReputationTransactionBuilder {
             if (params.feedbackFileHash && params.feedbackFileHash.length !== 32) {
                 throw new Error('feedbackFileHash must be 32 bytes');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const agentInfo = await this.connection.getAccountInfo(agentPda);
             if (!agentInfo) {
                 throw new Error('Agent not found');
@@ -623,9 +830,9 @@ export class ReputationTransactionBuilder {
             const agentAccount = AgentAccount.deserialize(agentInfo.data);
             const collection = agentAccount.getCollectionPublicKey();
             const atomEnabled = agentAccount.isAtomEnabled();
-            const atomConfig = atomEnabled ? getAtomConfigPDA()[0] : null;
-            const atomStats = atomEnabled ? getAtomStatsPDA(asset)[0] : null;
-            const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA()[0] : null;
+            const atomConfig = atomEnabled ? getAtomConfigPDA(this.programIds.atomEngine)[0] : null;
+            const atomStats = atomEnabled ? getAtomStatsPDA(asset, this.programIds.atomEngine)[0] : null;
+            const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0] : null;
             // v0.5.0: feedbackIndex is determined on-chain from agent_account.feedback_count
             // The SDK reads this value to return to the caller (for reference/tracking)
             // Note: options.feedbackIndex is ignored - it was only used when feedbackIndex was
@@ -633,7 +840,10 @@ export class ReputationTransactionBuilder {
             const feedbackIndex = BigInt(agentAccount.feedback_count.toString());
             // SEAL v1: feedbackFileHash is optional (null if not provided)
             const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, agentPda, asset, collection, atomConfig, atomStats, registryAuthority, valueBigInt, valueDecimals, resolvedScore, params.feedbackFileHash ?? null, feedbackIndex, params.tag1 ?? '', params.tag2 ?? '', params.endpoint ?? '', params.feedbackUri);
-            const transaction = new Transaction().add(giveFeedbackInstruction);
+            const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+                units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
+            });
+            const transaction = new Transaction().add(computeBudgetIx).add(giveFeedbackInstruction);
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
                 const prepared = serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
@@ -642,7 +852,7 @@ export class ReputationTransactionBuilder {
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            const signature = await this.sendWithRetry(transaction, [this.payer]);
             return { signature, success: true, feedbackIndex };
         }
         catch (error) {
@@ -668,19 +878,30 @@ export class ReputationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
+            // Backward compatibility: legacy callers may omit sealHash.
+            const resolvedSealHash = sealHash ?? Buffer.alloc(32);
+            if (resolvedSealHash.length !== 32) {
+                throw new Error('sealHash must be 32 bytes');
+            }
+            if (!sealHash) {
+                logger.warn('revokeFeedback called without sealHash; defaulting to all-zero hash for legacy compatibility');
+            }
             // Derive PDAs
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const agentInfo = await this.connection.getAccountInfo(agentPda);
             if (!agentInfo) {
                 throw new Error('Agent not found');
             }
             const agentAccount = AgentAccount.deserialize(agentInfo.data);
             const atomEnabled = agentAccount.isAtomEnabled();
-            const atomConfig = atomEnabled ? getAtomConfigPDA()[0] : null;
-            const atomStats = atomEnabled ? getAtomStatsPDA(asset)[0] : null;
-            const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA()[0] : null;
-            const instruction = this.instructionBuilder.buildRevokeFeedback(signerPubkey, agentPda, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, sealHash);
-            const transaction = new Transaction().add(instruction);
+            const atomConfig = atomEnabled ? getAtomConfigPDA(this.programIds.atomEngine)[0] : null;
+            const atomStats = atomEnabled ? getAtomStatsPDA(asset, this.programIds.atomEngine)[0] : null;
+            const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0] : null;
+            const instruction = this.instructionBuilder.buildRevokeFeedback(signerPubkey, agentPda, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, resolvedSealHash);
+            const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+                units: this.nextComputeUnitLimit(options?.computeUnits ?? DEFAULT_COMPUTE_UNITS),
+            });
+            const transaction = new Transaction().add(computeBudgetIx).add(instruction);
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
@@ -690,14 +911,21 @@ export class ReputationTransactionBuilder {
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            const signature = await this.sendWithRetry(transaction, [this.payer]);
             return { signature, success: true };
         }
         catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const lower = errorMessage.toLowerCase();
+            if (lower.includes('already been processed') || lower.includes('already processed')) {
+                // Revoke is idempotent on-chain; duplicate-signature races can be treated as success.
+                logger.warn(`revokeFeedback duplicate tx treated as success: ${errorMessage}`);
+                return { signature: '', success: true };
+            }
             return {
                 signature: '',
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage,
             };
         }
     }
@@ -731,10 +959,13 @@ export class ReputationTransactionBuilder {
             else if (responseHash.length !== 32) {
                 throw new Error('responseHash must be 32 bytes');
             }
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const hash = responseHash ?? Buffer.alloc(32);
             const instruction = this.instructionBuilder.buildAppendResponse(signerPubkey, agentPda, asset, client, feedbackIndex, responseUri, hash, sealHash);
-            const transaction = new Transaction().add(instruction);
+            const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+                units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
+            });
+            const transaction = new Transaction().add(computeBudgetIx).add(instruction);
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
                 return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
@@ -742,7 +973,7 @@ export class ReputationTransactionBuilder {
             if (!this.payer) {
                 throw new Error('No signer configured - SDK is read-only');
             }
-            const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.payer]);
+            const signature = await this.sendWithRetry(transaction, [this.payer]);
             return { signature, success: true };
         }
         catch (error) {
@@ -779,10 +1010,12 @@ export class ValidationTransactionBuilder {
     connection;
     payer;
     instructionBuilder;
-    constructor(connection, payer) {
+    programIds;
+    constructor(connection, payer, programIds) {
         this.connection = connection;
         this.payer = payer;
-        this.instructionBuilder = new ValidationInstructionBuilder();
+        this.programIds = getProgramIds(programIds);
+        this.instructionBuilder = new ValidationInstructionBuilder(this.programIds.agentRegistry);
     }
     /**
      * Request validation for an agent - v0.3.0
@@ -807,9 +1040,9 @@ export class ValidationTransactionBuilder {
                 throw new Error('requestHash must be 32 bytes');
             }
             // Derive PDAs (v0.3.0 - uses asset, not agent_id)
-            const [validationConfigPda] = PDAHelpers.getValidationConfigPDA();
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
-            const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(asset, validatorAddress, nonce);
+            const [validationConfigPda] = PDAHelpers.getValidationConfigPDA(this.programIds.agentRegistry);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
+            const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(asset, validatorAddress, nonce, this.programIds.agentRegistry);
             logger.debug(`requestValidation - Creating validation request: Asset=${asset.toBase58()}, Validator=${validatorAddress.toBase58()}, Nonce=${nonce}, PDA=${validationRequestPda.toBase58()}, Bump=${bump}`);
             const instruction = this.instructionBuilder.buildRequestValidation(validationConfigPda, signerPubkey, // requester (must be agent owner)
             signerPubkey, // payer
@@ -864,10 +1097,10 @@ export class ValidationTransactionBuilder {
                 throw new Error('responseHash must be 32 bytes');
             }
             validateByteLength(tag, 32, 'tag');
-            const [validationConfigPda] = PDAHelpers.getValidationConfigPDA();
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [validationConfigPda] = PDAHelpers.getValidationConfigPDA(this.programIds.agentRegistry);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(asset, signerPubkey, // validator
-            nonce);
+            nonce, this.programIds.agentRegistry);
             const instruction = this.instructionBuilder.buildRespondToValidation(validationConfigPda, signerPubkey, agentPda, asset, validationRequestPda, nonce, response, responseUri, responseHash, tag);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -933,10 +1166,12 @@ export class AtomTransactionBuilder {
     connection;
     payer;
     instructionBuilder;
-    constructor(connection, payer) {
+    programIds;
+    constructor(connection, payer, programIds) {
         this.connection = connection;
         this.payer = payer;
-        this.instructionBuilder = new AtomInstructionBuilder();
+        this.programIds = getProgramIds(programIds);
+        this.instructionBuilder = new AtomInstructionBuilder(this.programIds.atomEngine);
     }
     /**
      * Initialize AtomStats for an agent - v0.4.0
@@ -951,7 +1186,7 @@ export class AtomTransactionBuilder {
                 throw new Error('signer required when SDK has no signer configured');
             }
             // Get collection from AgentAccount (supports user registries)
-            const [agentPda] = PDAHelpers.getAgentPDA(asset);
+            const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
             const agentInfo = await this.connection.getAccountInfo(agentPda);
             if (!agentInfo) {
                 throw new Error('Agent not found');
@@ -959,8 +1194,8 @@ export class AtomTransactionBuilder {
             const agentAccount = AgentAccount.deserialize(agentInfo.data);
             const collection = agentAccount.getCollectionPublicKey();
             // Derive ATOM Engine PDAs
-            const [atomConfig] = getAtomConfigPDA();
-            const [atomStats] = getAtomStatsPDA(asset);
+            const [atomConfig] = getAtomConfigPDA(this.programIds.atomEngine);
+            const [atomStats] = getAtomStatsPDA(asset, this.programIds.atomEngine);
             const instruction = this.instructionBuilder.buildInitializeStats(signerPubkey, asset, collection, atomConfig, atomStats);
             const transaction = new Transaction().add(instruction);
             // If skipSend, return serialized transaction
@@ -996,11 +1231,10 @@ export class AtomTransactionBuilder {
                 throw new Error('signer required when SDK has no signer configured');
             }
             // Derive ATOM Engine config PDA
-            const [atomConfig] = getAtomConfigPDA();
+            const [atomConfig] = getAtomConfigPDA(this.programIds.atomEngine);
             // Get program data PDA (for authority verification)
-            const programIds = getProgramIds();
-            const [programData] = PublicKey.findProgramAddressSync([programIds.atomEngine.toBuffer()], new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111'));
-            const registryProgram = agentRegistryProgram || programIds.agentRegistry;
+            const [programData] = PublicKey.findProgramAddressSync([this.programIds.atomEngine.toBuffer()], new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111'));
+            const registryProgram = agentRegistryProgram || this.programIds.agentRegistry;
             const instruction = this.instructionBuilder.buildInitializeConfig(signerPubkey, atomConfig, programData, registryProgram);
             const transaction = new Transaction().add(instruction);
             if (options?.skipSend) {
@@ -1034,7 +1268,7 @@ export class AtomTransactionBuilder {
                 throw new Error('signer required when SDK has no signer configured');
             }
             // Derive ATOM Engine config PDA
-            const [atomConfig] = getAtomConfigPDA();
+            const [atomConfig] = getAtomConfigPDA(this.programIds.atomEngine);
             const instruction = this.instructionBuilder.buildUpdateConfig(signerPubkey, atomConfig, params);
             const transaction = new Transaction().add(instruction);
             if (options?.skipSend) {

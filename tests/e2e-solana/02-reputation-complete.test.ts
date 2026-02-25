@@ -741,7 +741,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
     });
 
     describe('Security Tests', () => {
-      it('should reject response from unauthorized wallet (not owner/agent_wallet)', async () => {
+      it('should allow response from non-owner wallet (permissionless appendResponse)', async () => {
         // Give feedback
         const publicRespUri = `ipfs://publicresponse_${Date.now()}`;
         const publicRespHash = createFeedbackHash(publicRespUri);
@@ -776,9 +776,8 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           `ipfs://validatorresponse_${Date.now()}`
         );
 
-        // Per 8004, only owner or agent_wallet can respond
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('Unauthorized');
+        // v0.5.x+ design: appendResponse is permissionless.
+        expect(result.success).toBe(true);
       });
 
       it('should reject response to non-existent feedback', async () => {

@@ -47,11 +47,13 @@ export interface LoadAgentsOptions {
 export class AgentMintResolver {
   private assetCache: Map<string, AgentAccount> = new Map();
   private connection: Connection;
+  private programId: PublicKey;
   private cacheLoaded: boolean = false;
   private loadingPromise: Promise<Map<string, AgentAccount>> | null = null;
 
-  constructor(connection: Connection, _collectionMint?: PublicKey) {
+  constructor(connection: Connection, _collectionMint?: PublicKey, programId: PublicKey = IDENTITY_PROGRAM_ID) {
     this.connection = connection;
+    this.programId = programId;
   }
 
   /**
@@ -82,7 +84,7 @@ export class AgentMintResolver {
     }
 
     // Derive AgentAccount PDA
-    const [agentPda] = PDAHelpers.getAgentPDA(asset);
+    const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programId);
 
     try {
       const accountInfo = await this.connection.getAccountInfo(agentPda);
@@ -128,7 +130,7 @@ export class AgentMintResolver {
     try {
       const discriminatorBytes = bs58.encode(ACCOUNT_DISCRIMINATORS.AgentAccount);
 
-      const accounts = await this.connection.getProgramAccounts(IDENTITY_PROGRAM_ID, {
+      const accounts = await this.connection.getProgramAccounts(this.programId, {
         filters: [
           {
             memcmp: {

@@ -6,10 +6,16 @@
 import { PublicKey } from '@solana/web3.js';
 
 /**
- * Consolidated AgentRegistry8004 Program ID
+ * Consolidated AgentRegistry8004 Program ID (devnet default)
  * Single program containing Identity, Reputation, and Validation modules
  */
-export const PROGRAM_ID = new PublicKey('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9EuaWm');
+export const DEVNET_AGENT_REGISTRY_PROGRAM_ID = new PublicKey('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
+
+/**
+ * Backward-compatible alias for devnet default Agent Registry ID.
+ * Override in SDK config for localnet/mainnet deployments.
+ */
+export const PROGRAM_ID = DEVNET_AGENT_REGISTRY_PROGRAM_ID;
 
 /**
  * Metaplex Core Program ID
@@ -18,25 +24,70 @@ export const PROGRAM_ID = new PublicKey('8oo48pya1SZD23ZhzoNMhxR2UGb8BRa41Su4qP9
 export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 
 /**
- * ATOM Engine Program ID
+ * ATOM Engine Program ID (devnet default)
  * Agent Trust On-chain Model - reputation computation engine
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
-export const ATOM_ENGINE_PROGRAM_ID = new PublicKey('AToM1iKaniUCuWfHd5WQy5aLgJYWMiKq78NtNJmtzSXJ');
+export const DEVNET_ATOM_ENGINE_PROGRAM_ID = new PublicKey('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
+
+/**
+ * Backward-compatible alias for devnet default ATOM Engine ID.
+ * Override in SDK config for localnet/mainnet deployments.
+ */
+export const ATOM_ENGINE_PROGRAM_ID = DEVNET_ATOM_ENGINE_PROGRAM_ID;
+
+export type ProgramIdInput = PublicKey | string;
+
+export interface ProgramIdOverrides {
+  identityRegistry?: ProgramIdInput;
+  reputationRegistry?: ProgramIdInput;
+  validationRegistry?: ProgramIdInput;
+  agentRegistry?: ProgramIdInput;
+  atomEngine?: ProgramIdInput;
+  mplCore?: ProgramIdInput;
+}
+
+export interface ProgramIdSet {
+  identityRegistry: PublicKey;
+  reputationRegistry: PublicKey;
+  validationRegistry: PublicKey;
+  agentRegistry: PublicKey;
+  atomEngine: PublicKey;
+  mplCore: PublicKey;
+}
+
+function toPublicKey(value?: ProgramIdInput): PublicKey | undefined {
+  if (!value) return undefined;
+  return value instanceof PublicKey ? value : new PublicKey(value);
+}
+
+/**
+ * Resolve program IDs.
+ * Defaults target devnet and can be overridden per SDK instance.
+ */
+export function getProgramIds(overrides: ProgramIdOverrides = {}): ProgramIdSet {
+  const agentRegistry = toPublicKey(overrides.agentRegistry) ?? PROGRAM_ID;
+  const identityRegistry = toPublicKey(overrides.identityRegistry) ?? agentRegistry;
+  const reputationRegistry = toPublicKey(overrides.reputationRegistry) ?? agentRegistry;
+  const validationRegistry = toPublicKey(overrides.validationRegistry) ?? agentRegistry;
+  const atomEngine = toPublicKey(overrides.atomEngine) ?? ATOM_ENGINE_PROGRAM_ID;
+  const mplCore = toPublicKey(overrides.mplCore) ?? MPL_CORE_PROGRAM_ID;
+
+  return {
+    identityRegistry,
+    reputationRegistry,
+    validationRegistry,
+    agentRegistry,
+    atomEngine,
+    mplCore,
+  };
+}
 
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
- * Program IDs for devnet deployment (legacy 3-program architecture)
+ * Program IDs resolved to devnet defaults (legacy 3-program naming)
  */
-export const PROGRAM_IDS = {
-  identityRegistry: PROGRAM_ID,
-  reputationRegistry: PROGRAM_ID,
-  validationRegistry: PROGRAM_ID,
-  // Consolidated program
-  agentRegistry: PROGRAM_ID,
-  // ATOM Engine (v0.4.0)
-  atomEngine: ATOM_ENGINE_PROGRAM_ID,
-} as const;
+export const PROGRAM_IDS = getProgramIds();
 
 /**
  * Get program ID
@@ -48,9 +99,7 @@ export function getProgramId(): PublicKey {
 /**
  * @deprecated Use getProgramId() instead
  */
-export function getProgramIds() {
-  return PROGRAM_IDS;
-}
+// getProgramIds(overrides?) is defined above for backward compatibility and overrides.
 
 /**
  * Account discriminators (first 8 bytes of account data)

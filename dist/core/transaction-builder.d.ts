@@ -10,6 +10,7 @@
  */
 import { PublicKey, Transaction, Connection, Keypair, TransactionSignature } from '@solana/web3.js';
 import { UpdateAtomConfigParams } from './instruction-builder.js';
+import { type ProgramIdOverrides } from './programs.js';
 export type { UpdateAtomConfigParams };
 import type { IndexerReadClient } from './indexer-client.js';
 import type { GiveFeedbackParams } from '../models/interfaces.js';
@@ -18,6 +19,7 @@ export interface TransactionResult {
     success: boolean;
     error?: string;
 }
+type TransactionBuilderProgramIdOverrides = Pick<ProgramIdOverrides, 'agentRegistry' | 'atomEngine' | 'mplCore'>;
 export interface WriteOptions {
     /** If true, returns serialized transaction instead of sending */
     skipSend?: boolean;
@@ -86,12 +88,13 @@ export declare class IdentityTransactionBuilder {
     private connection;
     private payer?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined);
+    private readonly programIds;
+    constructor(connection: Connection, payer?: Keypair | undefined, programIds?: TransactionBuilderProgramIdOverrides);
     /**
      * Register a new agent (Metaplex Core) - v0.3.0
      * @param agentUri - Optional agent URI
      * @param metadata - Optional metadata entries (key-value pairs)
-     * @param collection - Optional collection pubkey (defaults to base registry collection)
+     * @param collection - Optional base registry collection pubkey (defaults to root-config base collection)
      * @param options - Write options (skipSend, signer, assetPubkey, atomEnabled)
      * @returns Transaction result with asset and all signatures
      */
@@ -104,11 +107,41 @@ export declare class IdentityTransactionBuilder {
     /**
      * Set agent URI by asset (Metaplex Core) - v0.3.0
      * @param asset - Agent Core asset
-     * @param collection - Collection pubkey for the agent
+     * @param collection - Base registry collection pubkey for the agent
      * @param newUri - New URI
      * @param options - Write options (skipSend, signer)
      */
     setAgentUri(asset: PublicKey, collection: PublicKey, newUri: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set collection pointer for an agent
+     * @param asset - Agent Core asset
+     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param options - Write options (skipSend, signer)
+     */
+    setCollectionPointer(asset: PublicKey, col: string, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set collection pointer with lock option for an agent
+     * @param asset - Agent Core asset
+     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param lock - Whether to lock the collection pointer
+     * @param options - Write options (skipSend, signer)
+     */
+    setCollectionPointerWithOptions(asset: PublicKey, col: string, lock: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set parent asset for an agent
+     * @param asset - Child agent Core asset
+     * @param parentAsset - Parent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    setParentAsset(asset: PublicKey, parentAsset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Set parent asset with lock option
+     * @param asset - Child agent Core asset
+     * @param parentAsset - Parent Core asset
+     * @param lock - Whether to lock parent link after setting
+     * @param options - Write options (skipSend, signer)
+     */
+    setParentAssetWithOptions(asset: PublicKey, parentAsset: PublicKey, lock: boolean, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Set metadata for agent by asset - v0.3.0
      * @param asset - Agent Core asset
@@ -129,7 +162,7 @@ export declare class IdentityTransactionBuilder {
     /**
      * Transfer agent to another owner (Metaplex Core) - v0.3.0
      * @param asset - Agent Core asset
-     * @param collection - Collection pubkey for the agent
+     * @param collection - Base registry collection pubkey for the agent
      * @param toOwner - New owner public key
      * @param options - Write options (skipSend, signer)
      */
@@ -199,7 +232,11 @@ export declare class ReputationTransactionBuilder {
     private payer?;
     private indexerClient?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: IndexerReadClient | undefined);
+    private txSalt;
+    private readonly programIds;
+    constructor(connection: Connection, payer?: Keypair | undefined, indexerClient?: IndexerReadClient | undefined, programIds?: TransactionBuilderProgramIdOverrides);
+    private nextComputeUnitLimit;
+    private sendWithRetry;
     /**
      * Give feedback - v0.5.0
      * @param asset - Agent Core asset
@@ -220,7 +257,7 @@ export declare class ReputationTransactionBuilder {
      *
      * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, sealHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, sealHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback - v0.6.0 (SEAL v1)
      * @param asset - Agent Core asset
@@ -254,7 +291,8 @@ export declare class ValidationTransactionBuilder {
     private connection;
     private payer?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined);
+    private readonly programIds;
+    constructor(connection: Connection, payer?: Keypair | undefined, programIds?: TransactionBuilderProgramIdOverrides);
     /**
      * Request validation for an agent - v0.3.0
      * @param asset - Agent Core asset
@@ -307,7 +345,8 @@ export declare class AtomTransactionBuilder {
     private connection;
     private payer?;
     private instructionBuilder;
-    constructor(connection: Connection, payer?: Keypair | undefined);
+    private readonly programIds;
+    constructor(connection: Connection, payer?: Keypair | undefined, programIds?: TransactionBuilderProgramIdOverrides);
     /**
      * Initialize AtomStats for an agent - v0.4.0
      * Must be called by the agent owner before any feedback can be given

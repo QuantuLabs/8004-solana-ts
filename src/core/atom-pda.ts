@@ -9,24 +9,29 @@ import { getProgramIds } from './programs.js';
 /**
  * Get AtomConfig PDA
  * Seeds: ["atom_config"]
+ * @param atomEngineProgramId - Optional ATOM Engine program ID override
  * @returns [PDA address, bump]
  */
-export function getAtomConfigPDA(): [PublicKey, number] {
+export function getAtomConfigPDA(atomEngineProgramId?: PublicKey): [PublicKey, number] {
   const programIds = getProgramIds();
-  return PublicKey.findProgramAddressSync([Buffer.from('atom_config')], programIds.atomEngine);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('atom_config')],
+    atomEngineProgramId ?? programIds.atomEngine
+  );
 }
 
 /**
  * Get AtomStats PDA for an agent
  * Seeds: ["atom_stats", asset.key()]
  * @param asset - Agent Core asset pubkey
+ * @param atomEngineProgramId - Optional ATOM Engine program ID override
  * @returns [PDA address, bump]
  */
-export function getAtomStatsPDA(asset: PublicKey): [PublicKey, number] {
+export function getAtomStatsPDA(asset: PublicKey, atomEngineProgramId?: PublicKey): [PublicKey, number] {
   const programIds = getProgramIds();
   return PublicKey.findProgramAddressSync(
     [Buffer.from('atom_stats'), asset.toBuffer()],
-    programIds.atomEngine
+    atomEngineProgramId ?? programIds.atomEngine
   );
 }
 
