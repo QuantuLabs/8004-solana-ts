@@ -2,6 +2,7 @@
 
 import { spawnSync } from 'child_process';
 import { relative } from 'path';
+import { IndexerClient } from '../dist/index.js';
 import {
   boolFromEnv,
   errorMessage,
@@ -27,6 +28,10 @@ function toRel(pathValue) {
 
 function buildCommandString(command, args) {
   return [command, ...args].join(' ');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readJobStatusFromArtifact(artifactPath) {
@@ -83,6 +88,32 @@ function runProcessJob({ id, label, command, args, artifactPath, logPath, env })
   };
 }
 
+function createManualJobRecord({
+  id,
+  label,
+  status,
+  startedAt,
+  endedAt,
+  durationMs,
+  command,
+  artifactPath,
+  logPath,
+  note = '',
+}) {
+  return {
+    id,
+    label,
+    status,
+    startedAt,
+    endedAt,
+    durationMs,
+    command,
+    artifactPath: toRel(artifactPath),
+    logPath: toRel(logPath),
+    note,
+  };
+}
+
 function buildCheckArgs({ backend, transport, runId, artifactPath, seedAsset, timeoutMs }) {
   const args = [
     'scripts/e2e-indexers-check.mjs',
@@ -108,6 +139,161 @@ function applyArgToEnv(args, argName, envName, env) {
   if (value) env[envName] = value;
 }
 
+async function fetchSnapshot({ client, seedAsset }) {
+  const snapshot = {
+    available: null,
+    stats: null,
+    topAsset: null,
+    seedAssetFound: null,
+    errors: [],
+  };
+
+  try {
+    snapshot.available = await client.isAvailable();
+  } catch (error) {
+    snapshot.available = false;
+    snapshot.errors.push(`availability: ${errorMessage(error)}`);
+  }
+
+  try {
+    const stats = await client.getGlobalStats();
+    snapshot.stats = {
+      total_agents: Number.isFinite(stats?.total_agents) ? stats.total_agents : null,
+      total_feedbacks: Number.isFinite(stats?.total_feedbacks) ? stats.total_feedbacks : null,
+      total_collections: Number.isFinite(stats?.total_collections) ? stats.total_collections : null,
+    };
+  } catch (error) {
+    snapshot.errors.push(`global_stats: ${errorMessage(error)}`);
+  }
+
+  try {
+    const leaderboard = await client.getLeaderboard({ limit: 1 });
+    if (Array.isArray(leaderboard) && typeof leaderboard[0]?.asset === 'string') {
+      snapshot.topAsset = leaderboard[0].asset;
+    }
+  } catch (error) {
+    snapshot.errors.push(`leaderboard: ${errorMessage(error)}`);
+  }
+
+  if (seedAsset) {
+    try {
+      const seedAgent = await client.getAgent(seedAsset);
+      snapshot.seedAssetFound = Boolean(seedAgent);
+    } catch (error) {
+      snapshot.seedAssetFound = false;
+      snapshot.errors.push(`seed_lookup: ${errorMessage(error)}`);
+    }
+  }
+
+  return snapshot;
+}
+
+function isAlignedWithClassic({ classicArtifact, snapshot, seedAsset }) {
+  const targetStats = classicArtifact?.globalStats || {};
+  const stats = snapshot.stats || {};
+  const topClassic = classicArtifact?.leaderboardAssets?.[0] ?? null;
+
+  const statsMatch =
+    stats.total_agents === targetStats.total_agents &&
+    stats.total_feedbacks === targetStats.total_feedbacks &&
+    stats.total_collections === targetStats.total_collections;
+  const topMatch = topClassic ? snapshot.topAsset === topClassic : true;
+  const seedMatch = seedAsset ? snapshot.seedAssetFound === true : true;
+  return statsMatch && topMatch && seedMatch;
+}
+
+async function runSubstreamCatchupJob({
+  runId,
+  env,
+  seedAsset,
+  classicRestArtifactPath,
+  artifactPath,
+  logPath,
+}) {
+  const startedAtMs = Date.now();
+  const startedAt = nowIso();
+  const timeoutMs = Number.parseInt(env.E2E_INDEXERS_CATCHUP_TIMEOUT_MS || '120000', 10);
+  const pollMs = Number.parseInt(env.E2E_INDEXERS_CATCHUP_POLL_MS || '2000', 10);
+
+  const classicArtifact = readJson(classicRestArtifactPath);
+  const substreamUrl = env.SUBSTREAM_INDEXER_URL || env.E2E_INDEXERS_SUBSTREAM_REST_URL || null;
+  const substreamApiKey = env.SUBSTREAM_INDEXER_API_KEY || env.E2E_INDEXERS_SUBSTREAM_API_KEY || '';
+  const command = `internal:substream-catchup(${substreamUrl || 'no-url'})`;
+  const pollLog = [];
+
+  const artifact = {
+    runId,
+    status: 'skipped',
+    substreamUrl,
+    seedAsset: seedAsset || null,
+    timeoutMs,
+    pollMs,
+    attempts: 0,
+    aligned: false,
+    classicTarget: {
+      globalStats: classicArtifact?.globalStats || null,
+      topAsset: classicArtifact?.leaderboardAssets?.[0] ?? null,
+    },
+    lastSnapshot: null,
+    errors: [],
+    startedAt,
+    endedAt: startedAt,
+    durationMs: 0,
+  };
+
+  if (!substreamUrl) {
+    artifact.errors.push('No substream REST URL configured');
+  } else if (!classicArtifact?.globalStats) {
+    artifact.errors.push('Classic REST artifact missing global stats');
+  } else {
+    const client = new IndexerClient({
+      baseUrl: substreamUrl,
+      apiKey: substreamApiKey,
+      timeout: Math.max(10000, pollMs * 2),
+      retries: 0,
+    });
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() <= deadline) {
+      artifact.attempts += 1;
+      const snapshot = await fetchSnapshot({ client, seedAsset });
+      artifact.lastSnapshot = snapshot;
+      pollLog.push(
+        `attempt=${artifact.attempts} stats=${JSON.stringify(snapshot.stats)} top=${snapshot.topAsset} seed=${snapshot.seedAssetFound} errors=${snapshot.errors.join(' | ')}`
+      );
+      if (isAlignedWithClassic({ classicArtifact, snapshot, seedAsset })) {
+        artifact.aligned = true;
+        artifact.status = 'passed';
+        break;
+      }
+      await sleep(pollMs);
+    }
+
+    if (!artifact.aligned) {
+      artifact.status = 'partial';
+      artifact.errors.push('Substream REST did not catch up to classic REST before timeout');
+    }
+  }
+
+  artifact.endedAt = nowIso();
+  artifact.durationMs = Date.now() - startedAtMs;
+  writeText(logPath, `${pollLog.join('\n')}\n`);
+  writeText(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+
+  return createManualJobRecord({
+    id: 'substream-catchup',
+    label: 'Substream REST Catch-up',
+    status: artifact.status,
+    startedAt,
+    endedAt: artifact.endedAt,
+    durationMs: artifact.durationMs,
+    command,
+    artifactPath,
+    logPath,
+    note: artifact.aligned ? '' : 'catch-up timeout',
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runId = getArgOr(args, 'run-id', process.env.E2E_INDEXERS_RUN_ID || makeRunId('matrix'));
@@ -128,6 +314,7 @@ async function main() {
     getArgOr(args, 'timeout-ms', process.env.E2E_INDEXERS_TIMEOUT_MS || '10000'),
     10
   );
+  const skipGraphql = getFlag(args, 'skip-graphql') || boolFromEnv('E2E_INDEXERS_SKIP_GRAPHQL', false);
 
   const env = { ...process.env, E2E_INDEXERS_RUN_ID: runId };
   if (getFlag(args, 'dry-run') || boolFromEnv('E2E_INDEXERS_DRY_RUN', false)) {
@@ -148,6 +335,7 @@ async function main() {
   const classicGraphqlArtifact = resolveFromCwd(`${jobsDir}/classic-graphql.json`);
   const substreamRestArtifact = resolveFromCwd(`${jobsDir}/substream-rest.json`);
   const substreamGraphqlArtifact = resolveFromCwd(`${jobsDir}/substream-graphql.json`);
+  const substreamCatchupArtifact = resolveFromCwd(`${jobsDir}/substream-catchup.json`);
   const dockerPostArtifact = resolveFromCwd(`${jobsDir}/docker-post.json`);
 
   jobRecords.push(
@@ -195,23 +383,38 @@ async function main() {
       : null;
   if (seedAsset) env.E2E_INDEXERS_SEED_ASSET = seedAsset;
 
-  const checkJobs = [
-    {
+  // Run classic REST first and use it as the catch-up target for substream REST.
+  jobRecords.push(
+    runProcessJob({
       id: 'classic-rest',
       label: 'Classic REST Check',
-      backend: 'classic',
-      transport: 'rest',
+      command: 'node',
+      args: buildCheckArgs({
+        backend: 'classic',
+        transport: 'rest',
+        runId,
+        artifactPath: classicRestArtifact,
+        seedAsset,
+        timeoutMs,
+      }),
       artifactPath: classicRestArtifact,
       logPath: resolveFromCwd(`${logsDir}/classic-rest.log`),
-    },
-    {
-      id: 'classic-graphql',
-      label: 'Classic GraphQL Check',
-      backend: 'classic',
-      transport: 'graphql',
-      artifactPath: classicGraphqlArtifact,
-      logPath: resolveFromCwd(`${logsDir}/classic-graphql.log`),
-    },
+      env,
+    })
+  );
+
+  jobRecords.push(
+    await runSubstreamCatchupJob({
+      runId,
+      env,
+      seedAsset,
+      classicRestArtifactPath: classicRestArtifact,
+      artifactPath: substreamCatchupArtifact,
+      logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
+    })
+  );
+
+  const remainingChecks = [
     {
       id: 'substream-rest',
       label: 'Substream REST Check',
@@ -220,17 +423,28 @@ async function main() {
       artifactPath: substreamRestArtifact,
       logPath: resolveFromCwd(`${logsDir}/substream-rest.log`),
     },
-    {
+  ];
+
+  if (!skipGraphql) {
+    remainingChecks.unshift({
+      id: 'classic-graphql',
+      label: 'Classic GraphQL Check',
+      backend: 'classic',
+      transport: 'graphql',
+      artifactPath: classicGraphqlArtifact,
+      logPath: resolveFromCwd(`${logsDir}/classic-graphql.log`),
+    });
+    remainingChecks.push({
       id: 'substream-graphql',
       label: 'Substream GraphQL Check',
       backend: 'substream',
       transport: 'graphql',
       artifactPath: substreamGraphqlArtifact,
       logPath: resolveFromCwd(`${logsDir}/substream-graphql.log`),
-    },
-  ];
+    });
+  }
 
-  for (const job of checkJobs) {
+  for (const job of remainingChecks) {
     jobRecords.push(
       runProcessJob({
         id: job.id,

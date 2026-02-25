@@ -38,11 +38,11 @@ export interface WriteOptions {
     computeUnits?: number;
 }
 /**
- * Extended options for giveFeedback
- * Allows manual feedbackIndex for testing without indexer
+ * Extended options for giveFeedback.
+ * feedbackIndex is deprecated and ignored (index is computed on-chain).
  */
 export interface GiveFeedbackOptions extends WriteOptions {
-    /** Manual feedback index - bypasses indexer lookup (for testing) */
+    /** @deprecated Ignored. feedback index is determined on-chain. */
     feedbackIndex?: bigint;
 }
 /**
@@ -241,7 +241,7 @@ export declare class ReputationTransactionBuilder {
      * Give feedback - v0.5.0
      * @param asset - Agent Core asset
      * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
-     * @param options - Write options (skipSend, signer, feedbackIndex)
+     * @param options - Write options (skipSend, signer)
      */
     giveFeedback(asset: PublicKey, params: GiveFeedbackParams, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;

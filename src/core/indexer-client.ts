@@ -184,7 +184,7 @@ export interface IndexedFeedback {
   id: string;
   asset: string;
   client_address: string;
-  feedback_index: number;
+  feedback_index: number | string;
   value: number | string;
   value_decimals: number;
   score: number | null;
@@ -302,11 +302,12 @@ export interface IndexedFeedbackResponse {
   id: string;
   asset: string;
   client_address: string;
-  feedback_index: number;
+  feedback_index: number | string;
   responder: string;
   response_uri: string | null;
   response_hash: string | null;
   running_digest: string | null;
+  response_count?: number | string | null;
   block_slot: number;
   tx_signature: string;
   created_at: string;
@@ -316,14 +317,14 @@ export interface IndexedRevocation {
   id: string;
   asset: string;
   client_address: string;
-  feedback_index: number;
+  feedback_index: number | string;
   feedback_hash: string | null;
   slot: number;
   original_score: number | null;
   atom_enabled: boolean;
   had_impact: boolean;
   running_digest: string | null;
-  revoke_count: number;
+  revoke_count: number | string;
   tx_signature: string;
   created_at: string;
 }
@@ -512,6 +513,23 @@ export class IndexerClient implements IndexerReadClient {
     }
     const queryString = searchParams.toString();
     return queryString ? `?${queryString}` : '';
+  }
+
+  private parseCountValue(value: unknown, fallback: number): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.max(0, Math.trunc(value));
+    }
+    if (typeof value === 'string' && /^-?\d+$/.test(value)) {
+      try {
+        const n = BigInt(value);
+        if (n < 0n) return 0;
+        if (n > BigInt(Number.MAX_SAFE_INTEGER)) return Number.MAX_SAFE_INTEGER;
+        return Number(n);
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
   }
 
   // ============================================================================
@@ -1105,10 +1123,9 @@ export class IndexerClient implements IndexerReadClient {
     if (lastFeedback.length === 0) {
       return { digest: null, count: 0 };
     }
-
-    // Get count using Prefer: count=exact header (PostgREST standard)
-    const count = await this.getCount('feedbacks', { asset: `eq.${asset}` });
-
+    // feedback_index is zero-based, so chain count is lastIndex + 1.
+    const lastIndex = this.parseCountValue(lastFeedback[0].feedback_index, 0);
+    const count = lastIndex + 1;
     return { digest: lastFeedback[0].running_digest, count };
   }
 
@@ -1122,8 +1139,7 @@ export class IndexerClient implements IndexerReadClient {
     if (responses.length === 0) {
       return { digest: null, count: 0 };
     }
-
-    const count = await this.getCount('feedback_responses', { asset: `eq.${asset}` });
+    const count = this.parseCountValue(responses[0].response_count, 1);
     return { digest: responses[0].running_digest, count };
   }
 
@@ -1137,8 +1153,7 @@ export class IndexerClient implements IndexerReadClient {
     if (revocations.length === 0) {
       return { digest: null, count: 0 };
     }
-
-    const count = await this.getCount('revocations', { asset: `eq.${asset}` });
+    const count = this.parseCountValue(revocations[0].revoke_count, 1);
     return { digest: revocations[0].running_digest, count };
   }
 

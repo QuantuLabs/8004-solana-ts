@@ -1438,7 +1438,7 @@ export class SolanaSDK {
      * Give feedback to an agent (write operation) - v0.5.0
      * @param asset - Agent Core asset pubkey
      * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
-     * @param options - Write options (skipSend, signer, feedbackIndex)
+     * @param options - Write options (skipSend, signer)
      */
     async giveFeedback(asset, params, options) {
         if (!options?.skipSend && !this.signer) {
@@ -2094,10 +2094,9 @@ export class SolanaSDK {
             lag: 0n,
         });
         try {
-            const getLastFeedbackDigest = this.indexerClient.getLastFeedbackDigest;
-            const getLastResponseDigest = this.indexerClient.getLastResponseDigest;
-            const getLastRevokeDigest = this.indexerClient.getLastRevokeDigest;
-            if (!getLastFeedbackDigest || !getLastResponseDigest || !getLastRevokeDigest) {
+            if (!this.indexerClient.getLastFeedbackDigest ||
+                !this.indexerClient.getLastResponseDigest ||
+                !this.indexerClient.getLastRevokeDigest) {
                 return {
                     valid: false,
                     status: 'error',
@@ -2128,9 +2127,9 @@ export class SolanaSDK {
             };
             const [agent, feedbackDigest, responseDigest, revokeDigest] = await Promise.all([
                 this.loadAgent(asset),
-                safeGetDigest(() => getLastFeedbackDigest(assetStr)),
-                safeGetDigest(() => getLastResponseDigest(assetStr)),
-                safeGetDigest(() => getLastRevokeDigest(assetStr)),
+                safeGetDigest(() => this.indexerClient.getLastFeedbackDigest(assetStr)),
+                safeGetDigest(() => this.indexerClient.getLastResponseDigest(assetStr)),
+                safeGetDigest(() => this.indexerClient.getLastRevokeDigest(assetStr)),
             ]);
             if (!agent) {
                 return {
@@ -2344,10 +2343,9 @@ export class SolanaSDK {
             return Array.from(indices).sort((a, b) => a - b);
         };
         try {
-            const getFeedbacksAtIndices = this.indexerClient.getFeedbacksAtIndices;
-            const getResponsesAtOffsets = this.indexerClient.getResponsesAtOffsets;
-            const getRevocationsAtCounts = this.indexerClient.getRevocationsAtCounts;
-            if (!getFeedbacksAtIndices || !getResponsesAtOffsets || !getRevocationsAtCounts) {
+            if (!this.indexerClient.getFeedbacksAtIndices ||
+                !this.indexerClient.getResponsesAtOffsets ||
+                !this.indexerClient.getRevocationsAtCounts) {
                 return {
                     ...basicResult,
                     spotChecks: spotCheckResults,
@@ -2367,13 +2365,13 @@ export class SolanaSDK {
             // Parallel spot checks
             const [feedbackMap, responseMap, revokeMap] = await Promise.all([
                 feedbackIndices.length > 0
-                    ? getFeedbacksAtIndices(basicResult.asset, feedbackIndices)
+                    ? this.indexerClient.getFeedbacksAtIndices(basicResult.asset, feedbackIndices)
                     : new Map(),
                 responseOffsets.length > 0
-                    ? getResponsesAtOffsets(basicResult.asset, responseOffsets)
+                    ? this.indexerClient.getResponsesAtOffsets(basicResult.asset, responseOffsets)
                     : new Map(),
                 revokeIndices.length > 0
-                    ? getRevocationsAtCounts(basicResult.asset, revokeIndices.map(i => i + 1))
+                    ? this.indexerClient.getRevocationsAtCounts(basicResult.asset, revokeIndices.map(i => i + 1))
                     : new Map(),
             ]);
             // Process feedback spot checks
@@ -2528,8 +2526,7 @@ export class SolanaSDK {
             const feedbackCountOnChain = BigInt(agent.feedback_count);
             const responseCountOnChain = BigInt(agent.response_count);
             const revokeCountOnChain = BigInt(agent.revoke_count);
-            const getReplayData = this.indexerClient.getReplayData;
-            if (!getReplayData) {
+            if (!this.indexerClient.getReplayData) {
                 const emptyReplay = { finalDigest: Buffer.alloc(32), count: 0, valid: true };
                 return {
                     valid: false,
@@ -2578,7 +2575,7 @@ export class SolanaSDK {
                 const target = Number(onChainCount);
                 while (fromCount < target) {
                     const toCount = Math.min(fromCount + batchSize, target);
-                    const page = await getReplayData(assetStr, chainType, fromCount, toCount, batchSize);
+                    const page = await this.indexerClient.getReplayData(assetStr, chainType, fromCount, toCount, batchSize);
                     allEvents.push(...page.events);
                     onProgress?.(chainType, allEvents.length + startCount, target);
                     if (!page.hasMore || page.events.length === 0)

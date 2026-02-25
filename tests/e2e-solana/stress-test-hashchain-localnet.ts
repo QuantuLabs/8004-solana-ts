@@ -14,7 +14,7 @@
  */
 
 import { Keypair, PublicKey, Connection, Transaction, SystemProgram, sendAndConfirmTransaction } from '@solana/web3.js';
-import { SolanaSDK, IntegrityResult } from '../../src/index.js';
+import { SolanaSDK, IntegrityResult, IndexerClient, IndexedFeedback } from '../../src/index.js';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -29,7 +29,7 @@ function sha256(data: string): Buffer {
 
 // ============ CONFIG ============
 const LOCALNET_RPC = 'http://127.0.0.1:8899';
-const LOCALNET_INDEXER = process.env.INDEXER_URL || 'http://127.0.0.1:3001/rest/v1';
+const LOCALNET_INDEXER = process.env.INDEXER_URL || 'http://127.0.0.1:3005/rest/v1';
 
 interface ScenarioConfig {
   name: string;
@@ -53,6 +53,8 @@ interface StressResult {
   signature?: string;
   error?: string;
   durationMs: number;
+  clientIndex?: number;
+  feedbackIndex?: number | bigint;
 }
 
 interface ScenarioReport {
@@ -68,6 +70,12 @@ interface ScenarioReport {
     avgMs: number;
     allValid: boolean;
   };
+}
+
+interface FeedbackAnchor {
+  clientIndex: number;
+  feedbackIndex: number;
+  sealHash: Buffer;
 }
 
 // ============ UTILITIES ============
@@ -110,6 +118,69 @@ async function executeInBatches<T>(
   return results;
 }
 
+async function collectFeedbackAnchors(
+  asset: string,
+  clientKeypairs: Keypair[],
+  targetCount: number,
+  timeoutMs: number = 120000
+): Promise<FeedbackAnchor[]> {
+  if (targetCount <= 0) return [];
+
+  const clientIndexByAddress = new Map<string, number>();
+  for (let i = 0; i < clientKeypairs.length; i++) {
+    clientIndexByAddress.set(clientKeypairs[i].publicKey.toBase58(), i);
+  }
+
+  const indexer = new IndexerClient({
+    baseUrl: LOCALNET_INDEXER,
+    apiKey: 'test-key',
+    timeout: 10000,
+    retries: 1,
+  });
+
+  const deadline = Date.now() + timeoutMs;
+  const pageSize = Math.min(1000, Math.max(100, targetCount));
+
+  while (Date.now() < deadline) {
+    const anchorsByIndex = new Map<number, FeedbackAnchor>();
+    let offset = 0;
+
+    while (true) {
+      const page = await indexer.getFeedbacks(asset, {
+        includeRevoked: true,
+        limit: pageSize,
+        offset,
+      });
+      if (page.length === 0) break;
+
+      for (const fb of page as IndexedFeedback[]) {
+        const clientIndex = clientIndexByAddress.get(fb.client_address);
+        if (clientIndex === undefined || !fb.feedback_hash) continue;
+        const idx =
+          typeof fb.feedback_index === 'string' ? Number.parseInt(fb.feedback_index, 10) : fb.feedback_index;
+        if (!Number.isFinite(idx)) continue;
+        anchorsByIndex.set(idx, {
+          clientIndex,
+          feedbackIndex: idx,
+          sealHash: Buffer.from(fb.feedback_hash, 'hex'),
+        });
+      }
+
+      offset += page.length;
+      if (page.length < pageSize) break;
+    }
+
+    const anchors = Array.from(anchorsByIndex.values()).sort((a, b) => a.feedbackIndex - b.feedbackIndex);
+    if (anchors.length >= targetCount) {
+      return anchors.slice(0, targetCount);
+    }
+
+    await sleep(2000);
+  }
+
+  return [];
+}
+
 // ============ SCENARIO RUNNER ============
 async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
   console.log(`\n${'='.repeat(60)}`);
@@ -130,8 +201,8 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
     indexerUrl: LOCALNET_INDEXER,
   });
 
-  // Create clients for feedbacks
-  const NUM_CLIENTS = Math.min(10, Math.ceil(config.feedbacks / 1000));
+  // Keep one feedback signer for deterministic index ownership in revoke phase.
+  const NUM_CLIENTS = 1;
   const clientKeypairs: Keypair[] = [];
   const clientSdks: SolanaSDK[] = [];
 
@@ -163,8 +234,6 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
   if (!collection) throw new Error('No base collection');
 
   const results: StressResult[] = [];
-  const feedbackIndices = new Map<number, bigint>();
-  const createdFeedbacks: { clientIndex: number; feedbackIndex: bigint }[] = [];
 
   // Generate feedbacks
   console.log(`\n[3/6] Generating ${config.feedbacks.toLocaleString()} feedbacks...`);
@@ -173,11 +242,6 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
   for (let i = 0; i < config.feedbacks; i++) {
     const clientIndex = i % NUM_CLIENTS;
     const clientSdk = clientSdks[clientIndex];
-
-    const baseIndex = feedbackIndices.get(clientIndex) ?? BigInt(1000000 + i * 1000);
-    feedbackIndices.set(clientIndex, baseIndex + 1n);
-
-    createdFeedbacks.push({ clientIndex, feedbackIndex: baseIndex });
 
     feedbackTasks.push(async () => {
       const start = Date.now();
@@ -189,10 +253,22 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
           tag2: 'day',
           feedbackUri: `ipfs://fb_${i}`,
           feedbackHash: sha256(`feedback_${i}`),
-        }, { feedbackIndex: baseIndex });
-        return { operation: 'feedback', success: result.success ?? false, signature: result.signature, durationMs: Date.now() - start };
+        });
+        return {
+          operation: 'feedback',
+          success: result.success ?? false,
+          signature: result.signature,
+          durationMs: Date.now() - start,
+          clientIndex,
+        };
       } catch (e: any) {
-        return { operation: 'feedback', success: false, error: e.message, durationMs: Date.now() - start };
+        return {
+          operation: 'feedback',
+          success: false,
+          error: e.message,
+          durationMs: Date.now() - start,
+          clientIndex,
+        };
       }
     });
   }
@@ -207,12 +283,25 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
   results.push(...feedbackResults);
   console.log('');
 
+  const onChainAgent = await sdk.loadAgent(agent);
+  const onChainFeedbackCount = onChainAgent ? Number(onChainAgent.feedback_count) : 0;
+  const successfulFeedbackCount = feedbackResults.filter(r => r.success).length;
+  const anchorTargetCount = Math.min(onChainFeedbackCount, Math.max(config.responses, config.revokes));
+  const successfulFeedbacks = await collectFeedbackAnchors(
+    agent.toBase58(),
+    clientKeypairs,
+    anchorTargetCount
+  );
+  console.log(`  Successful feedback tx: ${successfulFeedbackCount}`);
+  console.log(`  On-chain feedback count: ${onChainFeedbackCount}`);
+  console.log(`  Indexed feedback anchors for responses/revokes: ${successfulFeedbacks.length}`);
+
   // Generate responses
   console.log(`\n[4/6] Generating ${config.responses.toLocaleString()} responses...`);
   const responseTasks: (() => Promise<StressResult>)[] = [];
 
-  for (let i = 0; i < config.responses && i < createdFeedbacks.length; i++) {
-    const { clientIndex, feedbackIndex } = createdFeedbacks[i];
+  for (let i = 0; i < config.responses && i < successfulFeedbacks.length; i++) {
+    const { clientIndex, feedbackIndex, sealHash } = successfulFeedbacks[i];
     const clientPubkey = clientKeypairs[clientIndex].publicKey;
 
     responseTasks.push(async () => {
@@ -221,9 +310,10 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
         const result = await sdk.appendResponse(
           agent,
           clientPubkey,
-          Number(feedbackIndex),
+          feedbackIndex,
+          sealHash,
           `ipfs://resp_${i}`,
-          { responseHash: sha256(`response_${i}`) }
+          sha256(`response_${i}`)
         );
         return { operation: 'response', success: result.success ?? false, signature: result.signature, durationMs: Date.now() - start };
       } catch (e: any) {
@@ -242,14 +332,14 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
   console.log(`\n[5/6] Generating ${config.revokes.toLocaleString()} revocations...`);
   const revokeTasks: (() => Promise<StressResult>)[] = [];
 
-  for (let i = 0; i < config.revokes && i < createdFeedbacks.length; i++) {
-    const { clientIndex, feedbackIndex } = createdFeedbacks[i];
+  for (let i = 0; i < config.revokes && i < successfulFeedbacks.length; i++) {
+    const { clientIndex, feedbackIndex, sealHash } = successfulFeedbacks[i];
     const clientSdk = clientSdks[clientIndex];
 
     revokeTasks.push(async () => {
       const start = Date.now();
       try {
-        const result = await clientSdk.revokeFeedback(agent, Number(feedbackIndex));
+        const result = await clientSdk.revokeFeedback(agent, feedbackIndex, sealHash);
         return { operation: 'revoke', success: result.success ?? false, signature: result.signature, durationMs: Date.now() - start };
       } catch (e: any) {
         return { operation: 'revoke', success: false, error: e.message, durationMs: Date.now() - start };
@@ -267,9 +357,29 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
 
   // Integrity checks
   console.log(`\n[6/6] Running integrity verification...`);
-  const waitTime = Math.max(5000, Math.ceil(config.feedbacks / 100) * 1000);
-  console.log(`  Waiting ${waitTime / 1000}s for indexer sync...`);
-  await sleep(waitTime);
+  const baseWaitMs = Math.max(5000, Math.ceil(config.feedbacks / 100) * 1000);
+  const maxSyncWaitMs = Number(process.env.INTEGRITY_SYNC_TIMEOUT_MS || Math.max(baseWaitMs * 8, 60000));
+  const syncPollMs = 2000;
+  console.log(`  Waiting up to ${Math.round(maxSyncWaitMs / 1000)}s for indexer sync...`);
+
+  let syncWaitedMs = 0;
+  let syncReady = false;
+  let lastSyncProbe: IntegrityResult | null = null;
+  while (syncWaitedMs <= maxSyncWaitMs) {
+    lastSyncProbe = await sdk.verifyIntegrity(agent);
+    if (lastSyncProbe.status === 'valid') {
+      syncReady = true;
+      break;
+    }
+    await sleep(syncPollMs);
+    syncWaitedMs += syncPollMs;
+  }
+
+  if (!syncReady && lastSyncProbe) {
+    console.log(
+      `  ⚠️ Sync wait timeout: status=${lastSyncProbe.status}, error=${lastSyncProbe.error?.message || 'n/a'}`
+    );
+  }
 
   const integrityResults: { valid: boolean; durationMs: number }[] = [];
   const NUM_INTEGRITY_CHECKS = 10;
@@ -280,7 +390,9 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
     integrityResults.push({ valid: result.valid, durationMs: Date.now() - start });
 
     if (!result.valid) {
-      console.log(`  ❌ Check ${i + 1}: INVALID`);
+      console.log(
+        `  ❌ Check ${i + 1}: INVALID (status=${result.status}, error=${result.error?.message || 'n/a'})`
+      );
       console.log(`    Feedback: on-chain=${result.chains.feedback.onChain.slice(0, 16)}... indexer=${result.chains.feedback.indexer?.slice(0, 16)}...`);
       console.log(`    Response: on-chain=${result.chains.response.onChain.slice(0, 16)}... indexer=${result.chains.response.indexer?.slice(0, 16)}...`);
       console.log(`    Revoke: on-chain=${result.chains.revoke.onChain.slice(0, 16)}... indexer=${result.chains.revoke.indexer?.slice(0, 16)}...`);
@@ -352,13 +464,18 @@ async function main(): Promise<void> {
   console.log(`Indexer: ${LOCALNET_INDEXER}`);
 
   const selectedScenario = process.argv[2]?.toLowerCase();
-  const scenarios = selectedScenario
-    ? SCENARIOS.filter(s => s.name.toLowerCase() === selectedScenario)
-    : SCENARIOS;
+  let scenarios: ScenarioConfig[];
+  if (!selectedScenario) {
+    scenarios = SCENARIOS.filter(s => s.name === 'Quick');
+  } else if (selectedScenario === 'all') {
+    scenarios = SCENARIOS;
+  } else {
+    scenarios = SCENARIOS.filter(s => s.name.toLowerCase() === selectedScenario);
+  }
 
   if (scenarios.length === 0) {
-    console.log(`\nAvailable scenarios: ${SCENARIOS.map(s => s.name).join(', ')}`);
-    console.log(`Usage: npx ts-node stress-test-hashchain-localnet.ts [scenario]`);
+    console.log(`\nAvailable scenarios: ${SCENARIOS.map(s => s.name).join(', ')}, all`);
+    console.log('Usage: npx ts-node stress-test-hashchain-localnet.ts [quick|medium|large|massive|all]');
     process.exit(1);
   }
 

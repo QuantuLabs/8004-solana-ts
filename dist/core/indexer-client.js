@@ -107,6 +107,25 @@ export class IndexerClient {
         const queryString = searchParams.toString();
         return queryString ? `?${queryString}` : '';
     }
+    parseCountValue(value, fallback) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return Math.max(0, Math.trunc(value));
+        }
+        if (typeof value === 'string' && /^-?\d+$/.test(value)) {
+            try {
+                const n = BigInt(value);
+                if (n < 0n)
+                    return 0;
+                if (n > BigInt(Number.MAX_SAFE_INTEGER))
+                    return Number.MAX_SAFE_INTEGER;
+                return Number(n);
+            }
+            catch {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
     // ============================================================================
     // Health Check
     // ============================================================================
@@ -608,8 +627,9 @@ export class IndexerClient {
         if (lastFeedback.length === 0) {
             return { digest: null, count: 0 };
         }
-        // Get count using Prefer: count=exact header (PostgREST standard)
-        const count = await this.getCount('feedbacks', { asset: `eq.${asset}` });
+        // feedback_index is zero-based, so chain count is lastIndex + 1.
+        const lastIndex = this.parseCountValue(lastFeedback[0].feedback_index, 0);
+        const count = lastIndex + 1;
         return { digest: lastFeedback[0].running_digest, count };
     }
     async getLastResponseDigest(asset) {
@@ -622,7 +642,7 @@ export class IndexerClient {
         if (responses.length === 0) {
             return { digest: null, count: 0 };
         }
-        const count = await this.getCount('feedback_responses', { asset: `eq.${asset}` });
+        const count = this.parseCountValue(responses[0].response_count, 1);
         return { digest: responses[0].running_digest, count };
     }
     async getLastRevokeDigest(asset) {
@@ -635,7 +655,7 @@ export class IndexerClient {
         if (revocations.length === 0) {
             return { digest: null, count: 0 };
         }
-        const count = await this.getCount('revocations', { asset: `eq.${asset}` });
+        const count = this.parseCountValue(revocations[0].revoke_count, 1);
         return { digest: revocations[0].running_digest, count };
     }
     // ============================================================================

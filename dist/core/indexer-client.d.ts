@@ -152,7 +152,7 @@ export interface IndexedFeedback {
     id: string;
     asset: string;
     client_address: string;
-    feedback_index: number;
+    feedback_index: number | string;
     value: number | string;
     value_decimals: number;
     score: number | null;
@@ -263,11 +263,12 @@ export interface IndexedFeedbackResponse {
     id: string;
     asset: string;
     client_address: string;
-    feedback_index: number;
+    feedback_index: number | string;
     responder: string;
     response_uri: string | null;
     response_hash: string | null;
     running_digest: string | null;
+    response_count?: number | string | null;
     block_slot: number;
     tx_signature: string;
     created_at: string;
@@ -276,14 +277,14 @@ export interface IndexedRevocation {
     id: string;
     asset: string;
     client_address: string;
-    feedback_index: number;
+    feedback_index: number | string;
     feedback_hash: string | null;
     slot: number;
     original_score: number | null;
     atom_enabled: boolean;
     had_impact: boolean;
     running_digest: string | null;
-    revoke_count: number;
+    revoke_count: number | string;
     tx_signature: string;
     created_at: string;
 }
@@ -348,6 +349,7 @@ export declare class IndexerClient implements IndexerReadClient {
      * Build query string from params using URLSearchParams for safety
      */
     private buildQuery;
+    private parseCountValue;
     /**
      * Check if indexer is available
      */

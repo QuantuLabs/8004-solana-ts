@@ -19,11 +19,27 @@ import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const CASTERCORP_ROOT = path.resolve(__dirname, '../../..');
+
+function resolveExistingPath(candidates: string[]): string {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+}
 
 // ============ CONFIG ============
 const LOCALNET_RPC = 'http://127.0.0.1:8899';
-const LOCALNET_INDEXER = process.env.INDEXER_URL || 'http://127.0.0.1:3001/rest/v1';
-const INDEXER_DB_PATH = process.env.INDEXER_DB_PATH || '/Users/true/Documents/Pipeline/CasterCorp/8004-solana-indexer/prisma/data/localnet.db';
+const LOCALNET_INDEXER = process.env.INDEXER_URL || 'http://127.0.0.1:3005/rest/v1';
+const DEFAULT_INDEXER_DB_CANDIDATES = [
+  path.join(CASTERCORP_ROOT, '8004-solana-indexer/prisma/prisma/data/localnet-rest.db'),
+  path.join(CASTERCORP_ROOT, '8004-solana-indexer/prisma/data/localnet-rest.db'),
+  path.join(CASTERCORP_ROOT, '8004-solana-indexer/prisma/data/localnet.db'),
+  path.join(CASTERCORP_ROOT, '8004-solana-indexer/data/localnet.db'),
+];
+const INDEXER_DB_PATH = process.env.INDEXER_DB_PATH || resolveExistingPath(DEFAULT_INDEXER_DB_CANDIDATES);
 
 // ============ UTILITIES ============
 function loadKeypair(): Keypair {
@@ -165,11 +181,16 @@ async function createTestAgent(sdk: SolanaSDK, signer: Keypair): Promise<PublicK
 async function giveFeedbacks(sdk: SolanaSDK, asset: PublicKey, count: number): Promise<void> {
   console.log(`  Giving ${count} feedbacks...`);
   for (let i = 0; i < count; i++) {
-    await sdk.giveFeedback(asset, {
+    const result = await sdk.giveFeedback(asset, {
       value: 80 + (i % 20),
+      score: 80 + (i % 20),
       tag1: 'test',
       tag2: 'manipulation-test',
+      feedbackUri: `ipfs://integrity-manipulation-${Date.now()}-${i}`,
     });
+    if (!result.success) {
+      throw new Error(`giveFeedback failed at index ${i}: ${result.error || 'unknown error'}`);
+    }
     if (i % 10 === 0) {
       process.stdout.write(`\r    Progress: ${i + 1}/${count}`);
     }
@@ -320,7 +341,8 @@ async function main() {
   // Check if database exists
   if (!fs.existsSync(INDEXER_DB_PATH)) {
     console.error(`Error: Indexer database not found at ${INDEXER_DB_PATH}`);
-    console.error('Set INDEXER_DB_PATH environment variable to the correct path');
+    console.error(`Tried defaults: ${DEFAULT_INDEXER_DB_CANDIDATES.join(', ')}`);
+    console.error('Set INDEXER_DB_PATH environment variable to the active indexer DB file');
     process.exit(1);
   }
 
@@ -345,6 +367,17 @@ async function main() {
     indexerApiKey: 'test-key',
   });
 
+  // Use a separate client wallet for feedbacks (self-feedback is rejected on-chain).
+  const feedbackClient = Keypair.generate();
+  await airdropIfNeeded(connection, feedbackClient.publicKey, 5e9);
+  const feedbackSdk = new SolanaSDK({
+    cluster: 'devnet',
+    rpcUrl: LOCALNET_RPC,
+    signer: feedbackClient,
+    indexerUrl: LOCALNET_INDEXER,
+    indexerApiKey: 'test-key',
+  });
+
   // Initialize DB manipulator
   const db = new IndexerDBManipulator(INDEXER_DB_PATH);
 
@@ -360,13 +393,21 @@ async function main() {
       LIMIT 1
     `).get() as { agentId: string; count: number } | undefined;
 
-    let asset: PublicKey;
+    let asset: PublicKey | null = null;
 
     if (existingAgent && existingAgent.count > 10) {
-      // Use existing agent for faster testing
-      console.log(`Using existing agent with ${existingAgent.count} feedbacks: ${existingAgent.agentId}`);
-      asset = new PublicKey(existingAgent.agentId);
-    } else {
+      const candidate = new PublicKey(existingAgent.agentId);
+      const onChain = await sdk.loadAgent(candidate).catch(() => null);
+      if (onChain) {
+        // Use existing agent for faster testing only when on-chain account still exists.
+        console.log(`Using existing agent with ${existingAgent.count} feedbacks: ${existingAgent.agentId}`);
+        asset = candidate;
+      } else {
+        console.log(`Existing DB agent is stale on-chain, creating a fresh test agent: ${existingAgent.agentId}`);
+      }
+    }
+
+    if (!asset) {
       // Create new agent if no suitable one exists
       console.log('No existing agent with feedbacks found. Creating new agent...');
       asset = await createTestAgent(sdk, signer);
@@ -376,7 +417,7 @@ async function main() {
       await sdk.initializeAtomStats(asset);
 
       // Give some feedbacks
-      await giveFeedbacks(sdk, asset, 20);
+      await giveFeedbacks(feedbackSdk, asset, 20);
 
       // Wait for indexer to sync
       console.log('  Waiting for indexer sync (30s)...');
@@ -394,6 +435,12 @@ async function main() {
     // Check DB directly
     const dbCount = db.countFeedbacks(asset.toBase58());
     console.log(`  DB direct count: ${dbCount}`);
+
+    if (initial.status === 'error') {
+      console.log('\n  ERROR: verifyIntegrity returned error before manipulations.');
+      console.log('  Check INDEXER_URL and INDEXER_DB_PATH point to the same running indexer instance.');
+      process.exit(1);
+    }
 
     if (dbCount < 5) {
       console.log('\n  ERROR: Not enough feedbacks in DB for manipulation tests.');

@@ -808,7 +808,7 @@ export declare class SolanaSDK {
      * Give feedback to an agent (write operation) - v0.5.0
      * @param asset - Agent Core asset pubkey
      * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
-     * @param options - Write options (skipSend, signer, feedbackIndex)
+     * @param options - Write options (skipSend, signer)
      */
     giveFeedback(asset: PublicKey, params: import('../models/interfaces.js').GiveFeedbackParams, options?: GiveFeedbackOptions): Promise<(TransactionResult & {
         feedbackIndex?: bigint;

@@ -792,7 +792,7 @@ export class ReputationTransactionBuilder {
      * Give feedback - v0.5.0
      * @param asset - Agent Core asset
      * @param params - Feedback parameters (value, valueDecimals, score, tags, etc.)
-     * @param options - Write options (skipSend, signer, feedbackIndex)
+     * @param options - Write options (skipSend, signer)
      */
     async giveFeedback(asset, params, options) {
         try {
