@@ -37,6 +37,7 @@ export interface AgentQueryOptions {
  * Query options for canonical collection pointer reads.
  */
 export interface CollectionPointerQueryOptions {
+    collection?: string;
     col?: string;
     creator?: string;
     firstSeenAsset?: string;
@@ -235,6 +236,7 @@ export interface CollectionStats {
  * Canonical collection pointer record from `/collection_pointers`.
  */
 export interface CollectionPointerRecord {
+    collection?: string;
     col: string;
     creator: string;
     first_seen_asset: string;
@@ -245,6 +247,19 @@ export interface CollectionPointerRecord {
     last_seen_slot: string;
     last_seen_tx_signature: string | null;
     asset_count: string;
+    version?: string | null;
+    name?: string | null;
+    symbol?: string | null;
+    description?: string | null;
+    image?: string | null;
+    banner_image?: string | null;
+    social_website?: string | null;
+    social_x?: string | null;
+    social_discord?: string | null;
+    metadata_status?: string | null;
+    metadata_hash?: string | null;
+    metadata_bytes?: number | string | null;
+    metadata_updated_at?: string | null;
 }
 /**
  * Global statistics from `global_stats` view
@@ -350,6 +365,8 @@ export declare class IndexerClient implements IndexerReadClient {
      */
     private buildQuery;
     private parseCountValue;
+    private shouldUseLegacyCollectionRead;
+    private normalizeCollectionRecord;
     /**
      * Check if indexer is available
      */

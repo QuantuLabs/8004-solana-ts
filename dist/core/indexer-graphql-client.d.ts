@@ -21,6 +21,7 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     private readonly hashChainHeadsInFlight;
     constructor(config: IndexerGraphQLClientConfig);
     getBaseUrl(): string;
+    private shouldUseLegacyCollectionRead;
     private request;
     isAvailable(): Promise<boolean>;
     private loadHashChainHeads;

@@ -381,6 +381,10 @@ const stats = await sdk.getGlobalStats();
 console.log(`Total agents: ${stats.totalAgents}, Platinum: ${stats.platinumAgents}`);
 ```
 
+Compatibility notes:
+- SDK now targets modern indexer collection APIs (`/collections`, `collection=...`, GraphQL `collections(...)`).
+- Legacy indexers are still supported via automatic fallback (`/collection_pointers`, `col=...`, GraphQL `collectionPointers(...)` / `col` args).
+
 ## Advanced Queries
 
 **Requires custom RPC** (Helius, Triton, etc.):

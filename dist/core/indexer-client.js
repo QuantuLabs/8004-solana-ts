@@ -126,6 +126,41 @@ export class IndexerClient {
         }
         return fallback;
     }
+    shouldUseLegacyCollectionRead(error) {
+        return (error instanceof IndexerError
+            && error.code === IndexerErrorCode.INVALID_RESPONSE
+            && /HTTP 400|HTTP 404/.test(error.message));
+    }
+    normalizeCollectionRecord(row) {
+        const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
+        const col = typeof row?.col === 'string' ? row.col : collection;
+        return {
+            collection: collection ?? col ?? '',
+            col: col ?? collection ?? '',
+            creator: row?.creator ?? '',
+            first_seen_asset: row?.first_seen_asset ?? row?.firstSeenAsset ?? '',
+            first_seen_at: row?.first_seen_at ?? row?.firstSeenAt ?? new Date(0).toISOString(),
+            first_seen_slot: String(row?.first_seen_slot ?? row?.firstSeenSlot ?? '0'),
+            first_seen_tx_signature: row?.first_seen_tx_signature ?? row?.firstSeenTxSignature ?? null,
+            last_seen_at: row?.last_seen_at ?? row?.lastSeenAt ?? new Date(0).toISOString(),
+            last_seen_slot: String(row?.last_seen_slot ?? row?.lastSeenSlot ?? '0'),
+            last_seen_tx_signature: row?.last_seen_tx_signature ?? row?.lastSeenTxSignature ?? null,
+            asset_count: String(row?.asset_count ?? row?.assetCount ?? '0'),
+            version: row?.version ?? null,
+            name: row?.name ?? null,
+            symbol: row?.symbol ?? null,
+            description: row?.description ?? null,
+            image: row?.image ?? null,
+            banner_image: row?.banner_image ?? row?.bannerImage ?? null,
+            social_website: row?.social_website ?? row?.socialWebsite ?? null,
+            social_x: row?.social_x ?? row?.socialX ?? null,
+            social_discord: row?.social_discord ?? row?.socialDiscord ?? null,
+            metadata_status: row?.metadata_status ?? row?.metadataStatus ?? null,
+            metadata_hash: row?.metadata_hash ?? row?.metadataHash ?? null,
+            metadata_bytes: row?.metadata_bytes ?? row?.metadataBytes ?? null,
+            metadata_updated_at: row?.metadata_updated_at ?? row?.metadataUpdatedAt ?? null,
+        };
+    }
     // ============================================================================
     // Health Check
     // ============================================================================
@@ -497,43 +532,84 @@ export class IndexerClient {
      * Get canonical collection pointer rows.
      */
     async getCollectionPointers(options) {
-        const query = this.buildQuery({
-            col: options?.col ? `eq.${options.col}` : undefined,
+        const collection = options?.collection ?? options?.col;
+        const primaryQuery = this.buildQuery({
+            collection: collection ? `eq.${collection}` : undefined,
             creator: options?.creator ? `eq.${options.creator}` : undefined,
             first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
             limit: options?.limit,
             offset: options?.offset,
         });
-        return this.request(`/collection_pointers${query}`);
+        try {
+            const rows = await this.request(`/collections${primaryQuery}`);
+            return rows.map((row) => this.normalizeCollectionRecord(row));
+        }
+        catch (error) {
+            if (!this.shouldUseLegacyCollectionRead(error)) {
+                throw error;
+            }
+            const legacyQuery = this.buildQuery({
+                col: collection ? `eq.${collection}` : undefined,
+                creator: options?.creator ? `eq.${options.creator}` : undefined,
+                first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
+                limit: options?.limit,
+                offset: options?.offset,
+            });
+            const rows = await this.request(`/collection_pointers${legacyQuery}`);
+            return rows.map((row) => this.normalizeCollectionRecord(row));
+        }
     }
     /**
      * Count assets attached to a collection pointer (optionally scoped by creator).
      */
     async getCollectionAssetCount(col, creator) {
-        const query = this.buildQuery({
-            col: `eq.${col}`,
+        const primaryQuery = this.buildQuery({
+            collection: `eq.${col}`,
             creator: creator ? `eq.${creator}` : undefined,
         });
-        const row = await this.request(`/collection_asset_count${query}`);
-        const raw = row?.asset_count;
-        if (typeof raw === 'number')
-            return raw;
-        if (typeof raw === 'string')
-            return Number.parseInt(raw, 10) || 0;
-        return 0;
+        try {
+            const row = await this.request(`/collection_asset_count${primaryQuery}`);
+            return this.parseCountValue(row?.asset_count, 0);
+        }
+        catch (error) {
+            if (!this.shouldUseLegacyCollectionRead(error)) {
+                throw error;
+            }
+            const legacyQuery = this.buildQuery({
+                col: `eq.${col}`,
+                creator: creator ? `eq.${creator}` : undefined,
+            });
+            const row = await this.request(`/collection_asset_count${legacyQuery}`);
+            return this.parseCountValue(row?.asset_count, 0);
+        }
     }
     /**
      * Get assets by collection pointer (optionally scoped by creator).
      */
     async getCollectionAssets(col, options) {
-        const query = this.buildQuery({
-            col: `eq.${col}`,
+        const primaryQuery = this.buildQuery({
+            collection: `eq.${col}`,
             creator: options?.creator ? `eq.${options.creator}` : undefined,
             limit: options?.limit,
             offset: options?.offset,
             order: options?.order,
         });
-        return this.request(`/collection_assets${query}`);
+        try {
+            return await this.request(`/collection_assets${primaryQuery}`);
+        }
+        catch (error) {
+            if (!this.shouldUseLegacyCollectionRead(error)) {
+                throw error;
+            }
+            const legacyQuery = this.buildQuery({
+                col: `eq.${col}`,
+                creator: options?.creator ? `eq.${options.creator}` : undefined,
+                limit: options?.limit,
+                offset: options?.offset,
+                order: options?.order,
+            });
+            return this.request(`/collection_assets${legacyQuery}`);
+        }
     }
     /**
      * Get stats for a specific collection

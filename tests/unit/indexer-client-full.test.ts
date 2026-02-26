@@ -450,6 +450,109 @@ describe('IndexerClient', () => {
     });
   });
 
+  describe('collection read compatibility', () => {
+    it('getCollectionPointers should use /collections + collection filter', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([
+        {
+          collection: 'c1:abc',
+          creator: 'creator1',
+          first_seen_asset: 'asset1',
+          first_seen_at: '2026-01-01T00:00:00.000Z',
+          first_seen_slot: '10',
+          first_seen_tx_signature: null,
+          last_seen_at: '2026-01-02T00:00:00.000Z',
+          last_seen_slot: '11',
+          last_seen_tx_signature: null,
+          asset_count: '1',
+        },
+      ]));
+
+      const rows = await client.getCollectionPointers({ collection: 'c1:abc', creator: 'creator1' });
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/collections?');
+      expect(url).toContain('collection=eq.c1%3Aabc');
+      expect(rows[0]).toMatchObject({ collection: 'c1:abc', col: 'c1:abc', creator: 'creator1' });
+    });
+
+    it('getCollectionPointers should fallback to legacy endpoint on 404', async () => {
+      const client = createClient();
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse({}, 404))
+        .mockResolvedValueOnce(mockJsonResponse([
+          {
+            col: 'c1:legacy',
+            creator: 'legacyCreator',
+            first_seen_asset: 'assetLegacy',
+            first_seen_at: '2026-01-01T00:00:00.000Z',
+            first_seen_slot: '42',
+            first_seen_tx_signature: null,
+            last_seen_at: '2026-01-02T00:00:00.000Z',
+            last_seen_slot: '43',
+            last_seen_tx_signature: null,
+            asset_count: '7',
+          },
+        ]));
+
+      const rows = await client.getCollectionPointers({ col: 'c1:legacy' });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const firstUrl = (mockFetch.mock.calls[0][0] as string);
+      const secondUrl = (mockFetch.mock.calls[1][0] as string);
+      expect(firstUrl).toContain('/collections?');
+      expect(secondUrl).toContain('/collection_pointers?');
+      expect(secondUrl).toContain('col=eq.c1%3Alegacy');
+      expect(rows[0]).toMatchObject({ collection: 'c1:legacy', col: 'c1:legacy', creator: 'legacyCreator' });
+    });
+
+    it('getCollectionAssetCount should use collection query param', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse({ collection: 'c1:abc', asset_count: 12 }));
+      const count = await client.getCollectionAssetCount('c1:abc', 'creator1');
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/collection_asset_count?');
+      expect(url).toContain('collection=eq.c1%3Aabc');
+      expect(count).toBe(12);
+    });
+
+    it('getCollectionAssetCount should fallback to legacy col param on 400', async () => {
+      const client = createClient();
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse({}, 400))
+        .mockResolvedValueOnce(mockJsonResponse({ col: 'c1:legacy', asset_count: '9' }));
+
+      const count = await client.getCollectionAssetCount('c1:legacy');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const secondUrl = (mockFetch.mock.calls[1][0] as string);
+      expect(secondUrl).toContain('/collection_asset_count?');
+      expect(secondUrl).toContain('col=eq.c1%3Alegacy');
+      expect(count).toBe(9);
+    });
+
+    it('getCollectionAssets should use collection query param', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([{ asset: 'agent1' }]));
+      const rows = await client.getCollectionAssets('c1:abc', { limit: 5, offset: 2 });
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/collection_assets?');
+      expect(url).toContain('collection=eq.c1%3Aabc');
+      expect(rows).toEqual([{ asset: 'agent1' }]);
+    });
+
+    it('getCollectionAssets should fallback to legacy col param on 400', async () => {
+      const client = createClient();
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse({}, 400))
+        .mockResolvedValueOnce(mockJsonResponse([{ asset: 'agentLegacy' }]));
+
+      const rows = await client.getCollectionAssets('c1:legacy');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const secondUrl = (mockFetch.mock.calls[1][0] as string);
+      expect(secondUrl).toContain('/collection_assets?');
+      expect(secondUrl).toContain('col=eq.c1%3Alegacy');
+      expect(rows).toEqual([{ asset: 'agentLegacy' }]);
+    });
+  });
+
   describe('getCollectionStats', () => {
     it('should return collection stats', async () => {
       const client = createClient();

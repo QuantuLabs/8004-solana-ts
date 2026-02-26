@@ -51,6 +51,7 @@ export interface AgentQueryOptions {
  * Query options for canonical collection pointer reads.
  */
 export interface CollectionPointerQueryOptions {
+  collection?: string;
   col?: string;
   creator?: string;
   firstSeenAsset?: string;
@@ -272,6 +273,7 @@ export interface CollectionStats {
  * Canonical collection pointer record from `/collection_pointers`.
  */
 export interface CollectionPointerRecord {
+  collection?: string;
   col: string;
   creator: string;
   first_seen_asset: string;
@@ -282,6 +284,19 @@ export interface CollectionPointerRecord {
   last_seen_slot: string;
   last_seen_tx_signature: string | null;
   asset_count: string;
+  version?: string | null;
+  name?: string | null;
+  symbol?: string | null;
+  description?: string | null;
+  image?: string | null;
+  banner_image?: string | null;
+  social_website?: string | null;
+  social_x?: string | null;
+  social_discord?: string | null;
+  metadata_status?: string | null;
+  metadata_hash?: string | null;
+  metadata_bytes?: number | string | null;
+  metadata_updated_at?: string | null;
 }
 
 /**
@@ -530,6 +545,45 @@ export class IndexerClient implements IndexerReadClient {
       }
     }
     return fallback;
+  }
+
+  private shouldUseLegacyCollectionRead(error: unknown): boolean {
+    return (
+      error instanceof IndexerError
+      && error.code === IndexerErrorCode.INVALID_RESPONSE
+      && /HTTP 400|HTTP 404/.test(error.message)
+    );
+  }
+
+  private normalizeCollectionRecord(row: any): CollectionPointerRecord {
+    const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
+    const col = typeof row?.col === 'string' ? row.col : collection;
+    return {
+      collection: collection ?? col ?? '',
+      col: col ?? collection ?? '',
+      creator: row?.creator ?? '',
+      first_seen_asset: row?.first_seen_asset ?? row?.firstSeenAsset ?? '',
+      first_seen_at: row?.first_seen_at ?? row?.firstSeenAt ?? new Date(0).toISOString(),
+      first_seen_slot: String(row?.first_seen_slot ?? row?.firstSeenSlot ?? '0'),
+      first_seen_tx_signature: row?.first_seen_tx_signature ?? row?.firstSeenTxSignature ?? null,
+      last_seen_at: row?.last_seen_at ?? row?.lastSeenAt ?? new Date(0).toISOString(),
+      last_seen_slot: String(row?.last_seen_slot ?? row?.lastSeenSlot ?? '0'),
+      last_seen_tx_signature: row?.last_seen_tx_signature ?? row?.lastSeenTxSignature ?? null,
+      asset_count: String(row?.asset_count ?? row?.assetCount ?? '0'),
+      version: row?.version ?? null,
+      name: row?.name ?? null,
+      symbol: row?.symbol ?? null,
+      description: row?.description ?? null,
+      image: row?.image ?? null,
+      banner_image: row?.banner_image ?? row?.bannerImage ?? null,
+      social_website: row?.social_website ?? row?.socialWebsite ?? null,
+      social_x: row?.social_x ?? row?.socialX ?? null,
+      social_discord: row?.social_discord ?? row?.socialDiscord ?? null,
+      metadata_status: row?.metadata_status ?? row?.metadataStatus ?? null,
+      metadata_hash: row?.metadata_hash ?? row?.metadataHash ?? null,
+      metadata_bytes: row?.metadata_bytes ?? row?.metadataBytes ?? null,
+      metadata_updated_at: row?.metadata_updated_at ?? row?.metadataUpdatedAt ?? null,
+    };
   }
 
   // ============================================================================
@@ -972,43 +1026,89 @@ export class IndexerClient implements IndexerReadClient {
    * Get canonical collection pointer rows.
    */
   async getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]> {
-    const query = this.buildQuery({
-      col: options?.col ? `eq.${options.col}` : undefined,
+    const collection = options?.collection ?? options?.col;
+    const primaryQuery = this.buildQuery({
+      collection: collection ? `eq.${collection}` : undefined,
       creator: options?.creator ? `eq.${options.creator}` : undefined,
       first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
       limit: options?.limit,
       offset: options?.offset,
     });
-    return this.request<CollectionPointerRecord[]>(`/collection_pointers${query}`);
+
+    try {
+      const rows = await this.request<any[]>(`/collections${primaryQuery}`);
+      return rows.map((row) => this.normalizeCollectionRecord(row));
+    } catch (error) {
+      if (!this.shouldUseLegacyCollectionRead(error)) {
+        throw error;
+      }
+
+      const legacyQuery = this.buildQuery({
+        col: collection ? `eq.${collection}` : undefined,
+        creator: options?.creator ? `eq.${options.creator}` : undefined,
+        first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
+        limit: options?.limit,
+        offset: options?.offset,
+      });
+      const rows = await this.request<any[]>(`/collection_pointers${legacyQuery}`);
+      return rows.map((row) => this.normalizeCollectionRecord(row));
+    }
   }
 
   /**
    * Count assets attached to a collection pointer (optionally scoped by creator).
    */
   async getCollectionAssetCount(col: string, creator?: string): Promise<number> {
-    const query = this.buildQuery({
-      col: `eq.${col}`,
+    const primaryQuery = this.buildQuery({
+      collection: `eq.${col}`,
       creator: creator ? `eq.${creator}` : undefined,
     });
-    const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${query}`);
-    const raw = row?.asset_count;
-    if (typeof raw === 'number') return raw;
-    if (typeof raw === 'string') return Number.parseInt(raw, 10) || 0;
-    return 0;
+
+    try {
+      const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${primaryQuery}`);
+      return this.parseCountValue(row?.asset_count, 0);
+    } catch (error) {
+      if (!this.shouldUseLegacyCollectionRead(error)) {
+        throw error;
+      }
+
+      const legacyQuery = this.buildQuery({
+        col: `eq.${col}`,
+        creator: creator ? `eq.${creator}` : undefined,
+      });
+      const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${legacyQuery}`);
+      return this.parseCountValue(row?.asset_count, 0);
+    }
   }
 
   /**
    * Get assets by collection pointer (optionally scoped by creator).
    */
   async getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]> {
-    const query = this.buildQuery({
-      col: `eq.${col}`,
+    const primaryQuery = this.buildQuery({
+      collection: `eq.${col}`,
       creator: options?.creator ? `eq.${options.creator}` : undefined,
       limit: options?.limit,
       offset: options?.offset,
       order: options?.order,
     });
-    return this.request<IndexedAgent[]>(`/collection_assets${query}`);
+
+    try {
+      return await this.request<IndexedAgent[]>(`/collection_assets${primaryQuery}`);
+    } catch (error) {
+      if (!this.shouldUseLegacyCollectionRead(error)) {
+        throw error;
+      }
+
+      const legacyQuery = this.buildQuery({
+        col: `eq.${col}`,
+        creator: options?.creator ? `eq.${options.creator}` : undefined,
+        limit: options?.limit,
+        offset: options?.offset,
+        order: options?.order,
+      });
+      return this.request<IndexedAgent[]>(`/collection_assets${legacyQuery}`);
+    }
   }
 
   /**

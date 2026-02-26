@@ -44,6 +44,15 @@ export interface IndexerGraphQLClientConfig {
 type GraphQLErrorShape = { message?: string; extensions?: Record<string, unknown> };
 
 function toIsoFromUnixSeconds(unix: unknown): string {
+  if (typeof unix === 'string') {
+    const trimmed = unix.trim();
+    if (trimmed.length > 0 && !/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      const parsed = Date.parse(trimmed);
+      if (Number.isFinite(parsed)) {
+        return new Date(parsed).toISOString();
+      }
+    }
+  }
   const n = typeof unix === 'string' ? Number(unix) : (typeof unix === 'number' ? unix : NaN);
   if (!Number.isFinite(n) || n <= 0) return new Date(0).toISOString();
   return new Date(n * 1000).toISOString();
@@ -104,6 +113,41 @@ function mapGqlAgent(agent: any, fallbackAsset = ''): IndexedAgent {
     tx_signature: '',
     created_at: toIsoFromUnixSeconds(agent?.createdAt),
     updated_at: toIsoFromUnixSeconds(agent?.updatedAt),
+  };
+}
+
+function mapGqlCollectionPointer(row: any): CollectionPointerRecord {
+  const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
+  const col = typeof row?.col === 'string' ? row.col : collection;
+  const metadataUpdatedAt = row?.metadataUpdatedAt ?? row?.metadata_updated_at;
+  return {
+    collection: collection ?? col ?? '',
+    col: col ?? collection ?? '',
+    creator: row?.creator ?? '',
+    first_seen_asset: row?.firstSeenAsset ?? row?.first_seen_asset ?? '',
+    first_seen_at: toIsoFromUnixSeconds(row?.firstSeenAt ?? row?.first_seen_at),
+    first_seen_slot: String(row?.firstSeenSlot ?? row?.first_seen_slot ?? '0'),
+    first_seen_tx_signature: row?.firstSeenTxSignature ?? row?.first_seen_tx_signature ?? null,
+    last_seen_at: toIsoFromUnixSeconds(row?.lastSeenAt ?? row?.last_seen_at),
+    last_seen_slot: String(row?.lastSeenSlot ?? row?.last_seen_slot ?? '0'),
+    last_seen_tx_signature: row?.lastSeenTxSignature ?? row?.last_seen_tx_signature ?? null,
+    asset_count: String(row?.assetCount ?? row?.asset_count ?? '0'),
+    version: row?.version ?? null,
+    name: row?.name ?? null,
+    symbol: row?.symbol ?? null,
+    description: row?.description ?? null,
+    image: row?.image ?? null,
+    banner_image: row?.bannerImage ?? row?.banner_image ?? null,
+    social_website: row?.socialWebsite ?? row?.social_website ?? null,
+    social_x: row?.socialX ?? row?.social_x ?? null,
+    social_discord: row?.socialDiscord ?? row?.social_discord ?? null,
+    metadata_status: row?.metadataStatus ?? row?.metadata_status ?? null,
+    metadata_hash: row?.metadataHash ?? row?.metadata_hash ?? null,
+    metadata_bytes: row?.metadataBytes ?? row?.metadata_bytes ?? null,
+    metadata_updated_at:
+      metadataUpdatedAt !== undefined && metadataUpdatedAt !== null
+        ? toIsoFromUnixSeconds(metadataUpdatedAt)
+        : null,
   };
 }
 
@@ -197,6 +241,17 @@ export class IndexerGraphQLClient implements IndexerReadClient {
 
   getBaseUrl(): string {
     return this.graphqlUrl;
+  }
+
+  private shouldUseLegacyCollectionRead(error: unknown): boolean {
+    if (!(error instanceof IndexerError)) return false;
+    if (error.code !== IndexerErrorCode.INVALID_RESPONSE) return false;
+    const msg = error.message;
+    return (
+      /Cannot query field ['"]collections['"] on type ['"]Query['"]/.test(msg)
+      || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
+      || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssets['"]/.test(msg)
+    );
   }
 
   private async request<TData>(
@@ -474,54 +529,103 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   async getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]> {
     const first = clampInt(options?.limit ?? 100, 0, 500);
     const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
-    const data = await this.request<{ collectionPointers: any[] }>(
-      `query($first: Int!, $skip: Int!, $col: String, $creator: String) {
-        collectionPointers(first: $first, skip: $skip, col: $col, creator: $creator) {
-          col
-          creator
-          firstSeenAsset
-          firstSeenAt
-          firstSeenSlot
-          firstSeenTxSignature
-          lastSeenAt
-          lastSeenSlot
-          lastSeenTxSignature
-          assetCount
+    const collection = options?.collection ?? options?.col;
+    try {
+      const data = await this.request<{ collections: any[] }>(
+        `query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
+          collections(first: $first, skip: $skip, collection: $collection, creator: $creator) {
+            collection
+            creator
+            firstSeenAsset
+            firstSeenAt
+            firstSeenSlot
+            firstSeenTxSignature
+            lastSeenAt
+            lastSeenSlot
+            lastSeenTxSignature
+            assetCount
+            version
+            name
+            symbol
+            description
+            image
+            bannerImage
+            socialWebsite
+            socialX
+            socialDiscord
+            metadataStatus
+            metadataHash
+            metadataBytes
+            metadataUpdatedAt
+          }
+        }`,
+        {
+          first,
+          skip,
+          collection: collection ?? null,
+          creator: options?.creator ?? null,
         }
-      }`,
-      {
-        first,
-        skip,
-        col: options?.col ?? null,
-        creator: options?.creator ?? null,
+      );
+      return data.collections.map((p) => mapGqlCollectionPointer(p));
+    } catch (error) {
+      if (!this.shouldUseLegacyCollectionRead(error)) {
+        throw error;
       }
-    );
 
-    return data.collectionPointers.map((p) => ({
-      col: p.col,
-      creator: p.creator,
-      first_seen_asset: p.firstSeenAsset,
-      first_seen_at: toIsoFromUnixSeconds(p.firstSeenAt),
-      first_seen_slot: String(p.firstSeenSlot ?? '0'),
-      first_seen_tx_signature: p.firstSeenTxSignature ?? null,
-      last_seen_at: toIsoFromUnixSeconds(p.lastSeenAt),
-      last_seen_slot: String(p.lastSeenSlot ?? '0'),
-      last_seen_tx_signature: p.lastSeenTxSignature ?? null,
-      asset_count: String(p.assetCount ?? '0'),
-    }));
+      const data = await this.request<{ collectionPointers: any[] }>(
+        `query($first: Int!, $skip: Int!, $col: String, $creator: String) {
+          collectionPointers(first: $first, skip: $skip, col: $col, creator: $creator) {
+            col
+            creator
+            firstSeenAsset
+            firstSeenAt
+            firstSeenSlot
+            firstSeenTxSignature
+            lastSeenAt
+            lastSeenSlot
+            lastSeenTxSignature
+            assetCount
+          }
+        }`,
+        {
+          first,
+          skip,
+          col: collection ?? null,
+          creator: options?.creator ?? null,
+        }
+      );
+      return data.collectionPointers.map((p) => mapGqlCollectionPointer(p));
+    }
   }
 
   async getCollectionAssetCount(col: string, creator?: string): Promise<number> {
-    const data = await this.request<{ collectionAssetCount: string | number }>(
-      `query($col: String!, $creator: String) {
-        collectionAssetCount(col: $col, creator: $creator)
-      }`,
-      {
-        col,
-        creator: creator ?? null,
+    try {
+      const data = await this.request<{ collectionAssetCount: string | number }>(
+        `query($collection: String!, $creator: String) {
+          collectionAssetCount(collection: $collection, creator: $creator)
+        }`,
+        {
+          collection: col,
+          creator: creator ?? null,
+        }
+      );
+      return toIntSafe(data.collectionAssetCount, 0);
+    } catch (error) {
+      if (!this.shouldUseLegacyCollectionRead(error)) {
+        throw error;
       }
-    );
-    return toIntSafe(data.collectionAssetCount, 0);
+
+      const data = await this.request<{ collectionAssetCount: string | number }>(
+        `query($col: String!, $creator: String) {
+          collectionAssetCount(col: $col, creator: $creator)
+        }`,
+        {
+          col,
+          creator: creator ?? null,
+        }
+      );
+      return toIntSafe(data.collectionAssetCount, 0);
+    }
   }
 
   async getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]> {
@@ -539,42 +643,83 @@ export class IndexerGraphQLClient implements IndexerReadClient {
             ? 'trustTier'
             : 'createdAt';
 
-    const data = await this.request<{ collectionAssets: any[] }>(
-      `query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
-        collectionAssets(
-          col: $col,
-          creator: $creator,
-          first: $first,
-          skip: $skip,
-          orderBy: $orderBy,
-          orderDirection: $dir
-        ) {
-          owner
-          creator
-          agentURI
-          agentWallet
-          collectionPointer
-          colLocked
-          parentAsset
-          parentCreator
-          parentLocked
-          createdAt
-          updatedAt
-          totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+    try {
+      const data = await this.request<{ collectionAssets: any[] }>(
+        `query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+          collectionAssets(
+            collection: $collection,
+            creator: $creator,
+            first: $first,
+            skip: $skip,
+            orderBy: $orderBy,
+            orderDirection: $dir
+          ) {
+            owner
+            creator
+            agentURI
+            agentWallet
+            collectionPointer
+            colLocked
+            parentAsset
+            parentCreator
+            parentLocked
+            createdAt
+            updatedAt
+            totalFeedback
+            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+          }
+        }`,
+        {
+          collection: col,
+          creator: options?.creator ?? null,
+          first,
+          skip,
+          orderBy,
+          dir: orderDirection,
         }
-      }`,
-      {
-        col,
-        creator: options?.creator ?? null,
-        first,
-        skip,
-        orderBy,
-        dir: orderDirection,
+      );
+      return data.collectionAssets.map((a) => mapGqlAgent(a));
+    } catch (error) {
+      if (!this.shouldUseLegacyCollectionRead(error)) {
+        throw error;
       }
-    );
 
-    return data.collectionAssets.map((a) => mapGqlAgent(a));
+      const data = await this.request<{ collectionAssets: any[] }>(
+        `query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+          collectionAssets(
+            col: $col,
+            creator: $creator,
+            first: $first,
+            skip: $skip,
+            orderBy: $orderBy,
+            orderDirection: $dir
+          ) {
+            owner
+            creator
+            agentURI
+            agentWallet
+            collectionPointer
+            colLocked
+            parentAsset
+            parentCreator
+            parentLocked
+            createdAt
+            updatedAt
+            totalFeedback
+            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+          }
+        }`,
+        {
+          col,
+          creator: options?.creator ?? null,
+          first,
+          skip,
+          orderBy,
+          dir: orderDirection,
+        }
+      );
+      return data.collectionAssets.map((a) => mapGqlAgent(a));
+    }
   }
 
   // ============================================================================
