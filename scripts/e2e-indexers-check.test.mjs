@@ -50,7 +50,7 @@ function expectedAgents(rows) {
 }
 
 test('agent id helpers normalize explicit and derived IDs', () => {
-  assert.equal(canonicalAgentIdForAsset('abc'), 'abc');
+  assert.equal(canonicalAgentIdForAsset('abc'), null);
   assert.equal(normalizeAgentIdValue(' 42 '), '42');
   assert.equal(normalizeAgentIdValue(8), '8');
 
@@ -59,7 +59,8 @@ test('agent id helpers normalize explicit and derived IDs', () => {
   assert.equal(explicit.explicit, true);
 
   const derived = extractAgentId({}, 'asset-b');
-  assert.equal(derived.value, 'asset-b');
+  assert.equal(derived.value, null);
+  assert.equal(derived.source, 'missing');
   assert.equal(derived.explicit, false);
 });
 
@@ -105,7 +106,7 @@ test('evaluateIdChecks flags duplicate agent ids across expected assets', async 
   assert.ok(result.errors.some((line) => line.startsWith('agent.agentId.duplicate:dup-agent-id')));
 });
 
-test('evaluateIdChecks accepts deterministic fallback ids when explicit id fields are absent', async () => {
+test('evaluateIdChecks flags missing ids when explicit id fields are absent', async () => {
   const client = makeClient({
     assetA: [makeAgent('ownerA'), makeAgent('ownerA')],
     assetB: [makeAgent('ownerB'), makeAgent('ownerB')],
@@ -120,6 +121,7 @@ test('evaluateIdChecks accepts deterministic fallback ids when explicit id field
     { concurrency: 2 }
   );
 
-  assert.equal(result.passed, true);
-  assert.equal(result.errors.length, 0);
+  assert.equal(result.passed, false);
+  assert.ok(result.errors.some((line) => line === 'agent.agentId.missing:assetA'));
+  assert.ok(result.errors.some((line) => line === 'agent.agentId.missing:assetB'));
 });

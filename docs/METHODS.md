@@ -397,7 +397,7 @@ These methods query the indexer for aggregated data.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `searchAgents` | `(params: AgentSearchParams) => Promise<IndexedAgent[]>` | Search agents by owner/creator/base collection/pointer/parent filters |
-| `getAgentByAgentId` | `(agentId: string \| number \| bigint) => Promise<IndexedAgent \| null>` | Read one agent by backend deterministic id (REST: `agent_id`; GraphQL: raw `Agent.id` asset) |
+| `getAgentByAgentId` | `(agentId: string \| number \| bigint) => Promise<IndexedAgent \| null>` | Read one agent by backend sequence id (REST: `agent_id`; GraphQL: `agentId`/`agentid`) |
 | `getCollectionPointers` | `(options?) => Promise<CollectionPointerRecord[]>` | Read canonical `c1:` collection-pointer rows |
 | `getCollectionAssetCount` | `(col: string, creator?) => Promise<number>` | Count assets attached to one pointer |
 | `getCollectionAssets` | `(col: string, options?) => Promise<IndexedAgent[]>` | List assets attached to one pointer |
@@ -417,11 +417,11 @@ const results = await sdk.searchAgents({
   limit: 20,
 });
 
-// GraphQL: read by raw Agent.id (asset pubkey)
-const byGraphqlId = await sdk.getAgentByAgentId('AssetPubkeyBase58...');
+// GraphQL + REST: read by sequence id
+const bySequenceId = await sdk.getAgentByAgentId(42);
 
-// REST: read by legacy sequence id
-const byRestSequenceId = await sdk.getAgentByAgentId(42);
+// Legacy GraphQL deployments may still accept Agent.id (asset pubkey) fallback
+const byLegacyGraphqlId = await sdk.getAgentByAgentId('AssetPubkeyBase58...');
 
 // Query canonical collection pointers
 const pointers = await sdk.getCollectionPointers({ creator: 'CreatorPubkey...' });
@@ -441,7 +441,8 @@ console.log(`Total agents: ${stats.totalAgents}, Platinum: ${stats.platinumAgent
 Compatibility notes:
 - SDK now targets modern indexer collection APIs (`/collections`, `collection=...`, GraphQL `collections(...)`).
 - Legacy indexers are still supported via automatic fallback (`/collection_pointers`, `col=...`, GraphQL `collectionPointers(...)` / `col` args).
-- `getAgentByAgentId()` is backend-specific: REST resolves numeric `agent_id`; GraphQL resolves raw `Agent.id` (asset pubkey). Numeric `agent_id` lookup is not exposed by current GraphQL API.
+- `getAgentByAgentId()` is backend-specific: REST resolves `agent_id`; GraphQL resolves sequential `agentId` / `agentid` when exposed.
+- Some legacy GraphQL deployments still use `Agent.id` (asset pubkey); the SDK keeps a compatibility fallback for that path.
 - `getAgentByIndexerId()` remains available as an alias to `getAgentByAgentId()`.
 
 ## Advanced Queries

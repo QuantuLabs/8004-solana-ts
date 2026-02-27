@@ -42,6 +42,7 @@ export interface IndexerGraphQLClientConfig {
 }
 
 type GraphQLErrorShape = { message?: string; extensions?: Record<string, unknown> };
+type AgentIdFieldName = 'agentId' | 'agentid';
 
 function toIsoFromUnixSeconds(unix: unknown): string {
   if (typeof unix === 'string') {
@@ -162,8 +163,8 @@ function resolveAgentOrder(order?: string): { orderBy: AgentOrderField; orderDir
     return { orderBy: 'trustTier', orderDirection };
   }
   if (normalized === 'agentid' || normalized === 'agent_id') {
-    // GraphQL no longer exposes public sequence ids; keep compatibility by
-    // mapping this legacy alias to creation-time ordering.
+    // Keep compatibility for callers that still pass agent_id ordering.
+    // GraphQL ordering support is backend-specific, so normalize to createdAt.
     return { orderBy: 'createdAt', orderDirection };
   }
   return { orderBy: 'createdAt', orderDirection };
@@ -179,7 +180,7 @@ function agentId(asset: string): string {
 
 function mapGqlAgent(agent: any, fallbackAsset = ''): IndexedAgent {
   const mappedAsset = agent?.solana?.assetPubkey ?? agent?.id ?? fallbackAsset;
-  const mappedAgentId = agent?.agentid ?? agent?.agentId ?? agent?.id ?? mappedAsset ?? null;
+  const mappedAgentId = agent?.agentid ?? agent?.agentId ?? agent?.globalId ?? agent?.global_id ?? null;
   return {
     agent_id: mappedAgentId,
     asset: mappedAsset,
@@ -364,6 +365,41 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     );
   }
 
+  private shouldFallbackAgentIdField(error: unknown, field: AgentIdFieldName): boolean {
+    if (!(error instanceof IndexerError)) return false;
+    if (error.code !== IndexerErrorCode.INVALID_RESPONSE) return false;
+    const msg = error.message;
+    return (
+      new RegExp(`Cannot query field ['"]${field}['"] on type ['"]Agent['"]`).test(msg)
+      || new RegExp(`Cannot query field ['"]${field}['"] on type ['"]AgentFilter['"]`).test(msg)
+      || new RegExp(`Field ['"]${field}['"] is not defined by type ['"]AgentFilter['"]`).test(msg)
+      || new RegExp(`Unknown argument ['"]${field}['"]`).test(msg)
+      || new RegExp(`Unknown field ['"]${field}['"]`).test(msg)
+    );
+  }
+
+  private async requestWithAgentIdField<T>(
+    requester: (agentIdField: AgentIdFieldName | null) => Promise<T>
+  ): Promise<T> {
+    try {
+      return await requester('agentId');
+    } catch (error) {
+      if (!this.shouldFallbackAgentIdField(error, 'agentId')) {
+        throw error;
+      }
+    }
+
+    try {
+      return await requester('agentid');
+    } catch (error) {
+      if (!this.shouldFallbackAgentIdField(error, 'agentid')) {
+        throw error;
+      }
+    }
+
+    return requester(null);
+  }
+
   private async request<TData>(
     query: string,
     variables?: Record<string, unknown>
@@ -503,28 +539,33 @@ export class IndexerGraphQLClient implements IndexerReadClient {
 
   async getAgent(asset: string): Promise<IndexedAgent | null> {
     const normalizedAsset = agentId(asset);
-    const data = await this.request<{
-      agent: any | null;
-    }>(
-      `query($id: ID!) {
-        agent(id: $id) {
-          id
-          owner
-          creator
-          agentURI
-          agentWallet
-          collectionPointer
-          colLocked
-          parentAsset
-          parentCreator
-          parentLocked
-          createdAt
-          updatedAt
-          totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`,
-      { id: normalizedAsset }
+    const data = await this.requestWithAgentIdField<{ agent: any | null }>(
+      (agentIdField) => {
+        const agentIdSelection = agentIdField ? `\n          ${agentIdField}` : '';
+        return this.request<{
+          agent: any | null;
+        }>(
+          `query($id: ID!) {
+            agent(id: $id) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`,
+          { id: normalizedAsset }
+        );
+      }
     );
 
     if (!data.agent) return null;
@@ -534,35 +575,61 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
     const normalizedAgentId = normalizeGraphqlAgentLookupId(agentId);
 
-    const data = await this.request<{
-      agent: any | null;
-    }>(
-      `query($id: ID!) {
-        agent(id: $id) {
-          id
-          owner
-          creator
-          agentURI
-          agentWallet
-          collectionPointer
-          colLocked
-          parentAsset
-          parentCreator
-          parentLocked
-          createdAt
-          updatedAt
-          totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+    const agent = await this.requestWithAgentIdField<any | null>(
+      async (agentIdField) => {
+        if (agentIdField === null) {
+          const legacy = await this.request<{ agent: any | null }>(
+            `query($id: ID!) {
+              agent(id: $id) {
+                id
+                owner
+                creator
+                agentURI
+                agentWallet
+                collectionPointer
+                colLocked
+                parentAsset
+                parentCreator
+                parentLocked
+                createdAt
+                updatedAt
+                totalFeedback
+                solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+              }
+            }`,
+            { id: normalizedAgentId }
+          );
+          return legacy.agent;
         }
-      }`,
-      { id: normalizedAgentId }
+
+        const data = await this.request<{ agents: any[] }>(
+          `query($agentId: String!) {
+            agents(first: 1, where: { ${agentIdField}: $agentId }) {
+              id
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`,
+          { agentId: normalizedAgentId }
+        );
+        return data.agents[0] ?? null;
+      }
     );
 
-    if (!data.agent) return null;
-    const mapped = mapGqlAgent(data.agent, normalizedAgentId);
-    if (mapped.agent_id === undefined || mapped.agent_id === null) {
-      mapped.agent_id = normalizedAgentId;
-    }
+    if (!agent) return null;
+    const mapped = mapGqlAgent(agent, normalizedAgentId);
+    mapped.agent_id = normalizedAgentId;
     return mapped;
   }
 
@@ -578,31 +645,36 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     const { orderBy, orderDirection } = resolveAgentOrder(options?.order);
     const where = buildAgentWhere(options);
 
-    const data = await this.request<{
-      agents: any[];
-    }>(
-      `query($orderBy: AgentOrderBy!, $dir: OrderDirection!, $where: AgentFilter) {
-        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: $orderBy, orderDirection: $dir) {
-          id
-          owner
-          creator
-          agentURI
-          agentWallet
-          collectionPointer
-          colLocked
-          parentAsset
-          parentCreator
-          parentLocked
-          createdAt
-          updatedAt
-          totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`,
-      {
-        orderBy,
-        dir: orderDirection,
-        where: Object.keys(where).length ? where : null,
+    const data = await this.requestWithAgentIdField<{ agents: any[] }>(
+      (agentIdField) => {
+        const agentIdSelection = agentIdField ? `\n          ${agentIdField}` : '';
+        return this.request<{
+          agents: any[];
+        }>(
+          `query($orderBy: AgentOrderBy!, $dir: OrderDirection!, $where: AgentFilter) {
+            agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: $orderBy, orderDirection: $dir) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`,
+          {
+            orderBy,
+            dir: orderDirection,
+            where: Object.keys(where).length ? where : null,
+          }
+        );
       }
     );
 
@@ -649,14 +721,19 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     if (options?.collection) where.collection = options.collection;
     if (options?.minTier !== undefined) where.trustTier_gte = options.minTier;
 
-    const data = await this.request<{ agents: any[] }>(
-      `query($where: AgentFilter) {
-        agents(first: ${limit}, where: $where, orderBy: qualityScore, orderDirection: desc) {
-          owner creator agentURI agentWallet collectionPointer colLocked parentAsset parentCreator parentLocked createdAt updatedAt totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`,
-      { where: Object.keys(where).length ? where : null }
+    const data = await this.requestWithAgentIdField<{ agents: any[] }>(
+      (agentIdField) => {
+        const agentIdSelection = agentIdField ? `${agentIdField} ` : '';
+        return this.request<{ agents: any[] }>(
+          `query($where: AgentFilter) {
+            agents(first: ${limit}, where: $where, orderBy: qualityScore, orderDirection: desc) {
+              ${agentIdSelection}owner creator agentURI agentWallet collectionPointer colLocked parentAsset parentCreator parentLocked createdAt updatedAt totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`,
+          { where: Object.keys(where).length ? where : null }
+        );
+      }
     );
 
     return data.agents.map((a) => mapGqlAgent(a));
@@ -797,83 +874,88 @@ export class IndexerGraphQLClient implements IndexerReadClient {
             ? 'trustTier'
             : 'createdAt';
 
-    try {
-      const data = await this.request<{ collectionAssets: any[] }>(
-        `query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
-          collectionAssets(
-            collection: $collection,
-            creator: $creator,
-            first: $first,
-            skip: $skip,
-            orderBy: $orderBy,
-            orderDirection: $dir
-          ) {
-            owner
-            creator
-            agentURI
-            agentWallet
-            collectionPointer
-            colLocked
-            parentAsset
-            parentCreator
-            parentLocked
-            createdAt
-            updatedAt
-            totalFeedback
-            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+    return this.requestWithAgentIdField(async (agentIdField) => {
+      const agentIdSelection = agentIdField ? `\n            ${agentIdField}` : '';
+      try {
+        const data = await this.request<{ collectionAssets: any[] }>(
+          `query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+            collectionAssets(
+              collection: $collection,
+              creator: $creator,
+              first: $first,
+              skip: $skip,
+              orderBy: $orderBy,
+              orderDirection: $dir
+            ) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`,
+          {
+            collection: col,
+            creator: options?.creator ?? null,
+            first,
+            skip,
+            orderBy,
+            dir: orderDirection,
           }
-        }`,
-        {
-          collection: col,
-          creator: options?.creator ?? null,
-          first,
-          skip,
-          orderBy,
-          dir: orderDirection,
+        );
+        return data.collectionAssets.map((a) => mapGqlAgent(a));
+      } catch (error) {
+        if (!this.shouldUseLegacyCollectionRead(error)) {
+          throw error;
         }
-      );
-      return data.collectionAssets.map((a) => mapGqlAgent(a));
-    } catch (error) {
-      if (!this.shouldUseLegacyCollectionRead(error)) {
-        throw error;
-      }
 
-      const data = await this.request<{ collectionAssets: any[] }>(
-        `query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
-          collectionAssets(
-            col: $col,
-            creator: $creator,
-            first: $first,
-            skip: $skip,
-            orderBy: $orderBy,
-            orderDirection: $dir
-          ) {
-            owner
-            creator
-            agentURI
-            agentWallet
-            collectionPointer
-            colLocked
-            parentAsset
-            parentCreator
-            parentLocked
-            createdAt
-            updatedAt
-            totalFeedback
-            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+        const data = await this.request<{ collectionAssets: any[] }>(
+          `query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+            collectionAssets(
+              col: $col,
+              creator: $creator,
+              first: $first,
+              skip: $skip,
+              orderBy: $orderBy,
+              orderDirection: $dir
+            ) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`,
+          {
+            col,
+            creator: options?.creator ?? null,
+            first,
+            skip,
+            orderBy,
+            dir: orderDirection,
           }
-        }`,
-        {
-          col,
-          creator: options?.creator ?? null,
-          first,
-          skip,
-          orderBy,
-          dir: orderDirection,
-        }
-      );
-      return data.collectionAssets.map((a) => mapGqlAgent(a));
-    }
+        );
+        return data.collectionAssets.map((a) => mapGqlAgent(a));
+      }
+    });
   }
 
   // ============================================================================

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-02-27
+### Fixed
+- Aligned GraphQL indexer reads so `getAgentByAgentId()` resolves sequence ids (`agentId` / legacy `agentid`) instead of relying on asset-id semantics.
+- Removed asset-derived fallback in indexer integrity checks when explicit agent id fields are absent.
+
+### Changed
+- Updated SDK docs for backend sequence-id semantics (REST `agent_id`, GraphQL `agentId`).
+
 ## [0.7.1] - 2026-02-27
 ### Changed
 - Bump SDK package version to `0.7.1`.

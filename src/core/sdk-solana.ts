@@ -1755,8 +1755,8 @@ export class SolanaSDK {
   }
 
   /**
-   * Get agent by deterministic backend id (indexer only)
-   * @param agentId - REST: sequential `agent_id`; GraphQL: raw `Agent.id` (asset pubkey)
+   * Get agent by backend sequence id (indexer only)
+   * @param agentId - REST: sequential `agent_id`; GraphQL: sequential `agentId` / `agentid`
    * @returns Indexed agent or null
    */
   async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {

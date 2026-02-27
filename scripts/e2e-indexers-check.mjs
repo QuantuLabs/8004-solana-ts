@@ -152,11 +152,8 @@ function normalizeAgentIdValue(value) {
   return null;
 }
 
-function canonicalAgentIdForAsset(asset) {
-  if (typeof asset !== 'string') return null;
-  const trimmed = asset.trim();
-  if (!trimmed) return null;
-  return trimmed;
+function canonicalAgentIdForAsset(_asset) {
+  return null;
 }
 
 function extractAgentId(agent, asset) {
@@ -180,7 +177,7 @@ function extractAgentId(agent, asset) {
 
   return {
     value: canonicalAgentIdForAsset(asset),
-    source: 'asset',
+    source: 'missing',
     explicit: false,
     idFieldSeen,
   };

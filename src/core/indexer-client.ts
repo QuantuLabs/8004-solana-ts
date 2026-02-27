@@ -85,9 +85,9 @@ export interface IndexerReadClient {
   // Agents
   getAgent(asset: string): Promise<IndexedAgent | null>;
   /**
-   * Backend-specific deterministic agent lookup key.
+   * Backend-specific agent lookup key.
    * REST: sequential `agent_id`.
-   * GraphQL: `Agent.id` (raw asset pubkey).
+   * GraphQL: sequential `agentId` / `agentid` (with legacy fallback to `Agent.id` if needed).
    */
   getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
   /** @deprecated Use getAgentByAgentId(agentId) */
@@ -160,9 +160,9 @@ export interface IndexerReadClient {
  */
 export interface IndexedAgent {
   /**
-   * Backend-specific deterministic id.
+   * Backend-specific agent id.
    * REST: sequential `agent_id`.
-   * GraphQL: `Agent.id` (raw asset pubkey).
+   * GraphQL: sequential `agentId` / `agentid` when available.
    */
   agent_id?: number | string | null;
   asset: string;
