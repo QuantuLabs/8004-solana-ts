@@ -116,39 +116,30 @@ async function main() {
     ...(ipfsClient ? { ipfsClient } : {}),
   });
 
-  // Full collection metadata input (all supported fields)
+  // Collection metadata input (canonical + practical optional fields)
   const collectionMetadata: CollectionMetadataInput = {
-    name: 'CasterCorp Agent Fleet',
-    symbol: 'CCFLEET',
-    description: 'Full collection metadata example for registering multiple CasterCorp agents.',
-    image: 'ipfs://bafybeicollectionexample/logo.png',
-    banner_image: 'ipfs://bafybeicollectionexample/banner.png',
+    name: 'QuantuLabs Agent Fleet',
+    symbol: 'QLFLEET',
+    description: 'Full collection metadata example for registering multiple QuantuLabs agents.',
+    image: 'ipfs://bafybeiquantucollection/logo.png',
+    banner_image: 'ipfs://bafybeiquantucollection/banner.png',
     socials: {
-      website: 'https://castercorp.ai',
-      x: '@castercorp',
-      twitter: '@castercorp',
-      discord: 'https://discord.gg/castercorp',
-      telegram: 'https://t.me/castercorp',
-      github: 'https://github.com/castercorp',
-      farcaster: 'https://warpcast.com/castercorp',
-      instagram: 'https://instagram.com/castercorp',
-      youtube: 'https://youtube.com/@castercorp',
+      website: 'https://quantu.ai',
+      x: '@Quantu_AI',
+      discord: 'https://discord.gg/quantu',
+      telegram: 'https://t.me/quantu',
+      github: 'https://github.com/QuantuLabs',
+      farcaster: 'https://warpcast.com/quantu_ai',
+      instagram: 'https://instagram.com/quantu.ai',
+      youtube: 'https://youtube.com/@Quantu_AI',
     },
-    external_url: 'https://castercorp.ai/agents',
-    project: {
-      name: 'CasterCorp',
-      socials: {
-        website: 'https://castercorp.ai',
-        github: 'https://github.com/castercorp',
-        x: '@castercorp',
-      },
-    },
+    external_url: 'https://quantu.ai/agents',
     category: 'automation',
-    tags: ['agents', 'automation', 'mcp', 'a2a', 'oasf', 'castercorp'],
+    tags: ['agents', 'automation', 'mcp', 'a2a', 'oasf', 'quantulabs'],
     attributes: [
       { trait_type: 'fleet', value: 'production' },
       { trait_type: 'target_agents', value: agentCount },
-      { trait_type: 'network', value: process.env.SOLANA_RPC_URL ? 'custom-rpc' : 'devnet-default' },
+      { trait_type: 'cluster', value: process.env.SOLANA_NETWORK ?? 'devnet' },
     ],
   };
 
