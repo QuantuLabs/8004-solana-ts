@@ -17,15 +17,22 @@ const sdk = new SolanaSDK({ rpcUrl: 'https://your-rpc.helius.dev' });
 
 // Full config
 const sdk = new SolanaSDK({
-  cluster: 'devnet',      // 'devnet' | 'mainnet-beta'
+  cluster: 'devnet',      // 'devnet' | 'localnet' | 'mainnet-beta'
   rpcUrl: 'https://...',  // Optional custom RPC
   signer: keypair,        // Optional signer for write operations
-  programIds: {           // Optional: override devnet defaults
+  indexerGraphqlUrl: 'https://your-indexer.example.com/v2/graphql',
+  programIds: {           // Override path for localnet/mainnet-beta deployments
     agentRegistry: '...',
     atomEngine: '...',
   },
 });
 ```
+
+Network guidance:
+- `devnet`: built-in program IDs are preconfigured.
+- `localnet`: supported; provide your deployed `programIds`.
+- `mainnet-beta`: supported and RPC-ready; provide mainnet `programIds` to complete the switch.
+- Without `programIds`, `cluster: 'mainnet-beta'` currently warns and still resolves to devnet default program IDs.
 
 ## Utility Methods
 
@@ -89,15 +96,27 @@ await sdk.verify('./signed-payload.json', asset);
 | `updateCollectionUri` (legacy) | `(collection, newUri, options?) => Promise<TransactionResult>` | Legacy on-chain API, kept for compatibility only |
 
 ```typescript
-// 1) Create schema-compliant JSON only
-const collectionData = sdk.createCollectionData({
+const collectionMetadata = {
+  version: '1.0.0',
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection metadata',
-});
+  image: 'ipfs://QmCollectionImage...',
+  banner_image: 'ipfs://QmCollectionBanner...',
+  parent: 'ParentAgentAssetPubkeyOrNull',
+  socials: {
+    website: 'https://castercorp.ai',
+    x: 'https://x.com/castercorp',
+    discord: 'https://discord.gg/castercorp',
+  },
+};
+const { parent, version, ...collectionInput } = collectionMetadata;
+
+// 1) Create schema-compliant JSON only
+const collectionData = sdk.createCollectionData(collectionInput);
 
 // 2) Create + upload (CID-first flow)
-const upload = await sdk.createCollection(collectionData);
+const upload = await sdk.createCollection(collectionInput);
 // upload.metadata -> JSON
 // upload.cid      -> CID (when uploaded)
 // upload.uri      -> ipfs://<cid>
@@ -113,20 +132,20 @@ await sdk.setCollectionPointer(result.asset, upload.pointer!); // lock=true by d
 await sdk.setParentAsset(result.asset, parentAssetPubkey, { lock: false });
 ```
 
-> Legacy note: on protocol `v0.6.x` (single-collection architecture), legacy on-chain collection APIs return `success: false` with an error. Use CID-first metadata flow + pointer methods above.
-
 ### Collection + Parent Association Rules (on-chain)
 
-- Collection pointer must start with `c1:`, payload must be non-empty lowercase alphanumeric, and total size must be <= `128` bytes.
-- `setCollectionPointer`: signer must equal immutable `AgentAccount.creator`.
-- `setParentAsset`: signer must be current owner of child asset and must equal the parent agent creator snapshot.
-- Parent asset must be live/valid and self-parenting is rejected.
-- Both methods default to `lock=true`. Pass `{ lock: false }` to keep pointer/parent mutable until final lock.
-- Lock flags are persisted in `AgentAccount.col_locked` and `AgentAccount.parent_locked`.
+- Use the canonical pointer returned by `sdk.createCollection(...)` (`c1:b...`).
+- On-chain pointer constraints: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
+- `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
+- `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
+- Editable workflow: first call with `{ lock: false }`, then finalize with `{ lock: true }` (or omit `lock`).
+- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child and equal the parent agent creator snapshot.
+- Parent constraints: parent exists/live, `child !== parent`, and `parent_locked` behaves like `col_locked`.
+- `loadAgent()` exposes `creator`, `creators`, `col`, `parent_asset`, `col_locked`, and `parent_locked`.
 
 Pointer vs Pubkey:
 - `collection pointer` (`c1:...`) is a string stored in `AgentAccount.col`.
-- `base registry pubkey` is the on-chain Metaplex collection account used internally by asset instructions.
+- `base registry pubkey` is an internal on-chain account; standard `setAgentUri()` / `transferAgent()` calls auto-resolve it.
 
 ### Collection Read Methods
 
@@ -184,7 +203,7 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 |--------|-----------|-------------|
 | `registerAgent` | `(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions) => Promise<TransactionResult \| PreparedTransaction>` | Register new agent (base collection default) |
 | `enableAtom` | `(asset) => Promise<TransactionResult>` | Enable ATOM one-way for an existing agent |
-| `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base collection auto-resolved) |
+| `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base collection auto-resolved; standard token wallet transfer also works) |
 | `transferAgent` (legacy) | `(asset, collection, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership with explicit base registry pubkey |
 | `syncOwner` | `(asset, options?) => Promise<TransactionResult \| PreparedTransaction>` | Sync cached owner with live Core owner |
 | `setAgentUri` | `(asset, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update agent URI (base collection auto-resolved) |
@@ -248,9 +267,11 @@ Limits enforced on-chain:
 | `giveFeedback` | `(asset, feedbackData) => Promise<TransactionResult>` | Submit feedback |
 | `getFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Read feedback |
 | `readFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Alias |
-| `revokeFeedback` | `(asset, index, feedbackHash) => Promise<TransactionResult>` | Revoke feedback (feedbackHash = sealHash) |
+| `revokeFeedback` | `(asset, index, sealHash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Revoke feedback (default ownership preflight + auto `sealHash`) |
 | `getLastIndex` | `(asset, client) => Promise<bigint>` | Get last feedback index for a client (`-1` when none) |
-| `appendResponse` | `(asset, client, index, feedbackHash, uri, hash?) => Promise<TransactionResult>` | Add response (feedbackHash = sealHash) |
+| `appendResponse` | `(asset, client, index, sealHash, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response (explicit `sealHash`) |
+| `appendResponse` | `(asset, client, index, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response (auto-resolves `sealHash` from indexer) |
+| `appendResponseBySealHash` | `(asset, client, sealHash, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response when only `sealHash` is available (auto-resolves `feedbackIndex`) |
 
 ### Feedback Data
 
@@ -263,6 +284,33 @@ await sdk.giveFeedback(agentAsset, {
   feedbackUri: 'ipfs://QmFeedbackDetails',  // Feedback URI (required)
   feedbackFileHash: Buffer.alloc(32),       // Optional SHA-256 of feedback file
 });
+```
+
+### Revoke + Response Helpers
+
+`revokeFeedback()` defaults:
+- `verifyFeedbackClient: true` (checks signer-owned indexed feedback and non-revoked state before sending)
+- `waitForIndexerSync: true` (short sync wait when feedback is not visible yet)
+- `sealHash` auto-resolution from indexer when omitted
+
+```typescript
+await sdk.revokeFeedback(agentAsset, 12n); // ownership preflight + auto sealHash
+
+await sdk.revokeFeedback(agentAsset, 12n, sealHash, {
+  verifyFeedbackClient: false,
+  waitForIndexerSync: false,
+});
+```
+
+Use `appendResponseBySealHash()` when your service stores `sealHash` but not `feedbackIndex`:
+
+```typescript
+await sdk.appendResponseBySealHash(
+  agentAsset,
+  clientPubkey,
+  sealHash,
+  'ipfs://QmResponse...'
+);
 ```
 
 ## SEAL v1 Methods
@@ -296,7 +344,9 @@ const sealHash = computeSealHash(params);
 const valid = verifySealHash({ ...params, sealHash }); // true
 ```
 
-The `sealHash` (passed as the `feedbackHash` parameter) is required for `revokeFeedback()` and `appendResponse()`.
+`sealHash` can be passed explicitly for deterministic server-side workflows.  
+If omitted, SDK tries to resolve it from indexed feedback (`asset + client + feedbackIndex`) with short sync wait.  
+If `feedbackIndex` is unknown, use `appendResponseBySealHash()` to resolve index from `sealHash`.
 
 ## ATOM Engine Methods
 
@@ -347,6 +397,7 @@ These methods query the indexer for aggregated data.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `searchAgents` | `(params: AgentSearchParams) => Promise<IndexedAgent[]>` | Search agents by owner/creator/base collection/pointer/parent filters |
+| `getAgentByAgentId` | `(agentId: string \| number \| bigint) => Promise<IndexedAgent \| null>` | Read one agent by indexer sequence id (`agent_id`) |
 | `getCollectionPointers` | `(options?) => Promise<CollectionPointerRecord[]>` | Read canonical `c1:` collection-pointer rows |
 | `getCollectionAssetCount` | `(col: string, creator?) => Promise<number>` | Count assets attached to one pointer |
 | `getCollectionAssets` | `(col: string, options?) => Promise<IndexedAgent[]>` | List assets attached to one pointer |
@@ -366,6 +417,9 @@ const results = await sdk.searchAgents({
   limit: 20,
 });
 
+// Read one indexed agent by sequence id
+const byAgentId = await sdk.getAgentByAgentId(42);
+
 // Query canonical collection pointers
 const pointers = await sdk.getCollectionPointers({ creator: 'CreatorPubkey...' });
 
@@ -384,6 +438,7 @@ console.log(`Total agents: ${stats.totalAgents}, Platinum: ${stats.platinumAgent
 Compatibility notes:
 - SDK now targets modern indexer collection APIs (`/collections`, `collection=...`, GraphQL `collections(...)`).
 - Legacy indexers are still supported via automatic fallback (`/collection_pointers`, `col=...`, GraphQL `collectionPointers(...)` / `col` args).
+- `getAgentByIndexerId()` remains available as an alias to `getAgentByAgentId()`.
 
 ## Advanced Queries
 

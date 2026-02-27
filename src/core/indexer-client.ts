@@ -45,6 +45,9 @@ export interface AgentQueryOptions {
   parentCreator?: string;
   colLocked?: boolean;
   parentLocked?: boolean;
+  updatedAt?: string | number;
+  updatedAtGt?: string | number;
+  updatedAtLt?: string | number;
 }
 
 /**
@@ -81,6 +84,9 @@ export interface IndexerReadClient {
 
   // Agents
   getAgent(asset: string): Promise<IndexedAgent | null>;
+  getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+  /** @deprecated Use getAgentByAgentId(agentId) */
+  getAgentByIndexerId?(agentId: string | number | bigint): Promise<IndexedAgent | null>;
   getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
   getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
   getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;
@@ -148,6 +154,7 @@ export interface IndexerReadClient {
  * v2.0 - Includes ATOM stats and sort_key for leaderboard
  */
 export interface IndexedAgent {
+  agent_id?: number | string | null;
   asset: string;
   owner: string;
   creator?: string | null;
@@ -680,9 +687,28 @@ export class IndexerClient implements IndexerReadClient {
   }
 
   /**
+   * Get agent by indexer agent_id
+   */
+  async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
+    const id = typeof agentId === 'bigint' ? agentId.toString() : String(agentId);
+    const query = this.buildQuery({ agent_id: `eq.${id}` });
+    const result = await this.request<IndexedAgent[]>(`/agents${query}`);
+    return result.length > 0 ? result[0] : null;
+  }
+
+  /** @deprecated Use getAgentByAgentId(agentId) */
+  async getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
+    return this.getAgentByAgentId(agentId);
+  }
+
+  /**
    * Get all agents with pagination
    */
   async getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]> {
+    const updatedAt = options?.updatedAt !== undefined ? String(options.updatedAt) : undefined;
+    const updatedAtGt = options?.updatedAtGt !== undefined ? String(options.updatedAtGt) : undefined;
+    const updatedAtLt = options?.updatedAtLt !== undefined ? String(options.updatedAtLt) : undefined;
+
     const query = this.buildQuery({
       limit: options?.limit,
       offset: options?.offset,
@@ -696,6 +722,9 @@ export class IndexerClient implements IndexerReadClient {
       parent_creator: options?.parentCreator ? `eq.${options.parentCreator}` : undefined,
       col_locked: options?.colLocked !== undefined ? `eq.${options.colLocked}` : undefined,
       parent_locked: options?.parentLocked !== undefined ? `eq.${options.parentLocked}` : undefined,
+      updated_at: updatedAt ? `eq.${updatedAt}` : undefined,
+      updated_at_gt: updatedAtGt,
+      updated_at_lt: updatedAtLt,
     });
     return this.request<IndexedAgent[]>(`/agents${query}`);
   }

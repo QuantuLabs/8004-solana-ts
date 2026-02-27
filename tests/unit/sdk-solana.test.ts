@@ -106,6 +106,7 @@ const mockIndexerClient = {
   getAgents: jest.fn().mockResolvedValue([]),
   getAgentsByOwner: jest.fn().mockResolvedValue([]),
   getAgentsByCollection: jest.fn().mockResolvedValue([]),
+  getAgentByAgentId: jest.fn().mockResolvedValue(null),
   getAgentByWallet: jest.fn().mockResolvedValue(null),
   getCollectionPointers: jest.fn().mockResolvedValue([]),
   getCollectionAssetCount: jest.fn().mockResolvedValue(0),
@@ -115,6 +116,7 @@ const mockIndexerClient = {
   getCollectionStats: jest.fn().mockResolvedValue(null),
   getFeedbacks: jest.fn().mockResolvedValue([]),
   getFeedback: jest.fn().mockResolvedValue(null),
+  getFeedbacksByClient: jest.fn().mockResolvedValue([]),
   getFeedbacksByEndpoint: jest.fn().mockResolvedValue([]),
   getFeedbacksByTag: jest.fn().mockResolvedValue([]),
   getFeedbackResponsesFor: jest.fn().mockResolvedValue([]),
@@ -153,6 +155,8 @@ const mockIpfsClient = {
 const mockIdentityTxBuilder = {
   registerAgent: jest.fn().mockResolvedValue(mockTxResult),
   setAgentUri: jest.fn().mockResolvedValue(mockTxResult),
+  setCollectionPointer: jest.fn().mockResolvedValue(mockTxResult),
+  setCollectionPointerWithOptions: jest.fn().mockResolvedValue(mockTxResult),
   setMetadata: jest.fn().mockResolvedValue(mockTxResult),
   deleteMetadata: jest.fn().mockResolvedValue(mockTxResult),
   transferAgent: jest.fn().mockResolvedValue(mockTxResult),
@@ -184,11 +188,28 @@ const mockAtomTxBuilder = {
   updateConfig: jest.fn().mockResolvedValue(mockTxResult),
 };
 
+const mockValidateCollectionPointer = jest.fn((col: string) => {
+  if (typeof col !== 'string') {
+    throw new Error('col must be a string');
+  }
+  if (!col.startsWith('c1:')) {
+    throw new Error('col must start with "c1:"');
+  }
+  const payload = col.slice(3);
+  if (!payload) {
+    throw new Error('col payload cannot be empty after "c1:"');
+  }
+  if (!/^[a-z0-9]+$/.test(payload)) {
+    throw new Error('col payload must contain only [a-z0-9]');
+  }
+});
+
 jest.unstable_mockModule('../../src/core/transaction-builder.js', () => ({
   IdentityTransactionBuilder: jest.fn().mockImplementation(() => mockIdentityTxBuilder),
   ReputationTransactionBuilder: jest.fn().mockImplementation(() => mockReputationTxBuilder),
   ValidationTransactionBuilder: jest.fn().mockImplementation(() => mockValidationTxBuilder),
   AtomTransactionBuilder: jest.fn().mockImplementation(() => mockAtomTxBuilder),
+  validateCollectionPointer: mockValidateCollectionPointer,
   serializeTransaction: jest.fn(),
 }));
 
@@ -867,6 +888,23 @@ describe('SolanaSDK', () => {
     });
   });
 
+  describe('getAgentByAgentId', () => {
+    it('should delegate to indexerClient', async () => {
+      await sdk.getAgentByAgentId('42');
+      expect(mockIndexerClient.getAgentByAgentId).toHaveBeenCalledWith('42');
+    });
+
+    it('should keep getAgentByIndexerId as alias', async () => {
+      await sdk.getAgentByIndexerId(42);
+      expect(mockIndexerClient.getAgentByAgentId).toHaveBeenCalledWith(42);
+    });
+
+    it('should throw when forceOnChain=true', async () => {
+      const forcedSdk = new SolanaSDK({ forceOnChain: true });
+      await expect(forcedSdk.getAgentByAgentId(42)).rejects.toThrow('requires indexer');
+    });
+  });
+
   describe('getPendingValidations', () => {
     it('should delegate to indexerClient', async () => {
       await sdk.getPendingValidations('validator-pubkey');
@@ -917,6 +955,15 @@ describe('SolanaSDK', () => {
       expect(result.uri).toBe('ipfs://QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG');
       expect(result.pointer).toMatch(/^c1:b[a-z2-7]+$/);
       expect((result.pointer || '').length).toBeLessThanOrEqual(128);
+    });
+
+    it('createCollection(name, uri) legacy on-chain flow should call tx builder', async () => {
+      await signerSdk.createCollection('Legacy Collection', 'ipfs://legacy-uri');
+      expect(mockIdentityTxBuilder.createCollection).toHaveBeenCalledWith(
+        'Legacy Collection',
+        'ipfs://legacy-uri',
+        undefined
+      );
     });
 
     it('createCollection(data) should require ipfsClient for upload', async () => {
@@ -989,6 +1036,18 @@ describe('SolanaSDK', () => {
       expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalled();
     });
 
+    it('registerAgent should skip pointer attach in skipSend mode', async () => {
+      await sdk.registerAgent('ipfs://test', undefined, {
+        skipSend: true,
+        signer: PublicKey.unique(),
+        assetPubkey: PublicKey.unique(),
+        collectionPointer: 'c1:abc123',
+      });
+
+      expect(mockIdentityTxBuilder.setCollectionPointer).not.toHaveBeenCalled();
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).not.toHaveBeenCalled();
+    });
+
     it('giveFeedback should allow skipSend', async () => {
       await sdk.giveFeedback(
         PublicKey.unique(),
@@ -1001,11 +1060,90 @@ describe('SolanaSDK', () => {
     it('revokeFeedback should convert number to bigint', async () => {
       await sdk.revokeFeedback(
         PublicKey.unique(), 5, Buffer.alloc(32),
-        { skipSend: true, signer: PublicKey.unique() }
+        { skipSend: true, signer: PublicKey.unique(), verifyFeedbackClient: false }
       );
       expect(mockReputationTxBuilder.revokeFeedback).toHaveBeenCalledWith(
         expect.any(PublicKey), 5n, expect.any(Buffer), expect.anything()
       );
+    });
+
+    it('revokeFeedback should auto-resolve sealHash when omitted', async () => {
+      const asset = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x11);
+      mockFeedbackManager.readFeedback.mockResolvedValueOnce({ sealHash });
+
+      await sdk.revokeFeedback(
+        asset, 9,
+        undefined,
+        { skipSend: true, signer }
+      );
+
+      expect(mockFeedbackManager.readFeedback).toHaveBeenCalledWith(asset, signer, 9n);
+      expect(mockReputationTxBuilder.revokeFeedback).toHaveBeenCalledWith(
+        asset, 9n, sealHash, expect.anything()
+      );
+    });
+
+    it('revokeFeedback should fail preflight when feedback is missing for signer', async () => {
+      const asset = PublicKey.unique();
+      const signer = PublicKey.unique();
+      mockFeedbackManager.readFeedback.mockResolvedValueOnce(null);
+      const waitSpy = jest.spyOn(sdk as any, 'waitForIndexerSync').mockResolvedValue(false);
+
+      await expect(
+        sdk.revokeFeedback(
+          asset, 9,
+          undefined,
+          { skipSend: true, signer }
+        )
+      ).rejects.toThrow('Refusing revoke preflight');
+
+      waitSpy.mockRestore();
+      expect(mockReputationTxBuilder.revokeFeedback).not.toHaveBeenCalledWith(
+        asset, 9n, expect.anything(), expect.anything()
+      );
+    });
+
+    it('revokeFeedback should fail preflight when feedback already revoked', async () => {
+      const asset = PublicKey.unique();
+      const signer = PublicKey.unique();
+      mockFeedbackManager.readFeedback.mockResolvedValueOnce({
+        sealHash: Buffer.alloc(32, 0x55),
+        isRevoked: true,
+        revoked: true,
+      });
+
+      await expect(
+        sdk.revokeFeedback(
+          asset,
+          4,
+          undefined,
+          { skipSend: true, signer }
+        )
+      ).rejects.toThrow('already revoked');
+      expect(mockReputationTxBuilder.revokeFeedback).not.toHaveBeenCalled();
+    });
+
+    it('revokeFeedback should reject explicit sealHash mismatch with indexed feedback', async () => {
+      const asset = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const indexedSeal = Buffer.alloc(32, 0xaa);
+      mockFeedbackManager.readFeedback.mockResolvedValueOnce({
+        sealHash: indexedSeal,
+        isRevoked: false,
+        revoked: false,
+      });
+
+      await expect(
+        sdk.revokeFeedback(
+          asset,
+          4,
+          Buffer.alloc(32, 0xbb),
+          { skipSend: true, signer }
+        )
+      ).rejects.toThrow('does not match indexed feedback');
+      expect(mockReputationTxBuilder.revokeFeedback).not.toHaveBeenCalled();
     });
 
     it('appendResponse should convert number to bigint', async () => {
@@ -1018,6 +1156,136 @@ describe('SolanaSDK', () => {
         expect.any(PublicKey), expect.any(PublicKey), 3n,
         expect.any(Buffer), 'ipfs://r', undefined, expect.anything()
       );
+    });
+
+    it('appendResponse should auto-resolve sealHash when omitted', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x22);
+      mockFeedbackManager.readFeedback.mockResolvedValueOnce({ sealHash });
+
+      await sdk.appendResponse(
+        asset, client, 4, 'ipfs://r',
+        undefined,
+        { skipSend: true, signer }
+      );
+
+      expect(mockFeedbackManager.readFeedback).toHaveBeenCalledWith(asset, client, 4n);
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalledWith(
+        asset, client, 4n, sealHash, 'ipfs://r', undefined, expect.anything()
+      );
+    });
+
+    it('appendResponse should fail when sealHash omitted and not yet indexed', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      mockFeedbackManager.readFeedback.mockResolvedValue(null);
+      const waitSpy = jest.spyOn(sdk as any, 'waitForIndexerSync').mockResolvedValue(false);
+
+      await expect(
+        sdk.appendResponse(
+          asset, client, 4, 'ipfs://r',
+          undefined,
+          { skipSend: true, signer: PublicKey.unique() }
+        )
+      ).rejects.toThrow('not indexed yet');
+
+      waitSpy.mockRestore();
+    });
+
+    it('appendResponseBySealHash should auto-resolve feedbackIndex from indexer', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x33);
+      mockIndexerClient.getFeedbacksByClient.mockResolvedValueOnce([
+        {
+          asset: asset.toBase58(),
+          client_address: client.toBase58(),
+          feedbackIndex: 7,
+          feedback_index: '7',
+          feedback_hash: sealHash.toString('hex'),
+        },
+      ]);
+
+      await sdk.appendResponseBySealHash(
+        asset,
+        client,
+        sealHash,
+        'ipfs://response',
+        undefined,
+        { skipSend: true, signer }
+      );
+
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalledWith(
+        asset,
+        client,
+        7n,
+        sealHash,
+        'ipfs://response',
+        undefined,
+        expect.anything()
+      );
+    });
+
+    it('appendResponseBySealHash should resolve via asset-level fallback when client query misses', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x35);
+      mockIndexerClient.getFeedbacksByClient.mockResolvedValueOnce([]);
+      mockIndexerClient.getFeedbacks.mockResolvedValueOnce([
+        {
+          asset: asset.toBase58(),
+          client_address: client.toBase58(),
+          feedbackIndex: 9,
+          feedback_index: '9',
+          feedback_hash: sealHash.toString('hex'),
+        },
+      ]);
+
+      await sdk.appendResponseBySealHash(
+        asset,
+        client,
+        sealHash,
+        'ipfs://response-fallback',
+        undefined,
+        { skipSend: true, signer }
+      );
+
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalledWith(
+        asset,
+        client,
+        9n,
+        sealHash,
+        'ipfs://response-fallback',
+        undefined,
+        expect.anything()
+      );
+    });
+
+    it('appendResponseBySealHash should fail when indexer cannot resolve feedback index', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x44);
+      mockIndexerClient.getFeedbacksByClient.mockResolvedValueOnce([]);
+      mockIndexerClient.getFeedbacks.mockResolvedValueOnce([]);
+      const waitSpy = jest.spyOn(sdk as any, 'waitForIndexerSync').mockResolvedValue(false);
+
+      await expect(
+        sdk.appendResponseBySealHash(
+          asset,
+          client,
+          sealHash,
+          'ipfs://response',
+          undefined,
+          { skipSend: true, signer }
+        )
+      ).rejects.toThrow('could not be resolved from sealHash');
+
+      waitSpy.mockRestore();
     });
   });
 
@@ -1043,6 +1311,82 @@ describe('SolanaSDK', () => {
       if ('signatures' in result) {
         expect(result.signatures).toHaveLength(2);
       }
+    });
+
+    it('registerAgent should attach collection pointer with default lock=true', async () => {
+      const asset = PublicKey.unique();
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset,
+      });
+      mockAtomTxBuilder.initializeStats.mockResolvedValueOnce({
+        signature: 'sig2',
+        success: true,
+      });
+      mockIdentityTxBuilder.setCollectionPointer.mockResolvedValueOnce({
+        signature: 'sig3',
+        success: true,
+      });
+
+      const result = await signerSdk.registerAgent('ipfs://test', undefined, {
+        collectionPointer: 'c1:abc123',
+      });
+
+      expect(mockIdentityTxBuilder.setCollectionPointer).toHaveBeenCalledWith(
+        asset,
+        'c1:abc123',
+        undefined
+      );
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).not.toHaveBeenCalled();
+      if ('signatures' in result) {
+        expect(result.signatures).toEqual(['sig1', 'sig2', 'sig3']);
+      }
+    });
+
+    it('registerAgent should attach collection pointer with lock override', async () => {
+      const asset = PublicKey.unique();
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset,
+      });
+      mockIdentityTxBuilder.setCollectionPointerWithOptions.mockResolvedValueOnce({
+        signature: 'sig3',
+        success: true,
+      });
+
+      await signerSdk.registerAgent('ipfs://test', undefined, {
+        atomEnabled: false,
+        collectionPointer: 'c1:abc123',
+        collectionLock: false,
+      });
+
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).toHaveBeenCalledWith(
+        asset,
+        'c1:abc123',
+        false,
+        undefined
+      );
+    });
+
+    it('registerAgent should validate collection pointer before register', async () => {
+      await expect(
+        signerSdk.registerAgent('ipfs://test', undefined, {
+          collectionPointer: 'bad-pointer',
+        })
+      ).rejects.toThrow('c1:');
+      expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should validate collectionLock type before register', async () => {
+      await expect(
+        signerSdk.registerAgent('ipfs://test', undefined, {
+          collectionPointer: 'c1:abc123',
+          collectionLock: 'true' as any,
+        })
+      ).rejects.toThrow('collectionLock must be a boolean');
+      expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
     });
 
     it('registerAgent should not init ATOM when atomEnabled=false', async () => {
@@ -1088,6 +1432,14 @@ describe('SolanaSDK', () => {
       );
     });
 
+    it('setAgentUri should throw when auto base collection is missing', async () => {
+      const spy = jest.spyOn(signerSdk, 'getBaseCollection').mockResolvedValueOnce(null);
+      await expect(
+        signerSdk.setAgentUri(PublicKey.unique(), 'ipfs://auto')
+      ).rejects.toThrow('Base collection not found');
+      spy.mockRestore();
+    });
+
     it('enableAtom should delegate to identityTxBuilder', async () => {
       await signerSdk.enableAtom(PublicKey.unique());
       expect(mockIdentityTxBuilder.enableAtom).toHaveBeenCalled();
@@ -1109,7 +1461,9 @@ describe('SolanaSDK', () => {
     });
 
     it('revokeFeedback should delegate to reputationTxBuilder', async () => {
-      await signerSdk.revokeFeedback(PublicKey.unique(), 0n, Buffer.alloc(32));
+      await signerSdk.revokeFeedback(PublicKey.unique(), 0n, Buffer.alloc(32), {
+        verifyFeedbackClient: false,
+      });
       expect(mockReputationTxBuilder.revokeFeedback).toHaveBeenCalled();
     });
 
@@ -1142,6 +1496,14 @@ describe('SolanaSDK', () => {
         newOwner,
         undefined
       );
+    });
+
+    it('transferAgent should throw when auto base collection is missing', async () => {
+      const spy = jest.spyOn(signerSdk, 'getBaseCollection').mockResolvedValueOnce(null);
+      await expect(
+        signerSdk.transferAgent(PublicKey.unique(), PublicKey.unique())
+      ).rejects.toThrow('Base collection not found');
+      spy.mockRestore();
     });
 
     it('syncOwner should delegate to identityTxBuilder', async () => {
@@ -1271,6 +1633,35 @@ describe('SolanaSDK', () => {
     });
   });
 
+  describe('withSmartRouting (private)', () => {
+    it('should prefer on-chain for small queries', async () => {
+      const onChainFn = jest.fn().mockResolvedValue('onchain');
+      const indexerFn = jest.fn().mockResolvedValue('indexer');
+      const result = await (sdk as any).withSmartRouting('getAgent', indexerFn, onChainFn);
+      expect(result).toBe('onchain');
+      expect(onChainFn).toHaveBeenCalled();
+      expect(indexerFn).not.toHaveBeenCalled();
+    });
+
+    it('should fallback to indexer when small-query on-chain call fails', async () => {
+      const onChainFn = jest.fn().mockRejectedValue(new Error('rpc down'));
+      const indexerFn = jest.fn().mockResolvedValue('indexer');
+      const result = await (sdk as any).withSmartRouting('getAgent', indexerFn, onChainFn);
+      expect(result).toBe('indexer');
+      expect(indexerFn).toHaveBeenCalled();
+    });
+
+    it('should route large queries through indexer path', async () => {
+      const onChainFn = jest.fn().mockResolvedValue('onchain');
+      const indexerFn = jest.fn().mockResolvedValue('indexer');
+      const spy = jest.spyOn(sdk as any, 'isSmallQuery').mockReturnValue(false);
+      const result = await (sdk as any).withSmartRouting('anyLargeOp', indexerFn, onChainFn);
+      expect(result).toBe('indexer');
+      expect(indexerFn).toHaveBeenCalled();
+      spy.mockRestore();
+    });
+  });
+
   // ==================== forceOnChain Mode ====================
 
   describe('forceOnChain mode', () => {
@@ -1302,6 +1693,10 @@ describe('SolanaSDK', () => {
 
     it('should throw on getAgentByWallet', async () => {
       await expect(forcedSdk.getAgentByWallet('w')).rejects.toThrow('requires indexer');
+    });
+
+    it('should throw on getAgentByAgentId', async () => {
+      await expect(forcedSdk.getAgentByAgentId(42)).rejects.toThrow('requires indexer');
     });
 
     it('should throw on getPendingValidations', async () => {

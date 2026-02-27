@@ -184,4 +184,175 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect(secondBody.query).toContain('col: $col');
     expect(rows[0]).toMatchObject({ asset: 'asset1', collection_pointer: 'c1:legacy' });
   });
+
+  it('getAgent should query canonical sol:<asset> id', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          agent: {
+            id: 'sol:AssetCanonical111',
+            owner: 'owner1',
+            creator: 'creator1',
+            agentURI: null,
+            agentWallet: null,
+            collectionPointer: null,
+            colLocked: false,
+            parentAsset: null,
+            parentCreator: null,
+            parentLocked: false,
+            createdAt: '1773000000',
+            updatedAt: '1773000001',
+            totalFeedback: '0',
+            solana: {
+              assetPubkey: 'AssetCanonical111',
+              collection: 'base',
+              atomEnabled: true,
+              trustTier: 0,
+              qualityScore: 0,
+              confidence: 0,
+              riskScore: 0,
+              diversityRatio: 0,
+            },
+          },
+        },
+      })
+    );
+
+    await client.getAgent('AssetCanonical111');
+    const body = getBody(0);
+    expect(body.variables?.id).toBe('sol:AssetCanonical111');
+  });
+
+  it('getAgentByAgentId should query by numeric agentid filter', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          agents: [
+            {
+              id: 'sol:AssetById333',
+              owner: 'owner1',
+              creator: 'creator1',
+              agentURI: null,
+              agentWallet: null,
+              collectionPointer: null,
+              colLocked: false,
+              parentAsset: null,
+              parentCreator: null,
+              parentLocked: false,
+              createdAt: '1773000000',
+              updatedAt: '1773000001',
+              totalFeedback: '0',
+              solana: {
+                assetPubkey: 'AssetById333',
+                collection: 'base',
+                atomEnabled: true,
+                trustTier: 0,
+                qualityScore: 0,
+                confidence: 0,
+                riskScore: 0,
+                diversityRatio: 0,
+              },
+            },
+          ],
+        },
+      })
+    );
+
+    const row = await client.getAgentByAgentId('42');
+    expect(row?.asset).toBe('AssetById333');
+    expect(row?.agent_id).toBe('42');
+    const body = getBody(0);
+    expect((body.variables as any)?.where?.agentid).toBe('42');
+  });
+
+  it('getAgentByIndexerId should remain an alias to getAgentByAgentId', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          agents: [],
+        },
+      })
+    );
+
+    const row = await client.getAgentByIndexerId(42);
+    expect(row).toBeNull();
+    const body = getBody(0);
+    expect((body.variables as any)?.where?.agentid).toBe('42');
+  });
+
+  it('getFeedbacks should query using canonical sol:<asset> filter', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbacks: [],
+        },
+      })
+    );
+
+    await client.getFeedbacks('AssetFeedback222', { includeRevoked: false, limit: 10, offset: 0 });
+    const body = getBody(0);
+    expect((body.variables as any)?.where?.agent).toBe('sol:AssetFeedback222');
+    expect((body.variables as any)?.where?.isRevoked).toBe(false);
+  });
+
+  it('getAgentReputation should throw to allow SDK on-chain fallback', async () => {
+    const client = createClient();
+    await expect(client.getAgentReputation('AssetCanonical111')).rejects.toThrow(
+      'GraphQL backend does not expose getAgentReputation',
+    );
+  });
+
+  it('getAgents should map updated_at filters and orderBy to GraphQL variables', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: { agents: [] },
+      }),
+    );
+
+    await client.getAgents({
+      order: 'updated_at.asc',
+      updatedAtGt: '1770421000',
+      updatedAtLt: '1770422000',
+      limit: 10,
+      offset: 5,
+    });
+
+    const body = getBody(0);
+    expect(body.query).toContain('orderBy: $orderBy');
+    expect((body.variables as any)?.orderBy).toBe('updatedAt');
+    expect((body.variables as any)?.dir).toBe('asc');
+    expect((body.variables as any)?.where?.updatedAt_gt).toBe('1770421000');
+    expect((body.variables as any)?.where?.updatedAt_lt).toBe('1770422000');
+  });
+
+  it('getAgents should accept agent_id order alias for deterministic id ordering', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: { agents: [] },
+      }),
+    );
+
+    await client.getAgents({
+      order: 'agent_id.desc',
+      limit: 5,
+    });
+
+    const body = getBody(0);
+    expect((body.variables as any)?.orderBy).toBe('agentid');
+    expect((body.variables as any)?.dir).toBe('desc');
+  });
+
+  it('getLeaderboard should throw when cursorSortKey is requested on GraphQL backend', async () => {
+    const client = createClient();
+    await expect(
+      client.getLeaderboard({ cursorSortKey: '12345', limit: 10 }),
+    ).rejects.toThrow('GraphQL backend does not support cursorSortKey keyset pagination');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });

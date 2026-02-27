@@ -22,24 +22,12 @@ TypeScript SDK for 8004 Agent Registry on Solana.
 npm install 8004-solana
 ```
 
-## Program IDs (Devnet Defaults)
+## Network Defaults
 
-- **Agent Registry**: `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C`
-- **ATOM Engine**: `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF`
-
-For localnet/mainnet, override per SDK instance:
-
-```typescript
-const sdk = new SolanaSDK({
-  rpcUrl: 'http://127.0.0.1:8899',
-  signer,
-  programIds: {
-    agentRegistry: 'YourLocalnetRegistryProgramId',
-    atomEngine: 'YourLocalnetAtomProgramId',
-    // mplCore is optional (defaults to canonical Metaplex Core ID)
-  },
-});
-```
+- `devnet`: fully configured by default.
+- `localnet`: prepared, requires your deployed `programIds`.
+- `mainnet-beta`: cluster/RPC switch is ready; pass `programIds` to switch off devnet defaults.
+- See the [Indexer](#indexer) section for the combined network + indexer config snippet.
 
 ## Quick Start
 
@@ -60,14 +48,23 @@ const ipfs = pinataJwt
   : new IPFSClient({ url: 'http://localhost:5001' });
 const sdk = new SolanaSDK({ cluster: 'devnet', signer, ipfsClient: ipfs });
 
-// 1. Create collection metadata + upload (off-chain)
-const collection = await sdk.createCollection({
+// 1. Create complete collection metadata + upload (off-chain)
+const collectionMetadata = {
+  version: '1.0.0',
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection for CasterCorp agents',
   image: 'ipfs://QmCollectionImage...',
-  socials: { website: 'https://castercorp.ai', x: '@castercorp' },
-});
+  banner_image: 'ipfs://QmCollectionBanner...',
+  parent: 'ParentAgentAssetPubkeyOrNull',
+  socials: {
+    website: 'https://castercorp.ai',
+    x: 'https://x.com/castercorp',
+    discord: 'https://discord.gg/castercorp',
+  },
+};
+const { parent, version, ...collectionInput } = collectionMetadata;
+const collection = await sdk.createCollection(collectionInput);
 
 console.log('Collection CID:', collection.cid);   // <- reuse this in your asset workflow
 console.log('Collection URI:', collection.uri);   // ipfs://<cid>
@@ -116,10 +113,22 @@ console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks
 ### Create Collection (CID-first flow)
 
 ```typescript
-const collectionUpload = await sdk.createCollection({
+const collectionMetadata = {
+  version: '1.0.0',
   name: 'My Collection',
+  symbol: 'MYCOL',
   description: 'Collection metadata stored on IPFS',
-});
+  image: 'ipfs://QmCollectionImage...',
+  banner_image: 'ipfs://QmCollectionBanner...',
+  parent: 'ParentAgentAssetPubkeyOrNull',
+  socials: {
+    website: 'https://example.com',
+    x: 'https://x.com/example',
+    discord: 'https://discord.gg/example',
+  },
+};
+const { parent, version, ...collectionInput } = collectionMetadata;
+const collectionUpload = await sdk.createCollection(collectionInput);
 
 // Returned by createCollection()
 const cid = collectionUpload.cid;          // e.g. Qm...
@@ -127,26 +136,21 @@ const uri = collectionUpload.uri;          // ipfs://Qm...
 const pointer = collectionUpload.pointer;  // c1:b...
 
 // Use `cid` / `uri` in your asset creation pipeline.
+// Set parent association on-chain via `setParentAsset(...)`.
 // Keep `setCollectionPointer()` separate for advanced on-chain linking.
 ```
-
-Legacy on-chain collection APIs are still callable for backward compatibility but are inactive on current programs:
-- `sdk.createCollection(name, uri, options?)`
-- `sdk.updateCollectionUri(collection, newUri, options?)`
-
-On protocol `v0.6.x` (single-collection architecture), they return `success: false` with an error message.
 
 ### Collection + Parent Association Rules
 
 - Use the canonical pointer returned by `sdk.createCollection(...)` (`c1:b...`).
-- Pointer constraints enforced on-chain: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
+- On-chain pointer constraints: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
 - `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
 - `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
-- For editable workflows, call once with `{ lock: false }`, then finalize later with default `lock: true`.
-- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child asset and must equal the parent agent creator snapshot.
-- Parent constraints enforced on-chain: parent asset must exist/live, child cannot point to itself, and `parent_locked` behaves like `col_locked`.
-- `loadAgent()` exposes all related fields (`creator`, `creators`, `col`, `parent_asset`, `col_locked`, `parent_locked`).
-- `c1:...` collection pointer is a string, not a pubkey (base-registry pubkey is an internal on-chain account; standard `setAgentUri`/`transferAgent` calls auto-resolve it).
+- Editable workflow: first write with `{ lock: false }`, then finalize with `{ lock: true }` (or omit `lock`).
+- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child and equal the parent agent creator snapshot.
+- Parent constraints: parent exists/live, `child !== parent`, and `parent_locked` behaves like `col_locked`.
+- `loadAgent()` exposes `creator`, `creators`, `col`, `parent_asset`, `col_locked`, and `parent_locked`.
+- `c1:...` pointer is a string (not a pubkey); base registry pubkey is internal and standard `setAgentUri`/`transferAgent` calls auto-resolve it.
 
 ### Web3 Wallet (Phantom, Solflare)
 
@@ -211,7 +215,29 @@ Default backend is **GraphQL v2** (public read-only reference deployment).
 
 You can self-host your own indexer: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
+### Network + Program Configuration
+
+- `cluster: 'devnet'` uses built-in devnet IDs:
+  - Agent Registry: `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C`
+  - ATOM Engine: `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF`
+- `cluster: 'localnet'` is supported; set your deployed `programIds`.
+- `cluster: 'mainnet-beta'` is supported and RPC-ready; provide mainnet `programIds` to complete the switch.
+- If `cluster: 'mainnet-beta'` is set without `programIds`, SDK logs a warning and still uses devnet default program IDs.
+
 ```typescript
+// Localnet/Mainnet custom config + indexer endpoint
+const sdk = new SolanaSDK({
+  cluster: 'localnet', // or 'mainnet-beta'
+  rpcUrl: 'http://127.0.0.1:8899',
+  signer,
+  programIds: {
+    agentRegistry: 'YourRegistryProgramId',
+    atomEngine: 'YourAtomProgramId',
+    // mplCore is optional (defaults to canonical Metaplex Core ID)
+  },
+  indexerGraphqlUrl: 'http://127.0.0.1:3000/v2/graphql',
+});
+
 // Custom GraphQL indexer (recommended)
 const sdk = new SolanaSDK({
   cluster: 'devnet',
@@ -236,6 +262,15 @@ Environment variables (optional):
 
 - `INDEXER_GRAPHQL_URL`: override GraphQL endpoint
 - `INDEXER_URL` + `INDEXER_API_KEY`: legacy REST v1 (Supabase PostgREST)
+
+Read by indexer sequence id (`agent_id`):
+
+```typescript
+const indexed = await sdk.getAgentByAgentId(42);
+
+// Backward-compatible alias
+const indexedLegacy = await sdk.getAgentByIndexerId(42);
+```
 
 ## Feedback System
 
@@ -264,6 +299,33 @@ await sdk.giveFeedback(agent.asset, {
   tag2: 'day',
   feedbackUri: 'ipfs://QmUptime...',
 });
+```
+
+### Revoke + Response Workflows
+
+`revokeFeedback()` now does indexer preflight by default:
+- Uses signer (or `options.signer`) as the feedback client.
+- Refuses revoke when feedback is missing for that client or already revoked.
+- Auto-resolves `sealHash` when omitted; if provided, it must match indexed `sealHash`.
+
+```typescript
+await sdk.revokeFeedback(agent.asset, 12n); // preflight + auto sealHash
+
+await sdk.revokeFeedback(agent.asset, 12n, sealHash, {
+  verifyFeedbackClient: false, // intentionally skip ownership preflight
+  waitForIndexerSync: false,   // skip indexer sync wait
+});
+```
+
+Use `appendResponseBySealHash()` when your system stores `sealHash` but not `feedbackIndex`:
+
+```typescript
+await sdk.appendResponseBySealHash(
+  agent.asset,
+  clientPubkey,
+  sealHash,
+  'ipfs://QmResponse...'
+);
 ```
 
 See [FEEDBACK.md](./docs/FEEDBACK.md) for all 8004 tags and patterns.
@@ -345,7 +407,8 @@ const sealHash = computeSealHash(params);
 const isValid = verifySealHash({ ...params, sealHash });
 ```
 
-The `sealHash` is required when calling `revokeFeedback()` and `appendResponse()` to prove feedback authenticity.
+`sealHash` can be passed explicitly, but SDK can also auto-resolve it from indexed feedback for `revokeFeedback()` and `appendResponse()`.  
+Use `appendResponseBySealHash()` when only `sealHash` is available and `feedbackIndex` must be resolved from indexer data.
 
 ## RPC Provider Recommendations
 
@@ -369,11 +432,13 @@ const sdk = new SolanaSDK({
 | Example | Description |
 |---------|-------------|
 | [`quick-start.ts`](examples/quick-start.ts) | Basic read/write with IPFS upload |
+| [`collection-flow.ts`](examples/collection-flow.ts) | Full collection metadata + create 20 associated agent assets |
 | [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
 | [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
-| [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership |
+| [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership (also possible via standard token wallet transfer) |
 | [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
-| [`basic-indexer.ts`](examples/basic-indexer.ts) | Indexer queries and search |
+
+`basic-indexer.ts` is deprecated and kept as a reference stub; use [8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer) for active indexer flows.
 
 ## Documentation
 

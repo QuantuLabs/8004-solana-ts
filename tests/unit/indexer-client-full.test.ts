@@ -219,6 +219,32 @@ describe('IndexerClient', () => {
     });
   });
 
+  describe('getAgentByAgentId', () => {
+    it('should return agent by agent_id', async () => {
+      const client = createClient();
+      const agent = { agent_id: '42', asset: 'a' };
+      mockFetch.mockResolvedValue(mockJsonResponse([agent]));
+      const result = await client.getAgentByAgentId('42');
+      expect(result?.agent_id).toBe('42');
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('agent_id=eq.42');
+    });
+
+    it('should return null when not found', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      expect(await client.getAgentByAgentId(999n)).toBeNull();
+    });
+
+    it('should keep getAgentByIndexerId as an alias', async () => {
+      const client = createClient();
+      const agent = { agent_id: '77', asset: 'a' };
+      mockFetch.mockResolvedValue(mockJsonResponse([agent]));
+      const result = await client.getAgentByIndexerId('77');
+      expect(result?.agent_id).toBe('77');
+    });
+  });
+
   describe('getAgentReputation', () => {
     it('should return reputation data', async () => {
       const client = createClient();
@@ -628,9 +654,9 @@ describe('IndexerClient', () => {
 
     it('should return digest and count', async () => {
       const client = createClient();
-      mockFetch
-        .mockResolvedValueOnce(mockJsonResponse([{ running_digest: 'abc123' }]))
-        .mockResolvedValueOnce(mockJsonResponse([], 200, { 'Content-Range': '0-0/42' }));
+      mockFetch.mockResolvedValueOnce(
+        mockJsonResponse([{ running_digest: 'abc123', feedback_index: 41 }])
+      );
       const result = await client.getLastFeedbackDigest('asset');
       expect(result.digest).toBe('abc123');
       expect(result.count).toBe(42);

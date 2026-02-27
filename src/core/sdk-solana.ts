@@ -11,7 +11,7 @@
 
 import { PublicKey, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { SolanaClient, Cluster, createDevnetClient, UnsupportedRpcError } from './client.js';
+import { SolanaClient, Cluster, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana.js';
 import type { IPFSClient } from './ipfs-client.js';
 import { EndpointCrawler } from './endpoint-crawler.js';
@@ -25,6 +25,7 @@ import {
   ReputationTransactionBuilder,
   ValidationTransactionBuilder,
   AtomTransactionBuilder,
+  validateCollectionPointer,
   TransactionResult,
   WriteOptions,
   GiveFeedbackOptions,
@@ -462,6 +463,18 @@ export interface WaitForValidationOptions {
   waitForResponse?: boolean;
 }
 
+export interface RevokeFeedbackOptions extends WriteOptions {
+  /**
+   * Verify signer owns the feedback before sending tx (default: true).
+   * Set false only when you intentionally skip indexer preflight checks.
+   */
+  verifyFeedbackClient?: boolean;
+  /**
+   * Wait briefly for indexer sync when feedback is not visible yet (default: true).
+   */
+  waitForIndexerSync?: boolean;
+}
+
 /**
  * Main SDK class for Solana 8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
@@ -493,13 +506,20 @@ export class SolanaSDK {
     this.signer = config.signer;
     this.ipfsClient = config.ipfsClient;
 
-    // Initialize Solana client (devnet only)
-    this.client = config.rpcUrl
-      ? new SolanaClient({
-          cluster: this.cluster,
-          rpcUrl: config.rpcUrl,
-        })
-      : createDevnetClient();
+    this.client = new SolanaClient({
+      cluster: this.cluster,
+      rpcUrl: config.rpcUrl,
+    });
+
+    const hasProgramIdOverrides = !!(
+      config.programIds
+      && Object.values(config.programIds).some((value) => value !== undefined && value !== null)
+    );
+    if (this.cluster === 'mainnet-beta' && !hasProgramIdOverrides) {
+      logger.warn(
+        'cluster=mainnet-beta selected without programIds override; SDK will use devnet default program IDs until mainnet IDs are provided.'
+      );
+    }
 
     // Initialize feedback manager
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
@@ -1102,6 +1122,144 @@ export class SolanaSDK {
     return false;
   }
 
+  /**
+   * Resolve a specific feedback via indexer-backed reads.
+   * Returns null when feedback is not yet indexed.
+   */
+  private async resolveFeedbackFromIndexer(
+    asset: PublicKey,
+    client: PublicKey,
+    feedbackIndex: bigint,
+    options?: {
+      waitForSync?: boolean;
+    }
+  ): Promise<SolanaFeedback | null> {
+    let resolved: SolanaFeedback | null = null;
+    const shouldWait = options?.waitForSync ?? true;
+
+    const tryReadOnce = async (): Promise<SolanaFeedback | null> => {
+      const feedback = await this.readFeedback(asset, client, feedbackIndex);
+      return feedback ?? null;
+    };
+
+    try {
+      resolved = await tryReadOnce();
+      if (resolved) {
+        return resolved;
+      }
+
+      if (!shouldWait) {
+        return null;
+      }
+
+      await this.waitForIndexerSync(
+        async () => {
+          try {
+            resolved = await tryReadOnce();
+            return !!resolved;
+          } catch {
+            return false;
+          }
+        },
+        {
+          timeout: 10000,
+          initialDelay: 250,
+          maxDelay: 1500,
+          backoffMultiplier: 1.5,
+        }
+      );
+
+      return resolved;
+    } catch (error) {
+      logger.warn('Failed to resolve feedback from indexer', error);
+      return null;
+    }
+  }
+
+  /**
+   * Resolve SEAL hash for a specific feedback via indexer-backed reads.
+   * Returns undefined when feedback/sealHash is not yet indexed.
+   */
+  private async resolveSealHashFromIndexer(
+    asset: PublicKey,
+    client: PublicKey,
+    feedbackIndex: bigint
+  ): Promise<Buffer | undefined> {
+    const feedback = await this.resolveFeedbackFromIndexer(asset, client, feedbackIndex);
+    if (feedback?.sealHash && Buffer.isBuffer(feedback.sealHash) && feedback.sealHash.length === 32) {
+      return feedback.sealHash;
+    }
+    return undefined;
+  }
+
+  /**
+   * Resolve feedback by SEAL hash when caller does not know feedbackIndex.
+   */
+  private async resolveFeedbackBySealHashFromIndexer(
+    asset: PublicKey,
+    client: PublicKey,
+    sealHash: Buffer
+  ): Promise<SolanaFeedback | null> {
+    if (sealHash.length !== 32) {
+      throw new Error('sealHash must be 32 bytes');
+    }
+
+    const assetStr = asset.toBase58();
+    const clientStr = client.toBase58();
+    const sealHex = sealHash.toString('hex').toLowerCase();
+
+    const matchesSealHash = (hash?: string | null): boolean =>
+      typeof hash === 'string' && hash.toLowerCase() === sealHex;
+
+    const tryReadOnce = async (): Promise<SolanaFeedback | null> => {
+      const byClient = await this.indexerClient.getFeedbacksByClient(clientStr);
+      const fromClient = byClient.find(
+        (row) => row.asset === assetStr && matchesSealHash(row.feedback_hash)
+      );
+      if (fromClient) {
+        return indexedFeedbackToSolanaFeedback(fromClient);
+      }
+
+      const byAsset = await this.indexerClient.getFeedbacks(assetStr, {
+        includeRevoked: true,
+        limit: 5000,
+      });
+      const fromAsset = byAsset.find(
+        (row) => row.client_address === clientStr && matchesSealHash(row.feedback_hash)
+      );
+      if (fromAsset) {
+        return indexedFeedbackToSolanaFeedback(fromAsset);
+      }
+
+      return null;
+    };
+
+    try {
+      let resolved = await tryReadOnce();
+      if (resolved) {
+        return resolved;
+      }
+
+      await this.waitForIndexerSync(
+        async () => {
+          resolved = await tryReadOnce();
+          return resolved !== null;
+        },
+        {
+          timeout: 10000,
+          initialDelay: 250,
+          maxDelay: 1500,
+          backoffMultiplier: 1.5,
+        }
+      );
+
+      return resolved;
+    } catch (error) {
+      logger.warn('Failed to resolve feedback by sealHash from indexer', error);
+      return null;
+    }
+  }
+
   // ==================== Reputation Methods (v0.3.0 - asset-based) ====================
 
   /**
@@ -1468,6 +1626,9 @@ export class SolanaSDK {
       parentCreator: params.parentCreator,
       colLocked: params.colLocked,
       parentLocked: params.parentLocked,
+      updatedAt: params.updatedAt,
+      updatedAtGt: params.updatedAtGt,
+      updatedAtLt: params.updatedAtLt,
       limit: params.limit,
       offset: params.offset,
       order: params.orderBy,
@@ -1591,6 +1752,26 @@ export class SolanaSDK {
   async getAgentByWallet(wallet: string): Promise<IndexedAgent | null> {
     this.requireIndexer('getAgentByWallet');
     return this.indexerClient.getAgentByWallet(wallet);
+  }
+
+  /**
+   * Get agent by indexer agent_id (indexer only)
+   * @param agentId - Sequential indexer agent id (`agent_id`)
+   * @returns Indexed agent or null
+   */
+  async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
+    this.requireIndexer('getAgentByAgentId');
+    const method = this.indexerClient.getAgentByAgentId
+      ?? this.indexerClient.getAgentByIndexerId;
+    if (!method) {
+      throw new Error('getAgentByAgentId is not available on current indexer client');
+    }
+    return method.call(this.indexerClient, agentId);
+  }
+
+  /** @deprecated Use getAgentByAgentId(agentId) */
+  async getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
+    return this.getAgentByAgentId(agentId);
   }
 
   /**
@@ -1802,6 +1983,9 @@ export class SolanaSDK {
    *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
    *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
    *     (use enableAtom() to turn it on later, one-way)
+   *   - `collectionPointer`: Optional pointer (c1:<payload>) to attach after successful register
+   *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
+   *     Note: when `skipSend=true`, only the register tx is prepared, so pointer attach is skipped.
    * @returns Transaction result with asset, or PreparedTransaction if skipSend
    *
    * @example
@@ -1817,6 +2001,13 @@ export class SolanaSDK {
     collection?: PublicKey,
     options?: RegisterAgentOptions
   ) {
+    if (options?.collectionPointer !== undefined) {
+      validateCollectionPointer(options.collectionPointer);
+    }
+    if (options?.collectionLock !== undefined && typeof options.collectionLock !== 'boolean') {
+      throw new Error('collectionLock must be a boolean');
+    }
+
     // For non-skipSend operations, require signer
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
@@ -1824,27 +2015,59 @@ export class SolanaSDK {
 
     const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
 
-    // Auto-initialize ATOM stats unless ATOM is disabled at creation
-    // Skip if: atomEnabled=false, skipSend=true, or registration failed
-    const shouldInitAtom = options?.atomEnabled !== false && !options?.skipSend && 'success' in result && result.success && !!result.asset;
+    const canRunPostRegister =
+      !options?.skipSend
+      && 'success' in result
+      && result.success
+      && !!result.asset;
 
-    if (shouldInitAtom && result.asset) {
-      try {
-        const atomResult = await this.atomTxBuilder.initializeStats(result.asset!, options);
+    if (canRunPostRegister && result.asset) {
+      const signatures: string[] = [result.signature];
 
-        if ('success' in atomResult && atomResult.success) {
-          // Return combined result with both signatures
-          return {
-            ...result,
-            signatures: [result.signature, atomResult.signature],
-          };
+      // Auto-initialize ATOM stats unless ATOM is disabled at creation
+      if (options?.atomEnabled !== false) {
+        try {
+          const atomResult = await this.atomTxBuilder.initializeStats(result.asset, options);
+
+          if ('success' in atomResult && atomResult.success) {
+            signatures.push(atomResult.signature);
+          } else {
+            // Non-blocking: registration still succeeded.
+            const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
+            logger.warn(`Agent registered but ATOM stats init failed: ${errorMsg}`);
+          }
+        } catch (error) {
+          // Non-blocking: registration still succeeded.
+          logger.warn(`Agent registered but ATOM stats init failed: ${error instanceof Error ? error.message : String(error)}`);
         }
-        // If ATOM init fails, still return the agent registration (non-blocking)
-        const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
-        logger.warn(`Agent registered but ATOM stats init failed: ${errorMsg}`);
-      } catch (error) {
-        // Non-blocking: agent is registered even if ATOM init fails
-        logger.warn(`Agent registered but ATOM stats init failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
+      if (options?.collectionPointer) {
+        const pointerOptions: SetCollectionPointerOptions = {
+          lock: options.collectionLock ?? true,
+        };
+        if (options.signer !== undefined) pointerOptions.signer = options.signer;
+        if (options.feePayer !== undefined) pointerOptions.feePayer = options.feePayer;
+        if (options.computeUnits !== undefined) pointerOptions.computeUnits = options.computeUnits;
+
+        try {
+          const pointerResult = await this.setCollectionPointer(result.asset, options.collectionPointer, pointerOptions);
+          if ('success' in pointerResult && pointerResult.success) {
+            signatures.push(pointerResult.signature);
+          } else {
+            const errorMsg = 'error' in pointerResult ? pointerResult.error : 'Unknown error';
+            logger.warn(`Agent registered but collection pointer attach failed: ${errorMsg}`);
+          }
+        } catch (error) {
+          logger.warn(`Agent registered but collection pointer attach failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      if (signatures.length > 1) {
+        return {
+          ...result,
+          signatures,
+        };
       }
     }
 
@@ -1925,7 +2148,11 @@ export class SolanaSDK {
     if (typeof lock !== 'boolean') {
       throw new Error('lock must be a boolean');
     }
-    const { lock: _lock, ...txOptions } = options ?? {};
+    const txOptions: WriteOptions = {};
+    if (options?.skipSend !== undefined) txOptions.skipSend = options.skipSend;
+    if (options?.signer !== undefined) txOptions.signer = options.signer;
+    if (options?.feePayer !== undefined) txOptions.feePayer = options.feePayer;
+    if (options?.computeUnits !== undefined) txOptions.computeUnits = options.computeUnits;
     const writeOptions: WriteOptions | undefined =
       Object.keys(txOptions).length > 0 ? txOptions : undefined;
 
@@ -1957,7 +2184,11 @@ export class SolanaSDK {
     if (typeof lock !== 'boolean') {
       throw new Error('lock must be a boolean');
     }
-    const { lock: _lock, ...txOptions } = options ?? {};
+    const txOptions: WriteOptions = {};
+    if (options?.skipSend !== undefined) txOptions.skipSend = options.skipSend;
+    if (options?.signer !== undefined) txOptions.signer = options.signer;
+    if (options?.feePayer !== undefined) txOptions.feePayer = options.feePayer;
+    if (options?.computeUnits !== undefined) txOptions.computeUnits = options.computeUnits;
     const writeOptions: WriteOptions | undefined =
       Object.keys(txOptions).length > 0 ? txOptions : undefined;
 
@@ -2119,20 +2350,65 @@ export class SolanaSDK {
    * @param asset - Agent Core asset pubkey
    * @param feedbackIndex - Feedback index to revoke (number or bigint)
    * @param sealHash - Optional SEAL hash from original feedback.
-   * Legacy compatibility: if omitted, SDK uses all-zero hash.
+   * If omitted, SDK attempts to auto-resolve from indexed feedback by using signer as feedback client.
+   * Legacy fallback remains supported (all-zero hash) when auto-resolution is unavailable.
    * @param options - Write options (skipSend, signer)
    */
   async revokeFeedback(
     asset: PublicKey,
     feedbackIndex: number | bigint,
     sealHash?: Buffer,
-    options?: WriteOptions
+    options?: RevokeFeedbackOptions
   ): Promise<TransactionResult | PreparedTransaction> {
     if (!options?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-    return await this.reputationTxBuilder.revokeFeedback(asset, idx, sealHash, options);
+    let resolvedSealHash = sealHash;
+    const client = options?.signer ?? this.signer?.publicKey;
+    if (!client) {
+      throw new Error('No signer available to verify feedback ownership.');
+    }
+
+    const verifyFeedbackClient = options?.verifyFeedbackClient ?? true;
+    const feedback = (verifyFeedbackClient || !resolvedSealHash)
+      ? await this.resolveFeedbackFromIndexer(asset, client, idx, {
+          waitForSync: options?.waitForIndexerSync ?? true,
+        })
+      : null;
+
+    if (verifyFeedbackClient) {
+      if (!feedback) {
+        throw new Error(
+          `Feedback ${idx.toString()} for signer ${client.toBase58()} not found in indexer. Refusing revoke preflight.`
+        );
+      }
+      if (feedback.isRevoked || feedback.revoked) {
+        throw new Error(
+          `Feedback ${idx.toString()} for signer ${client.toBase58()} is already revoked.`
+        );
+      }
+    }
+
+    if (!resolvedSealHash && feedback?.sealHash && feedback.sealHash.length === 32) {
+      resolvedSealHash = feedback.sealHash;
+    }
+
+    if (resolvedSealHash && feedback?.sealHash && feedback.sealHash.length === 32) {
+      if (!resolvedSealHash.equals(feedback.sealHash)) {
+        throw new Error(
+          `Provided sealHash does not match indexed feedback ${idx.toString()} for signer ${client.toBase58()}.`
+        );
+      }
+    }
+
+    if (!resolvedSealHash) {
+      throw new Error(
+        'sealHash could not be auto-resolved yet. Wait for indexer sync or pass a valid sealHash explicitly.'
+      );
+    }
+
+    return await this.reputationTxBuilder.revokeFeedback(asset, idx, resolvedSealHash, options);
   }
 
   /**
@@ -2140,7 +2416,8 @@ export class SolanaSDK {
    * @param asset - Agent Core asset pubkey
    * @param client - Client address who gave the feedback
    * @param feedbackIndex - Feedback index (number or bigint)
-   * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
+   * @param sealHash - Optional SEAL hash from the original feedback.
+   * If omitted, SDK attempts auto-resolution from indexer.
    * @param responseUri - Response URI
    * @param responseHash - Response hash (optional for ipfs://)
    * @param options - Write options (skipSend, signer)
@@ -2153,15 +2430,113 @@ export class SolanaSDK {
     responseUri: string,
     responseHash?: Buffer,
     options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction>;
+  async appendResponse(
+    asset: PublicKey,
+    client: PublicKey,
+    feedbackIndex: number | bigint,
+    responseUri: string,
+    responseHash?: Buffer,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction>;
+  async appendResponse(
+    asset: PublicKey,
+    client: PublicKey,
+    feedbackIndex: number | bigint,
+    sealHashOrResponseUri: Buffer | string,
+    responseUriOrResponseHash?: string | Buffer,
+    responseHashOrOptions?: Buffer | WriteOptions,
+    options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
-    if (!options?.skipSend && !this.signer) {
+    let resolvedSealHash: Buffer | undefined;
+    let responseUri: string;
+    let responseHash: Buffer | undefined;
+    let writeOptions: WriteOptions | undefined;
+
+    if (Buffer.isBuffer(sealHashOrResponseUri)) {
+      resolvedSealHash = sealHashOrResponseUri;
+      if (typeof responseUriOrResponseHash !== 'string') {
+        throw new Error('responseUri is required when sealHash is provided');
+      }
+      responseUri = responseUriOrResponseHash;
+      if (Buffer.isBuffer(responseHashOrOptions)) {
+        responseHash = responseHashOrOptions;
+        writeOptions = options;
+      } else {
+        writeOptions = (responseHashOrOptions as WriteOptions | undefined) ?? options;
+      }
+    } else {
+      responseUri = sealHashOrResponseUri;
+      if (Buffer.isBuffer(responseUriOrResponseHash)) {
+        responseHash = responseUriOrResponseHash;
+        writeOptions = responseHashOrOptions as WriteOptions | undefined;
+      } else {
+        writeOptions = (responseUriOrResponseHash as WriteOptions | undefined) ?? (responseHashOrOptions as WriteOptions | undefined);
+      }
+    }
+
+    if (!writeOptions?.skipSend && !this.signer) {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
+
     const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
+
+    if (!resolvedSealHash) {
+      const feedback = await this.resolveFeedbackFromIndexer(asset, client, idx);
+      if (!feedback) {
+        throw new Error(
+          `Feedback ${idx.toString()} for client ${client.toBase58()} is not indexed yet. Wait for indexer sync.`
+        );
+      }
+      if (!feedback.sealHash || feedback.sealHash.length !== 32) {
+        throw new Error(
+          'sealHash could not be auto-resolved yet. Wait for indexer sync or pass sealHash explicitly.'
+        );
+      }
+      resolvedSealHash = feedback.sealHash;
+    }
+
     return await this.reputationTxBuilder.appendResponse(
       asset,
       client,
       idx,
+      resolvedSealHash,
+      responseUri,
+      responseHash,
+      writeOptions
+    );
+  }
+
+  /**
+   * Append response using sealHash only (feedbackIndex auto-resolved from indexer).
+   * Useful when caller stores sealHash but not feedbackIndex.
+   */
+  async appendResponseBySealHash(
+    asset: PublicKey,
+    client: PublicKey,
+    sealHash: Buffer,
+    responseUri: string,
+    responseHash?: Buffer,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    if (!options?.skipSend && !this.signer) {
+      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+    }
+    if (sealHash.length !== 32) {
+      throw new Error('sealHash must be 32 bytes');
+    }
+
+    const feedback = await this.resolveFeedbackBySealHashFromIndexer(asset, client, sealHash);
+    if (!feedback) {
+      throw new Error(
+        `feedbackIndex could not be resolved from sealHash for client ${client.toBase58()}. Wait for indexer sync.`
+      );
+    }
+
+    return this.appendResponse(
+      asset,
+      client,
+      feedback.feedbackIndex,
       sealHash,
       responseUri,
       responseHash,
@@ -3476,6 +3851,33 @@ export class SolanaSDK {
         }
       }
 
+      const parseHexDigest32 = (value: string, label: string): Buffer => {
+        const normalized = typeof value === 'string' && value.startsWith('0x')
+          ? value.slice(2)
+          : value;
+        if (typeof normalized !== 'string' || !/^[0-9a-fA-F]{64}$/.test(normalized)) {
+          throw new Error(`Invalid ${label}: expected 32-byte hex digest`);
+        }
+        return Buffer.from(normalized, 'hex');
+      };
+
+      const parseOptionalHexDigest32 = (value: string | null | undefined, label: string): Buffer | undefined => {
+        if (value === null || value === undefined || value === '') {
+          return undefined;
+        }
+        return parseHexDigest32(value, label);
+      };
+
+      const parseRequiredOrZeroHexDigest32 = (
+        value: string | null | undefined,
+        label: string,
+      ): Buffer => {
+        if (value === null || value === undefined || value === '') {
+          return Buffer.alloc(32);
+        }
+        return parseHexDigest32(value, label);
+      };
+
       const replayChainFromIndexer = async (
         chainType: 'feedback' | 'response' | 'revoke',
         onChainCount: bigint,
@@ -3484,7 +3886,7 @@ export class SolanaSDK {
         let startDigest = Buffer.alloc(32);
         let startCount = 0;
         if (cp && useCheckpoints) {
-          startDigest = Buffer.from(cp.digest, 'hex');
+          startDigest = parseHexDigest32(cp.digest, `${chainType} checkpoint digest`);
           startCount = cp.event_count;
           checkpointsUsed = true;
         }
@@ -3503,35 +3905,35 @@ export class SolanaSDK {
         }
 
         if (chainType === 'feedback') {
-          const events: FeedbackReplayEvent[] = allEvents.map(e => ({
+          const events: FeedbackReplayEvent[] = allEvents.map((e, index) => ({
             asset: Buffer.from(bs58.decode(e.asset)),
             client: Buffer.from(bs58.decode(e.client)),
             feedbackIndex: BigInt(e.feedback_index),
-            sealHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+            sealHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
             slot: BigInt(e.slot),
-            storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+            storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
           }));
           return replayFeedbackChain(events, startDigest, startCount);
         } else if (chainType === 'response') {
-          const events: ResponseReplayEvent[] = allEvents.map(e => ({
+          const events: ResponseReplayEvent[] = allEvents.map((e, index) => ({
             asset: Buffer.from(bs58.decode(e.asset)),
             client: Buffer.from(bs58.decode(e.client)),
             feedbackIndex: BigInt(e.feedback_index),
             responder: e.responder ? Buffer.from(bs58.decode(e.responder)) : Buffer.alloc(32),
-            responseHash: e.response_hash ? Buffer.from(e.response_hash, 'hex') : Buffer.alloc(32),
-            feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+            responseHash: parseRequiredOrZeroHexDigest32(e.response_hash, `response_hash[${index}]`),
+            feedbackHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
             slot: BigInt(e.slot),
-            storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+            storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
           }));
           return replayResponseChain(events, startDigest, startCount);
         } else {
-          const events: RevokeReplayEvent[] = allEvents.map(e => ({
+          const events: RevokeReplayEvent[] = allEvents.map((e, index) => ({
             asset: Buffer.from(bs58.decode(e.asset)),
             client: Buffer.from(bs58.decode(e.client)),
             feedbackIndex: BigInt(e.feedback_index),
-            feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+            feedbackHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
             slot: BigInt(e.slot),
-            storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+            storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
           }));
           return replayRevokeChain(events, startDigest, startCount);
         }

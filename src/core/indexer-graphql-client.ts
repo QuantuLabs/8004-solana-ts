@@ -82,12 +82,76 @@ function clampInt(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
+function normalizeIndexerAgentId(agentId: string | number | bigint): string {
+  const normalized = typeof agentId === 'bigint'
+    ? agentId.toString()
+    : String(agentId).trim();
+
+  if (!/^\d+$/.test(normalized)) {
+    throw new IndexerError(
+      'agentId must be a non-negative integer',
+      IndexerErrorCode.INVALID_RESPONSE
+    );
+  }
+
+  return normalized;
+}
+
+function toGraphqlUnixSeconds(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return undefined;
+    return Math.trunc(value).toString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (/^-?\d+$/.test(trimmed)) return trimmed;
+    const millis = Date.parse(trimmed);
+    if (!Number.isFinite(millis)) return undefined;
+    return Math.floor(millis / 1000).toString();
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    if (!Number.isFinite(millis)) return undefined;
+    return Math.floor(millis / 1000).toString();
+  }
+  return undefined;
+}
+
+type AgentOrderField = 'createdAt' | 'updatedAt' | 'totalFeedback' | 'qualityScore' | 'trustTier' | 'agentid';
+
+function resolveAgentOrder(order?: string): { orderBy: AgentOrderField; orderDirection: 'asc' | 'desc' } {
+  const resolved = order ?? 'created_at.desc';
+  const orderDirection: 'asc' | 'desc' = resolved.endsWith('.asc') ? 'asc' : 'desc';
+  const field = resolved.split('.')[0] ?? 'created_at';
+  const normalized = field.toLowerCase();
+
+  if (normalized === 'updated_at' || normalized === 'updatedat') {
+    return { orderBy: 'updatedAt', orderDirection };
+  }
+  if (normalized === 'total_feedback' || normalized === 'totalfeedback') {
+    return { orderBy: 'totalFeedback', orderDirection };
+  }
+  if (normalized === 'quality_score' || normalized === 'qualityscore') {
+    return { orderBy: 'qualityScore', orderDirection };
+  }
+  if (normalized === 'trust_tier' || normalized === 'trusttier') {
+    return { orderBy: 'trustTier', orderDirection };
+  }
+  if (normalized === 'agentid' || normalized === 'agent_id') {
+    return { orderBy: 'agentid', orderDirection };
+  }
+  return { orderBy: 'createdAt', orderDirection };
+}
+
 function agentId(asset: string): string {
   return `sol:${asset}`;
 }
 
 function mapGqlAgent(agent: any, fallbackAsset = ''): IndexedAgent {
   return {
+    agent_id: agent?.agentid ?? agent?.agentId ?? null,
     asset: agent?.solana?.assetPubkey ?? fallbackAsset,
     owner: agent?.owner ?? '',
     creator: agent?.creator ?? null,
@@ -163,6 +227,22 @@ function buildAgentWhere(options?: AgentQueryOptions): Record<string, unknown> {
   if (options.parentCreator) where.parentCreator = options.parentCreator;
   if (options.colLocked !== undefined) where.colLocked = options.colLocked;
   if (options.parentLocked !== undefined) where.parentLocked = options.parentLocked;
+  const updatedAt = toGraphqlUnixSeconds(options.updatedAt);
+  const updatedAtGt = toGraphqlUnixSeconds(options.updatedAtGt);
+  const updatedAtLt = toGraphqlUnixSeconds(options.updatedAtLt);
+
+  if (updatedAt !== undefined) {
+    try {
+      const exact = BigInt(updatedAt);
+      where.updatedAt_gt = (exact - 1n).toString();
+      where.updatedAt_lt = (exact + 1n).toString();
+    } catch {
+      // Ignore invalid numeric coercion and let explicit gt/lt (if any) drive the filter.
+    }
+  }
+  if (updatedAtGt !== undefined) where.updatedAt_gt = updatedAtGt;
+  if (updatedAtLt !== undefined) where.updatedAt_lt = updatedAtLt;
+
   return where;
 }
 
@@ -420,20 +500,59 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     return mapGqlAgent(data.agent, asset);
   }
 
+  async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
+    const normalizedAgentId = normalizeIndexerAgentId(agentId);
+
+    const data = await this.request<{
+      agents: any[];
+    }>(
+      `query($where: AgentFilter) {
+        agents(first: 1, where: $where, orderBy: createdAt, orderDirection: desc) {
+          id
+          owner
+          creator
+          agentURI
+          agentWallet
+          collectionPointer
+          colLocked
+          parentAsset
+          parentCreator
+          parentLocked
+          createdAt
+          updatedAt
+          totalFeedback
+          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+        }
+      }`,
+      { where: { agentid: normalizedAgentId } }
+    );
+
+    const first = data.agents?.[0];
+    if (!first) return null;
+    const mapped = mapGqlAgent(first);
+    if (mapped.agent_id === undefined || mapped.agent_id === null) {
+      mapped.agent_id = normalizedAgentId;
+    }
+    return mapped;
+  }
+
+  /** @deprecated Use getAgentByAgentId(agentId) */
+  async getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
+    return this.getAgentByAgentId(agentId);
+  }
+
   async getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]> {
     const limit = clampInt(options?.limit ?? 100, 0, 500);
     const offset = clampInt(options?.offset ?? 0, 0, 1_000_000);
 
-    // Legacy order string (PostgREST-style) mapping
-    const order = options?.order ?? 'created_at.desc';
-    const orderDirection = order.includes('.asc') ? 'asc' : 'desc';
+    const { orderBy, orderDirection } = resolveAgentOrder(options?.order);
     const where = buildAgentWhere(options);
 
     const data = await this.request<{
       agents: any[];
     }>(
-      `query($dir: OrderDirection!, $where: AgentFilter) {
-        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: createdAt, orderDirection: $dir) {
+      `query($orderBy: AgentOrderBy!, $dir: OrderDirection!, $where: AgentFilter) {
+        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: $orderBy, orderDirection: $dir) {
           id
           owner
           creator
@@ -451,6 +570,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         }
       }`,
       {
+        orderBy,
         dir: orderDirection,
         where: Object.keys(where).length ? where : null,
       }
@@ -490,6 +610,10 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     limit?: number;
     cursorSortKey?: string;
   }): Promise<IndexedAgent[]> {
+    if (options?.cursorSortKey) {
+      throw new Error('GraphQL backend does not support cursorSortKey keyset pagination; use REST indexer client.');
+    }
+
     const limit = clampInt(options?.limit ?? 50, 0, 200);
     const where: Record<string, unknown> = {};
     if (options?.collection) where.collection = options.collection;
@@ -1154,8 +1278,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   // ============================================================================
 
   async getAgentReputation(_asset: string): Promise<IndexedAgentReputation | null> {
-    // Not exposed by GraphQL v2. Prefer on-chain fallback in SolanaSDK.getAgentReputationFromIndexer().
-    return null;
+    throw new Error('GraphQL backend does not expose getAgentReputation');
   }
 
   // ============================================================================
