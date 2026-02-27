@@ -287,6 +287,12 @@ The indexer matrix scripts support IPFS uploads during seed/write with this prov
 1. Local IPFS API (`--ipfs-api-url` or `E2E_INDEXERS_IPFS_API_URL`)
 2. Pinata JWT fallback (`E2E_INDEXERS_PINATA_JWT` or `PINATA_JWT`)
 
+Matrix pass criteria:
+
+- `Seed/Write Flow` must pass.
+- For each enabled indexer check job, endpoint availability must be true and ID checks must pass (`available: true`, `idChecks.passed: true` in the check artifact).
+- Parity mismatch count in `Inter-Indexer Comparison` is diagnostic only; mismatch count alone (including `0`) is not sufficient to mark the matrix run as pass.
+
 Start/stop a local Kubo node for tests:
 
 ```bash
@@ -301,6 +307,12 @@ Optional overrides:
 - `E2E_INDEXERS_IPFS_API_PORT` or `--api-port`
 - `E2E_INDEXERS_IPFS_GATEWAY_PORT` or `--gateway-port`
 - `E2E_INDEXERS_IPFS_IMAGE` or `--image`
+
+Additional env knobs used by matrix seed/revoke preflight:
+
+- `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_ATTEMPTS` (default `12`)
+- `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_DELAY_MS` (default `750`)
+- `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_TIMEOUT_MS` (default `attempts * delay`)
 
 Example matrix run using local IPFS via docker hooks:
 
