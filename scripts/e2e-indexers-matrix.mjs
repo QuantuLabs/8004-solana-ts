@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import { relative } from 'path';
+import { pathToFileURL } from 'url';
 import { IndexerClient } from '../dist/index.js';
 import {
   boolFromEnv,
@@ -44,14 +45,64 @@ function readJobStatusFromArtifact(artifactPath) {
   return null;
 }
 
-function runProcessJob({ id, label, command, args, artifactPath, logPath, env }) {
+async function runCommand({ command, args, env }) {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const finish = ({ status, signal, spawnError = null }) => {
+      if (settled) return;
+      settled = true;
+
+      if (spawnError) {
+        const separator = stderr.length > 0 && !stderr.endsWith('\n') ? '\n' : '';
+        stderr += `${separator}spawn_error: ${errorMessage(spawnError)}\n`;
+      }
+
+      resolve({ status, signal, stdout, stderr, spawnError });
+    };
+
+    let child;
+    try {
+      child = spawn(command, args, {
+        env,
+        cwd: process.cwd(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      finish({ status: null, signal: null, spawnError: error });
+      return;
+    }
+
+    if (child.stdout) {
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk;
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.setEncoding('utf8');
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk;
+      });
+    }
+
+    child.once('error', (error) => {
+      finish({ status: null, signal: null, spawnError: error });
+    });
+
+    child.once('close', (status, signal) => {
+      finish({ status, signal });
+    });
+  });
+}
+
+async function runProcessJob({ id, label, command, args, artifactPath, logPath, env }) {
   const startedAtMs = Date.now();
   const startedAt = nowIso();
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    env,
-    cwd: process.cwd(),
-  });
+  const result = await runCommand({ command, args, env });
   const endedAt = nowIso();
   const durationMs = Date.now() - startedAtMs;
 
@@ -69,9 +120,16 @@ function runProcessJob({ id, label, command, args, artifactPath, logPath, env })
   writeText(logPath, combinedLog);
 
   const artifactStatus = readJobStatusFromArtifact(artifactPath);
-  let status = artifactStatus || (result.status === 0 ? 'passed' : 'failed');
-  if (result.status !== 0 && statusRank(status) < statusRank('failed')) {
+  const hasProcessError = result.spawnError || result.status !== 0;
+  let status = artifactStatus || (!hasProcessError ? 'passed' : 'failed');
+  if (hasProcessError && statusRank(status) < statusRank('failed')) {
     status = 'failed';
+  }
+
+  const noteParts = [];
+  if (hasProcessError) {
+    noteParts.push(`exit=${result.status ?? 'null'}`);
+    if (result.signal) noteParts.push(`signal=${result.signal}`);
   }
 
   return {
@@ -84,7 +142,7 @@ function runProcessJob({ id, label, command, args, artifactPath, logPath, env })
     command: buildCommandString(command, args),
     artifactPath: toRel(artifactPath),
     logPath: toRel(logPath),
-    note: result.status === 0 ? '' : `exit=${result.status}`,
+    note: noteParts.join(' '),
   };
 }
 
@@ -135,6 +193,106 @@ function buildCheckArgs({ backend, transport, runId, artifactPath, seedAsset, se
     args.push('--seed-artifact', seedArtifactPath);
   }
   return args;
+}
+
+function buildStagedCheckJobs({
+  skipGraphql,
+  classicRestArtifact,
+  classicGraphqlArtifact,
+  substreamRestArtifact,
+  substreamGraphqlArtifact,
+  logsDir,
+}) {
+  const classic = [
+    {
+      id: 'classic-rest',
+      label: 'Classic REST Check',
+      backend: 'classic',
+      transport: 'rest',
+      artifactPath: classicRestArtifact,
+      logPath: resolveFromCwd(`${logsDir}/classic-rest.log`),
+    },
+  ];
+
+  const substream = [
+    {
+      id: 'substream-rest',
+      label: 'Substream REST Check',
+      backend: 'substream',
+      transport: 'rest',
+      artifactPath: substreamRestArtifact,
+      logPath: resolveFromCwd(`${logsDir}/substream-rest.log`),
+    },
+  ];
+
+  if (!skipGraphql) {
+    classic.push({
+      id: 'classic-graphql',
+      label: 'Classic GraphQL Check',
+      backend: 'classic',
+      transport: 'graphql',
+      artifactPath: classicGraphqlArtifact,
+      logPath: resolveFromCwd(`${logsDir}/classic-graphql.log`),
+    });
+    substream.push({
+      id: 'substream-graphql',
+      label: 'Substream GraphQL Check',
+      backend: 'substream',
+      transport: 'graphql',
+      artifactPath: substreamGraphqlArtifact,
+      logPath: resolveFromCwd(`${logsDir}/substream-graphql.log`),
+    });
+  }
+
+  return { classic, substream };
+}
+
+async function runCheckStage({
+  jobs,
+  runId,
+  seedAsset,
+  seedArtifact,
+  timeoutMs,
+  env,
+  runJob = runProcessJob,
+}) {
+  return Promise.all(
+    jobs.map((job) =>
+      runJob({
+        id: job.id,
+        label: job.label,
+        command: 'node',
+        args: buildCheckArgs({
+          backend: job.backend,
+          transport: job.transport,
+          runId,
+          artifactPath: job.artifactPath,
+          seedAsset,
+          seedArtifactPath: seedArtifact,
+          timeoutMs,
+        }),
+        artifactPath: job.artifactPath,
+        logPath: job.logPath,
+        env,
+      })
+    )
+  );
+}
+
+async function runStagedChecks({ classicJobs, substreamJobs, runStage, runCatchup }) {
+  const records = [];
+
+  if (classicJobs.length > 0) {
+    records.push(...(await runStage(classicJobs)));
+  }
+
+  records.push(await runCatchup());
+
+  if (substreamJobs.length > 0) {
+    records.push(...(await runStage(substreamJobs)));
+  }
+
+  return records;
 }
 
 function applyArgToEnv(args, argName, envName, env) {
@@ -342,7 +500,7 @@ async function main() {
   const dockerPostArtifact = resolveFromCwd(`${jobsDir}/docker-post.json`);
 
   jobRecords.push(
-    runProcessJob({
+    await runProcessJob({
       id: 'docker-pre',
       label: 'Docker Pre Hook',
       command: 'node',
@@ -362,7 +520,7 @@ async function main() {
   );
 
   jobRecords.push(
-    runProcessJob({
+    await runProcessJob({
       id: 'seed-write',
       label: 'Seed/Write Flow',
       command: 'node',
@@ -386,92 +544,42 @@ async function main() {
       : null;
   if (seedAsset) env.E2E_INDEXERS_SEED_ASSET = seedAsset;
 
-  // Run classic REST first and use it as the catch-up target for substream REST.
-  jobRecords.push(
-    runProcessJob({
-      id: 'classic-rest',
-      label: 'Classic REST Check',
-      command: 'node',
-      args: buildCheckArgs({
-        backend: 'classic',
-        transport: 'rest',
-        runId,
-        artifactPath: classicRestArtifact,
-        seedAsset,
-        seedArtifactPath: seedArtifact,
-        timeoutMs,
-      }),
-      artifactPath: classicRestArtifact,
-      logPath: resolveFromCwd(`${logsDir}/classic-rest.log`),
-      env,
-    })
-  );
+  const stagedChecks = buildStagedCheckJobs({
+    skipGraphql,
+    classicRestArtifact,
+    classicGraphqlArtifact,
+    substreamRestArtifact,
+    substreamGraphqlArtifact,
+    logsDir,
+  });
 
   jobRecords.push(
-    await runSubstreamCatchupJob({
-      runId,
-      env,
-      seedAsset,
-      classicRestArtifactPath: classicRestArtifact,
-      artifactPath: substreamCatchupArtifact,
-      logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
-    })
-  );
-
-  const remainingChecks = [
-    {
-      id: 'substream-rest',
-      label: 'Substream REST Check',
-      backend: 'substream',
-      transport: 'rest',
-      artifactPath: substreamRestArtifact,
-      logPath: resolveFromCwd(`${logsDir}/substream-rest.log`),
-    },
-  ];
-
-  if (!skipGraphql) {
-    remainingChecks.unshift({
-      id: 'classic-graphql',
-      label: 'Classic GraphQL Check',
-      backend: 'classic',
-      transport: 'graphql',
-      artifactPath: classicGraphqlArtifact,
-      logPath: resolveFromCwd(`${logsDir}/classic-graphql.log`),
-    });
-    remainingChecks.push({
-      id: 'substream-graphql',
-      label: 'Substream GraphQL Check',
-      backend: 'substream',
-      transport: 'graphql',
-      artifactPath: substreamGraphqlArtifact,
-      logPath: resolveFromCwd(`${logsDir}/substream-graphql.log`),
-    });
-  }
-
-  for (const job of remainingChecks) {
-    jobRecords.push(
-      runProcessJob({
-        id: job.id,
-        label: job.label,
-        command: 'node',
-        args: buildCheckArgs({
-          backend: job.backend,
-          transport: job.transport,
+    ...(await runStagedChecks({
+      classicJobs: stagedChecks.classic,
+      substreamJobs: stagedChecks.substream,
+      runStage: (jobs) =>
+        runCheckStage({
+          jobs,
           runId,
-          artifactPath: job.artifactPath,
           seedAsset,
-          seedArtifactPath: seedArtifact,
+          seedArtifact,
           timeoutMs,
+          env,
         }),
-        artifactPath: job.artifactPath,
-        logPath: job.logPath,
-        env,
-      })
-    );
-  }
+      runCatchup: () =>
+        runSubstreamCatchupJob({
+          runId,
+          env,
+          seedAsset,
+          classicRestArtifactPath: classicRestArtifact,
+          artifactPath: substreamCatchupArtifact,
+          logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
+        }),
+    }))
+  );
 
   jobRecords.push(
-    runProcessJob({
+    await runProcessJob({
       id: 'compare',
       label: 'Inter-Indexer Comparison',
       command: 'node',
@@ -493,7 +601,7 @@ async function main() {
   );
 
   jobRecords.push(
-    runProcessJob({
+    await runProcessJob({
       id: 'docker-post',
       label: 'Docker Post Hook',
       command: 'node',
@@ -551,7 +659,16 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(errorMessage(error));
-  process.exit(1);
-});
+function isDirectExecution() {
+  if (!process.argv[1]) return false;
+  return import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isDirectExecution()) {
+  main().catch((error) => {
+    console.error(errorMessage(error));
+    process.exit(1);
+  });
+}
+
+export { buildStagedCheckJobs, runCheckStage, runStagedChecks };

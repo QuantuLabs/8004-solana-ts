@@ -43,7 +43,7 @@
     "e2e:indexers:check:substream:graphql": "node scripts/e2e-indexers-check.mjs --backend substream --transport graphql",
     "e2e:indexers:compare": "node scripts/e2e-indexers-compare.mjs",
     "e2e:indexers:matrix": "node scripts/e2e-indexers-matrix.mjs",
-    "test:e2e:indexers:checks": "node --test scripts/e2e-indexers-check.test.mjs",
+    "test:e2e:indexers:checks": "node --test scripts/e2e-indexers-check.test.mjs scripts/e2e-indexers-matrix.test.mjs",
     "test:integrity:stress": "NODE_OPTIONS='--experimental-vm-modules' bunx tsx tests/e2e-solana/stress-test-hashchain-localnet.ts",
     "test:integrity:manipulation": "NODE_OPTIONS='--experimental-vm-modules' bunx tsx tests/e2e-solana/integrity-manipulation-test.ts",
     "test:wallets:create": "bunx tsx scripts/test-wallet-manager.ts create",
