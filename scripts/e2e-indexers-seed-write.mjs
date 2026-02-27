@@ -2,6 +2,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
+import { pathToFileURL } from 'url';
 import {
   Keypair,
   PublicKey,
@@ -181,6 +182,53 @@ function resolvePinataJwt(args) {
   }
 
   return { jwt: null, source: null };
+}
+
+function resolveIpfsApiUrl(args) {
+  const fromArg = getArg(args, 'ipfs-api-url');
+  if (fromArg) {
+    return { apiUrl: fromArg, source: '--ipfs-api-url' };
+  }
+
+  if (process.env.E2E_INDEXERS_IPFS_API_URL) {
+    return { apiUrl: process.env.E2E_INDEXERS_IPFS_API_URL, source: 'E2E_INDEXERS_IPFS_API_URL' };
+  }
+  if (process.env.IPFS_API_URL) {
+    return { apiUrl: process.env.IPFS_API_URL, source: 'IPFS_API_URL' };
+  }
+  return { apiUrl: null, source: null };
+}
+
+function resolveIpfsClientConfig(args) {
+  const local = resolveIpfsApiUrl(args);
+  if (local.apiUrl) {
+    return {
+      provider: 'local',
+      clientConfig: { url: local.apiUrl },
+      source: local.source,
+      apiUrl: local.apiUrl,
+    };
+  }
+
+  const pinata = resolvePinataJwt(args);
+  if (pinata.jwt) {
+    return {
+      provider: 'pinata',
+      clientConfig: {
+        pinataEnabled: true,
+        pinataJwt: pinata.jwt,
+      },
+      source: pinata.source || 'PINATA_JWT',
+      apiUrl: null,
+    };
+  }
+
+  return {
+    provider: null,
+    clientConfig: null,
+    source: null,
+    apiUrl: null,
+  };
 }
 
 function fallbackCid(seed) {
@@ -451,7 +499,9 @@ async function main() {
     collections: [],
     ipfs: {
       enabled: false,
+      provider: null,
       source: null,
+      apiUrl: null,
       uploadCount: 0,
       uploads: [],
     },
@@ -513,26 +563,29 @@ async function main() {
 
     let ipfsClient = null;
     if (!disableIpfs) {
-      const pinata = resolvePinataJwt(args);
-      if (pinata.jwt) {
-        ipfsClient = new IPFSClient({
-          pinataEnabled: true,
-          pinataJwt: pinata.jwt,
-        });
+      const ipfsConfig = resolveIpfsClientConfig(args);
+      if (ipfsConfig.clientConfig) {
+        ipfsClient = new IPFSClient(ipfsConfig.clientConfig);
         artifact.ipfs.enabled = true;
-        artifact.ipfs.source = pinata.source || 'PINATA_JWT';
+        artifact.ipfs.provider = ipfsConfig.provider;
+        artifact.ipfs.source = ipfsConfig.source;
+        artifact.ipfs.apiUrl = ipfsConfig.apiUrl;
       } else {
         artifact.ipfs.enabled = false;
+        artifact.ipfs.provider = null;
         artifact.ipfs.source = null;
+        artifact.ipfs.apiUrl = null;
         if (requireIpfs) {
           throw new Error(
-            'PINATA_JWT not found (env/.env/.claude). Set PINATA_JWT or disable --require-ipfs'
+            'No IPFS provider configured. Set E2E_INDEXERS_IPFS_API_URL/--ipfs-api-url (local IPFS) or PINATA_JWT, or disable --require-ipfs'
           );
         }
       }
     } else {
       artifact.ipfs.enabled = false;
+      artifact.ipfs.provider = 'disabled';
       artifact.ipfs.source = 'disabled';
+      artifact.ipfs.apiUrl = null;
     }
 
     const sdkConfig = {
@@ -1323,7 +1376,20 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(errorMessage(error));
-  process.exit(1);
-});
+function isDirectExecution() {
+  if (!process.argv[1]) return false;
+  return import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isDirectExecution()) {
+  main().catch((error) => {
+    console.error(errorMessage(error));
+    process.exit(1);
+  });
+}
+
+export {
+  resolveIpfsApiUrl,
+  resolveIpfsClientConfig,
+  resolvePinataJwt,
+};

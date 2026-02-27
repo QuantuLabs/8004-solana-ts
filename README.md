@@ -280,6 +280,37 @@ const indexedLegacy = await sdk.getAgentByIndexerId(42);
 - REST (`indexerUrl`): uses numeric `agent_id`
 - GraphQL (`indexerGraphqlUrl`): uses sequence id fields (`agentId`, with legacy fallback `agentid`)
 
+## E2E Indexer Matrix
+
+The indexer matrix scripts support IPFS uploads during seed/write with this provider order:
+
+1. Local IPFS API (`--ipfs-api-url` or `E2E_INDEXERS_IPFS_API_URL`)
+2. Pinata JWT fallback (`E2E_INDEXERS_PINATA_JWT` or `PINATA_JWT`)
+
+Start/stop a local Kubo node for tests:
+
+```bash
+# defaults: container=e2e-indexers-ipfs-kubo, api=5001, gateway=8080
+npm run e2e:indexers:ipfs:start
+npm run e2e:indexers:ipfs:stop
+```
+
+Optional overrides:
+
+- `E2E_INDEXERS_IPFS_CONTAINER_NAME` or `--container-name`
+- `E2E_INDEXERS_IPFS_API_PORT` or `--api-port`
+- `E2E_INDEXERS_IPFS_GATEWAY_PORT` or `--gateway-port`
+- `E2E_INDEXERS_IPFS_IMAGE` or `--image`
+
+Example matrix run using local IPFS via docker hooks:
+
+```bash
+E2E_INDEXERS_DOCKER_PRE_HOOK='npm run e2e:indexers:ipfs:start' \
+E2E_INDEXERS_DOCKER_POST_HOOK='npm run e2e:indexers:ipfs:stop' \
+E2E_INDEXERS_IPFS_API_URL='http://127.0.0.1:5001' \
+npm run e2e:indexers:matrix
+```
+
 ## Feedback System
 
 The feedback system supports rich metrics with 8004 standardized tags. `value` is required, `score` is optional.
