@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { PublicKey, Connection, Keypair } from '@solana/web3.js';
+import { PublicKey, Connection, Keypair, TransactionExpiredBlockheightExceededError } from '@solana/web3.js';
 
 const MOCK_BLOCKHASH = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi';
 const MOCK_SIG = '5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQU';
@@ -361,6 +361,89 @@ describe('IdentityTransactionBuilder - sendWithRetry', () => {
     const result = await builder.registerAgent('ipfs://test');
     expect('success' in result && !result.success).toBe(true);
     expect(sendSpy.mock.calls.length).toBe(1);
+  });
+
+  it('should NOT retry on already in use when register is not found on-chain', async () => {
+    const sendSpy = jest.spyOn(conn, 'sendRawTransaction');
+    sendSpy.mockRejectedValue(new Error('already in use'));
+    jest.spyOn(conn, 'getAccountInfo').mockResolvedValue(null);
+
+    const builder = new IdentityTransactionBuilder(conn, payer);
+    const result = await builder.registerAgent('ipfs://test');
+    expect('success' in result && !result.success).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('already in use');
+    }
+    expect(sendSpy.mock.calls.length).toBe(1);
+  });
+
+  it('should recover register success when first attempt expires then retry gets already in use', async () => {
+    const latestBlockhashSpy = jest.spyOn(conn, 'getLatestBlockhash');
+    latestBlockhashSpy
+      .mockResolvedValueOnce({
+        blockhash: Keypair.generate().publicKey.toBase58(),
+        lastValidBlockHeight: 999,
+      } as any)
+      .mockResolvedValueOnce({
+        blockhash: Keypair.generate().publicKey.toBase58(),
+        lastValidBlockHeight: 1000,
+      } as any);
+
+    const sendSpy = jest.spyOn(conn, 'sendRawTransaction');
+    sendSpy.mockResolvedValueOnce('sig-expired');
+    sendSpy.mockRejectedValueOnce(new Error('already in use'));
+
+    const confirmSpy = jest.spyOn(conn, 'confirmTransaction');
+    confirmSpy.mockRejectedValueOnce(
+      new TransactionExpiredBlockheightExceededError('sig-expired')
+    );
+
+    jest.spyOn(conn, 'getAccountInfo').mockResolvedValue({
+      data: Buffer.alloc(300),
+      executable: false,
+      lamports: 1000000,
+      owner: PublicKey.default,
+      rentEpoch: 0,
+    } as any);
+
+    const builder = new IdentityTransactionBuilder(conn, payer);
+    const result = await builder.registerAgent('ipfs://test');
+
+    expect('success' in result && result.success).toBe(true);
+    expect(sendSpy.mock.calls.length).toBe(2);
+  });
+
+  it('should fail register when first attempt expires, retry gets already in use, and agent account is absent', async () => {
+    const latestBlockhashSpy = jest.spyOn(conn, 'getLatestBlockhash');
+    latestBlockhashSpy
+      .mockResolvedValueOnce({
+        blockhash: Keypair.generate().publicKey.toBase58(),
+        lastValidBlockHeight: 999,
+      } as any)
+      .mockResolvedValueOnce({
+        blockhash: Keypair.generate().publicKey.toBase58(),
+        lastValidBlockHeight: 1000,
+      } as any);
+
+    const sendSpy = jest.spyOn(conn, 'sendRawTransaction');
+    sendSpy.mockResolvedValueOnce('sig-expired');
+    sendSpy.mockRejectedValueOnce(new Error('already in use'));
+
+    const confirmSpy = jest.spyOn(conn, 'confirmTransaction');
+    confirmSpy.mockRejectedValueOnce(
+      new TransactionExpiredBlockheightExceededError('sig-expired')
+    );
+
+    jest.spyOn(conn, 'getAccountInfo').mockResolvedValue(null);
+
+    const builder = new IdentityTransactionBuilder(conn, payer);
+    const result = await builder.registerAgent('ipfs://test');
+
+    expect('success' in result && !result.success).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('already in use');
+    }
+    expect(sendSpy.mock.calls.length).toBe(2);
   });
 });
 
