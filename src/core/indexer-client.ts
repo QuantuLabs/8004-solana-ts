@@ -113,6 +113,8 @@ export interface IndexerReadClient {
   // Feedbacks
   getFeedbacks(asset: string, options?: { includeRevoked?: boolean; limit?: number; offset?: number }): Promise<IndexedFeedback[]>;
   getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
+  /** Accepts sequential numeric backend feedback id. */
+  getFeedbackById?(feedbackId: string): Promise<IndexedFeedback | null>;
   getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
   getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
   getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
@@ -126,6 +128,8 @@ export interface IndexerReadClient {
     feedbackIndex: number | bigint,
     limit?: number
   ): Promise<IndexedFeedbackResponse[]>;
+  /** Accepts sequential numeric backend feedback id. */
+  getFeedbackResponsesByFeedbackId?(feedbackId: string, limit?: number): Promise<IndexedFeedbackResponse[]>;
 
   // Validations
   getPendingValidations(validator: string): Promise<IndexedValidation[]>;
@@ -149,6 +153,70 @@ export interface IndexerReadClient {
   ): Promise<ReplayDataPage>;
   getLatestCheckpoints?(asset: string): Promise<CheckpointSet>;
   triggerReplay?(asset: string): Promise<ServerReplayResult>;
+}
+
+export interface CanonicalFeedbackIdParts {
+  asset: string;
+  client: string;
+  index: string;
+}
+
+export interface CanonicalResponseIdParts {
+  asset: string;
+  client: string;
+  index: string;
+  responder: string;
+  sequenceOrSig: string;
+}
+
+export function encodeCanonicalFeedbackId(
+  asset: string,
+  client: string,
+  index: number | bigint | string
+): string {
+  return `${asset}:${client}:${index.toString()}`;
+}
+
+export function decodeCanonicalFeedbackId(id: string): CanonicalFeedbackIdParts | null {
+  const parts = id.split(':');
+  if (parts.length === 3) {
+    const [asset, client, index] = parts;
+    if (asset === 'sol') return null;
+    if (!asset || !client || !index) return null;
+    return { asset, client, index };
+  }
+  if (parts.length === 4 && parts[0] === 'sol') {
+    const [, asset, client, index] = parts;
+    if (!asset || !client || !index) return null;
+    return { asset, client, index };
+  }
+  return null;
+}
+
+export function encodeCanonicalResponseId(
+  asset: string,
+  client: string,
+  index: number | bigint | string,
+  responder: string,
+  sequenceOrSig: number | bigint | string
+): string {
+  return `${asset}:${client}:${index.toString()}:${responder}:${sequenceOrSig.toString()}`;
+}
+
+export function decodeCanonicalResponseId(id: string): CanonicalResponseIdParts | null {
+  const parts = id.split(':');
+  if (parts.length === 5) {
+    const [asset, client, index, responder, sequenceOrSig] = parts;
+    if (asset === 'sol') return null;
+    if (!asset || !client || !index || !responder) return null;
+    return { asset, client, index, responder, sequenceOrSig: sequenceOrSig ?? '' };
+  }
+  if (parts.length === 6 && parts[0] === 'sol') {
+    const [, asset, client, index, responder, sequenceOrSig] = parts;
+    if (!asset || !client || !index || !responder) return null;
+    return { asset, client, index, responder, sequenceOrSig: sequenceOrSig ?? '' };
+  }
+  return null;
 }
 
 // ============================================================================
@@ -850,7 +918,7 @@ export class IndexerClient implements IndexerReadClient {
   ): Promise<IndexedFeedback[]> {
     const params: Record<string, string | number | undefined> = {
       asset: `eq.${asset}`,
-      order: 'created_at.desc',
+      order: 'feedback_id.desc',
       limit: options?.limit,
       offset: options?.offset,
     };
@@ -883,12 +951,31 @@ export class IndexerClient implements IndexerReadClient {
   }
 
   /**
+   * Get a single feedback by feedback identifier.
+   * Accepts sequential numeric backend feedback ids.
+   */
+  async getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null> {
+    const normalizedId = feedbackId.trim();
+    if (!/^\d+$/.test(normalizedId)) return null;
+
+    const byIdQuery = this.buildQuery({
+      feedback_id: `eq.${normalizedId}`,
+      limit: 2,
+    });
+    const byId = await this.request<IndexedFeedback[]>(`/feedbacks${byIdQuery}`);
+    if (byId.length > 1) {
+      throw new Error('Ambiguous feedback id.');
+    }
+    return byId.length === 1 ? byId[0] : null;
+  }
+
+  /**
    * Get feedbacks by client
    */
   async getFeedbacksByClient(client: string): Promise<IndexedFeedback[]> {
     const query = this.buildQuery({
       client_address: `eq.${client}`,
-      order: 'created_at.desc',
+      order: 'feedback_id.desc',
     });
     return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
   }
@@ -898,7 +985,7 @@ export class IndexerClient implements IndexerReadClient {
    */
   async getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]> {
     // Search in both tag1 and tag2
-    const query = `?or=(tag1.eq.${encodeURIComponent(tag)},tag2.eq.${encodeURIComponent(tag)})&order=created_at.desc`;
+    const query = `?or=(tag1.eq.${encodeURIComponent(tag)},tag2.eq.${encodeURIComponent(tag)})&order=feedback_id.desc`;
     return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
   }
 
@@ -908,7 +995,7 @@ export class IndexerClient implements IndexerReadClient {
   async getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]> {
     const query = this.buildQuery({
       endpoint: `eq.${endpoint}`,
-      order: 'created_at.desc',
+      order: 'feedback_id.desc',
     });
     return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
   }
@@ -1216,7 +1303,7 @@ export class IndexerClient implements IndexerReadClient {
   async getFeedbackResponses(asset: string): Promise<IndexedFeedbackResponse[]> {
     const query = this.buildQuery({
       asset: `eq.${asset}`,
-      order: 'created_at.desc',
+      order: 'response_id.desc',
     });
     return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
   }
@@ -1238,7 +1325,26 @@ export class IndexerClient implements IndexerReadClient {
       asset: `eq.${asset}`,
       client_address: `eq.${client}`,
       feedback_index: `eq.${feedbackIndex.toString()}`,
-      order: 'created_at.asc',
+      order: 'response_id.asc',
+      limit,
+    });
+    return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+  }
+
+  /**
+   * Get responses by feedback identifier.
+   * Accepts sequential numeric backend feedback ids.
+   */
+  async getFeedbackResponsesByFeedbackId(
+    feedbackId: string,
+    limit: number = 100
+  ): Promise<IndexedFeedbackResponse[]> {
+    const normalizedId = feedbackId.trim();
+    if (!/^\d+$/.test(normalizedId)) return [];
+
+    const query = this.buildQuery({
+      feedback_id: `eq.${normalizedId}`,
+      order: 'response_id.asc',
       limit,
     });
     return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
@@ -1247,7 +1353,7 @@ export class IndexerClient implements IndexerReadClient {
   async getRevocations(asset: string): Promise<IndexedRevocation[]> {
     const query = this.buildQuery({
       asset: `eq.${asset}`,
-      order: 'revoke_count.asc',
+      order: 'revocation_id.asc',
     });
     return this.request<IndexedRevocation[]>(`/revocations${query}`);
   }
@@ -1363,7 +1469,7 @@ export class IndexerClient implements IndexerReadClient {
       offsets.map(async (offset) => {
         const query = this.buildQuery({
           asset: `eq.${asset}`,
-          order: 'created_at.asc',
+          order: 'response_id.asc',
           offset,
           limit: 1,
         });

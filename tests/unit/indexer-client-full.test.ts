@@ -13,7 +13,13 @@ jest.unstable_mockModule('../../src/utils/validation.js', () => ({
   validateNonce: jest.fn(),
 }));
 
-const { IndexerClient } = await import('../../src/core/indexer-client.js');
+const {
+  IndexerClient,
+  encodeCanonicalFeedbackId,
+  decodeCanonicalFeedbackId,
+  encodeCanonicalResponseId,
+  decodeCanonicalResponseId,
+} = await import('../../src/core/indexer-client.js');
 const { IndexerError, IndexerErrorCode, IndexerUnauthorizedError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnavailableError } = await import('../../src/core/indexer-errors.js');
 
 const createClient = (overrides: Record<string, unknown> = {}) =>
@@ -298,6 +304,7 @@ describe('IndexerClient', () => {
       await client.getFeedbacks('asset1');
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('asset=eq.asset1');
+      expect(url).toContain('order=feedback_id.desc');
     });
 
     it('should exclude revoked by default', async () => {
@@ -332,6 +339,79 @@ describe('IndexerClient', () => {
     });
   });
 
+  describe('canonical id helpers', () => {
+    it('should encode/decode feedback ids without sol prefix', () => {
+      const id = encodeCanonicalFeedbackId('asset1', 'client1', 7n);
+      expect(id).toBe('asset1:client1:7');
+      expect(decodeCanonicalFeedbackId(id)).toEqual({
+        asset: 'asset1',
+        client: 'client1',
+        index: '7',
+      });
+    });
+
+    it('should decode legacy sol-prefixed feedback ids', () => {
+      expect(decodeCanonicalFeedbackId('sol:asset1:client1:7')).toEqual({
+        asset: 'asset1',
+        client: 'client1',
+        index: '7',
+      });
+    });
+
+    it('should encode/decode response ids without sol prefix', () => {
+      const id = encodeCanonicalResponseId('asset1', 'client1', 7, 'responder1', 2);
+      expect(id).toBe('asset1:client1:7:responder1:2');
+      expect(decodeCanonicalResponseId(id)).toEqual({
+        asset: 'asset1',
+        client: 'client1',
+        index: '7',
+        responder: 'responder1',
+        sequenceOrSig: '2',
+      });
+    });
+  });
+
+  describe('feedback id reads', () => {
+    it('getFeedbackById should resolve sequential ids via direct feedback_id lookup', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([{ id: '123' }]));
+      const result = await client.getFeedbackById('123');
+      expect(result).not.toBeNull();
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('feedback_id=eq.123');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('getFeedbackById should reject canonical input ids', async () => {
+      const client = createClient();
+      expect(await client.getFeedbackById('asset1:client1:7')).toBeNull();
+      expect(mockFetch).toHaveBeenCalledTimes(0);
+    });
+
+    it('getFeedbackById should return null for non-numeric ids', async () => {
+      const client = createClient();
+      expect(await client.getFeedbackById('not-a-number')).toBeNull();
+      expect(mockFetch).toHaveBeenCalledTimes(0);
+    });
+
+    it('getFeedbackResponsesByFeedbackId should query via feedback_id for sequential ids', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      await client.getFeedbackResponsesByFeedbackId('123', 10);
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('feedback_id=eq.123');
+      expect(url).toContain('order=response_id.asc');
+      expect(url).toContain('limit=10');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('getFeedbackResponsesByFeedbackId should reject canonical input ids', async () => {
+      const client = createClient();
+      await expect(client.getFeedbackResponsesByFeedbackId('asset1:client1:7', 10)).resolves.toEqual([]);
+      expect(mockFetch).toHaveBeenCalledTimes(0);
+    });
+  });
+
   describe('getFeedbacksByClient', () => {
     it('should filter by client', async () => {
       const client = createClient();
@@ -339,6 +419,7 @@ describe('IndexerClient', () => {
       await client.getFeedbacksByClient('client1');
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('client_address=eq.client1');
+      expect(url).toContain('order=feedback_id.desc');
     });
   });
 
@@ -350,6 +431,7 @@ describe('IndexerClient', () => {
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('tag1.eq.uptime');
       expect(url).toContain('tag2.eq.uptime');
+      expect(url).toContain('order=feedback_id.desc');
     });
   });
 
@@ -360,6 +442,7 @@ describe('IndexerClient', () => {
       await client.getFeedbacksByEndpoint('https://api.test.com');
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('endpoint=eq.https');
+      expect(url).toContain('order=feedback_id.desc');
     });
   });
 
@@ -618,6 +701,8 @@ describe('IndexerClient', () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       const result = await client.getFeedbackResponses('asset1');
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('order=response_id.desc');
       expect(result).toEqual([]);
     });
   });
@@ -631,6 +716,7 @@ describe('IndexerClient', () => {
       expect(url).toContain('asset=eq.a');
       expect(url).toContain('client_address=eq.c');
       expect(url).toContain('feedback_index=eq.0');
+      expect(url).toContain('order=response_id.asc');
     });
   });
 
@@ -639,6 +725,8 @@ describe('IndexerClient', () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       const result = await client.getRevocations('asset1');
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('order=revocation_id.asc');
       expect(result).toEqual([]);
     });
   });
@@ -727,6 +815,11 @@ describe('IndexerClient', () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       const result = await client.getResponsesAtOffsets('asset', [0, 1]);
+      const urls = mockFetch.mock.calls.map(([requestUrl]) => requestUrl as string);
+      expect(urls).toHaveLength(2);
+      expect(urls.every((url) => url.includes('order=response_id.asc'))).toBe(true);
+      expect(urls.some((url) => url.includes('offset=0'))).toBe(true);
+      expect(urls.some((url) => url.includes('offset=1'))).toBe(true);
       expect(result.size).toBe(2);
     });
   });
