@@ -420,8 +420,8 @@ const results = await sdk.searchAgents({
 // GraphQL + REST: read by sequence id
 const bySequenceId = await sdk.getAgentByAgentId(42);
 
-// Legacy GraphQL deployments may still accept Agent.id (asset pubkey) fallback
-const byLegacyGraphqlId = await sdk.getAgentByAgentId('AssetPubkeyBase58...');
+// Asset pubkey lookup (all backends)
+const byAsset = await sdk.getAgent('AssetPubkeyBase58...');
 
 // Query canonical collection pointers
 const pointers = await sdk.getCollectionPointers({ creator: 'CreatorPubkey...' });
@@ -442,7 +442,7 @@ Compatibility notes:
 - SDK now targets modern indexer collection APIs (`/collections`, `collection=...`, GraphQL `collections(...)`).
 - Legacy indexers are still supported via automatic fallback (`/collection_pointers`, `col=...`, GraphQL `collectionPointers(...)` / `col` args).
 - `getAgentByAgentId()` is backend-specific: REST resolves `agent_id`; GraphQL resolves sequential `agentId` / `agentid` when exposed.
-- Some legacy GraphQL deployments still use `Agent.id` (asset pubkey); the SDK keeps a compatibility fallback for that path.
+- Use `getAgent(asset)` when you need asset pubkey lookups.
 - `getAgentByIndexerId()` remains available as an alias to `getAgentByAgentId()`.
 
 ## Advanced Queries

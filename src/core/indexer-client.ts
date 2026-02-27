@@ -87,7 +87,8 @@ export interface IndexerReadClient {
   /**
    * Backend-specific agent lookup key.
    * REST: sequential `agent_id`.
-   * GraphQL: sequential `agentId` / `agentid` (with legacy fallback to `Agent.id` if needed).
+   * GraphQL: sequential `agentId` / `agentid`.
+   * Use `getAgent(asset)` for asset pubkey lookups.
    */
   getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
   /** @deprecated Use getAgentByAgentId(agentId) */

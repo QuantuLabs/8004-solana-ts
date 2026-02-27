@@ -268,6 +268,123 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect((body.variables as any)?.agentId).toBe('42');
   });
 
+  it('getAgentByAgentId should retry with BigInt variable type when String is rejected', async () => {
+    const client = createClient();
+    const largeAgentId = '9007199254740993';
+
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          errors: [{ message: 'Variable "$agentId" of type "String!" used in position expecting type "BigInt".' }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          data: {
+            agents: [
+              {
+                id: 'AssetByIdBigInt',
+                owner: 'owner1',
+                creator: 'creator1',
+                agentURI: null,
+                agentWallet: null,
+                collectionPointer: null,
+                colLocked: false,
+                parentAsset: null,
+                parentCreator: null,
+                parentLocked: false,
+                createdAt: '1773000000',
+                updatedAt: '1773000001',
+                totalFeedback: '0',
+                solana: {
+                  assetPubkey: 'AssetByIdBigInt',
+                  collection: 'base',
+                  atomEnabled: true,
+                  trustTier: 0,
+                  qualityScore: 0,
+                  confidence: 0,
+                  riskScore: 0,
+                  diversityRatio: 0,
+                },
+              },
+            ],
+          },
+        }),
+      );
+
+    const row = await client.getAgentByAgentId(BigInt(largeAgentId));
+    expect(row?.asset).toBe('AssetByIdBigInt');
+    expect(row?.agent_id).toBe(largeAgentId);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    const firstBody = getBody(0);
+    const secondBody = getBody(1);
+    expect(firstBody.query).toContain('query($agentId: String!)');
+    expect(secondBody.query).toContain('query($agentId: BigInt!)');
+    expect((secondBody.variables as any)?.agentId).toBe(largeAgentId);
+  });
+
+  it('getAgentByAgentId should retry BigInt filter with numeric variable for strict scalar parsers', async () => {
+    const client = createClient();
+
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          errors: [{ message: 'Variable "$agentId" of type "String!" used in position expecting type "BigInt".' }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          errors: [{ message: 'BigInt cannot represent non-integer value: "42"' }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          data: {
+            agents: [
+              {
+                id: 'AssetByIdNumericBigInt',
+                owner: 'owner1',
+                creator: 'creator1',
+                agentURI: null,
+                agentWallet: null,
+                collectionPointer: null,
+                colLocked: false,
+                parentAsset: null,
+                parentCreator: null,
+                parentLocked: false,
+                createdAt: '1773000000',
+                updatedAt: '1773000001',
+                totalFeedback: '0',
+                solana: {
+                  assetPubkey: 'AssetByIdNumericBigInt',
+                  collection: 'base',
+                  atomEnabled: true,
+                  trustTier: 0,
+                  qualityScore: 0,
+                  confidence: 0,
+                  riskScore: 0,
+                  diversityRatio: 0,
+                },
+              },
+            ],
+          },
+        }),
+      );
+
+    const row = await client.getAgentByAgentId(42);
+    expect(row?.asset).toBe('AssetByIdNumericBigInt');
+    expect(row?.agent_id).toBe('42');
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    const secondBody = getBody(1);
+    const thirdBody = getBody(2);
+    expect(secondBody.query).toContain('query($agentId: BigInt!)');
+    expect((secondBody.variables as any)?.agentId).toBe('42');
+    expect(thirdBody.query).toContain('query($agentId: BigInt!)');
+    expect((thirdBody.variables as any)?.agentId).toBe(42);
+  });
+
   it('getAgentByAgentId should fallback to legacy agentid filter when needed', async () => {
     const client = createClient();
     mockFetch

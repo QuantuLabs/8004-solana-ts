@@ -43,6 +43,7 @@ export interface IndexerGraphQLClientConfig {
 
 type GraphQLErrorShape = { message?: string; extensions?: Record<string, unknown> };
 type AgentIdFieldName = 'agentId' | 'agentid';
+type AgentIdVariableType = 'String' | 'BigInt';
 
 function toIsoFromUnixSeconds(unix: unknown): string {
   if (typeof unix === 'string') {
@@ -118,6 +119,17 @@ function normalizeGraphqlAgentLookupId(agentId: string | number | bigint): strin
   }
 
   return normalized;
+}
+
+function toSafeGraphqlAgentIdNumber(agentId: string): number | null {
+  if (!/^\d+$/.test(agentId)) return null;
+  try {
+    const parsed = BigInt(agentId);
+    if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    return Number(parsed);
+  } catch {
+    return null;
+  }
 }
 
 function toGraphqlUnixSeconds(value: unknown): string | undefined {
@@ -378,6 +390,82 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     );
   }
 
+  private shouldFallbackAgentIdVariableType(error: unknown, variableType: AgentIdVariableType): boolean {
+    if (!(error instanceof IndexerError)) return false;
+    if (error.code !== IndexerErrorCode.INVALID_RESPONSE) return false;
+    const msg = error.message;
+    if (variableType === 'String') {
+      return (
+        /type ['"]String!?['"] used in position expecting type ['"]BigInt!?['"]/i.test(msg)
+        || /Expected type ['"]BigInt!?['"]/i.test(msg)
+        || /expecting type ['"]BigInt!?['"]/i.test(msg)
+      );
+    }
+    return false;
+  }
+
+  private shouldRetryBigIntAgentIdAsNumber(error: unknown): boolean {
+    if (!(error instanceof IndexerError)) return false;
+    if (error.code !== IndexerErrorCode.INVALID_RESPONSE) return false;
+    const msg = error.message;
+    return (
+      /BigInt cannot represent non-integer value/i.test(msg)
+      || /Expected value of type ['"]BigInt!?['"], found ['"][^'"]+['"]/i.test(msg)
+      || /Expected type ['"]BigInt!?['"], found ['"][^'"]+['"]/i.test(msg)
+    );
+  }
+
+  private async requestAgentBySequentialIdField(
+    agentIdField: AgentIdFieldName,
+    normalizedAgentId: string
+  ): Promise<any | null> {
+    const requestByType = async (
+      variableType: AgentIdVariableType,
+      variableValue: string | number
+    ): Promise<any | null> => {
+      const data = await this.request<{ agents: any[] }>(
+        `query($agentId: ${variableType}!) {
+          agents(first: 1, where: { ${agentIdField}: $agentId }) {
+            id
+            owner
+            creator
+            agentURI
+            agentWallet
+            collectionPointer
+            colLocked
+            parentAsset
+            parentCreator
+            parentLocked
+            createdAt
+            updatedAt
+            totalFeedback
+            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+          }
+        }`,
+        { agentId: variableValue }
+      );
+      return data.agents[0] ?? null;
+    };
+
+    try {
+      return await requestByType('String', normalizedAgentId);
+    } catch (error) {
+      if (!this.shouldFallbackAgentIdVariableType(error, 'String')) {
+        throw error;
+      }
+    }
+
+    try {
+      return await requestByType('BigInt', normalizedAgentId);
+    } catch (error) {
+      const safeNumericAgentId = toSafeGraphqlAgentIdNumber(normalizedAgentId);
+      if (safeNumericAgentId !== null && this.shouldRetryBigIntAgentIdAsNumber(error)) {
+        return requestByType('BigInt', safeNumericAgentId);
+      }
+      throw error;
+    }
+  }
+
   private async requestWithAgentIdField<T>(
     requester: (agentIdField: AgentIdFieldName | null) => Promise<T>
   ): Promise<T> {
@@ -602,28 +690,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
           return legacy.agent;
         }
 
-        const data = await this.request<{ agents: any[] }>(
-          `query($agentId: String!) {
-            agents(first: 1, where: { ${agentIdField}: $agentId }) {
-              id
-              owner
-              creator
-              agentURI
-              agentWallet
-              collectionPointer
-              colLocked
-              parentAsset
-              parentCreator
-              parentLocked
-              createdAt
-              updatedAt
-              totalFeedback
-              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-            }
-          }`,
-          { agentId: normalizedAgentId }
-        );
-        return data.agents[0] ?? null;
+        return this.requestAgentBySequentialIdField(agentIdField, normalizedAgentId);
       }
     );
 
