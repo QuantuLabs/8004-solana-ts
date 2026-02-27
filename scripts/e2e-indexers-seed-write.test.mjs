@@ -3,7 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { resolveIpfsClientConfig } from './e2e-indexers-seed-write.mjs';
+import {
+  resolveIpfsClientConfig,
+  resolveRevokeWriteOptions,
+} from './e2e-indexers-seed-write.mjs';
 
 const ENV_KEYS = [
   'E2E_INDEXERS_IPFS_API_URL',
@@ -106,5 +109,18 @@ test('resolveIpfsClientConfig returns empty config when no provider is configure
       assert.equal(result.apiUrl, null);
       assert.equal(result.clientConfig, null);
     });
+  });
+});
+
+test('resolveRevokeWriteOptions keeps indexer verify preflight when visible', () => {
+  const options = resolveRevokeWriteOptions({ indexerVisible: true });
+  assert.deepEqual(options, { waitForIndexerSync: false });
+});
+
+test('resolveRevokeWriteOptions disables verify preflight in lag fallback mode', () => {
+  const options = resolveRevokeWriteOptions({ indexerVisible: false });
+  assert.deepEqual(options, {
+    waitForIndexerSync: false,
+    verifyFeedbackClient: false,
   });
 });

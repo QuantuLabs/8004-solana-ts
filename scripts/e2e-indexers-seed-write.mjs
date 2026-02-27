@@ -67,6 +67,18 @@ function parsePositiveInt(rawValue, fallback, min = 1, max = 1000) {
   return Math.min(max, Math.max(min, parsed));
 }
 
+function resolveRevokeWriteOptions({ indexerVisible = true } = {}) {
+  if (indexerVisible) {
+    return {
+      waitForIndexerSync: false,
+    };
+  }
+  return {
+    waitForIndexerSync: false,
+    verifyFeedbackClient: false,
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -525,10 +537,12 @@ async function main() {
       giveFeedback: 0,
       appendResponse: 0,
       revokeFeedback: 0,
+      revokeFeedbackLagFallback: 0,
       requestValidation: 0,
       respondValidation: 0,
       transferAgent: 0,
     },
+    warnings: [],
     errors: [],
   };
 
@@ -1134,24 +1148,36 @@ async function main() {
 
         let isRevoked = false;
         if (j === feedbackPerAgent - 1 && i % 2 === 1) {
-          await pollWithTimeout({
-            label: `indexer visibility for revoke preflight (${feedbackCode})`,
-            maxAttempts: revokePreflightPollAttempts,
-            intervalMs: revokePreflightPollDelayMs,
-            timeoutMs: revokePreflightPollTimeoutMs,
-            check: async () =>
-              feedbackSdk.readFeedback(
-                agent.pubkey,
-                feedbackSigner.publicKey,
-                feedbackIndex
-              ),
-          });
+          let revokePreflightVisible = true;
+          try {
+            await pollWithTimeout({
+              label: `indexer visibility for revoke preflight (${feedbackCode})`,
+              maxAttempts: revokePreflightPollAttempts,
+              intervalMs: revokePreflightPollDelayMs,
+              timeoutMs: revokePreflightPollTimeoutMs,
+              check: async () =>
+                feedbackSdk.readFeedback(
+                  agent.pubkey,
+                  feedbackSigner.publicKey,
+                  feedbackIndex
+                ),
+            });
+          } catch (error) {
+            revokePreflightVisible = false;
+            artifact.counters.revokeFeedbackLagFallback += 1;
+            artifact.warnings.push(
+              `Revoke preflight indexer visibility timed out for ${feedbackCode}; proceeding with lag fallback (${errorMessage(error)})`
+            );
+          }
           const revokeResult = await withRetry(
             `sdk.revokeFeedback(${feedbackCode})`,
             () =>
-              feedbackSdk.revokeFeedback(agent.pubkey, feedbackIndex, sealHash, {
-                waitForIndexerSync: false,
-              }),
+              feedbackSdk.revokeFeedback(
+                agent.pubkey,
+                feedbackIndex,
+                sealHash,
+                resolveRevokeWriteOptions({ indexerVisible: revokePreflightVisible })
+              ),
             3,
             1100
           );
@@ -1392,4 +1418,5 @@ export {
   resolveIpfsApiUrl,
   resolveIpfsClientConfig,
   resolvePinataJwt,
+  resolveRevokeWriteOptions,
 };

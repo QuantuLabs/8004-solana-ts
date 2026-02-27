@@ -295,6 +295,96 @@ async function runStagedChecks({ classicJobs, substreamJobs, runStage, runCatchu
   return records;
 }
 
+function canRunParityAfterSeedWrite(seedStatus) {
+  return seedStatus !== 'failed';
+}
+
+function buildSeedBlockedJobRecords({
+  runId,
+  seedStatus,
+  seedAsset,
+  seedArtifact,
+  timeoutMs,
+  jobsDir,
+  stagedChecks,
+  substreamCatchupArtifact,
+  comparisonJsonPath,
+  comparisonMarkdownPath,
+  logsDir,
+}) {
+  const skippedAt = nowIso();
+  const reason = `seed-write status=${seedStatus || 'unknown'}; skipped to avoid false-green parity`;
+  const checkJobs = [...stagedChecks.classic, ...stagedChecks.substream];
+
+  const records = checkJobs.map((job) =>
+    createManualJobRecord({
+      id: job.id,
+      label: job.label,
+      status: 'skipped',
+      startedAt: skippedAt,
+      endedAt: skippedAt,
+      durationMs: 0,
+      command: buildCommandString(
+        'node',
+        buildCheckArgs({
+          backend: job.backend,
+          transport: job.transport,
+          runId,
+          artifactPath: job.artifactPath,
+          seedAsset,
+          seedArtifactPath: seedArtifact,
+          timeoutMs,
+        })
+      ),
+      artifactPath: job.artifactPath,
+      logPath: job.logPath,
+      note: reason,
+    })
+  );
+
+  records.push(
+    createManualJobRecord({
+      id: 'substream-catchup',
+      label: 'Substream REST Catch-up',
+      status: 'skipped',
+      startedAt: skippedAt,
+      endedAt: skippedAt,
+      durationMs: 0,
+      command: 'internal:substream-catchup(skipped)',
+      artifactPath: substreamCatchupArtifact,
+      logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
+      note: reason,
+    })
+  );
+
+  records.push(
+    createManualJobRecord({
+      id: 'compare',
+      label: 'Inter-Indexer Comparison',
+      status: 'skipped',
+      startedAt: skippedAt,
+      endedAt: skippedAt,
+      durationMs: 0,
+      command: buildCommandString('node', [
+        'scripts/e2e-indexers-compare.mjs',
+        '--run-id',
+        runId,
+        '--artifacts-dir',
+        jobsDir,
+        '--output-json',
+        comparisonJsonPath,
+        '--output-md',
+        comparisonMarkdownPath,
+      ]),
+      artifactPath: comparisonJsonPath,
+      logPath: resolveFromCwd(`${logsDir}/compare.log`),
+      note: reason,
+    })
+  );
+
+  return records;
+}
+
 function applyArgToEnv(args, argName, envName, env) {
   const value = getArg(args, argName);
   if (value) env[envName] = value;
@@ -553,52 +643,76 @@ async function main() {
     logsDir,
   });
 
-  jobRecords.push(
-    ...(await runStagedChecks({
-      classicJobs: stagedChecks.classic,
-      substreamJobs: stagedChecks.substream,
-      runStage: (jobs) =>
-        runCheckStage({
-          jobs,
-          runId,
-          seedAsset,
-          seedArtifact,
-          timeoutMs,
-          env,
-        }),
-      runCatchup: () =>
-        runSubstreamCatchupJob({
-          runId,
-          env,
-          seedAsset,
-          classicRestArtifactPath: classicRestArtifact,
-          artifactPath: substreamCatchupArtifact,
-          logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
-        }),
-    }))
-  );
+  const seedWriteStatus =
+    (seedData && typeof seedData.status === 'string' && seedData.status) ||
+    jobRecords.find((row) => row.id === 'seed-write')?.status ||
+    null;
+  const canRunParity = canRunParityAfterSeedWrite(seedWriteStatus);
 
-  jobRecords.push(
-    await runProcessJob({
-      id: 'compare',
-      label: 'Inter-Indexer Comparison',
-      command: 'node',
-      args: [
-        'scripts/e2e-indexers-compare.mjs',
-        '--run-id',
+  if (canRunParity) {
+    jobRecords.push(
+      ...(await runStagedChecks({
+        classicJobs: stagedChecks.classic,
+        substreamJobs: stagedChecks.substream,
+        runStage: (jobs) =>
+          runCheckStage({
+            jobs,
+            runId,
+            seedAsset,
+            seedArtifact,
+            timeoutMs,
+            env,
+          }),
+        runCatchup: () =>
+          runSubstreamCatchupJob({
+            runId,
+            env,
+            seedAsset,
+            classicRestArtifactPath: classicRestArtifact,
+            artifactPath: substreamCatchupArtifact,
+            logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
+          }),
+      }))
+    );
+
+    jobRecords.push(
+      await runProcessJob({
+        id: 'compare',
+        label: 'Inter-Indexer Comparison',
+        command: 'node',
+        args: [
+          'scripts/e2e-indexers-compare.mjs',
+          '--run-id',
+          runId,
+          '--artifacts-dir',
+          jobsDir,
+          '--output-json',
+          comparisonJsonPath,
+          '--output-md',
+          comparisonMarkdownPath,
+        ],
+        artifactPath: comparisonJsonPath,
+        logPath: resolveFromCwd(`${logsDir}/compare.log`),
+        env,
+      })
+    );
+  } else {
+    jobRecords.push(
+      ...buildSeedBlockedJobRecords({
         runId,
-        '--artifacts-dir',
+        seedStatus: seedWriteStatus,
+        seedAsset,
+        seedArtifact,
+        timeoutMs,
         jobsDir,
-        '--output-json',
+        stagedChecks,
+        substreamCatchupArtifact,
         comparisonJsonPath,
-        '--output-md',
         comparisonMarkdownPath,
-      ],
-      artifactPath: comparisonJsonPath,
-      logPath: resolveFromCwd(`${logsDir}/compare.log`),
-      env,
-    })
-  );
+        logsDir,
+      })
+    );
+  }
 
   jobRecords.push(
     await runProcessJob({
@@ -624,11 +738,12 @@ async function main() {
   const durationMs = Date.now() - startedAtMs;
   const runStatus = worstStatus(jobRecords.map((job) => job.status));
 
-  const comparisonReport = readJson(comparisonJsonPath);
-  const mismatchCount =
-    comparisonReport && typeof comparisonReport.overallMismatchCount === 'number'
+  const comparisonReport = canRunParity ? readJson(comparisonJsonPath) : null;
+  const mismatchCount = canRunParity
+    ? comparisonReport && typeof comparisonReport.overallMismatchCount === 'number'
       ? comparisonReport.overallMismatchCount
-      : 0;
+      : 'n/a'
+    : `n/a (seed-write status=${seedWriteStatus || 'unknown'})`;
 
   const runRecord = {
     runId,
@@ -671,4 +786,10 @@ if (isDirectExecution()) {
   });
 }
 
-export { buildStagedCheckJobs, runCheckStage, runStagedChecks };
+export {
+  buildSeedBlockedJobRecords,
+  buildStagedCheckJobs,
+  canRunParityAfterSeedWrite,
+  runCheckStage,
+  runStagedChecks,
+};

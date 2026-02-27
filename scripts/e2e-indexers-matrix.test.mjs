@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { buildStagedCheckJobs, runCheckStage, runStagedChecks } from './e2e-indexers-matrix.mjs';
+import {
+  buildSeedBlockedJobRecords,
+  buildStagedCheckJobs,
+  canRunParityAfterSeedWrite,
+  runCheckStage,
+  runStagedChecks,
+} from './e2e-indexers-matrix.mjs';
 
 test('buildStagedCheckJobs preserves matrix artifacts/log paths', () => {
   const jobs = buildStagedCheckJobs({
@@ -127,4 +133,48 @@ test('runStagedChecks keeps catch-up between classic and substream stages', asyn
     'stage-start:substream-rest,substream-graphql',
     'stage-end:substream-rest,substream-graphql',
   ]);
+});
+
+test('canRunParityAfterSeedWrite blocks parity only for failed seed status', () => {
+  assert.equal(canRunParityAfterSeedWrite('passed'), true);
+  assert.equal(canRunParityAfterSeedWrite('partial'), true);
+  assert.equal(canRunParityAfterSeedWrite('skipped'), true);
+  assert.equal(canRunParityAfterSeedWrite(null), true);
+  assert.equal(canRunParityAfterSeedWrite('failed'), false);
+});
+
+test('buildSeedBlockedJobRecords marks checks/catchup/compare as skipped after seed failure', () => {
+  const stagedChecks = buildStagedCheckJobs({
+    skipGraphql: false,
+    classicRestArtifact: '/tmp/jobs/classic-rest.json',
+    classicGraphqlArtifact: '/tmp/jobs/classic-graphql.json',
+    substreamRestArtifact: '/tmp/jobs/substream-rest.json',
+    substreamGraphqlArtifact: '/tmp/jobs/substream-graphql.json',
+    logsDir: '/tmp/logs',
+  });
+
+  const records = buildSeedBlockedJobRecords({
+    runId: 'matrix-test',
+    seedStatus: 'failed',
+    seedAsset: 'seed-asset',
+    seedArtifact: '/tmp/jobs/seed-write.json',
+    timeoutMs: 1000,
+    jobsDir: '/tmp/jobs',
+    stagedChecks,
+    substreamCatchupArtifact: '/tmp/jobs/substream-catchup.json',
+    comparisonJsonPath: '/tmp/comparison/report.json',
+    comparisonMarkdownPath: '/tmp/comparison/report.md',
+    logsDir: '/tmp/logs',
+  });
+
+  assert.deepEqual(records.map((record) => record.id), [
+    'classic-rest',
+    'classic-graphql',
+    'substream-rest',
+    'substream-graphql',
+    'substream-catchup',
+    'compare',
+  ]);
+  assert.ok(records.every((record) => record.status === 'skipped'));
+  assert.ok(records.every((record) => record.note.includes('seed-write status=failed')));
 });
