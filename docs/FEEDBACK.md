@@ -2,15 +2,15 @@
 
 The 8004 feedback system enables rich reputation tracking with standardized tags and raw metrics.
 
-> **Solana Constraints**: This SDK uses `i64` for value (vs `int128` on EVM) and `0-6` for valueDecimals (vs `0-18` on EVM). Tags are optional by design so ecosystems can evolve their own taxonomies.
+> **Value Encoding**: This SDK uses `i128` for value and `0-18` for valueDecimals (matching current on-chain behavior). Tags are optional by design so ecosystems can evolve their own taxonomies.
 
 ## Quick Reference
 
 ```typescript
 await sdk.giveFeedback(agent.asset, {
   score: 85,                      // 0-100, optional (null = inferred from tag)
-  value: 15000n,                  // i64: raw metric value
-  valueDecimals: 2,               // 0-6: decimal precision
+  value: 15000n,                  // i128: raw metric value
+  valueDecimals: 2,               // 0-18: decimal precision
   tag1: 'revenues',               // primary category (8004 standard)
   tag2: 'month',                  // secondary qualifier (day/week/month/year)
   endpoint: '/api/v1/generate',   // endpoint called (max 250 bytes)
@@ -24,8 +24,8 @@ await sdk.giveFeedback(agent.asset, {
 | Field | Type | Description |
 |-------|------|-------------|
 | `score` | `number \| null` | Quality score 0-100. Null = ATOM skips scoring, infers from tag |
-| `value` | `bigint` | Raw metric (i64). Examples: profit in cents, latency in ms |
-| `valueDecimals` | `number` | Decimal precision 0-6. value=1500 + decimals=2 = 15.00 |
+| `value` | `bigint` | Raw metric (i128). Examples: profit in cents, latency in ms |
+| `valueDecimals` | `number` | Decimal precision 0-18. value=1500 + decimals=2 = 15.00 |
 | `tag1` | `string` | Primary category tag (max 32 bytes) |
 | `tag2` | `string` | Secondary qualifier (max 32 bytes) |
 | `endpoint` | `string` | Agent endpoint that was called (max 250 bytes) |
@@ -153,13 +153,13 @@ await sdk.giveFeedback(agent.asset, {
 { value: -1500n, valueDecimals: 2 }
 ```
 
-### i64 Range
+### i128 Range
 ```typescript
-// Maximum: 9,223,372,036,854,775,807
-{ value: 9223372036854775807n, valueDecimals: 0 }
+// Maximum: 170,141,183,460,469,231,731,687,303,715,884,105,727
+{ value: 170141183460469231731687303715884105727n, valueDecimals: 0 }
 
-// Minimum: -9,223,372,036,854,775,808
-{ value: -9223372036854775808n, valueDecimals: 0 }
+// Minimum: -170,141,183,460,469,231,731,687,303,715,884,105,728
+{ value: -170141183460469231731687303715884105728n, valueDecimals: 0 }
 ```
 
 ## Optional Score (ATOM Inference)
