@@ -398,12 +398,16 @@ These methods query the indexer for aggregated data.
 |--------|-----------|-------------|
 | `searchAgents` | `(params: AgentSearchParams) => Promise<IndexedAgent[]>` | Search agents by owner/creator/base collection/pointer/parent filters |
 | `getAgentByAgentId` | `(agentId: string \| number \| bigint) => Promise<IndexedAgent \| null>` | Read one agent by backend sequence id (REST: `agent_id`; GraphQL: `agentId`/`agentid`) |
+| `getFeedbackById` | `(feedbackId: string) => Promise<IndexedFeedback \| null>` | Read one feedback by sequential id (`feedbacks.feedback_id`) |
+| `getFeedbackResponsesByFeedbackId` | `(feedbackId: string, limit?: number) => Promise<IndexedFeedbackResponse[]>` | Read responses by backend feedback id using REST-safe lookup (`feedbacks.feedback_id -> asset`, then `feedback_responses.asset + feedback_id`); fails closed on ambiguous id-to-asset mappings |
 | `getCollectionPointers` | `(options?) => Promise<CollectionPointerRecord[]>` | Read canonical `c1:` collection-pointer rows |
 | `getCollectionAssetCount` | `(col: string, creator?) => Promise<number>` | Count assets attached to one pointer |
 | `getCollectionAssets` | `(col: string, options?) => Promise<IndexedAgent[]>` | List assets attached to one pointer |
 | `getLeaderboard` | `(options?) => Promise<LeaderboardEntry[]>` | Get top agents by reputation |
 | `getGlobalStats` | `() => Promise<GlobalStats>` | Get global registry statistics |
 | `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
+
+`getFeedbackById()` and `getFeedbackResponsesByFeedbackId()` accept only sequential numeric backend IDs (for example `"123"`). Canonical IDs like `"<asset>:<client>:<index>"` are rejected (return `null` / `[]`) and are not auto-converted. For REST indexers where response ids are asset-scoped, `getFeedbackResponsesByFeedbackId()` internally resolves the feedback asset first, then filters responses by `asset + feedback_id`. If one `feedback_id` maps to multiple distinct assets, the method fails closed and throws `IndexerError` (`INVALID_RESPONSE`) instead of returning potentially incorrect responses.
 
 ```typescript
 // Search agents with explicit filters
@@ -419,6 +423,10 @@ const results = await sdk.searchAgents({
 
 // GraphQL + REST: read by sequence id
 const bySequenceId = await sdk.getAgentByAgentId(42);
+
+// Feedback id reads (numeric backend ids only)
+const feedback = await sdk.getFeedbackById('123');
+const responses = await sdk.getFeedbackResponsesByFeedbackId('123', 10);
 
 // Asset pubkey lookup (all backends)
 const byAsset = await sdk.getAgent('AssetPubkeyBase58...');

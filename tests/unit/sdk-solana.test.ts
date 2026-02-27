@@ -116,10 +116,12 @@ const mockIndexerClient = {
   getCollectionStats: jest.fn().mockResolvedValue(null),
   getFeedbacks: jest.fn().mockResolvedValue([]),
   getFeedback: jest.fn().mockResolvedValue(null),
+  getFeedbackById: jest.fn().mockResolvedValue(null),
   getFeedbacksByClient: jest.fn().mockResolvedValue([]),
   getFeedbacksByEndpoint: jest.fn().mockResolvedValue([]),
   getFeedbacksByTag: jest.fn().mockResolvedValue([]),
   getFeedbackResponsesFor: jest.fn().mockResolvedValue([]),
+  getFeedbackResponsesByFeedbackId: jest.fn().mockResolvedValue([]),
   getLastFeedbackIndex: jest.fn().mockResolvedValue(-1n),
   searchAgents: jest.fn().mockResolvedValue([]),
   getValidations: jest.fn().mockResolvedValue([]),
@@ -131,6 +133,30 @@ const mockIndexerClient = {
 
 jest.unstable_mockModule('../../src/core/indexer-client.js', () => ({
   IndexerClient: jest.fn().mockImplementation(() => mockIndexerClient),
+  encodeCanonicalFeedbackId: jest.fn((asset: string, client: string, index: number | bigint | string) => `${asset}:${client}:${index.toString()}`),
+  encodeCanonicalResponseId: jest.fn(
+    (
+      asset: string,
+      client: string,
+      index: number | bigint | string,
+      responder: string,
+      sequenceOrSig: number | bigint | string
+    ) => `${asset}:${client}:${index.toString()}:${responder}:${sequenceOrSig.toString()}`
+  ),
+  decodeCanonicalFeedbackId: jest.fn((id: string) => {
+    const parts = id.split(':');
+    if (parts.length === 3) {
+      const [asset, client, index] = parts;
+      if (!asset || !client || !index || asset === 'sol') return null;
+      return { asset, client, index };
+    }
+    if (parts.length === 4 && parts[0] === 'sol') {
+      const [, asset, client, index] = parts;
+      if (!asset || !client || !index) return null;
+      return { asset, client, index };
+    }
+    return null;
+  }),
 }));
 
 // Mock indexer-types
@@ -561,6 +587,68 @@ describe('SolanaSDK', () => {
     });
   });
 
+  describe('feedback id indexer reads', () => {
+    it('getFeedbackById should delegate sequential id to indexer client', async () => {
+      mockIndexerClient.getFeedbackById.mockResolvedValueOnce({ id: '123' });
+
+      const result = await sdk.getFeedbackById(' 123 ');
+      expect(mockIndexerClient.getFeedbackById).toHaveBeenCalledWith('123');
+      expect(result).toEqual({ id: '123' });
+    });
+
+    it('getFeedbackById should reject non-numeric ids', async () => {
+      const result = await sdk.getFeedbackById('asset1:client1:7');
+      expect(result).toBeNull();
+      expect(mockIndexerClient.getFeedbackById).not.toHaveBeenCalled();
+    });
+
+    it('getFeedbackById should return null when direct method is unavailable', async () => {
+      const original = mockIndexerClient.getFeedbackById;
+      (mockIndexerClient as any).getFeedbackById = undefined;
+
+      try {
+        await expect(sdk.getFeedbackById('123')).resolves.toBeNull();
+      } finally {
+        (mockIndexerClient as any).getFeedbackById = original;
+      }
+    });
+
+    it('getFeedbackResponsesByFeedbackId should delegate sequential id to indexer client', async () => {
+      mockIndexerClient.getFeedbackResponsesByFeedbackId.mockResolvedValueOnce([{ id: 'r1' }]);
+
+      const result = await sdk.getFeedbackResponsesByFeedbackId(' 123 ', 5);
+      expect(mockIndexerClient.getFeedbackResponsesByFeedbackId).toHaveBeenCalledWith('123', 5);
+      expect(result).toEqual([{ id: 'r1' }]);
+    });
+
+    it('getFeedbackResponsesByFeedbackId should propagate fail-closed ambiguity errors', async () => {
+      mockIndexerClient.getFeedbackResponsesByFeedbackId.mockRejectedValueOnce(
+        new Error('Ambiguous feedback_id "123": multiple assets found (asset1, asset2).')
+      );
+
+      await expect(sdk.getFeedbackResponsesByFeedbackId('123', 5)).rejects.toThrow(
+        'Ambiguous feedback_id "123"'
+      );
+    });
+
+    it('getFeedbackResponsesByFeedbackId should reject non-numeric ids', async () => {
+      const result = await sdk.getFeedbackResponsesByFeedbackId('asset1:client1:7', 5);
+      expect(result).toEqual([]);
+      expect(mockIndexerClient.getFeedbackResponsesByFeedbackId).not.toHaveBeenCalled();
+    });
+
+    it('getFeedbackResponsesByFeedbackId should return [] when direct method is unavailable', async () => {
+      const original = mockIndexerClient.getFeedbackResponsesByFeedbackId;
+      (mockIndexerClient as any).getFeedbackResponsesByFeedbackId = undefined;
+
+      try {
+        await expect(sdk.getFeedbackResponsesByFeedbackId('123', 5)).resolves.toEqual([]);
+      } finally {
+        (mockIndexerClient as any).getFeedbackResponsesByFeedbackId = original;
+      }
+    });
+  });
+
   describe('readAllFeedback', () => {
     it('should delegate to feedbackManager', async () => {
       await sdk.readAllFeedback(mockAssetKey);
@@ -897,6 +985,23 @@ describe('SolanaSDK', () => {
     it('should keep getAgentByIndexerId as alias', async () => {
       await sdk.getAgentByIndexerId(42);
       expect(mockIndexerClient.getAgentByAgentId).toHaveBeenCalledWith(42);
+    });
+
+    it('should fallback to legacy getAgentByIndexerId when primary method is unavailable', async () => {
+      const originalPrimary = mockIndexerClient.getAgentByAgentId;
+      const originalLegacy = (mockIndexerClient as any).getAgentByIndexerId;
+      const legacyMethod = jest.fn().mockResolvedValue({ agent_id: '77', asset: 'asset77' });
+      (mockIndexerClient as any).getAgentByAgentId = undefined;
+      (mockIndexerClient as any).getAgentByIndexerId = legacyMethod;
+
+      try {
+        const row = await sdk.getAgentByAgentId('77');
+        expect(legacyMethod).toHaveBeenCalledWith('77');
+        expect(row).toEqual({ agent_id: '77', asset: 'asset77' });
+      } finally {
+        (mockIndexerClient as any).getAgentByAgentId = originalPrimary;
+        (mockIndexerClient as any).getAgentByIndexerId = originalLegacy;
+      }
     });
 
     it('should throw when forceOnChain=true', async () => {

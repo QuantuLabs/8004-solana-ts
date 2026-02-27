@@ -43,6 +43,43 @@ function clampInt(n, min, max) {
         return min;
     return Math.min(max, Math.max(min, Math.trunc(n)));
 }
+function normalizeGraphqlAgentLookupId(agentId) {
+    if (typeof agentId === 'bigint') {
+        if (agentId < 0n) {
+            throw new IndexerError('agentId must be a non-negative integer or non-empty string', IndexerErrorCode.INVALID_RESPONSE);
+        }
+        return agentId.toString();
+    }
+    if (typeof agentId === 'number') {
+        if (!Number.isFinite(agentId) || !Number.isInteger(agentId) || agentId < 0) {
+            throw new IndexerError('agentId must be a non-negative integer or non-empty string', IndexerErrorCode.INVALID_RESPONSE);
+        }
+        return Math.trunc(agentId).toString();
+    }
+    const normalized = String(agentId).trim();
+    if (!normalized) {
+        throw new IndexerError('agentId must be a non-empty string or non-negative integer', IndexerErrorCode.INVALID_RESPONSE);
+    }
+    if (normalized.startsWith('sol:')) {
+        const stripped = normalized.slice(4).trim();
+        if (stripped)
+            return stripped;
+    }
+    return normalized;
+}
+function toSafeGraphqlAgentIdNumber(agentId) {
+    if (!/^\d+$/.test(agentId))
+        return null;
+    try {
+        const parsed = BigInt(agentId);
+        if (parsed > BigInt(Number.MAX_SAFE_INTEGER))
+            return null;
+        return Number(parsed);
+    }
+    catch {
+        return null;
+    }
+}
 function toGraphqlUnixSeconds(value) {
     if (value === undefined || value === null)
         return undefined;
@@ -88,16 +125,25 @@ function resolveAgentOrder(order) {
         return { orderBy: 'trustTier', orderDirection };
     }
     if (normalized === 'agentid' || normalized === 'agent_id') {
-        return { orderBy: 'agentid', orderDirection };
+        // Keep compatibility for callers that still pass agent_id ordering.
+        // GraphQL ordering support is backend-specific, so normalize to createdAt.
+        return { orderBy: 'createdAt', orderDirection };
     }
     return { orderBy: 'createdAt', orderDirection };
 }
 function agentId(asset) {
-    return `sol:${asset}`;
+    const normalized = asset.trim();
+    if (normalized.startsWith('sol:')) {
+        return normalized.slice(4);
+    }
+    return normalized;
 }
 function mapGqlAgent(agent, fallbackAsset = '') {
+    const mappedAsset = agent?.solana?.assetPubkey ?? agent?.id ?? fallbackAsset;
+    const mappedAgentId = agent?.agentid ?? agent?.agentId ?? agent?.globalId ?? agent?.global_id ?? null;
     return {
-        asset: agent?.solana?.assetPubkey ?? fallbackAsset,
+        agent_id: mappedAgentId,
+        asset: mappedAsset,
         owner: agent?.owner ?? '',
         creator: agent?.creator ?? null,
         agent_uri: agent?.agentURI ?? null,
@@ -199,16 +245,25 @@ function buildAgentWhere(options) {
     return where;
 }
 function feedbackId(asset, client, index) {
-    return `sol:${asset}:${client}:${index.toString()}`;
+    return `${asset}:${client}:${index.toString()}`;
 }
 function decodeFeedbackId(id) {
     const parts = id.split(':');
-    if (parts.length !== 4 || parts[0] !== 'sol')
-        return null;
-    const [, asset, client, index] = parts;
-    if (!asset || !client || !index)
-        return null;
-    return { asset, client, index };
+    if (parts.length === 3) {
+        const [asset, client, index] = parts;
+        if (asset === 'sol')
+            return null;
+        if (!asset || !client || !index)
+            return null;
+        return { asset, client, index };
+    }
+    if (parts.length === 4 && parts[0] === 'sol') {
+        const [, asset, client, index] = parts;
+        if (!asset || !client || !index)
+            return null;
+        return { asset, client, index };
+    }
+    return null;
 }
 function decodeValidationId(id) {
     const parts = id.split(':');
@@ -218,6 +273,61 @@ function decodeValidationId(id) {
     if (!asset || !validator || !nonce)
         return null;
     return { asset, validator, nonce };
+}
+function resolveFeedbackAsset(row, fallbackAsset = '') {
+    if (typeof row?.id === 'string') {
+        const decoded = decodeFeedbackId(row.id);
+        if (decoded?.asset)
+            return decoded.asset;
+    }
+    const directAgent = row?.agent;
+    if (typeof directAgent === 'string' && directAgent.length > 0) {
+        return directAgent;
+    }
+    if (typeof directAgent?.id === 'string' && directAgent.id.length > 0) {
+        return directAgent.id;
+    }
+    if (typeof row?.asset === 'string' && row.asset.length > 0) {
+        return row.asset;
+    }
+    return fallbackAsset;
+}
+function mapGqlFeedback(row, fallbackAsset = '') {
+    return {
+        id: row.id,
+        asset: resolveFeedbackAsset(row, fallbackAsset),
+        client_address: row.clientAddress,
+        feedback_index: toNumberSafe(row.feedbackIndex, 0),
+        value: row?.solana?.valueRaw ?? '0',
+        value_decimals: toNumberSafe(row?.solana?.valueDecimals, 0),
+        score: row?.solana?.score ?? null,
+        tag1: row.tag1 ?? '',
+        tag2: row.tag2 ?? '',
+        endpoint: row.endpoint ?? null,
+        feedback_uri: row.feedbackURI ?? null,
+        running_digest: null,
+        feedback_hash: row.feedbackHash ?? null,
+        is_revoked: Boolean(row.isRevoked),
+        revoked_at: row.revokedAt ? toIsoFromUnixSeconds(row.revokedAt) : null,
+        block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
+        tx_signature: row?.solana?.txSignature ?? '',
+        created_at: toIsoFromUnixSeconds(row.createdAt),
+    };
+}
+function mapGqlFeedbackResponse(row, asset, client, feedbackIndex) {
+    return {
+        id: row.id,
+        asset,
+        client_address: client,
+        feedback_index: toNumberSafe(feedbackIndex, 0),
+        responder: row.responder,
+        response_uri: row.responseUri ?? null,
+        response_hash: row.responseHash ?? null,
+        running_digest: null,
+        block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
+        tx_signature: row?.solana?.txSignature ?? '',
+        created_at: toIsoFromUnixSeconds(row.createdAt),
+    };
 }
 function mapValidationStatus(status) {
     if (status === 'PENDING')
@@ -249,6 +359,101 @@ export class IndexerGraphQLClient {
         return (/Cannot query field ['"]collections['"] on type ['"]Query['"]/.test(msg)
             || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
             || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssets['"]/.test(msg));
+    }
+    shouldFallbackAgentIdField(error, field) {
+        if (!(error instanceof IndexerError))
+            return false;
+        if (error.code !== IndexerErrorCode.INVALID_RESPONSE)
+            return false;
+        const msg = error.message;
+        return (new RegExp(`Cannot query field ['"]${field}['"] on type ['"]Agent['"]`).test(msg)
+            || new RegExp(`Cannot query field ['"]${field}['"] on type ['"]AgentFilter['"]`).test(msg)
+            || new RegExp(`Field ['"]${field}['"] is not defined by type ['"]AgentFilter['"]`).test(msg)
+            || new RegExp(`Unknown argument ['"]${field}['"]`).test(msg)
+            || new RegExp(`Unknown field ['"]${field}['"]`).test(msg));
+    }
+    shouldFallbackAgentIdVariableType(error, variableType) {
+        if (!(error instanceof IndexerError))
+            return false;
+        if (error.code !== IndexerErrorCode.INVALID_RESPONSE)
+            return false;
+        const msg = error.message;
+        if (variableType === 'String') {
+            return (/type ['"]String!?['"] used in position expecting type ['"]BigInt!?['"]/i.test(msg)
+                || /Expected type ['"]BigInt!?['"]/i.test(msg)
+                || /expecting type ['"]BigInt!?['"]/i.test(msg));
+        }
+        return false;
+    }
+    shouldRetryBigIntAgentIdAsNumber(error) {
+        if (!(error instanceof IndexerError))
+            return false;
+        if (error.code !== IndexerErrorCode.INVALID_RESPONSE)
+            return false;
+        const msg = error.message;
+        return (/BigInt cannot represent non-integer value/i.test(msg)
+            || /Expected value of type ['"]BigInt!?['"], found ['"][^'"]+['"]/i.test(msg)
+            || /Expected type ['"]BigInt!?['"], found ['"][^'"]+['"]/i.test(msg));
+    }
+    async requestAgentBySequentialIdField(agentIdField, normalizedAgentId) {
+        const requestByType = async (variableType, variableValue) => {
+            const data = await this.request(`query($agentId: ${variableType}!) {
+          agents(first: 1, where: { ${agentIdField}: $agentId }) {
+            id
+            owner
+            creator
+            agentURI
+            agentWallet
+            collectionPointer
+            colLocked
+            parentAsset
+            parentCreator
+            parentLocked
+            createdAt
+            updatedAt
+            totalFeedback
+            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+          }
+        }`, { agentId: variableValue });
+            return data.agents[0] ?? null;
+        };
+        try {
+            return await requestByType('String', normalizedAgentId);
+        }
+        catch (error) {
+            if (!this.shouldFallbackAgentIdVariableType(error, 'String')) {
+                throw error;
+            }
+        }
+        try {
+            return await requestByType('BigInt', normalizedAgentId);
+        }
+        catch (error) {
+            const safeNumericAgentId = toSafeGraphqlAgentIdNumber(normalizedAgentId);
+            if (safeNumericAgentId !== null && this.shouldRetryBigIntAgentIdAsNumber(error)) {
+                return requestByType('BigInt', safeNumericAgentId);
+            }
+            throw error;
+        }
+    }
+    async requestWithAgentIdField(requester) {
+        try {
+            return await requester('agentId');
+        }
+        catch (error) {
+            if (!this.shouldFallbackAgentIdField(error, 'agentId')) {
+                throw error;
+            }
+        }
+        try {
+            return await requester('agentid');
+        }
+        catch (error) {
+            if (!this.shouldFallbackAgentIdField(error, 'agentid')) {
+                throw error;
+            }
+        }
+        return requester(null);
     }
     async request(query, variables) {
         let lastError = null;
@@ -363,54 +568,97 @@ export class IndexerGraphQLClient {
     // Agents
     // ============================================================================
     async getAgent(asset) {
-        const data = await this.request(`query($id: ID!) {
-        agent(id: $id) {
-          id
-          owner
-          creator
-          agentURI
-          agentWallet
-          collectionPointer
-          colLocked
-          parentAsset
-          parentCreator
-          parentLocked
-          createdAt
-          updatedAt
-          totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`, { id: agentId(asset) });
+        const normalizedAsset = agentId(asset);
+        const data = await this.requestWithAgentIdField((agentIdField) => {
+            const agentIdSelection = agentIdField ? `\n          ${agentIdField}` : '';
+            return this.request(`query($id: ID!) {
+            agent(id: $id) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`, { id: normalizedAsset });
+        });
         if (!data.agent)
             return null;
-        return mapGqlAgent(data.agent, asset);
+        return mapGqlAgent(data.agent, normalizedAsset);
+    }
+    async getAgentByAgentId(agentId) {
+        const normalizedAgentId = normalizeGraphqlAgentLookupId(agentId);
+        const agent = await this.requestWithAgentIdField(async (agentIdField) => {
+            if (agentIdField === null) {
+                const legacy = await this.request(`query($id: ID!) {
+              agent(id: $id) {
+                id
+                owner
+                creator
+                agentURI
+                agentWallet
+                collectionPointer
+                colLocked
+                parentAsset
+                parentCreator
+                parentLocked
+                createdAt
+                updatedAt
+                totalFeedback
+                solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+              }
+            }`, { id: normalizedAgentId });
+                return legacy.agent;
+            }
+            return this.requestAgentBySequentialIdField(agentIdField, normalizedAgentId);
+        });
+        if (!agent)
+            return null;
+        const mapped = mapGqlAgent(agent, normalizedAgentId);
+        mapped.agent_id = normalizedAgentId;
+        return mapped;
+    }
+    /** @deprecated Use getAgentByAgentId(agentId) */
+    async getAgentByIndexerId(agentId) {
+        return this.getAgentByAgentId(agentId);
     }
     async getAgents(options) {
         const limit = clampInt(options?.limit ?? 100, 0, 500);
         const offset = clampInt(options?.offset ?? 0, 0, 1_000_000);
         const { orderBy, orderDirection } = resolveAgentOrder(options?.order);
         const where = buildAgentWhere(options);
-        const data = await this.request(`query($orderBy: AgentOrderBy!, $dir: OrderDirection!, $where: AgentFilter) {
-        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: $orderBy, orderDirection: $dir) {
-          id
-          owner
-          creator
-          agentURI
-          agentWallet
-          collectionPointer
-          colLocked
-          parentAsset
-          parentCreator
-          parentLocked
-          createdAt
-          updatedAt
-          totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`, {
-            orderBy,
-            dir: orderDirection,
-            where: Object.keys(where).length ? where : null,
+        const data = await this.requestWithAgentIdField((agentIdField) => {
+            const agentIdSelection = agentIdField ? `\n          ${agentIdField}` : '';
+            return this.request(`query($orderBy: AgentOrderBy!, $dir: OrderDirection!, $where: AgentFilter) {
+            agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: $orderBy, orderDirection: $dir) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`, {
+                orderBy,
+                dir: orderDirection,
+                where: Object.keys(where).length ? where : null,
+            });
         });
         return data.agents.map((a) => mapGqlAgent(a));
     }
@@ -446,12 +694,15 @@ export class IndexerGraphQLClient {
             where.collection = options.collection;
         if (options?.minTier !== undefined)
             where.trustTier_gte = options.minTier;
-        const data = await this.request(`query($where: AgentFilter) {
-        agents(first: ${limit}, where: $where, orderBy: qualityScore, orderDirection: desc) {
-          owner creator agentURI agentWallet collectionPointer colLocked parentAsset parentCreator parentLocked createdAt updatedAt totalFeedback
-          solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-        }
-      }`, { where: Object.keys(where).length ? where : null });
+        const data = await this.requestWithAgentIdField((agentIdField) => {
+            const agentIdSelection = agentIdField ? `${agentIdField} ` : '';
+            return this.request(`query($where: AgentFilter) {
+            agents(first: ${limit}, where: $where, orderBy: qualityScore, orderDirection: desc) {
+              ${agentIdSelection}owner creator agentURI agentWallet collectionPointer colLocked parentAsset parentCreator parentLocked createdAt updatedAt totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`, { where: Object.keys(where).length ? where : null });
+        });
         return data.agents.map((a) => mapGqlAgent(a));
     }
     async getGlobalStats() {
@@ -571,77 +822,82 @@ export class IndexerGraphQLClient {
                     : order.startsWith('trust_tier')
                         ? 'trustTier'
                         : 'createdAt';
-        try {
-            const data = await this.request(`query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
-          collectionAssets(
-            collection: $collection,
-            creator: $creator,
-            first: $first,
-            skip: $skip,
-            orderBy: $orderBy,
-            orderDirection: $dir
-          ) {
-            owner
-            creator
-            agentURI
-            agentWallet
-            collectionPointer
-            colLocked
-            parentAsset
-            parentCreator
-            parentLocked
-            createdAt
-            updatedAt
-            totalFeedback
-            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-          }
-        }`, {
-                collection: col,
-                creator: options?.creator ?? null,
-                first,
-                skip,
-                orderBy,
-                dir: orderDirection,
-            });
-            return data.collectionAssets.map((a) => mapGqlAgent(a));
-        }
-        catch (error) {
-            if (!this.shouldUseLegacyCollectionRead(error)) {
-                throw error;
+        return this.requestWithAgentIdField(async (agentIdField) => {
+            const agentIdSelection = agentIdField ? `\n            ${agentIdField}` : '';
+            try {
+                const data = await this.request(`query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+            collectionAssets(
+              collection: $collection,
+              creator: $creator,
+              first: $first,
+              skip: $skip,
+              orderBy: $orderBy,
+              orderDirection: $dir
+            ) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
             }
-            const data = await this.request(`query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
-          collectionAssets(
-            col: $col,
-            creator: $creator,
-            first: $first,
-            skip: $skip,
-            orderBy: $orderBy,
-            orderDirection: $dir
-          ) {
-            owner
-            creator
-            agentURI
-            agentWallet
-            collectionPointer
-            colLocked
-            parentAsset
-            parentCreator
-            parentLocked
-            createdAt
-            updatedAt
-            totalFeedback
-            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-          }
-        }`, {
-                col,
-                creator: options?.creator ?? null,
-                first,
-                skip,
-                orderBy,
-                dir: orderDirection,
-            });
-            return data.collectionAssets.map((a) => mapGqlAgent(a));
-        }
+          }`, {
+                    collection: col,
+                    creator: options?.creator ?? null,
+                    first,
+                    skip,
+                    orderBy,
+                    dir: orderDirection,
+                });
+                return data.collectionAssets.map((a) => mapGqlAgent(a));
+            }
+            catch (error) {
+                if (!this.shouldUseLegacyCollectionRead(error)) {
+                    throw error;
+                }
+                const data = await this.request(`query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+            collectionAssets(
+              col: $col,
+              creator: $creator,
+              first: $first,
+              skip: $skip,
+              orderBy: $orderBy,
+              orderDirection: $dir
+            ) {
+              id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            }
+          }`, {
+                    col,
+                    creator: options?.creator ?? null,
+                    first,
+                    skip,
+                    orderBy,
+                    dir: orderDirection,
+                });
+                return data.collectionAssets.map((a) => mapGqlAgent(a));
+            }
+        });
     }
     // ============================================================================
     // Feedbacks
@@ -669,26 +925,7 @@ export class IndexerGraphQLClient {
           solana { valueRaw valueDecimals score txSignature blockSlot }
         }
       }`, { where });
-        return data.feedbacks.map((f) => ({
-            id: f.id,
-            asset,
-            client_address: f.clientAddress,
-            feedback_index: toNumberSafe(f.feedbackIndex, 0),
-            value: f?.solana?.valueRaw ?? '0',
-            value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-            score: f?.solana?.score ?? null,
-            tag1: f.tag1 ?? '',
-            tag2: f.tag2 ?? '',
-            endpoint: f.endpoint ?? null,
-            feedback_uri: f.feedbackURI ?? null,
-            running_digest: null,
-            feedback_hash: f.feedbackHash ?? null,
-            is_revoked: Boolean(f.isRevoked),
-            revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-            block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-            tx_signature: f?.solana?.txSignature ?? '',
-            created_at: toIsoFromUnixSeconds(f.createdAt),
-        }));
+        return data.feedbacks.map((f) => mapGqlFeedback(f, asset));
     }
     async getFeedback(asset, client, feedbackIndex) {
         const data = await this.request(`query($id: ID!) {
@@ -709,32 +946,13 @@ export class IndexerGraphQLClient {
   }`, { id: feedbackId(asset, client, feedbackIndex) });
         if (!data.feedback)
             return null;
-        const f = data.feedback;
-        return {
-            id: f.id,
-            asset,
-            client_address: f.clientAddress,
-            feedback_index: toNumberSafe(f.feedbackIndex, 0),
-            value: f?.solana?.valueRaw ?? '0',
-            value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-            score: f?.solana?.score ?? null,
-            tag1: f.tag1 ?? '',
-            tag2: f.tag2 ?? '',
-            endpoint: f.endpoint ?? null,
-            feedback_uri: f.feedbackURI ?? null,
-            running_digest: null,
-            feedback_hash: f.feedbackHash ?? null,
-            is_revoked: Boolean(f.isRevoked),
-            revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-            block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-            tx_signature: f?.solana?.txSignature ?? '',
-            created_at: toIsoFromUnixSeconds(f.createdAt),
-        };
+        return mapGqlFeedback(data.feedback, asset);
     }
     async getFeedbacksByClient(client) {
         const data = await this.request(`query($client: String!) {
         feedbacks(first: 250, where: { clientAddress: $client }, orderBy: createdAt, orderDirection: desc) {
           id
+          agent { id }
           clientAddress
           feedbackIndex
           tag1
@@ -748,30 +966,7 @@ export class IndexerGraphQLClient {
           solana { valueRaw valueDecimals score txSignature blockSlot }
         }
       }`, { client });
-        return data.feedbacks.map((f) => {
-            const decoded = decodeFeedbackId(f.id);
-            const asset = decoded?.asset ?? '';
-            return {
-                id: f.id,
-                asset,
-                client_address: f.clientAddress,
-                feedback_index: toNumberSafe(f.feedbackIndex, 0),
-                value: f?.solana?.valueRaw ?? '0',
-                value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-                score: f?.solana?.score ?? null,
-                tag1: f.tag1 ?? '',
-                tag2: f.tag2 ?? '',
-                endpoint: f.endpoint ?? null,
-                feedback_uri: f.feedbackURI ?? null,
-                running_digest: null,
-                feedback_hash: f.feedbackHash ?? null,
-                is_revoked: Boolean(f.isRevoked),
-                revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-                block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-                tx_signature: f?.solana?.txSignature ?? '',
-                created_at: toIsoFromUnixSeconds(f.createdAt),
-            };
-        });
+        return data.feedbacks.map((f) => mapGqlFeedback(f));
     }
     async getFeedbacksByTag(tag) {
         // GraphQL filter doesn't support OR on tag1/tag2, so query both and merge.
@@ -779,6 +974,7 @@ export class IndexerGraphQLClient {
             this.request(`query($tag: String!) {
           feedbacks(first: 250, where: { tag1: $tag }, orderBy: createdAt, orderDirection: desc) {
             id
+            agent { id }
             clientAddress
             feedbackIndex
             tag1
@@ -795,6 +991,7 @@ export class IndexerGraphQLClient {
             this.request(`query($tag: String!) {
           feedbacks(first: 250, where: { tag2: $tag }, orderBy: createdAt, orderDirection: desc) {
             id
+            agent { id }
             clientAddress
             feedbackIndex
             tag1
@@ -813,35 +1010,13 @@ export class IndexerGraphQLClient {
         for (const f of [...(tag1.feedbacks ?? []), ...(tag2.feedbacks ?? [])]) {
             merged.set(f.id, f);
         }
-        return Array.from(merged.values()).map((f) => {
-            const decoded = decodeFeedbackId(f.id);
-            const asset = decoded?.asset ?? '';
-            return {
-                id: f.id,
-                asset,
-                client_address: f.clientAddress,
-                feedback_index: toNumberSafe(f.feedbackIndex, 0),
-                value: f?.solana?.valueRaw ?? '0',
-                value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-                score: f?.solana?.score ?? null,
-                tag1: f.tag1 ?? '',
-                tag2: f.tag2 ?? '',
-                endpoint: f.endpoint ?? null,
-                feedback_uri: f.feedbackURI ?? null,
-                running_digest: null,
-                feedback_hash: f.feedbackHash ?? null,
-                is_revoked: Boolean(f.isRevoked),
-                revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-                block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-                tx_signature: f?.solana?.txSignature ?? '',
-                created_at: toIsoFromUnixSeconds(f.createdAt),
-            };
-        });
+        return Array.from(merged.values()).map((f) => mapGqlFeedback(f));
     }
     async getFeedbacksByEndpoint(endpoint) {
         const data = await this.request(`query($endpoint: String!) {
         feedbacks(first: 250, where: { endpoint: $endpoint }, orderBy: createdAt, orderDirection: desc) {
           id
+          agent { id }
           clientAddress
           feedbackIndex
           tag1
@@ -855,30 +1030,7 @@ export class IndexerGraphQLClient {
           solana { valueRaw valueDecimals score txSignature blockSlot }
         }
       }`, { endpoint });
-        return data.feedbacks.map((f) => {
-            const decoded = decodeFeedbackId(f.id);
-            const asset = decoded?.asset ?? '';
-            return {
-                id: f.id,
-                asset,
-                client_address: f.clientAddress,
-                feedback_index: toNumberSafe(f.feedbackIndex, 0),
-                value: f?.solana?.valueRaw ?? '0',
-                value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-                score: f?.solana?.score ?? null,
-                tag1: f.tag1 ?? '',
-                tag2: f.tag2 ?? '',
-                endpoint: f.endpoint ?? null,
-                feedback_uri: f.feedbackURI ?? null,
-                running_digest: null,
-                feedback_hash: f.feedbackHash ?? null,
-                is_revoked: Boolean(f.isRevoked),
-                revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-                block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-                tx_signature: f?.solana?.txSignature ?? '',
-                created_at: toIsoFromUnixSeconds(f.createdAt),
-            };
-        });
+        return data.feedbacks.map((f) => mapGqlFeedback(f));
     }
     async getAllFeedbacks(options) {
         const first = clampInt(options?.limit ?? 5000, 0, 5000);
@@ -888,6 +1040,7 @@ export class IndexerGraphQLClient {
         const data = await this.request(`query($where: FeedbackFilter) {
         feedbacks(first: ${first}, where: $where, orderBy: createdAt, orderDirection: desc) {
           id
+          agent { id }
           clientAddress
           feedbackIndex
           tag1
@@ -901,30 +1054,7 @@ export class IndexerGraphQLClient {
           solana { valueRaw valueDecimals score txSignature blockSlot }
         }
       }`, { where: Object.keys(where).length ? where : null });
-        return data.feedbacks.map((f) => {
-            const decoded = decodeFeedbackId(f.id);
-            const asset = decoded?.asset ?? '';
-            return {
-                id: f.id,
-                asset,
-                client_address: f.clientAddress,
-                feedback_index: toNumberSafe(f.feedbackIndex, 0),
-                value: f?.solana?.valueRaw ?? '0',
-                value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-                score: f?.solana?.score ?? null,
-                tag1: f.tag1 ?? '',
-                tag2: f.tag2 ?? '',
-                endpoint: f.endpoint ?? null,
-                feedback_uri: f.feedbackURI ?? null,
-                running_digest: null,
-                feedback_hash: f.feedbackHash ?? null,
-                is_revoked: Boolean(f.isRevoked),
-                revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-                block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-                tx_signature: f?.solana?.txSignature ?? '',
-                created_at: toIsoFromUnixSeconds(f.createdAt),
-            };
-        });
+        return data.feedbacks.map((f) => mapGqlFeedback(f));
     }
     async getLastFeedbackIndex(asset, client) {
         const data = await this.request(`query($agent: ID!, $client: String!) {
@@ -950,19 +1080,7 @@ export class IndexerGraphQLClient {
           solana { txSignature blockSlot }
         }
       }`, { feedback: feedbackId(asset, client, feedbackIndex) });
-        return data.feedbackResponses.map((r) => ({
-            id: r.id,
-            asset,
-            client_address: client,
-            feedback_index: toNumberSafe(feedbackIndex, 0),
-            responder: r.responder,
-            response_uri: r.responseUri ?? null,
-            response_hash: r.responseHash ?? null,
-            running_digest: null,
-            block_slot: toNumberSafe(r?.solana?.blockSlot, 0),
-            tx_signature: r?.solana?.txSignature ?? '',
-            created_at: toIsoFromUnixSeconds(r.createdAt),
-        }));
+        return (data.feedbackResponses ?? []).map((r) => mapGqlFeedbackResponse(r, asset, client, feedbackIndex));
     }
     // ============================================================================
     // Validations

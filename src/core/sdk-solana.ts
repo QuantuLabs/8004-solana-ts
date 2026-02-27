@@ -63,6 +63,8 @@ import {
   IndexedValidation,
   GlobalStats,
   CollectionPointerRecord,
+  encodeCanonicalFeedbackId,
+  encodeCanonicalResponseId,
 } from './indexer-client.js';
 import type { ReplayEventData, CheckpointSet } from './indexer-client.js';
 import { IndexerGraphQLClient } from './indexer-graphql-client.js';
@@ -1171,7 +1173,10 @@ export class SolanaSDK {
 
       return resolved;
     } catch (error) {
-      logger.warn('Failed to resolve feedback from indexer', error);
+      logger.warn(
+        'Failed to resolve feedback from indexer',
+        error instanceof Error ? error.message : String(error)
+      );
       return null;
     }
   }
@@ -1255,7 +1260,10 @@ export class SolanaSDK {
 
       return resolved;
     } catch (error) {
-      logger.warn('Failed to resolve feedback by sealHash from indexer', error);
+      logger.warn(
+        'Failed to resolve feedback by sealHash from indexer',
+        error instanceof Error ? error.message : String(error)
+      );
       return null;
     }
   }
@@ -1294,6 +1302,60 @@ export class SolanaSDK {
    */
   async getFeedback(asset: PublicKey, clientAddress: PublicKey, feedbackIndex: number | bigint) {
     return this.readFeedback(asset, clientAddress, feedbackIndex);
+  }
+
+  /**
+   * Build canonical feedback ID used by indexers.
+   * Format: "<asset>:<client>:<feedbackIndex>" (no chain prefix).
+   */
+  encodeFeedbackId(asset: PublicKey | string, client: PublicKey | string, feedbackIndex: number | bigint): string {
+    const assetStr = typeof asset === 'string' ? asset : asset.toBase58();
+    const clientStr = typeof client === 'string' ? client : client.toBase58();
+    return encodeCanonicalFeedbackId(assetStr, clientStr, feedbackIndex);
+  }
+
+  /**
+   * Build canonical response ID used by indexers.
+   * Format: "<asset>:<client>:<feedbackIndex>:<responder>:<responseCount|txSig>".
+   */
+  encodeResponseId(
+    asset: PublicKey | string,
+    client: PublicKey | string,
+    feedbackIndex: number | bigint,
+    responder: PublicKey | string,
+    responseCountOrTxSig: number | bigint | string
+  ): string {
+    const assetStr = typeof asset === 'string' ? asset : asset.toBase58();
+    const clientStr = typeof client === 'string' ? client : client.toBase58();
+    const responderStr = typeof responder === 'string' ? responder : responder.toBase58();
+    return encodeCanonicalResponseId(assetStr, clientStr, feedbackIndex, responderStr, responseCountOrTxSig);
+  }
+
+  /**
+   * Read feedback by indexer feedback id.
+   * Accepts sequential numeric backend feedback ids.
+   */
+  async getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null> {
+    const normalizedId = feedbackId.trim();
+    if (!/^\d+$/.test(normalizedId)) return null;
+
+    if (!this.indexerClient.getFeedbackById) return null;
+    return this.indexerClient.getFeedbackById(normalizedId);
+  }
+
+  /**
+   * Read responses by indexer feedback id.
+   * Accepts sequential numeric backend feedback ids.
+   */
+  async getFeedbackResponsesByFeedbackId(
+    feedbackId: string,
+    limit: number = 100
+  ): Promise<import('./indexer-client.js').IndexedFeedbackResponse[]> {
+    const normalizedId = feedbackId.trim();
+    if (!/^\d+$/.test(normalizedId)) return [];
+
+    if (!this.indexerClient.getFeedbackResponsesByFeedbackId) return [];
+    return this.indexerClient.getFeedbackResponsesByFeedbackId(normalizedId, limit);
   }
 
   /**
@@ -3858,7 +3920,7 @@ export class SolanaSDK {
         if (typeof normalized !== 'string' || !/^[0-9a-fA-F]{64}$/.test(normalized)) {
           throw new Error(`Invalid ${label}: expected 32-byte hex digest`);
         }
-        return Buffer.from(normalized, 'hex');
+        return Buffer.from(normalized, 'hex') as Buffer;
       };
 
       const parseOptionalHexDigest32 = (value: string | null | undefined, label: string): Buffer | undefined => {
@@ -3883,7 +3945,7 @@ export class SolanaSDK {
         onChainCount: bigint,
       ): Promise<ReplayResult> => {
         const cp = checkpoints?.[chainType];
-        let startDigest = Buffer.alloc(32);
+        let startDigest: Buffer = Buffer.alloc(32) as Buffer;
         let startCount = 0;
         if (cp && useCheckpoints) {
           startDigest = parseHexDigest32(cp.digest, `${chainType} checkpoint digest`);

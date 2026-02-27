@@ -10,7 +10,7 @@
  */
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { SolanaClient, createDevnetClient, UnsupportedRpcError } from './client.js';
+import { SolanaClient, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import { EndpointCrawler } from './endpoint-crawler.js';
 import { PDAHelpers } from './pda-helpers.js';
@@ -18,7 +18,7 @@ import { getProgramIds } from './programs.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
-import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, } from './transaction-builder.js';
+import { IdentityTransactionBuilder, ReputationTransactionBuilder, ValidationTransactionBuilder, AtomTransactionBuilder, validateCollectionPointer, } from './transaction-builder.js';
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
@@ -31,7 +31,7 @@ import { buildCollectionMetadataJson } from '../models/collection-metadata.js';
 import { AtomStats, AtomConfig, TrustTier } from './atom-schemas.js';
 import { getAtomStatsPDA, getAtomConfigPDA } from './atom-pda.js';
 // Indexer imports (v0.4.0)
-import { IndexerClient, } from './indexer-client.js';
+import { IndexerClient, encodeCanonicalFeedbackId, encodeCanonicalResponseId, } from './indexer-client.js';
 import { IndexerGraphQLClient } from './indexer-graphql-client.js';
 import { replayFeedbackChain, replayResponseChain, replayRevokeChain, } from './hash-chain-replay.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
@@ -149,13 +149,15 @@ export class SolanaSDK {
         this.programIds = getProgramIds(config.programIds);
         this.signer = config.signer;
         this.ipfsClient = config.ipfsClient;
-        // Initialize Solana client (devnet only)
-        this.client = config.rpcUrl
-            ? new SolanaClient({
-                cluster: this.cluster,
-                rpcUrl: config.rpcUrl,
-            })
-            : createDevnetClient();
+        this.client = new SolanaClient({
+            cluster: this.cluster,
+            rpcUrl: config.rpcUrl,
+        });
+        const hasProgramIdOverrides = !!(config.programIds
+            && Object.values(config.programIds).some((value) => value !== undefined && value !== null));
+        if (this.cluster === 'mainnet-beta' && !hasProgramIdOverrides) {
+            logger.warn('cluster=mainnet-beta selected without programIds override; SDK will use devnet default program IDs until mainnet IDs are provided.');
+        }
         // Initialize feedback manager
         this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
         // Initialize indexer client first (v0.7.0)
@@ -683,6 +685,105 @@ export class SolanaSDK {
         }
         return false;
     }
+    /**
+     * Resolve a specific feedback via indexer-backed reads.
+     * Returns null when feedback is not yet indexed.
+     */
+    async resolveFeedbackFromIndexer(asset, client, feedbackIndex, options) {
+        let resolved = null;
+        const shouldWait = options?.waitForSync ?? true;
+        const tryReadOnce = async () => {
+            const feedback = await this.readFeedback(asset, client, feedbackIndex);
+            return feedback ?? null;
+        };
+        try {
+            resolved = await tryReadOnce();
+            if (resolved) {
+                return resolved;
+            }
+            if (!shouldWait) {
+                return null;
+            }
+            await this.waitForIndexerSync(async () => {
+                try {
+                    resolved = await tryReadOnce();
+                    return !!resolved;
+                }
+                catch {
+                    return false;
+                }
+            }, {
+                timeout: 10000,
+                initialDelay: 250,
+                maxDelay: 1500,
+                backoffMultiplier: 1.5,
+            });
+            return resolved;
+        }
+        catch (error) {
+            logger.warn('Failed to resolve feedback from indexer', error instanceof Error ? error.message : String(error));
+            return null;
+        }
+    }
+    /**
+     * Resolve SEAL hash for a specific feedback via indexer-backed reads.
+     * Returns undefined when feedback/sealHash is not yet indexed.
+     */
+    async resolveSealHashFromIndexer(asset, client, feedbackIndex) {
+        const feedback = await this.resolveFeedbackFromIndexer(asset, client, feedbackIndex);
+        if (feedback?.sealHash && Buffer.isBuffer(feedback.sealHash) && feedback.sealHash.length === 32) {
+            return feedback.sealHash;
+        }
+        return undefined;
+    }
+    /**
+     * Resolve feedback by SEAL hash when caller does not know feedbackIndex.
+     */
+    async resolveFeedbackBySealHashFromIndexer(asset, client, sealHash) {
+        if (sealHash.length !== 32) {
+            throw new Error('sealHash must be 32 bytes');
+        }
+        const assetStr = asset.toBase58();
+        const clientStr = client.toBase58();
+        const sealHex = sealHash.toString('hex').toLowerCase();
+        const matchesSealHash = (hash) => typeof hash === 'string' && hash.toLowerCase() === sealHex;
+        const tryReadOnce = async () => {
+            const byClient = await this.indexerClient.getFeedbacksByClient(clientStr);
+            const fromClient = byClient.find((row) => row.asset === assetStr && matchesSealHash(row.feedback_hash));
+            if (fromClient) {
+                return indexedFeedbackToSolanaFeedback(fromClient);
+            }
+            const byAsset = await this.indexerClient.getFeedbacks(assetStr, {
+                includeRevoked: true,
+                limit: 5000,
+            });
+            const fromAsset = byAsset.find((row) => row.client_address === clientStr && matchesSealHash(row.feedback_hash));
+            if (fromAsset) {
+                return indexedFeedbackToSolanaFeedback(fromAsset);
+            }
+            return null;
+        };
+        try {
+            let resolved = await tryReadOnce();
+            if (resolved) {
+                return resolved;
+            }
+            await this.waitForIndexerSync(async () => {
+                resolved = await tryReadOnce();
+                return resolved !== null;
+            }, {
+                timeout: 10000,
+                initialDelay: 250,
+                maxDelay: 1500,
+                backoffMultiplier: 1.5,
+            });
+            return resolved;
+        }
+        catch (error) {
+            logger.warn('Failed to resolve feedback by sealHash from indexer', error instanceof Error ? error.message : String(error));
+            return null;
+        }
+    }
     // ==================== Reputation Methods (v0.3.0 - asset-based) ====================
     /**
      * 1. Get agent reputation summary - v0.3.0
@@ -714,6 +815,49 @@ export class SolanaSDK {
      */
     async getFeedback(asset, clientAddress, feedbackIndex) {
         return this.readFeedback(asset, clientAddress, feedbackIndex);
+    }
+    /**
+     * Build canonical feedback ID used by indexers.
+     * Format: "<asset>:<client>:<feedbackIndex>" (no chain prefix).
+     */
+    encodeFeedbackId(asset, client, feedbackIndex) {
+        const assetStr = typeof asset === 'string' ? asset : asset.toBase58();
+        const clientStr = typeof client === 'string' ? client : client.toBase58();
+        return encodeCanonicalFeedbackId(assetStr, clientStr, feedbackIndex);
+    }
+    /**
+     * Build canonical response ID used by indexers.
+     * Format: "<asset>:<client>:<feedbackIndex>:<responder>:<responseCount|txSig>".
+     */
+    encodeResponseId(asset, client, feedbackIndex, responder, responseCountOrTxSig) {
+        const assetStr = typeof asset === 'string' ? asset : asset.toBase58();
+        const clientStr = typeof client === 'string' ? client : client.toBase58();
+        const responderStr = typeof responder === 'string' ? responder : responder.toBase58();
+        return encodeCanonicalResponseId(assetStr, clientStr, feedbackIndex, responderStr, responseCountOrTxSig);
+    }
+    /**
+     * Read feedback by indexer feedback id.
+     * Accepts sequential numeric backend feedback ids.
+     */
+    async getFeedbackById(feedbackId) {
+        const normalizedId = feedbackId.trim();
+        if (!/^\d+$/.test(normalizedId))
+            return null;
+        if (!this.indexerClient.getFeedbackById)
+            return null;
+        return this.indexerClient.getFeedbackById(normalizedId);
+    }
+    /**
+     * Read responses by indexer feedback id.
+     * Accepts sequential numeric backend feedback ids.
+     */
+    async getFeedbackResponsesByFeedbackId(feedbackId, limit = 100) {
+        const normalizedId = feedbackId.trim();
+        if (!/^\d+$/.test(normalizedId))
+            return [];
+        if (!this.indexerClient.getFeedbackResponsesByFeedbackId)
+            return [];
+        return this.indexerClient.getFeedbackResponsesByFeedbackId(normalizedId, limit);
     }
     /**
      * 3. Read all feedbacks for an agent (indexer) - v0.4.0
@@ -1092,6 +1236,24 @@ export class SolanaSDK {
         return this.indexerClient.getAgentByWallet(wallet);
     }
     /**
+     * Get agent by backend sequence id (indexer only)
+     * @param agentId - REST: sequential `agent_id`; GraphQL: sequential `agentId` / `agentid`
+     * @returns Indexed agent or null
+     */
+    async getAgentByAgentId(agentId) {
+        this.requireIndexer('getAgentByAgentId');
+        const method = this.indexerClient.getAgentByAgentId
+            ?? this.indexerClient.getAgentByIndexerId;
+        if (!method) {
+            throw new Error('getAgentByAgentId is not available on current indexer client');
+        }
+        return method.call(this.indexerClient, agentId);
+    }
+    /** @deprecated Use getAgentByAgentId(agentId) */
+    async getAgentByIndexerId(agentId) {
+        return this.getAgentByAgentId(agentId);
+    }
+    /**
      * Get pending validations for a validator - indexer only
      * @param validator - Validator pubkey string
      * @returns Array of pending validation requests
@@ -1237,6 +1399,9 @@ export class SolanaSDK {
      *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
      *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
      *     (use enableAtom() to turn it on later, one-way)
+     *   - `collectionPointer`: Optional pointer (c1:<payload>) to attach after successful register
+     *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
+     *     Note: when `skipSend=true`, only the register tx is prepared, so pointer attach is skipped.
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
      *
      * @example
@@ -1248,31 +1413,70 @@ export class SolanaSDK {
      * const result = await sdk.registerAgent('ipfs://QmMetadata...', myBaseRegistryCollection);
      */
     async registerAgent(tokenUri, collection, options) {
+        if (options?.collectionPointer !== undefined) {
+            validateCollectionPointer(options.collectionPointer);
+        }
+        if (options?.collectionLock !== undefined && typeof options.collectionLock !== 'boolean') {
+            throw new Error('collectionLock must be a boolean');
+        }
         // For non-skipSend operations, require signer
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
-        // Auto-initialize ATOM stats unless ATOM is disabled at creation
-        // Skip if: atomEnabled=false, skipSend=true, or registration failed
-        const shouldInitAtom = options?.atomEnabled !== false && !options?.skipSend && 'success' in result && result.success && !!result.asset;
-        if (shouldInitAtom && result.asset) {
-            try {
-                const atomResult = await this.atomTxBuilder.initializeStats(result.asset, options);
-                if ('success' in atomResult && atomResult.success) {
-                    // Return combined result with both signatures
-                    return {
-                        ...result,
-                        signatures: [result.signature, atomResult.signature],
-                    };
+        const canRunPostRegister = !options?.skipSend
+            && 'success' in result
+            && result.success
+            && !!result.asset;
+        if (canRunPostRegister && result.asset) {
+            const signatures = [result.signature];
+            // Auto-initialize ATOM stats unless ATOM is disabled at creation
+            if (options?.atomEnabled !== false) {
+                try {
+                    const atomResult = await this.atomTxBuilder.initializeStats(result.asset, options);
+                    if ('success' in atomResult && atomResult.success) {
+                        signatures.push(atomResult.signature);
+                    }
+                    else {
+                        // Non-blocking: registration still succeeded.
+                        const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
+                        logger.warn(`Agent registered but ATOM stats init failed: ${errorMsg}`);
+                    }
                 }
-                // If ATOM init fails, still return the agent registration (non-blocking)
-                const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
-                logger.warn(`Agent registered but ATOM stats init failed: ${errorMsg}`);
+                catch (error) {
+                    // Non-blocking: registration still succeeded.
+                    logger.warn(`Agent registered but ATOM stats init failed: ${error instanceof Error ? error.message : String(error)}`);
+                }
             }
-            catch (error) {
-                // Non-blocking: agent is registered even if ATOM init fails
-                logger.warn(`Agent registered but ATOM stats init failed: ${error instanceof Error ? error.message : String(error)}`);
+            if (options?.collectionPointer) {
+                const pointerOptions = {
+                    lock: options.collectionLock ?? true,
+                };
+                if (options.signer !== undefined)
+                    pointerOptions.signer = options.signer;
+                if (options.feePayer !== undefined)
+                    pointerOptions.feePayer = options.feePayer;
+                if (options.computeUnits !== undefined)
+                    pointerOptions.computeUnits = options.computeUnits;
+                try {
+                    const pointerResult = await this.setCollectionPointer(result.asset, options.collectionPointer, pointerOptions);
+                    if ('success' in pointerResult && pointerResult.success) {
+                        signatures.push(pointerResult.signature);
+                    }
+                    else {
+                        const errorMsg = 'error' in pointerResult ? pointerResult.error : 'Unknown error';
+                        logger.warn(`Agent registered but collection pointer attach failed: ${errorMsg}`);
+                    }
+                }
+                catch (error) {
+                    logger.warn(`Agent registered but collection pointer attach failed: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+            if (signatures.length > 1) {
+                return {
+                    ...result,
+                    signatures,
+                };
             }
         }
         return result;
@@ -1470,7 +1674,8 @@ export class SolanaSDK {
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
      * @param sealHash - Optional SEAL hash from original feedback.
-     * Legacy compatibility: if omitted, SDK uses all-zero hash.
+     * If omitted, SDK attempts to auto-resolve from indexed feedback by using signer as feedback client.
+     * Legacy fallback remains supported (all-zero hash) when auto-resolution is unavailable.
      * @param options - Write options (skipSend, signer)
      */
     async revokeFeedback(asset, feedbackIndex, sealHash, options) {
@@ -1478,24 +1683,99 @@ export class SolanaSDK {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.reputationTxBuilder.revokeFeedback(asset, idx, sealHash, options);
+        let resolvedSealHash = sealHash;
+        const client = options?.signer ?? this.signer?.publicKey;
+        if (!client) {
+            throw new Error('No signer available to verify feedback ownership.');
+        }
+        const verifyFeedbackClient = options?.verifyFeedbackClient ?? true;
+        const feedback = (verifyFeedbackClient || !resolvedSealHash)
+            ? await this.resolveFeedbackFromIndexer(asset, client, idx, {
+                waitForSync: options?.waitForIndexerSync ?? true,
+            })
+            : null;
+        if (verifyFeedbackClient) {
+            if (!feedback) {
+                throw new Error(`Feedback ${idx.toString()} for signer ${client.toBase58()} not found in indexer. Refusing revoke preflight.`);
+            }
+            if (feedback.isRevoked || feedback.revoked) {
+                throw new Error(`Feedback ${idx.toString()} for signer ${client.toBase58()} is already revoked.`);
+            }
+        }
+        if (!resolvedSealHash && feedback?.sealHash && feedback.sealHash.length === 32) {
+            resolvedSealHash = feedback.sealHash;
+        }
+        if (resolvedSealHash && feedback?.sealHash && feedback.sealHash.length === 32) {
+            if (!resolvedSealHash.equals(feedback.sealHash)) {
+                throw new Error(`Provided sealHash does not match indexed feedback ${idx.toString()} for signer ${client.toBase58()}.`);
+            }
+        }
+        if (!resolvedSealHash) {
+            throw new Error('sealHash could not be auto-resolved yet. Wait for indexer sync or pass a valid sealHash explicitly.');
+        }
+        return await this.reputationTxBuilder.revokeFeedback(asset, idx, resolvedSealHash, options);
     }
-    /**
-     * Append response to feedback (write operation)
-     * @param asset - Agent Core asset pubkey
-     * @param client - Client address who gave the feedback
-     * @param feedbackIndex - Feedback index (number or bigint)
-     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
-     * @param responseUri - Response URI
-     * @param responseHash - Response hash (optional for ipfs://)
-     * @param options - Write options (skipSend, signer)
-     */
-    async appendResponse(asset, client, feedbackIndex, sealHash, responseUri, responseHash, options) {
-        if (!options?.skipSend && !this.signer) {
+    async appendResponse(asset, client, feedbackIndex, sealHashOrResponseUri, responseUriOrResponseHash, responseHashOrOptions, options) {
+        let resolvedSealHash;
+        let responseUri;
+        let responseHash;
+        let writeOptions;
+        if (Buffer.isBuffer(sealHashOrResponseUri)) {
+            resolvedSealHash = sealHashOrResponseUri;
+            if (typeof responseUriOrResponseHash !== 'string') {
+                throw new Error('responseUri is required when sealHash is provided');
+            }
+            responseUri = responseUriOrResponseHash;
+            if (Buffer.isBuffer(responseHashOrOptions)) {
+                responseHash = responseHashOrOptions;
+                writeOptions = options;
+            }
+            else {
+                writeOptions = responseHashOrOptions ?? options;
+            }
+        }
+        else {
+            responseUri = sealHashOrResponseUri;
+            if (Buffer.isBuffer(responseUriOrResponseHash)) {
+                responseHash = responseUriOrResponseHash;
+                writeOptions = responseHashOrOptions;
+            }
+            else {
+                writeOptions = responseUriOrResponseHash ?? responseHashOrOptions;
+            }
+        }
+        if (!writeOptions?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
         const idx = typeof feedbackIndex === 'number' ? BigInt(feedbackIndex) : feedbackIndex;
-        return await this.reputationTxBuilder.appendResponse(asset, client, idx, sealHash, responseUri, responseHash, options);
+        if (!resolvedSealHash) {
+            const feedback = await this.resolveFeedbackFromIndexer(asset, client, idx);
+            if (!feedback) {
+                throw new Error(`Feedback ${idx.toString()} for client ${client.toBase58()} is not indexed yet. Wait for indexer sync.`);
+            }
+            if (!feedback.sealHash || feedback.sealHash.length !== 32) {
+                throw new Error('sealHash could not be auto-resolved yet. Wait for indexer sync or pass sealHash explicitly.');
+            }
+            resolvedSealHash = feedback.sealHash;
+        }
+        return await this.reputationTxBuilder.appendResponse(asset, client, idx, resolvedSealHash, responseUri, responseHash, writeOptions);
+    }
+    /**
+     * Append response using sealHash only (feedbackIndex auto-resolved from indexer).
+     * Useful when caller stores sealHash but not feedbackIndex.
+     */
+    async appendResponseBySealHash(asset, client, sealHash, responseUri, responseHash, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        if (sealHash.length !== 32) {
+            throw new Error('sealHash must be 32 bytes');
+        }
+        const feedback = await this.resolveFeedbackBySealHashFromIndexer(asset, client, sealHash);
+        if (!feedback) {
+            throw new Error(`feedbackIndex could not be resolved from sealHash for client ${client.toBase58()}. Wait for indexer sync.`);
+        }
+        return this.appendResponse(asset, client, feedback.feedbackIndex, sealHash, responseUri, responseHash, options);
     }
     /**
      * Request validation (write operation) - v0.3.0

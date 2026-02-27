@@ -20,6 +20,7 @@ export interface TransactionResult {
     error?: string;
 }
 type TransactionBuilderProgramIdOverrides = Pick<ProgramIdOverrides, 'agentRegistry' | 'atomEngine' | 'mplCore'>;
+export declare function validateCollectionPointer(col: string): void;
 export interface WriteOptions {
     /** If true, returns serialized transaction instead of sending */
     skipSend?: boolean;
@@ -53,6 +54,15 @@ export interface RegisterAgentOptions extends WriteOptions {
     assetPubkey?: PublicKey;
     /** Explicitly disable ATOM at creation (default: true = enabled). */
     atomEnabled?: boolean;
+    /**
+     * Optional collection pointer to attach after successful register in the high-level SDK flow.
+     * Format: c1:<payload>
+     */
+    collectionPointer?: string;
+    /**
+     * Lock collection pointer after attach (default: true). Ignored when collectionPointer is not set.
+     */
+    collectionLock?: boolean;
 }
 /**
  * Result when skipSend is true - contains serialized transaction data

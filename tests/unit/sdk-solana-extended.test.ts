@@ -134,6 +134,16 @@ const mockIndexerClient = {
 
 jest.unstable_mockModule('../../src/core/indexer-client.js', () => ({
   IndexerClient: jest.fn().mockImplementation(() => mockIndexerClient),
+  encodeCanonicalFeedbackId: jest.fn((asset: string, client: string, index: number | bigint | string) => `${asset}:${client}:${index.toString()}`),
+  encodeCanonicalResponseId: jest.fn(
+    (
+      asset: string,
+      client: string,
+      index: number | bigint | string,
+      responder: string,
+      sequenceOrSig: number | bigint | string
+    ) => `${asset}:${client}:${index.toString()}:${responder}:${sequenceOrSig.toString()}`
+  ),
 }));
 
 jest.unstable_mockModule('../../src/core/indexer-types.js', () => ({

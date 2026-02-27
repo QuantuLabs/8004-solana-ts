@@ -272,6 +272,17 @@ export interface WaitForValidationOptions {
     /** Wait for response (responded_at > 0) instead of just account creation (default: false) */
     waitForResponse?: boolean;
 }
+export interface RevokeFeedbackOptions extends WriteOptions {
+    /**
+     * Verify signer owns the feedback before sending tx (default: true).
+     * Set false only when you intentionally skip indexer preflight checks.
+     */
+    verifyFeedbackClient?: boolean;
+    /**
+     * Wait briefly for indexer sync when feedback is not visible yet (default: true).
+     */
+    waitForIndexerSync?: boolean;
+}
 /**
  * Main SDK class for Solana 8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
@@ -435,6 +446,20 @@ export declare class SolanaSDK {
         backoffMultiplier?: number;
     }): Promise<boolean>;
     /**
+     * Resolve a specific feedback via indexer-backed reads.
+     * Returns null when feedback is not yet indexed.
+     */
+    private resolveFeedbackFromIndexer;
+    /**
+     * Resolve SEAL hash for a specific feedback via indexer-backed reads.
+     * Returns undefined when feedback/sealHash is not yet indexed.
+     */
+    private resolveSealHashFromIndexer;
+    /**
+     * Resolve feedback by SEAL hash when caller does not know feedbackIndex.
+     */
+    private resolveFeedbackBySealHashFromIndexer;
+    /**
      * 1. Get agent reputation summary - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param minScore - Optional minimum score filter
@@ -458,6 +483,26 @@ export declare class SolanaSDK {
      * @returns Feedback object or null
      */
     getFeedback(asset: PublicKey, clientAddress: PublicKey, feedbackIndex: number | bigint): Promise<SolanaFeedback | null>;
+    /**
+     * Build canonical feedback ID used by indexers.
+     * Format: "<asset>:<client>:<feedbackIndex>" (no chain prefix).
+     */
+    encodeFeedbackId(asset: PublicKey | string, client: PublicKey | string, feedbackIndex: number | bigint): string;
+    /**
+     * Build canonical response ID used by indexers.
+     * Format: "<asset>:<client>:<feedbackIndex>:<responder>:<responseCount|txSig>".
+     */
+    encodeResponseId(asset: PublicKey | string, client: PublicKey | string, feedbackIndex: number | bigint, responder: PublicKey | string, responseCountOrTxSig: number | bigint | string): string;
+    /**
+     * Read feedback by indexer feedback id.
+     * Accepts sequential numeric backend feedback ids.
+     */
+    getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null>;
+    /**
+     * Read responses by indexer feedback id.
+     * Accepts sequential numeric backend feedback ids.
+     */
+    getFeedbackResponsesByFeedbackId(feedbackId: string, limit?: number): Promise<import('./indexer-client.js').IndexedFeedbackResponse[]>;
     /**
      * 3. Read all feedbacks for an agent (indexer) - v0.4.0
      * @param asset - Agent Core asset pubkey
@@ -635,6 +680,14 @@ export declare class SolanaSDK {
      */
     getAgentByWallet(wallet: string): Promise<IndexedAgent | null>;
     /**
+     * Get agent by backend sequence id (indexer only)
+     * @param agentId - REST: sequential `agent_id`; GraphQL: sequential `agentId` / `agentid`
+     * @returns Indexed agent or null
+     */
+    getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+    /** @deprecated Use getAgentByAgentId(agentId) */
+    getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+    /**
      * Get pending validations for a validator - indexer only
      * @param validator - Validator pubkey string
      * @returns Array of pending validation requests
@@ -726,6 +779,9 @@ export declare class SolanaSDK {
      *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
      *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
      *     (use enableAtom() to turn it on later, one-way)
+     *   - `collectionPointer`: Optional pointer (c1:<payload>) to attach after successful register
+     *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
+     *     Note: when `skipSend=true`, only the register tx is prepared, so pointer attach is skipped.
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
      *
      * @example
@@ -820,21 +876,29 @@ export declare class SolanaSDK {
      * @param asset - Agent Core asset pubkey
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
      * @param sealHash - Optional SEAL hash from original feedback.
-     * Legacy compatibility: if omitted, SDK uses all-zero hash.
+     * If omitted, SDK attempts to auto-resolve from indexed feedback by using signer as feedback client.
+     * Legacy fallback remains supported (all-zero hash) when auto-resolution is unavailable.
      * @param options - Write options (skipSend, signer)
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, sealHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, sealHash?: Buffer, options?: RevokeFeedbackOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback (write operation)
      * @param asset - Agent Core asset pubkey
      * @param client - Client address who gave the feedback
      * @param feedbackIndex - Feedback index (number or bigint)
-     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
+     * @param sealHash - Optional SEAL hash from the original feedback.
+     * If omitted, SDK attempts auto-resolution from indexer.
      * @param responseUri - Response URI
      * @param responseHash - Response hash (optional for ipfs://)
      * @param options - Write options (skipSend, signer)
      */
     appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint, sealHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    appendResponse(asset: PublicKey, client: PublicKey, feedbackIndex: number | bigint, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Append response using sealHash only (feedbackIndex auto-resolved from indexer).
+     * Useful when caller stores sealHash but not feedbackIndex.
+     */
+    appendResponseBySealHash(asset: PublicKey, client: PublicKey, sealHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Request validation (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey

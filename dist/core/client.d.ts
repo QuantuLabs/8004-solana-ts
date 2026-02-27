@@ -4,9 +4,15 @@
  * No Anchor dependency - uses @solana/web3.js only
  */
 import { Connection, PublicKey, GetProgramAccountsFilter, AccountInfo, Commitment } from '@solana/web3.js';
-export type Cluster = 'devnet';
+export type Cluster = 'devnet' | 'testnet' | 'mainnet-beta' | 'localnet';
 /** Default Solana devnet RPC URL */
 export declare const SOLANA_DEVNET_RPC = "https://api.devnet.solana.com";
+/** Default Solana testnet RPC URL */
+export declare const SOLANA_TESTNET_RPC = "https://api.testnet.solana.com";
+/** Default Solana mainnet-beta RPC URL */
+export declare const SOLANA_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
+/** Default Solana localnet RPC URL */
+export declare const SOLANA_LOCALNET_RPC = "http://127.0.0.1:8899";
 /** List of RPC providers that support advanced features like getProgramAccounts with memcmp */
 export declare const RECOMMENDED_RPC_PROVIDERS: string[];
 export interface SolanaClientConfig {

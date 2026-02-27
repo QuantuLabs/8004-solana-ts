@@ -1334,6 +1334,10 @@ export class IndexerClient implements IndexerReadClient {
   /**
    * Get responses by feedback identifier.
    * Accepts sequential numeric backend feedback ids.
+   * Uses a two-step lookup for REST compatibility:
+   * 1) resolve feedback asset from `feedbacks` by `feedback_id`
+   * 2) query `feedback_responses` by `asset + feedback_id`
+   * Fails closed when a single `feedback_id` resolves to multiple assets.
    */
   async getFeedbackResponsesByFeedbackId(
     feedbackId: string,
@@ -1342,7 +1346,32 @@ export class IndexerClient implements IndexerReadClient {
     const normalizedId = feedbackId.trim();
     if (!/^\d+$/.test(normalizedId)) return [];
 
+    const feedbackLookupQuery = this.buildQuery({
+      feedback_id: `eq.${normalizedId}`,
+      select: 'asset',
+      limit: 2,
+    });
+    const feedbackLookup = await this.request<Array<Pick<IndexedFeedback, 'asset'>>>(
+      `/feedbacks${feedbackLookupQuery}`
+    );
+    const assets = [
+      ...new Set(
+        feedbackLookup
+          .map((row) => row.asset)
+          .filter((asset) => typeof asset === 'string' && asset.length > 0)
+      ),
+    ];
+    if (assets.length === 0) return [];
+    if (assets.length > 1) {
+      throw new IndexerError(
+        `Ambiguous feedback_id "${normalizedId}": multiple assets found (${assets.join(', ')}).`,
+        IndexerErrorCode.INVALID_RESPONSE
+      );
+    }
+    const [asset] = assets;
+
     const query = this.buildQuery({
+      asset: `eq.${asset}`,
       feedback_id: `eq.${normalizedId}`,
       order: 'response_id.asc',
       limit,

@@ -394,15 +394,61 @@ describe('IndexerClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(0);
     });
 
-    it('getFeedbackResponsesByFeedbackId should query via feedback_id for sequential ids', async () => {
+    it('getFeedbackResponsesByFeedbackId should resolve asset then query responses for sequential ids', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse([{ asset: 'asset1' }]))
+        .mockResolvedValueOnce(mockJsonResponse([]));
       await client.getFeedbackResponsesByFeedbackId('123', 10);
-      const url = (mockFetch.mock.calls[0][0] as string);
-      expect(url).toContain('feedback_id=eq.123');
-      expect(url).toContain('order=response_id.asc');
-      expect(url).toContain('limit=10');
+      const feedbackLookupUrl = (mockFetch.mock.calls[0][0] as string);
+      expect(feedbackLookupUrl).toContain('/feedbacks?');
+      expect(feedbackLookupUrl).toContain('feedback_id=eq.123');
+      expect(feedbackLookupUrl).toContain('select=asset');
+      expect(feedbackLookupUrl).toContain('limit=2');
+
+      const responsesUrl = (mockFetch.mock.calls[1][0] as string);
+      expect(responsesUrl).toContain('/feedback_responses?');
+      expect(responsesUrl).toContain('asset=eq.asset1');
+      expect(responsesUrl).toContain('feedback_id=eq.123');
+      expect(responsesUrl).toContain('order=response_id.asc');
+      expect(responsesUrl).toContain('limit=10');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('getFeedbackResponsesByFeedbackId should return [] when feedback lookup misses', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse([]));
+
+      await expect(client.getFeedbackResponsesByFeedbackId('123', 10)).resolves.toEqual([]);
+      const feedbackLookupUrl = (mockFetch.mock.calls[0][0] as string);
+      expect(feedbackLookupUrl).toContain('/feedbacks?');
+      expect(feedbackLookupUrl).toContain('feedback_id=eq.123');
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('getFeedbackResponsesByFeedbackId should fail closed when lookup resolves multiple assets', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse([{ asset: 'asset1' }, { asset: 'asset2' }]));
+
+      await expect(client.getFeedbackResponsesByFeedbackId('123', 10)).rejects.toMatchObject({
+        name: 'IndexerError',
+        code: IndexerErrorCode.INVALID_RESPONSE,
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('getFeedbackResponsesByFeedbackId should allow duplicate lookup rows for the same asset', async () => {
+      const client = createClient();
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse([{ asset: 'asset1' }, { asset: 'asset1' }]))
+        .mockResolvedValueOnce(mockJsonResponse([]));
+
+      await expect(client.getFeedbackResponsesByFeedbackId('123', 10)).resolves.toEqual([]);
+      const feedbackLookupUrl = (mockFetch.mock.calls[0][0] as string);
+      expect(feedbackLookupUrl).toContain('limit=2');
+      const responsesUrl = (mockFetch.mock.calls[1][0] as string);
+      expect(responsesUrl).toContain('asset=eq.asset1');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     it('getFeedbackResponsesByFeedbackId should reject canonical input ids', async () => {

@@ -229,8 +229,17 @@ console.log(feedback.score);         // 85 or null
 console.log(feedback.value);         // 15000n
 console.log(feedback.valueDecimals); // 2
 
-// List all feedbacks
-const feedbacks = await sdk.listFeedbacks(agent.asset, { limit: 10 });
+// List all feedbacks for an agent (indexer-backed)
+const feedbacks = await sdk.readAllFeedback(agent.asset);
+const latest10 = feedbacks.slice(0, 10);
+
+// Read by indexer feedback row id (sequential numeric id only)
+const feedbackById = await sdk.getFeedbackById('123'); // valid
+const invalidCanonical = await sdk.getFeedbackById('asset:client:7'); // null
+const responsesById = await sdk.getFeedbackResponsesByFeedbackId('123', 10); // valid
+
+// Fails closed if a backend feedback_id is ambiguous across assets
+// (throws IndexerError with code INVALID_RESPONSE)
 
 // Get reputation summary
 const summary = await sdk.getSummary(agent.asset);

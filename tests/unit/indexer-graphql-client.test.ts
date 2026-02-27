@@ -522,6 +522,182 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect((body.variables as any)?.where?.isRevoked).toBe(false);
   });
 
+  it('getFeedback should query canonical feedback id and preserve sequential row ids', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedback: {
+            id: '123',
+            clientAddress: 'ClientFeedback111',
+            feedbackIndex: '7',
+            tag1: 'quality',
+            tag2: null,
+            endpoint: '/chat',
+            feedbackURI: 'ipfs://feedback',
+            feedbackHash: 'ab'.repeat(32),
+            isRevoked: false,
+            createdAt: '1773000001',
+            revokedAt: null,
+            solana: {
+              valueRaw: '100',
+              valueDecimals: 0,
+              score: 95,
+              txSignature: 'sig1',
+              blockSlot: '100',
+            },
+          },
+        },
+      }),
+    );
+
+    const row = await client.getFeedback('AssetFeedback222', 'ClientFeedback111', 7n);
+    expect(row?.id).toBe('123');
+    expect(row?.asset).toBe('AssetFeedback222');
+    expect(row?.client_address).toBe('ClientFeedback111');
+    expect(row?.feedback_index).toBe(7);
+    const body = getBody(0);
+    expect((body.variables as any)?.id).toBe('AssetFeedback222:ClientFeedback111:7');
+  });
+
+  it('getFeedback should return null without fallback when canonical id misses', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedback: null,
+        },
+      }),
+    );
+
+    await expect(client.getFeedback('AssetFeedback222', 'ClientFeedback111', 7n)).resolves.toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('getFeedbackResponsesFor should query canonical feedback id and preserve sequential response ids', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbackResponses: [
+            {
+              id: '901',
+              responder: 'Responder111',
+              responseUri: 'ipfs://response-901',
+              responseHash: 'cd'.repeat(32),
+              createdAt: '1773000002',
+              solana: {
+                txSignature: 'respSig901',
+                blockSlot: '101',
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    const rows = await client.getFeedbackResponsesFor('AssetFeedback222', 'ClientFeedback111', 7, 10);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: '901',
+      asset: 'AssetFeedback222',
+      client_address: 'ClientFeedback111',
+      feedback_index: 7,
+      responder: 'Responder111',
+    });
+    const body = getBody(0);
+    expect((body.variables as any)?.feedback).toBe('AssetFeedback222:ClientFeedback111:7');
+  });
+
+  it('getFeedbackResponsesFor should return [] without fallback when canonical id has no rows', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbackResponses: [],
+        },
+      }),
+    );
+
+    await expect(
+      client.getFeedbackResponsesFor('AssetFeedback222', 'ClientFeedback111', 7, 10)
+    ).resolves.toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('getFeedbacksByClient should decode legacy sol-prefixed feedback ids', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbacks: [
+            {
+              id: 'sol:LegacyAsset555:ClientFeedback111:7',
+              clientAddress: 'ClientFeedback111',
+              feedbackIndex: '7',
+              tag1: 'quality',
+              tag2: null,
+              endpoint: '/chat',
+              feedbackURI: 'ipfs://feedback',
+              feedbackHash: 'ab'.repeat(32),
+              isRevoked: false,
+              createdAt: '1773000001',
+              revokedAt: null,
+              solana: {
+                valueRaw: '100',
+                valueDecimals: 0,
+                score: 95,
+                txSignature: 'sig1',
+                blockSlot: '100',
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    const rows = await client.getFeedbacksByClient('ClientFeedback111');
+    expect(rows[0]?.asset).toBe('LegacyAsset555');
+  });
+
+  it('getFeedbacksByClient should preserve asset when ids are sequential and agent linkage is present', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbacks: [
+            {
+              id: '123',
+              clientAddress: 'ClientFeedback111',
+              feedbackIndex: '7',
+              tag1: 'quality',
+              tag2: null,
+              endpoint: '/chat',
+              feedbackURI: 'ipfs://feedback',
+              feedbackHash: 'ab'.repeat(32),
+              isRevoked: false,
+              createdAt: '1773000001',
+              revokedAt: null,
+              agent: { id: 'RecoveredAsset333' },
+              solana: {
+                valueRaw: '100',
+                valueDecimals: 0,
+                score: 95,
+                txSignature: 'sig1',
+                blockSlot: '100',
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    const rows = await client.getFeedbacksByClient('ClientFeedback111');
+    expect(rows[0]?.asset).toBe('RecoveredAsset333');
+    const body = getBody(0);
+    expect(body.query).toContain('agent { id }');
+  });
+
   it('getAgentReputation should throw to allow SDK on-chain fallback', async () => {
     const client = createClient();
     await expect(client.getAgentReputation('AssetCanonical111')).rejects.toThrow(

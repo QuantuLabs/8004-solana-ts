@@ -290,15 +290,23 @@ function buildAgentWhere(options?: AgentQueryOptions): Record<string, unknown> {
 }
 
 function feedbackId(asset: string, client: string, index: number | bigint): string {
-  return `sol:${asset}:${client}:${index.toString()}`;
+  return `${asset}:${client}:${index.toString()}`;
 }
 
 function decodeFeedbackId(id: string): { asset: string; client: string; index: string } | null {
   const parts = id.split(':');
-  if (parts.length !== 4 || parts[0] !== 'sol') return null;
-  const [, asset, client, index] = parts;
-  if (!asset || !client || !index) return null;
-  return { asset, client, index };
+  if (parts.length === 3) {
+    const [asset, client, index] = parts;
+    if (asset === 'sol') return null;
+    if (!asset || !client || !index) return null;
+    return { asset, client, index };
+  }
+  if (parts.length === 4 && parts[0] === 'sol') {
+    const [, asset, client, index] = parts;
+    if (!asset || !client || !index) return null;
+    return { asset, client, index };
+  }
+  return null;
 }
 
 function decodeValidationId(id: string): { asset: string; validator: string; nonce: string } | null {
@@ -307,6 +315,69 @@ function decodeValidationId(id: string): { asset: string; validator: string; non
   const [, asset, validator, nonce] = parts;
   if (!asset || !validator || !nonce) return null;
   return { asset, validator, nonce };
+}
+
+function resolveFeedbackAsset(row: any, fallbackAsset = ''): string {
+  if (typeof row?.id === 'string') {
+    const decoded = decodeFeedbackId(row.id);
+    if (decoded?.asset) return decoded.asset;
+  }
+
+  const directAgent = row?.agent;
+  if (typeof directAgent === 'string' && directAgent.length > 0) {
+    return directAgent;
+  }
+  if (typeof directAgent?.id === 'string' && directAgent.id.length > 0) {
+    return directAgent.id;
+  }
+  if (typeof row?.asset === 'string' && row.asset.length > 0) {
+    return row.asset;
+  }
+  return fallbackAsset;
+}
+
+function mapGqlFeedback(row: any, fallbackAsset = ''): IndexedFeedback {
+  return {
+    id: row.id,
+    asset: resolveFeedbackAsset(row, fallbackAsset),
+    client_address: row.clientAddress,
+    feedback_index: toNumberSafe(row.feedbackIndex, 0),
+    value: row?.solana?.valueRaw ?? '0',
+    value_decimals: toNumberSafe(row?.solana?.valueDecimals, 0),
+    score: row?.solana?.score ?? null,
+    tag1: row.tag1 ?? '',
+    tag2: row.tag2 ?? '',
+    endpoint: row.endpoint ?? null,
+    feedback_uri: row.feedbackURI ?? null,
+    running_digest: null,
+    feedback_hash: row.feedbackHash ?? null,
+    is_revoked: Boolean(row.isRevoked),
+    revoked_at: row.revokedAt ? toIsoFromUnixSeconds(row.revokedAt) : null,
+    block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
+    tx_signature: row?.solana?.txSignature ?? '',
+    created_at: toIsoFromUnixSeconds(row.createdAt),
+  };
+}
+
+function mapGqlFeedbackResponse(
+  row: any,
+  asset: string,
+  client: string,
+  feedbackIndex: number | bigint
+): IndexedFeedbackResponse {
+  return {
+    id: row.id,
+    asset,
+    client_address: client,
+    feedback_index: toNumberSafe(feedbackIndex, 0),
+    responder: row.responder,
+    response_uri: row.responseUri ?? null,
+    response_hash: row.responseHash ?? null,
+    running_digest: null,
+    block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
+    tx_signature: row?.solana?.txSignature ?? '',
+    created_at: toIsoFromUnixSeconds(row.createdAt),
+  };
 }
 
 function mapValidationStatus(status: unknown): 'PENDING' | 'RESPONDED' {
@@ -1061,26 +1132,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       { where }
     );
 
-    return data.feedbacks.map((f) => ({
-      id: f.id,
-      asset,
-      client_address: f.clientAddress,
-      feedback_index: toNumberSafe(f.feedbackIndex, 0),
-      value: f?.solana?.valueRaw ?? '0',
-      value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-      score: f?.solana?.score ?? null,
-      tag1: f.tag1 ?? '',
-      tag2: f.tag2 ?? '',
-      endpoint: f.endpoint ?? null,
-      feedback_uri: f.feedbackURI ?? null,
-      running_digest: null,
-      feedback_hash: f.feedbackHash ?? null,
-      is_revoked: Boolean(f.isRevoked),
-      revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-      block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-      tx_signature: f?.solana?.txSignature ?? '',
-      created_at: toIsoFromUnixSeconds(f.createdAt),
-    }));
+    return data.feedbacks.map((f) => mapGqlFeedback(f, asset));
   }
 
   async getFeedback(
@@ -1109,27 +1161,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
 );
 
     if (!data.feedback) return null;
-    const f = data.feedback;
-    return {
-      id: f.id,
-      asset,
-      client_address: f.clientAddress,
-      feedback_index: toNumberSafe(f.feedbackIndex, 0),
-      value: f?.solana?.valueRaw ?? '0',
-      value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-      score: f?.solana?.score ?? null,
-      tag1: f.tag1 ?? '',
-      tag2: f.tag2 ?? '',
-      endpoint: f.endpoint ?? null,
-      feedback_uri: f.feedbackURI ?? null,
-      running_digest: null,
-      feedback_hash: f.feedbackHash ?? null,
-      is_revoked: Boolean(f.isRevoked),
-      revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-      block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-      tx_signature: f?.solana?.txSignature ?? '',
-      created_at: toIsoFromUnixSeconds(f.createdAt),
-    };
+    return mapGqlFeedback(data.feedback, asset);
   }
 
   async getFeedbacksByClient(client: string): Promise<IndexedFeedback[]> {
@@ -1137,6 +1169,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       `query($client: String!) {
         feedbacks(first: 250, where: { clientAddress: $client }, orderBy: createdAt, orderDirection: desc) {
           id
+          agent { id }
           clientAddress
           feedbackIndex
           tag1
@@ -1153,30 +1186,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       { client }
     );
 
-    return data.feedbacks.map((f) => {
-      const decoded = decodeFeedbackId(f.id);
-      const asset = decoded?.asset ?? '';
-      return {
-        id: f.id,
-        asset,
-        client_address: f.clientAddress,
-        feedback_index: toNumberSafe(f.feedbackIndex, 0),
-        value: f?.solana?.valueRaw ?? '0',
-        value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-        score: f?.solana?.score ?? null,
-        tag1: f.tag1 ?? '',
-        tag2: f.tag2 ?? '',
-        endpoint: f.endpoint ?? null,
-        feedback_uri: f.feedbackURI ?? null,
-        running_digest: null,
-        feedback_hash: f.feedbackHash ?? null,
-        is_revoked: Boolean(f.isRevoked),
-        revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-        block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-        tx_signature: f?.solana?.txSignature ?? '',
-        created_at: toIsoFromUnixSeconds(f.createdAt),
-      };
-    });
+    return data.feedbacks.map((f) => mapGqlFeedback(f));
   }
 
   async getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]> {
@@ -1186,6 +1196,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         `query($tag: String!) {
           feedbacks(first: 250, where: { tag1: $tag }, orderBy: createdAt, orderDirection: desc) {
             id
+            agent { id }
             clientAddress
             feedbackIndex
             tag1
@@ -1205,6 +1216,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         `query($tag: String!) {
           feedbacks(first: 250, where: { tag2: $tag }, orderBy: createdAt, orderDirection: desc) {
             id
+            agent { id }
             clientAddress
             feedbackIndex
             tag1
@@ -1227,30 +1239,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       merged.set(f.id, f);
     }
 
-    return Array.from(merged.values()).map((f) => {
-      const decoded = decodeFeedbackId(f.id);
-      const asset = decoded?.asset ?? '';
-      return {
-        id: f.id,
-        asset,
-        client_address: f.clientAddress,
-        feedback_index: toNumberSafe(f.feedbackIndex, 0),
-        value: f?.solana?.valueRaw ?? '0',
-        value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-        score: f?.solana?.score ?? null,
-        tag1: f.tag1 ?? '',
-        tag2: f.tag2 ?? '',
-        endpoint: f.endpoint ?? null,
-        feedback_uri: f.feedbackURI ?? null,
-        running_digest: null,
-        feedback_hash: f.feedbackHash ?? null,
-        is_revoked: Boolean(f.isRevoked),
-        revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-        block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-        tx_signature: f?.solana?.txSignature ?? '',
-        created_at: toIsoFromUnixSeconds(f.createdAt),
-      };
-    });
+    return Array.from(merged.values()).map((f) => mapGqlFeedback(f));
   }
 
   async getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]> {
@@ -1258,6 +1247,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       `query($endpoint: String!) {
         feedbacks(first: 250, where: { endpoint: $endpoint }, orderBy: createdAt, orderDirection: desc) {
           id
+          agent { id }
           clientAddress
           feedbackIndex
           tag1
@@ -1274,30 +1264,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       { endpoint }
     );
 
-    return data.feedbacks.map((f) => {
-      const decoded = decodeFeedbackId(f.id);
-      const asset = decoded?.asset ?? '';
-      return {
-        id: f.id,
-        asset,
-        client_address: f.clientAddress,
-        feedback_index: toNumberSafe(f.feedbackIndex, 0),
-        value: f?.solana?.valueRaw ?? '0',
-        value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-        score: f?.solana?.score ?? null,
-        tag1: f.tag1 ?? '',
-        tag2: f.tag2 ?? '',
-        endpoint: f.endpoint ?? null,
-        feedback_uri: f.feedbackURI ?? null,
-        running_digest: null,
-        feedback_hash: f.feedbackHash ?? null,
-        is_revoked: Boolean(f.isRevoked),
-        revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-        block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-        tx_signature: f?.solana?.txSignature ?? '',
-        created_at: toIsoFromUnixSeconds(f.createdAt),
-      };
-    });
+    return data.feedbacks.map((f) => mapGqlFeedback(f));
   }
 
   async getAllFeedbacks(options?: { includeRevoked?: boolean; limit?: number }): Promise<IndexedFeedback[]> {
@@ -1309,6 +1276,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       `query($where: FeedbackFilter) {
         feedbacks(first: ${first}, where: $where, orderBy: createdAt, orderDirection: desc) {
           id
+          agent { id }
           clientAddress
           feedbackIndex
           tag1
@@ -1325,30 +1293,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       { where: Object.keys(where).length ? where : null }
     );
 
-    return data.feedbacks.map((f) => {
-      const decoded = decodeFeedbackId(f.id);
-      const asset = decoded?.asset ?? '';
-      return {
-        id: f.id,
-        asset,
-        client_address: f.clientAddress,
-        feedback_index: toNumberSafe(f.feedbackIndex, 0),
-        value: f?.solana?.valueRaw ?? '0',
-        value_decimals: toNumberSafe(f?.solana?.valueDecimals, 0),
-        score: f?.solana?.score ?? null,
-        tag1: f.tag1 ?? '',
-        tag2: f.tag2 ?? '',
-        endpoint: f.endpoint ?? null,
-        feedback_uri: f.feedbackURI ?? null,
-        running_digest: null,
-        feedback_hash: f.feedbackHash ?? null,
-        is_revoked: Boolean(f.isRevoked),
-        revoked_at: f.revokedAt ? toIsoFromUnixSeconds(f.revokedAt) : null,
-        block_slot: toNumberSafe(f?.solana?.blockSlot, 0),
-        tx_signature: f?.solana?.txSignature ?? '',
-        created_at: toIsoFromUnixSeconds(f.createdAt),
-      };
-    });
+    return data.feedbacks.map((f) => mapGqlFeedback(f));
   }
 
   async getLastFeedbackIndex(asset: string, client: string): Promise<bigint> {
@@ -1388,19 +1333,9 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       { feedback: feedbackId(asset, client, feedbackIndex) }
     );
 
-    return data.feedbackResponses.map((r) => ({
-      id: r.id,
-      asset,
-      client_address: client,
-      feedback_index: toNumberSafe(feedbackIndex, 0),
-      responder: r.responder,
-      response_uri: r.responseUri ?? null,
-      response_hash: r.responseHash ?? null,
-      running_digest: null,
-      block_slot: toNumberSafe(r?.solana?.blockSlot, 0),
-      tx_signature: r?.solana?.txSignature ?? '',
-      created_at: toIsoFromUnixSeconds(r.createdAt),
-    }));
+    return (data.feedbackResponses ?? []).map((r) =>
+      mapGqlFeedbackResponse(r, asset, client, feedbackIndex)
+    );
   }
 
   // ============================================================================

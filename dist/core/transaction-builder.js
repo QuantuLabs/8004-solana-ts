@@ -30,7 +30,7 @@ const DEFAULT_COMPUTE_UNITS = 400_000;
 const COLLECTION_POINTER_PREFIX = 'c1:';
 const COLLECTION_POINTER_MAX_BYTES = 128;
 const COLLECTION_POINTER_PAYLOAD_RE = /^[a-z0-9]+$/;
-function validateCollectionPointer(col) {
+export function validateCollectionPointer(col) {
     if (typeof col !== 'string') {
         throw new Error('col must be a string');
     }

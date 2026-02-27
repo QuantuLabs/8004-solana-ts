@@ -22,10 +22,18 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     constructor(config: IndexerGraphQLClientConfig);
     getBaseUrl(): string;
     private shouldUseLegacyCollectionRead;
+    private shouldFallbackAgentIdField;
+    private shouldFallbackAgentIdVariableType;
+    private shouldRetryBigIntAgentIdAsNumber;
+    private requestAgentBySequentialIdField;
+    private requestWithAgentIdField;
     private request;
     isAvailable(): Promise<boolean>;
     private loadHashChainHeads;
     getAgent(asset: string): Promise<IndexedAgent | null>;
+    getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+    /** @deprecated Use getAgentByAgentId(agentId) */
+    getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
     getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
     getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
     getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;

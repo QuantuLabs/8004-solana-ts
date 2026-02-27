@@ -66,6 +66,15 @@ export interface IndexerReadClient {
     getBaseUrl(): string;
     isAvailable(): Promise<boolean>;
     getAgent(asset: string): Promise<IndexedAgent | null>;
+    /**
+     * Backend-specific agent lookup key.
+     * REST: sequential `agent_id`.
+     * GraphQL: sequential `agentId` / `agentid`.
+     * Use `getAgent(asset)` for asset pubkey lookups.
+     */
+    getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+    /** @deprecated Use getAgentByAgentId(agentId) */
+    getAgentByIndexerId?(agentId: string | number | bigint): Promise<IndexedAgent | null>;
     getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
     getAgentsByOwner(owner: string): Promise<IndexedAgent[]>;
     getAgentsByCollection(collection: string): Promise<IndexedAgent[]>;
@@ -88,6 +97,8 @@ export interface IndexerReadClient {
         offset?: number;
     }): Promise<IndexedFeedback[]>;
     getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
+    /** Accepts sequential numeric backend feedback id. */
+    getFeedbackById?(feedbackId: string): Promise<IndexedFeedback | null>;
     getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
     getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
     getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
@@ -97,6 +108,8 @@ export interface IndexerReadClient {
     }): Promise<IndexedFeedback[]>;
     getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
     getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
+    /** Accepts sequential numeric backend feedback id. */
+    getFeedbackResponsesByFeedbackId?(feedbackId: string, limit?: number): Promise<IndexedFeedbackResponse[]>;
     getPendingValidations(validator: string): Promise<IndexedValidation[]>;
     getAgentReputation(asset: string): Promise<IndexedAgentReputation | null>;
     getLastFeedbackDigest?(asset: string): Promise<{
@@ -118,11 +131,33 @@ export interface IndexerReadClient {
     getLatestCheckpoints?(asset: string): Promise<CheckpointSet>;
     triggerReplay?(asset: string): Promise<ServerReplayResult>;
 }
+export interface CanonicalFeedbackIdParts {
+    asset: string;
+    client: string;
+    index: string;
+}
+export interface CanonicalResponseIdParts {
+    asset: string;
+    client: string;
+    index: string;
+    responder: string;
+    sequenceOrSig: string;
+}
+export declare function encodeCanonicalFeedbackId(asset: string, client: string, index: number | bigint | string): string;
+export declare function decodeCanonicalFeedbackId(id: string): CanonicalFeedbackIdParts | null;
+export declare function encodeCanonicalResponseId(asset: string, client: string, index: number | bigint | string, responder: string, sequenceOrSig: number | bigint | string): string;
+export declare function decodeCanonicalResponseId(id: string): CanonicalResponseIdParts | null;
 /**
  * Indexed agent record from `agents` table
  * v2.0 - Includes ATOM stats and sort_key for leaderboard
  */
 export interface IndexedAgent {
+    /**
+     * Backend-specific agent id.
+     * REST: sequential `agent_id`.
+     * GraphQL: sequential `agentId` / `agentid` when available.
+     */
+    agent_id?: number | string | null;
     asset: string;
     owner: string;
     creator?: string | null;
@@ -384,6 +419,12 @@ export declare class IndexerClient implements IndexerReadClient {
      */
     getAgent(asset: string): Promise<IndexedAgent | null>;
     /**
+     * Get agent by indexer agent_id
+     */
+    getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+    /** @deprecated Use getAgentByAgentId(agentId) */
+    getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
+    /**
      * Get all agents with pagination
      */
     getAgents(options?: AgentQueryOptions): Promise<IndexedAgent[]>;
@@ -440,6 +481,11 @@ export declare class IndexerClient implements IndexerReadClient {
      * v0.4.1 - Added to fix audit finding #1 (HIGH): readFeedback must filter by client
      */
     getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
+    /**
+     * Get a single feedback by feedback identifier.
+     * Accepts sequential numeric backend feedback ids.
+     */
+    getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null>;
     /**
      * Get feedbacks by client
      */
@@ -536,6 +582,15 @@ export declare class IndexerClient implements IndexerReadClient {
      * @param limit - Max responses to return (default: 100, prevents large payloads)
      */
     getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
+    /**
+     * Get responses by feedback identifier.
+     * Accepts sequential numeric backend feedback ids.
+     * Uses a two-step lookup for REST compatibility:
+     * 1) resolve feedback asset from `feedbacks` by `feedback_id`
+     * 2) query `feedback_responses` by `asset + feedback_id`
+     * Fails closed when a single `feedback_id` resolves to multiple assets.
+     */
+    getFeedbackResponsesByFeedbackId(feedbackId: string, limit?: number): Promise<IndexedFeedbackResponse[]>;
     getRevocations(asset: string): Promise<IndexedRevocation[]>;
     getLastFeedbackDigest(asset: string): Promise<{
         digest: string | null;
