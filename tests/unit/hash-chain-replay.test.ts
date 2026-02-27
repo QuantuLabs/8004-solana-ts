@@ -92,6 +92,24 @@ describe('chainHash', () => {
     const b = chainHash(otherDigest, DOMAIN_FEEDBACK, testHash32);
     expect(a.equals(b)).toBe(false);
   });
+
+  test('throws when prevDigest is not 32 bytes', () => {
+    expect(() => chainHash(Buffer.alloc(31), DOMAIN_FEEDBACK, testHash32)).toThrow(
+      'prevDigest must be 32 bytes',
+    );
+  });
+
+  test('throws when leaf is not 32 bytes', () => {
+    expect(() => chainHash(ZERO_DIGEST, DOMAIN_FEEDBACK, Buffer.alloc(31))).toThrow(
+      'leaf must be 32 bytes',
+    );
+  });
+
+  test('throws when domain length is unsupported', () => {
+    expect(() => chainHash(ZERO_DIGEST, Buffer.from('bad-domain'), testHash32)).toThrow(
+      'domain must be 16 or 14 bytes',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -275,6 +293,12 @@ describe('replayFeedbackChain', () => {
     expect(result.valid).toBe(true);
   });
 
+  test('throws when startDigest is not 32 bytes', () => {
+    expect(() => replayFeedbackChain([], Buffer.alloc(31), 0)).toThrow(
+      'startDigest must be 32 bytes',
+    );
+  });
+
   test('single event matches manual computation', () => {
     const leaf = computeFeedbackLeafV1(testAsset, testClient, 0n, sealHash, 1000n);
     const expected = chainHash(ZERO_DIGEST, DOMAIN_FEEDBACK, leaf);
@@ -366,10 +390,10 @@ describe('replayResponseChain', () => {
   const responseHash = Buffer.alloc(32, 0x22);
   const feedbackHash = Buffer.alloc(32, 0x33);
 
-  function makeEvent(index: bigint, slot: bigint): ResponseReplayEvent {
+  function makeEvent(index: bigint, slot: bigint, storedDigest?: Buffer): ResponseReplayEvent {
     return {
       asset: testAsset, client: testClient, feedbackIndex: index,
-      responder: testResponder, responseHash, feedbackHash, slot,
+      responder: testResponder, responseHash, feedbackHash, slot, storedDigest,
     };
   }
 
@@ -399,6 +423,29 @@ describe('replayResponseChain', () => {
     expect(result.count).toBe(5);
     expect(result.valid).toBe(true);
   });
+
+  test('wrong storedDigest detected at exact index', () => {
+    const events: ResponseReplayEvent[] = [];
+    let digest = ZERO_DIGEST;
+    for (let i = 0; i < 3; i++) {
+      const leaf = computeResponseLeaf(
+        testAsset,
+        testClient,
+        BigInt(i),
+        testResponder,
+        responseHash,
+        feedbackHash,
+        BigInt(2500 + i),
+      );
+      digest = chainHash(digest, DOMAIN_RESPONSE, leaf);
+      events.push(makeEvent(BigInt(i), BigInt(2500 + i), Buffer.from(digest)));
+    }
+
+    events[1].storedDigest = Buffer.alloc(32, 0xee);
+    const result = replayResponseChain(events);
+    expect(result.valid).toBe(false);
+    expect(result.mismatchAt).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -408,10 +455,10 @@ describe('replayResponseChain', () => {
 describe('replayRevokeChain', () => {
   const feedbackHash = Buffer.alloc(32, 0x44);
 
-  function makeEvent(index: bigint, slot: bigint): RevokeReplayEvent {
+  function makeEvent(index: bigint, slot: bigint, storedDigest?: Buffer): RevokeReplayEvent {
     return {
       asset: testAsset, client: testClient, feedbackIndex: index,
-      feedbackHash, slot,
+      feedbackHash, slot, storedDigest,
     };
   }
 
@@ -438,6 +485,27 @@ describe('replayRevokeChain', () => {
     const result = replayRevokeChain(events);
     expect(result.count).toBe(3);
     expect(result.valid).toBe(true);
+  });
+
+  test('wrong storedDigest detected at exact index', () => {
+    const events: RevokeReplayEvent[] = [];
+    let digest = ZERO_DIGEST;
+    for (let i = 0; i < 4; i++) {
+      const leaf = computeRevokeLeaf(
+        testAsset,
+        testClient,
+        BigInt(i),
+        feedbackHash,
+        BigInt(3500 + i),
+      );
+      digest = chainHash(digest, DOMAIN_REVOKE, leaf);
+      events.push(makeEvent(BigInt(i), BigInt(3500 + i), Buffer.from(digest)));
+    }
+
+    events[2].storedDigest = Buffer.alloc(32, 0xdd);
+    const result = replayRevokeChain(events);
+    expect(result.valid).toBe(false);
+    expect(result.mismatchAt).toBe(2);
   });
 });
 

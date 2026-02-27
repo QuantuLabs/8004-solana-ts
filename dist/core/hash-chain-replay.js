@@ -27,6 +27,10 @@ export const DOMAIN_LEAF_V1 = Buffer.from('8004_LEAF_V1____');
 export const DOMAIN_RESPONSE_LEAF_V1 = Buffer.from('8004_RSP_LEAF_V1');
 /** 16 bytes — chain.rs DOMAIN_REVOKE_LEAF_V1 */
 export const DOMAIN_REVOKE_LEAF_V1 = Buffer.from('8004_RVK_LEAF_V1');
+const VALID_CHAIN_DOMAIN_LENGTHS = new Set([
+    DOMAIN_FEEDBACK.length,
+    DOMAIN_REVOKE.length,
+]);
 // ---------------------------------------------------------------------------
 // Primitive hash functions
 // ---------------------------------------------------------------------------
@@ -36,6 +40,11 @@ export const DOMAIN_REVOKE_LEAF_V1 = Buffer.from('8004_RVK_LEAF_V1');
  * Mirrors `chain_hash()` in chain.rs.
  */
 export function chainHash(prevDigest, domain, leaf) {
+    assertBufferLength(prevDigest, 32, 'prevDigest');
+    assertBufferLength(leaf, 32, 'leaf');
+    if (!VALID_CHAIN_DOMAIN_LENGTHS.has(domain.length)) {
+        throw new Error(`domain must be ${DOMAIN_FEEDBACK.length} or ${DOMAIN_REVOKE.length} bytes (got ${domain.length})`);
+    }
     return keccak256(Buffer.concat([prevDigest, domain, leaf]));
 }
 /**
@@ -98,6 +107,7 @@ import { computeFeedbackLeafV1 as _computeFeedbackLeafV1 } from './seal.js';
  *   3. If the event carries `storedDigest`, cross-validate
  */
 export function replayFeedbackChain(events, startDigest = Buffer.alloc(32), startCount = 0) {
+    assertBufferLength(startDigest, 32, 'startDigest');
     let digest = startDigest;
     let count = startCount;
     for (let i = 0; i < events.length; i++) {
@@ -122,6 +132,7 @@ export function replayFeedbackChain(events, startDigest = Buffer.alloc(32), star
  * Replay a response hash chain from scratch (or from a checkpoint).
  */
 export function replayResponseChain(events, startDigest = Buffer.alloc(32), startCount = 0) {
+    assertBufferLength(startDigest, 32, 'startDigest');
     let digest = startDigest;
     let count = startCount;
     for (let i = 0; i < events.length; i++) {
@@ -146,6 +157,7 @@ export function replayResponseChain(events, startDigest = Buffer.alloc(32), star
  * Replay a revoke hash chain from scratch (or from a checkpoint).
  */
 export function replayRevokeChain(events, startDigest = Buffer.alloc(32), startCount = 0) {
+    assertBufferLength(startDigest, 32, 'startDigest');
     let digest = startDigest;
     let count = startCount;
     for (let i = 0; i < events.length; i++) {
@@ -165,5 +177,13 @@ export function replayRevokeChain(events, startDigest = Buffer.alloc(32), startC
         }
     }
     return { finalDigest: digest, count, valid: true };
+}
+function assertBufferLength(value, expectedLength, name) {
+    if (!(value instanceof Buffer)) {
+        throw new Error(`${name} must be a Buffer`);
+    }
+    if (value.length !== expectedLength) {
+        throw new Error(`${name} must be ${expectedLength} bytes (got ${value.length})`);
+    }
 }
 //# sourceMappingURL=hash-chain-replay.js.map

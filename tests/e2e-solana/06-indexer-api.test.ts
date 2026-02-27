@@ -41,10 +41,14 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
   let sdk: SolanaSDK;
   let clientSdk: SolanaSDK;
   let agent: PublicKey;
+  let parentAgent: PublicKey;
   let collection: PublicKey;
   let agentWallet: Keypair;
   let clientWallet: Keypair;
+  let operationalWallet: Keypair;
   let feedbackIndex: bigint;
+  let collectionPointer: string;
+  let updatedAgentUri: string;
 
   beforeAll(async () => {
     const rpcUrl = process.env.SOLANA_RPC_URL || 'http://127.0.0.1:8899';
@@ -85,6 +89,42 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
 
     // Initialize ATOM stats
     await sdk.initializeAtomStats(agent);
+
+    // Create parent agent and relationship fields for indexer filtering tests
+    const parentResult = await sdk.registerAgent(`ipfs://indexer_parent_${Date.now()}`, collection);
+    expect(parentResult.success).toBe(true);
+    parentAgent = parentResult.asset!;
+
+    collectionPointer = 'c1:bafybeigdyrzt4x7n3z6l6zjptk5f5t5b4v5l5m5n5p5q5r5s5t5u5v5w5x';
+    updatedAgentUri = `ipfs://indexer_agent_updated_${Date.now()}`;
+    operationalWallet = Keypair.generate();
+
+    const setColResult = await sdk.setCollectionPointer(agent, collectionPointer, { lock: false });
+    expect(setColResult.success).toBe(true);
+    const setParentResult = await sdk.setParentAsset(agent, parentAgent, { lock: false });
+    expect(setParentResult.success).toBe(true);
+    const setUriResult = await sdk.setAgentUri(agent, updatedAgentUri);
+    expect(setUriResult.success).toBe(true);
+    const setWalletResult = await sdk.setAgentWallet(agent, operationalWallet);
+    expect(setWalletResult.success).toBe(true);
+
+    const relationshipSync = await sdk.waitForIndexerSync(async () => {
+      const indexed = await sdk.getIndexerClient().getAgent(agent.toBase58());
+      return Boolean(
+        indexed &&
+        indexed.collection_pointer === collectionPointer &&
+        indexed.parent_asset === parentAgent.toBase58() &&
+        indexed.col_locked === false &&
+        indexed.parent_locked === false &&
+        indexed.agent_uri === updatedAgentUri &&
+        indexed.agent_wallet === operationalWallet.publicKey.toBase58()
+      );
+    }, {
+      timeout: 90000,
+      initialDelay: 1500,
+      maxDelay: 7000,
+    });
+    expect(relationshipSync).toBe(true);
 
     await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -190,6 +230,32 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
       });
 
       console.log(`✅ Search with multiple filters returned ${results.length} result(s)`);
+    });
+
+    it('should search agents by collection pointer + parent + lock flags', async () => {
+      const results = await sdk.searchAgents({
+        collectionPointer,
+        parentAsset: parentAgent.toBase58(),
+        colLocked: false,
+        parentLocked: false,
+      });
+
+      expect(Array.isArray(results)).toBe(true);
+      const found = results.find(a => a.asset === agent.toBase58());
+      expect(found).toBeDefined();
+      expect(found!.collection_pointer).toBe(collectionPointer);
+      expect(found!.parent_asset).toBe(parentAgent.toBase58());
+      expect(found!.col_locked).toBe(false);
+      expect(found!.parent_locked).toBe(false);
+
+      console.log('✅ Collection pointer + parent filters are indexed correctly');
+    });
+
+    it('should expose updated agent URI through indexer reads', async () => {
+      const indexed = await sdk.getIndexerClient().getAgent(agent.toBase58());
+      expect(indexed).toBeDefined();
+      expect(indexed!.agent_uri).toBe(updatedAgentUri);
+      console.log('✅ Updated agent URI is indexed');
     });
 
     it('should handle empty search results', async () => {
@@ -371,12 +437,12 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
   // ============================================================================
 
   describe('7. getAgentByWallet', () => {
-    it('should find agent by owner wallet address', async () => {
-      const foundAgent = await sdk.getAgentByWallet(agentWallet.publicKey.toBase58());
+    it('should find agent by operational wallet address', async () => {
+      const foundAgent = await sdk.getAgentByWallet(operationalWallet.publicKey.toBase58());
 
       if (foundAgent) {
         expect(foundAgent.asset).toBeDefined();
-        expect(foundAgent.owner).toBe(agentWallet.publicKey.toBase58());
+        expect(foundAgent.asset).toBe(agent.toBase58());
         console.log(`✅ Found agent ${foundAgent.asset} for wallet`);
       } else {
         console.log('⚠️  No agent found for wallet (may not be indexed yet)');
@@ -397,31 +463,42 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
       const registerResult = await sdk.registerAgent(newAgentUri, collection);
       expect(registerResult.success).toBe(true);
       const newAgent = registerResult.asset!;
+      const oldOperationalWallet = Keypair.generate();
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const setWalletResult = await sdk.setAgentWallet(newAgent, oldOperationalWallet);
+      expect(setWalletResult.success).toBe(true);
+
+      const oldWalletSynced = await sdk.waitForIndexerSync(async () => {
+        const byWallet = await sdk.getAgentByWallet(oldOperationalWallet.publicKey.toBase58());
+        return byWallet?.asset === newAgent.toBase58();
+      }, {
+        timeout: 90000,
+        initialDelay: 1500,
+        maxDelay: 7000,
+      });
+      expect(oldWalletSynced).toBe(true);
 
       // Transfer to client wallet
       const transferResult = await sdk.transferAgent(newAgent, collection, clientWallet.publicKey);
       expect(transferResult.success).toBe(true);
 
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      const oldWalletCleared = await sdk.waitForIndexerSync(async () => {
+        const byWallet = await sdk.getAgentByWallet(oldOperationalWallet.publicKey.toBase58());
+        return byWallet == null;
+      }, {
+        timeout: 90000,
+        initialDelay: 2000,
+        maxDelay: 7000,
+      });
+      expect(oldWalletCleared).toBe(true);
 
       // Verify new owner can be found (by owner address, not agent_wallet)
-      // Note: In local mode, indexer may not sync immediately
       const agents = await sdk.searchAgents({ owner: clientWallet.publicKey.toBase58() });
       const foundAgent = agents.find(a => a.owner === clientWallet.publicKey.toBase58());
 
-      if (foundAgent) {
-        expect(foundAgent.owner).toBe(clientWallet.publicKey.toBase58());
-        console.log('✅ Agent found by new owner after transfer');
-      } else {
-        // Indexer may not have synced - verify on-chain
-        const agentInfo = await sdk.loadAgent(newAgent);
-        // owner is Uint8Array, need to convert to PublicKey
-        const ownerPubkey = new PublicKey(agentInfo!.owner);
-        expect(ownerPubkey.toBase58()).toBe(clientWallet.publicKey.toBase58());
-        console.log('⚠️  Transfer confirmed on-chain, indexer not synced');
-      }
+      expect(foundAgent).toBeDefined();
+      expect(foundAgent!.owner).toBe(clientWallet.publicKey.toBase58());
+      console.log('✅ Agent transfer reflected and old wallet mapping cleared');
     });
   });
 

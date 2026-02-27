@@ -29,6 +29,12 @@ export interface AgentSearchParams {
   colLocked?: boolean;
   /** Filter by parent lock status */
   parentLocked?: boolean;
+  /** Exact updated_at filter (unix seconds or ISO) */
+  updatedAt?: string | number;
+  /** updated_at greater-than filter (unix seconds or ISO) */
+  updatedAtGt?: string | number;
+  /** updated_at less-than filter (unix seconds or ISO) */
+  updatedAtLt?: string | number;
   /** Filter by minimum reputation score */
   minScore?: number;
   /** Maximum number of results */

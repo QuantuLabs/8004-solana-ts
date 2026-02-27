@@ -32,6 +32,9 @@ export interface AgentQueryOptions {
     parentCreator?: string;
     colLocked?: boolean;
     parentLocked?: boolean;
+    updatedAt?: string | number;
+    updatedAtGt?: string | number;
+    updatedAtLt?: string | number;
 }
 /**
  * Query options for canonical collection pointer reads.

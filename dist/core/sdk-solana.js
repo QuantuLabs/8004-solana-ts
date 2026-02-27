@@ -993,6 +993,9 @@ export class SolanaSDK {
             parentCreator: params.parentCreator,
             colLocked: params.colLocked,
             parentLocked: params.parentLocked,
+            updatedAt: params.updatedAt,
+            updatedAtGt: params.updatedAtGt,
+            updatedAtLt: params.updatedAtLt,
             limit: params.limit,
             offset: params.offset,
             order: params.orderBy,
@@ -1314,7 +1317,15 @@ export class SolanaSDK {
         if (typeof lock !== 'boolean') {
             throw new Error('lock must be a boolean');
         }
-        const { lock: _lock, ...txOptions } = options ?? {};
+        const txOptions = {};
+        if (options?.skipSend !== undefined)
+            txOptions.skipSend = options.skipSend;
+        if (options?.signer !== undefined)
+            txOptions.signer = options.signer;
+        if (options?.feePayer !== undefined)
+            txOptions.feePayer = options.feePayer;
+        if (options?.computeUnits !== undefined)
+            txOptions.computeUnits = options.computeUnits;
         const writeOptions = Object.keys(txOptions).length > 0 ? txOptions : undefined;
         if (lock) {
             return this.identityTxBuilder.setCollectionPointer(asset, col, writeOptions);
@@ -1338,7 +1349,15 @@ export class SolanaSDK {
         if (typeof lock !== 'boolean') {
             throw new Error('lock must be a boolean');
         }
-        const { lock: _lock, ...txOptions } = options ?? {};
+        const txOptions = {};
+        if (options?.skipSend !== undefined)
+            txOptions.skipSend = options.skipSend;
+        if (options?.signer !== undefined)
+            txOptions.signer = options.signer;
+        if (options?.feePayer !== undefined)
+            txOptions.feePayer = options.feePayer;
+        if (options?.computeUnits !== undefined)
+            txOptions.computeUnits = options.computeUnits;
         const writeOptions = Object.keys(txOptions).length > 0 ? txOptions : undefined;
         if (lock) {
             return this.identityTxBuilder.setParentAsset(asset, parentAsset, writeOptions);
@@ -2561,12 +2580,33 @@ export class SolanaSDK {
                     // Checkpoints not available, replay from zero
                 }
             }
+            const parseHexDigest32 = (value, label) => {
+                const normalized = typeof value === 'string' && value.startsWith('0x')
+                    ? value.slice(2)
+                    : value;
+                if (typeof normalized !== 'string' || !/^[0-9a-fA-F]{64}$/.test(normalized)) {
+                    throw new Error(`Invalid ${label}: expected 32-byte hex digest`);
+                }
+                return Buffer.from(normalized, 'hex');
+            };
+            const parseOptionalHexDigest32 = (value, label) => {
+                if (value === null || value === undefined || value === '') {
+                    return undefined;
+                }
+                return parseHexDigest32(value, label);
+            };
+            const parseRequiredOrZeroHexDigest32 = (value, label) => {
+                if (value === null || value === undefined || value === '') {
+                    return Buffer.alloc(32);
+                }
+                return parseHexDigest32(value, label);
+            };
             const replayChainFromIndexer = async (chainType, onChainCount) => {
                 const cp = checkpoints?.[chainType];
                 let startDigest = Buffer.alloc(32);
                 let startCount = 0;
                 if (cp && useCheckpoints) {
-                    startDigest = Buffer.from(cp.digest, 'hex');
+                    startDigest = parseHexDigest32(cp.digest, `${chainType} checkpoint digest`);
                     startCount = cp.event_count;
                     checkpointsUsed = true;
                 }
@@ -2583,37 +2623,37 @@ export class SolanaSDK {
                     fromCount = page.nextFromCount;
                 }
                 if (chainType === 'feedback') {
-                    const events = allEvents.map(e => ({
+                    const events = allEvents.map((e, index) => ({
                         asset: Buffer.from(bs58.decode(e.asset)),
                         client: Buffer.from(bs58.decode(e.client)),
                         feedbackIndex: BigInt(e.feedback_index),
-                        sealHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+                        sealHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
                         slot: BigInt(e.slot),
-                        storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+                        storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
                     }));
                     return replayFeedbackChain(events, startDigest, startCount);
                 }
                 else if (chainType === 'response') {
-                    const events = allEvents.map(e => ({
+                    const events = allEvents.map((e, index) => ({
                         asset: Buffer.from(bs58.decode(e.asset)),
                         client: Buffer.from(bs58.decode(e.client)),
                         feedbackIndex: BigInt(e.feedback_index),
                         responder: e.responder ? Buffer.from(bs58.decode(e.responder)) : Buffer.alloc(32),
-                        responseHash: e.response_hash ? Buffer.from(e.response_hash, 'hex') : Buffer.alloc(32),
-                        feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+                        responseHash: parseRequiredOrZeroHexDigest32(e.response_hash, `response_hash[${index}]`),
+                        feedbackHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
                         slot: BigInt(e.slot),
-                        storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+                        storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
                     }));
                     return replayResponseChain(events, startDigest, startCount);
                 }
                 else {
-                    const events = allEvents.map(e => ({
+                    const events = allEvents.map((e, index) => ({
                         asset: Buffer.from(bs58.decode(e.asset)),
                         client: Buffer.from(bs58.decode(e.client)),
                         feedbackIndex: BigInt(e.feedback_index),
-                        feedbackHash: e.feedback_hash ? Buffer.from(e.feedback_hash, 'hex') : Buffer.alloc(32),
+                        feedbackHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
                         slot: BigInt(e.slot),
-                        storedDigest: e.running_digest ? Buffer.from(e.running_digest, 'hex') : undefined,
+                        storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
                     }));
                     return replayRevokeChain(events, startDigest, startCount);
                 }

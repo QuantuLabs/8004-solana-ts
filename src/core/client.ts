@@ -13,10 +13,16 @@ import {
 } from '@solana/web3.js';
 import { logger } from '../utils/logger.js';
 
-export type Cluster = 'devnet';
+export type Cluster = 'devnet' | 'testnet' | 'mainnet-beta' | 'localnet';
 
 /** Default Solana devnet RPC URL */
 export const SOLANA_DEVNET_RPC = 'https://api.devnet.solana.com';
+/** Default Solana testnet RPC URL */
+export const SOLANA_TESTNET_RPC = 'https://api.testnet.solana.com';
+/** Default Solana mainnet-beta RPC URL */
+export const SOLANA_MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+/** Default Solana localnet RPC URL */
+export const SOLANA_LOCALNET_RPC = 'http://127.0.0.1:8899';
 
 /** List of RPC providers that support advanced features like getProgramAccounts with memcmp */
 export const RECOMMENDED_RPC_PROVIDERS = [
@@ -30,6 +36,20 @@ export interface SolanaClientConfig {
   cluster?: Cluster;
   rpcUrl?: string;
   commitment?: Commitment;
+}
+
+function getDefaultRpcUrl(cluster: Cluster): string {
+  switch (cluster) {
+    case 'mainnet-beta':
+      return SOLANA_MAINNET_RPC;
+    case 'testnet':
+      return SOLANA_TESTNET_RPC;
+    case 'localnet':
+      return SOLANA_LOCALNET_RPC;
+    case 'devnet':
+    default:
+      return SOLANA_DEVNET_RPC;
+  }
 }
 
 /**
@@ -96,8 +116,8 @@ export class SolanaClient {
 
   constructor(config: SolanaClientConfig) {
     this.cluster = config.cluster || 'devnet';
-    this.rpcUrl = config.rpcUrl || SOLANA_DEVNET_RPC;
-    this.isDefaultDevnetRpc = !config.rpcUrl || config.rpcUrl === SOLANA_DEVNET_RPC;
+    this.rpcUrl = config.rpcUrl || getDefaultRpcUrl(this.cluster);
+    this.isDefaultDevnetRpc = this.cluster === 'devnet' && this.rpcUrl === SOLANA_DEVNET_RPC;
     this.connection = new Connection(this.rpcUrl, config.commitment || 'confirmed');
   }
 

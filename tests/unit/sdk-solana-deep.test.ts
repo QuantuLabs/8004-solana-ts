@@ -120,6 +120,7 @@ jest.unstable_mockModule('../../src/core/indexer-types.js', () => ({
 }));
 
 const mockTxResult = { signature: 'mock-sig', success: true };
+const mockValidateCollectionPointer = jest.fn();
 jest.unstable_mockModule('../../src/core/transaction-builder.js', () => ({
   IdentityTransactionBuilder: jest.fn().mockImplementation(() => ({
     registerAgent: jest.fn().mockResolvedValue(mockTxResult),
@@ -148,6 +149,7 @@ jest.unstable_mockModule('../../src/core/transaction-builder.js', () => ({
     initializeConfig: jest.fn().mockResolvedValue(mockTxResult),
     updateConfig: jest.fn().mockResolvedValue(mockTxResult),
   })),
+  validateCollectionPointer: mockValidateCollectionPointer,
   serializeTransaction: jest.fn(),
 }));
 
@@ -390,6 +392,30 @@ describe('SolanaSDK deep tests', () => {
       expect(result.valid).toBe(false);
     });
 
+    it('should report response final digest mismatch in corruption details', async () => {
+      const { replayResponseChain } = await import('../../src/core/hash-chain-replay.js');
+      const originalFeedbackCount = mockAgentAccount.feedback_count;
+      const originalResponseCount = mockAgentAccount.response_count;
+      const originalRevokeCount = mockAgentAccount.revoke_count;
+      mockAgentAccount.feedback_count = 0n;
+      mockAgentAccount.response_count = 0n;
+      mockAgentAccount.revoke_count = 0n;
+
+      (replayResponseChain as jest.Mock).mockResolvedValueOnce({
+        finalDigest: Buffer.from('ab'.repeat(32), 'hex'),
+        count: 0,
+        valid: true,
+      });
+
+      const result = await sdk.verifyIntegrityFull(mockAssetKey);
+      expect(result.status).toBe('corrupted');
+      expect(result.error?.message).toContain('response (final digest mismatch)');
+
+      mockAgentAccount.feedback_count = originalFeedbackCount;
+      mockAgentAccount.response_count = originalResponseCount;
+      mockAgentAccount.revoke_count = originalRevokeCount;
+    });
+
     it('should report syncing when count behind', async () => {
       // Agent has 5 feedbacks on-chain but replay only gets 3
       const { replayFeedbackChain } = await import('../../src/core/hash-chain-replay.js');
@@ -417,6 +443,18 @@ describe('SolanaSDK deep tests', () => {
 
       const result = await sdk.verifyIntegrityFull(mockAssetKey, { useCheckpoints: true });
       expect(result.checkpointsUsed).toBe(true);
+    });
+
+    it('should return error when checkpoint digest is not 32-byte hex', async () => {
+      mockIndexerClient.getLatestCheckpoints.mockResolvedValueOnce({
+        feedback: { digest: 'abc', event_count: 3 },
+        response: null,
+        revoke: null,
+      });
+
+      const result = await sdk.verifyIntegrityFull(mockAssetKey, { useCheckpoints: true });
+      expect(result.status).toBe('error');
+      expect(result.error?.message).toContain('Invalid feedback checkpoint digest');
     });
 
     it('should call onProgress callback', async () => {

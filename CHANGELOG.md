@@ -3,8 +3,19 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+
+## [0.7.0] - 2026-02-27
+### Added
+- `getAgentByAgentId()` indexer read path for deterministic agent lookups.
+- Expanded SDK/indexer parity tooling and coverage scripts for localnet/devnet validation.
+
+### Changed
+- Updated collection and parent/child docs/examples for the canonical pointer-first flow.
+- Refined feedback/response helper behavior to reduce manual SEAL plumbing in common SDK usage paths.
+
 ### Documentation
 - Added collection read-method coverage (`getCollection`, `getCollections`, `getCollectionAgents`) in `docs/METHODS.md`.
+- Aligned feedback value docs with on-chain `i128` and `valueDecimals` `0-18`.
 
 ## [0.6.5] - 2026-02-25
 ### Added

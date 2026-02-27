@@ -176,11 +176,14 @@ const mockAtomTxBuilder = {
   updateConfig: jest.fn().mockResolvedValue(mockTxResult),
 };
 
+const mockValidateCollectionPointer = jest.fn();
+
 jest.unstable_mockModule('../../src/core/transaction-builder.js', () => ({
   IdentityTransactionBuilder: jest.fn().mockImplementation(() => mockIdentityTxBuilder),
   ReputationTransactionBuilder: jest.fn().mockImplementation(() => mockReputationTxBuilder),
   ValidationTransactionBuilder: jest.fn().mockImplementation(() => mockValidationTxBuilder),
   AtomTransactionBuilder: jest.fn().mockImplementation(() => mockAtomTxBuilder),
+  validateCollectionPointer: mockValidateCollectionPointer,
   serializeTransaction: jest.fn(),
 }));
 
@@ -616,6 +619,12 @@ describe('SolanaSDK extended', () => {
     it('should throw without signer', async () => {
       await expect(sdk.setCollectionPointer(mockAssetKey, 'c1:abc123'))
         .rejects.toThrow('read-only');
+    });
+
+    it('should reject non-boolean lock values', async () => {
+      await expect(
+        signerSdk.setCollectionPointer(mockAssetKey, 'c1:abc123', { lock: 'yes' as any })
+      ).rejects.toThrow('lock must be a boolean');
     });
   });
 

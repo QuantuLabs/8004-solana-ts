@@ -291,6 +291,66 @@ function buildTransportDiff(transport, classicArtifact, substreamArtifact) {
       classicArtifact?.seedAssetFound ?? null,
       substreamArtifact?.seedAssetFound ?? null
     ),
+    diffField(
+      'id_checks.enabled',
+      classicArtifact?.idChecks?.enabled ?? null,
+      substreamArtifact?.idChecks?.enabled ?? null
+    ),
+    diffField(
+      'id_checks.passed',
+      classicArtifact?.idChecks?.passed ?? null,
+      substreamArtifact?.idChecks?.passed ?? null
+    ),
+    diffField(
+      'id_checks.expected_agents',
+      classicArtifact?.idChecks?.expected?.agents ?? null,
+      substreamArtifact?.idChecks?.expected?.agents ?? null
+    ),
+    diffField(
+      'id_checks.observed_agents',
+      classicArtifact?.idChecks?.observed?.agentsFound ?? null,
+      substreamArtifact?.idChecks?.observed?.agentsFound ?? null
+    ),
+    diffField(
+      'id_checks.expected_feedbacks',
+      classicArtifact?.idChecks?.expected?.feedbacks ?? null,
+      substreamArtifact?.idChecks?.expected?.feedbacks ?? null
+    ),
+    diffField(
+      'id_checks.observed_feedbacks',
+      classicArtifact?.idChecks?.observed?.feedbacksFound ?? null,
+      substreamArtifact?.idChecks?.observed?.feedbacksFound ?? null
+    ),
+    diffField(
+      'id_checks.expected_pending_validations',
+      classicArtifact?.idChecks?.expected?.pendingValidations ?? null,
+      substreamArtifact?.idChecks?.expected?.pendingValidations ?? null
+    ),
+    diffField(
+      'id_checks.observed_pending_validations',
+      classicArtifact?.idChecks?.observed?.pendingValidationsFound ?? null,
+      substreamArtifact?.idChecks?.observed?.pendingValidationsFound ?? null
+    ),
+    diffField(
+      'id_checks.hash_agents',
+      classicArtifact?.idChecks?.hashes?.agents ?? null,
+      substreamArtifact?.idChecks?.hashes?.agents ?? null
+    ),
+    diffField(
+      'id_checks.hash_feedbacks',
+      classicArtifact?.idChecks?.hashes?.feedbacks ?? null,
+      substreamArtifact?.idChecks?.hashes?.feedbacks ?? null
+    ),
+    diffField(
+      'id_checks.hash_pending_validations',
+      classicArtifact?.idChecks?.hashes?.pendingValidations ?? null,
+      substreamArtifact?.idChecks?.hashes?.pendingValidations ?? null
+    ),
+    diffField(
+      'id_checks.error_count',
+      Array.isArray(classicArtifact?.idChecks?.errors) ? classicArtifact.idChecks.errors.length : null,
+      Array.isArray(substreamArtifact?.idChecks?.errors) ? substreamArtifact.idChecks.errors.length : null
+    ),
   ];
   const mismatchCount = fields.reduce((acc, field) => acc + (field.match ? 0 : 1), 0);
   return { transport, mismatchCount, fields };

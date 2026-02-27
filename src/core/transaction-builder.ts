@@ -62,7 +62,7 @@ const COLLECTION_POINTER_MAX_BYTES = 128;
 const COLLECTION_POINTER_PAYLOAD_RE = /^[a-z0-9]+$/;
 type TransactionBuilderProgramIdOverrides = Pick<ProgramIdOverrides, 'agentRegistry' | 'atomEngine' | 'mplCore'>;
 
-function validateCollectionPointer(col: string): void {
+export function validateCollectionPointer(col: string): void {
   if (typeof col !== 'string') {
     throw new Error('col must be a string');
   }
@@ -120,6 +120,15 @@ export interface RegisterAgentOptions extends WriteOptions {
   assetPubkey?: PublicKey;
   /** Explicitly disable ATOM at creation (default: true = enabled). */
   atomEnabled?: boolean;
+  /**
+   * Optional collection pointer to attach after successful register in the high-level SDK flow.
+   * Format: c1:<payload>
+   */
+  collectionPointer?: string;
+  /**
+   * Lock collection pointer after attach (default: true). Ignored when collectionPointer is not set.
+   */
+  collectionLock?: boolean;
 }
 
 /**

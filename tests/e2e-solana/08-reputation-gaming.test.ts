@@ -15,6 +15,10 @@ import { createHash } from 'crypto';
 import { SolanaSDK } from '../../src/core/sdk-solana';
 import { loadTestWallets } from './devnet-setup';
 
+const ATTACKER_WALLET_FUNDING_SOL = Number.parseFloat(
+  process.env.E2E_ATTACKER_FUNDING_SOL ?? '0.006'
+);
+
 function createFeedbackHash(feedbackUri: string): Buffer {
   return createHash('sha256').update(feedbackUri).digest();
 }
@@ -41,6 +45,20 @@ describe('Reputation Gaming & Exploitation', () => {
 
     console.log(`Owner wallet: ${ownerWallet.publicKey.toBase58()}`);
 
+    // Fund 5 attacker wallets from main wallet with minimal balance needed for test tx fees.
+    const attackerFundingLamports = Math.floor(ATTACKER_WALLET_FUNDING_SOL * LAMPORTS_PER_SOL);
+    if (attackerFundingLamports <= 0) {
+      throw new Error(`Invalid E2E_ATTACKER_FUNDING_SOL=${ATTACKER_WALLET_FUNDING_SOL}`);
+    }
+
+    const ownerBalance = await connection.getBalance(ownerWallet.publicKey);
+    const requiredLamports = attackerFundingLamports * 5;
+    if (ownerBalance < requiredLamports) {
+      throw new Error(
+        `Insufficient owner balance to fund attacker wallets. Need ${(requiredLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL, have ${(ownerBalance / LAMPORTS_PER_SOL).toFixed(6)} SOL`
+      );
+    }
+
     // Fund 5 attacker wallets from main (reduced from 10 to save SOL)
     for (let i = 0; i < 5; i++) {
       const wallet = Keypair.generate();
@@ -48,7 +66,7 @@ describe('Reputation Gaming & Exploitation', () => {
         SystemProgram.transfer({
           fromPubkey: ownerWallet.publicKey,
           toPubkey: wallet.publicKey,
-          lamports: 0.02 * LAMPORTS_PER_SOL,
+          lamports: attackerFundingLamports,
         })
       );
       await connection.sendTransaction(tx, [ownerWallet]);

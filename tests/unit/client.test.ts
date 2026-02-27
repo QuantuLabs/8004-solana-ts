@@ -13,6 +13,9 @@ import {
   UnsupportedRpcError,
   RpcNetworkError,
   SOLANA_DEVNET_RPC,
+  SOLANA_TESTNET_RPC,
+  SOLANA_MAINNET_RPC,
+  SOLANA_LOCALNET_RPC,
   RECOMMENDED_RPC_PROVIDERS,
   createDevnetClient,
 } from '../../src/core/client.js';
@@ -94,6 +97,27 @@ describe('SolanaClient', () => {
     it('should accept explicit cluster', () => {
       const client = new SolanaClient({ cluster: 'devnet' });
       expect(client.cluster).toBe('devnet');
+    });
+
+    it('should map mainnet-beta cluster to mainnet RPC by default', () => {
+      const client = new SolanaClient({ cluster: 'mainnet-beta' });
+      expect(client.cluster).toBe('mainnet-beta');
+      expect(client.rpcUrl).toBe(SOLANA_MAINNET_RPC);
+      expect(client.isDefaultDevnetRpc).toBe(false);
+    });
+
+    it('should map testnet cluster to testnet RPC by default', () => {
+      const client = new SolanaClient({ cluster: 'testnet' });
+      expect(client.cluster).toBe('testnet');
+      expect(client.rpcUrl).toBe(SOLANA_TESTNET_RPC);
+      expect(client.isDefaultDevnetRpc).toBe(false);
+    });
+
+    it('should map localnet cluster to localhost RPC by default', () => {
+      const client = new SolanaClient({ cluster: 'localnet' });
+      expect(client.cluster).toBe('localnet');
+      expect(client.rpcUrl).toBe(SOLANA_LOCALNET_RPC);
+      expect(client.isDefaultDevnetRpc).toBe(false);
     });
   });
 
@@ -458,6 +482,14 @@ describe('createDevnetClient', () => {
 describe('SOLANA_DEVNET_RPC', () => {
   it('should be the standard devnet URL', () => {
     expect(SOLANA_DEVNET_RPC).toBe('https://api.devnet.solana.com');
+  });
+});
+
+describe('cluster default RPC constants', () => {
+  it('should expose testnet/default URLs', () => {
+    expect(SOLANA_TESTNET_RPC).toBe('https://api.testnet.solana.com');
+    expect(SOLANA_MAINNET_RPC).toBe('https://api.mainnet-beta.solana.com');
+    expect(SOLANA_LOCALNET_RPC).toBe('http://127.0.0.1:8899');
   });
 });
 

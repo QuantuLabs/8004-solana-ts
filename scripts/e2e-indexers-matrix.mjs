@@ -114,7 +114,7 @@ function createManualJobRecord({
   };
 }
 
-function buildCheckArgs({ backend, transport, runId, artifactPath, seedAsset, timeoutMs }) {
+function buildCheckArgs({ backend, transport, runId, artifactPath, seedAsset, seedArtifactPath, timeoutMs }) {
   const args = [
     'scripts/e2e-indexers-check.mjs',
     '--backend',
@@ -130,6 +130,9 @@ function buildCheckArgs({ backend, transport, runId, artifactPath, seedAsset, ti
   ];
   if (seedAsset) {
     args.push('--seed-asset', seedAsset);
+  }
+  if (seedArtifactPath) {
+    args.push('--seed-artifact', seedArtifactPath);
   }
   return args;
 }
@@ -395,6 +398,7 @@ async function main() {
         runId,
         artifactPath: classicRestArtifact,
         seedAsset,
+        seedArtifactPath: seedArtifact,
         timeoutMs,
       }),
       artifactPath: classicRestArtifact,
@@ -456,6 +460,7 @@ async function main() {
           runId,
           artifactPath: job.artifactPath,
           seedAsset,
+          seedArtifactPath: seedArtifact,
           timeoutMs,
         }),
         artifactPath: job.artifactPath,

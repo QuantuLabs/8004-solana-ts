@@ -18,6 +18,14 @@ import { loadTestWallets, fundNewKeypair, returnFunds, type DevnetTestWallets } 
 
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 const INDEXER_URL = process.env.INDEXER_URL || 'https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1';
+const DEVNET_INDEXER_SYNC_TIMEOUT_MS = Number.parseInt(
+  process.env.E2E_INDEXER_SYNC_TIMEOUT_MS ?? '90000',
+  10
+);
+const DEVNET_INDEXER_SYNC_INTERVAL_MS = Number.parseInt(
+  process.env.E2E_INDEXER_SYNC_INTERVAL_MS ?? '3000',
+  10
+);
 
 function sha256(data: string): Buffer {
   return createHash('sha256').update(data).digest();
@@ -167,7 +175,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
           const f = await sdk.readFeedback(agentAsset, wallets.client1.publicKey, feedbackIndex);
           return f !== null;
         },
-        { timeout: 30000, interval: 2000 }
+        { timeout: DEVNET_INDEXER_SYNC_TIMEOUT_MS, interval: DEVNET_INDEXER_SYNC_INTERVAL_MS }
       );
 
       expect(synced).toBe(true);
@@ -239,8 +247,22 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
     }, 60000);
 
     it('should verify feedback is revoked', async () => {
-      // Wait for indexer to sync revocation (devnet can be slow)
-      await new Promise(r => setTimeout(r, 8000));
+      const revokedSynced = await sdk.waitForIndexerSync(
+        async () => {
+          const f = await sdk.readFeedback(
+            agentAsset,
+            wallets.client1.publicKey,
+            feedbackIndex
+          );
+          return f?.revoked === true;
+        },
+        {
+          timeout: DEVNET_INDEXER_SYNC_TIMEOUT_MS,
+          interval: DEVNET_INDEXER_SYNC_INTERVAL_MS,
+          initialDelay: DEVNET_INDEXER_SYNC_INTERVAL_MS,
+        }
+      );
+      expect(revokedSynced).toBe(true);
 
       const feedback = await sdk.readFeedback(
         agentAsset,
@@ -322,7 +344,11 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
           const hasIndex2 = client1Feedbacks.some(f => f.feedbackIndex === 2n);
           return hasIndex2;
         },
-        { timeout: 15000, initialDelay: 2000 }
+        {
+          timeout: DEVNET_INDEXER_SYNC_TIMEOUT_MS,
+          interval: DEVNET_INDEXER_SYNC_INTERVAL_MS,
+          initialDelay: DEVNET_INDEXER_SYNC_INTERVAL_MS,
+        }
       );
       expect(synced1).toBe(true);
       console.log('   ✅ Indexer synced feedback index 2');

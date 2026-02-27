@@ -3,7 +3,7 @@
  * Tests SDK configuration and state properties
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { Keypair } from '@solana/web3.js';
 import { SolanaSDK } from '../../src/core/sdk-solana.js';
 
@@ -39,10 +39,33 @@ describe('SolanaSDK Initialization', () => {
     });
 
     it('should accept explicit devnet cluster', () => {
-      // Note: SDK currently only supports 'devnet' cluster
       const sdk = new SolanaSDK({ cluster: 'devnet' });
-
       expect(sdk.getCluster()).toBe('devnet');
+    });
+
+    it('should accept explicit mainnet-beta cluster while keeping default IDs overrideable', () => {
+      const sdk = new SolanaSDK({ cluster: 'mainnet-beta' });
+      expect(sdk.getCluster()).toBe('mainnet-beta');
+    });
+
+    it('should warn when mainnet-beta is selected without programIds override', () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      new SolanaSDK({ cluster: 'mainnet-beta' });
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cluster=mainnet-beta selected without programIds override'));
+      warnSpy.mockRestore();
+    });
+
+    it('should not warn on mainnet-beta when programIds override is provided', () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      new SolanaSDK({
+        cluster: 'mainnet-beta',
+        programIds: {
+          agentRegistry: '11111111111111111111111111111111',
+          atomEngine: '11111111111111111111111111111111',
+        },
+      });
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('cluster=mainnet-beta selected without programIds override'));
+      warnSpy.mockRestore();
     });
   });
 

@@ -244,6 +244,9 @@ export class IndexerClient {
      * Get all agents with pagination
      */
     async getAgents(options) {
+        const updatedAt = options?.updatedAt !== undefined ? String(options.updatedAt) : undefined;
+        const updatedAtGt = options?.updatedAtGt !== undefined ? String(options.updatedAtGt) : undefined;
+        const updatedAtLt = options?.updatedAtLt !== undefined ? String(options.updatedAtLt) : undefined;
         const query = this.buildQuery({
             limit: options?.limit,
             offset: options?.offset,
@@ -257,6 +260,9 @@ export class IndexerClient {
             parent_creator: options?.parentCreator ? `eq.${options.parentCreator}` : undefined,
             col_locked: options?.colLocked !== undefined ? `eq.${options.colLocked}` : undefined,
             parent_locked: options?.parentLocked !== undefined ? `eq.${options.parentLocked}` : undefined,
+            updated_at: updatedAt ? `eq.${updatedAt}` : undefined,
+            updated_at_gt: updatedAtGt,
+            updated_at_lt: updatedAtLt,
         });
         return this.request(`/agents${query}`);
     }

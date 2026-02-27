@@ -168,10 +168,20 @@ export class SolanaFeedbackManager {
         const uniqueClients = new Set(filtered.map((f) => f.client_address));
         const positiveCount = withScore.filter((f) => (f.score ?? 0) >= 50).length;
         const negativeCount = withScore.filter((f) => (f.score ?? 0) < 50).length;
+        let nextFeedbackIndex = filtered.length;
+        try {
+            const indexedAgent = await this.indexerClient.getAgent(asset.toBase58());
+            if (indexedAgent && typeof indexedAgent.feedback_count === 'number') {
+                nextFeedbackIndex = indexedAgent.feedback_count;
+            }
+        }
+        catch {
+            // Keep filtered-length fallback when the aggregate agent row is unavailable.
+        }
         return {
             averageScore: withScore.length > 0 ? sum / withScore.length : 0,
             totalFeedbacks: filtered.length,
-            nextFeedbackIndex: filtered.length,
+            nextFeedbackIndex,
             totalClients: uniqueClients.size,
             positiveCount,
             negativeCount,

@@ -43,6 +43,55 @@ function clampInt(n, min, max) {
         return min;
     return Math.min(max, Math.max(min, Math.trunc(n)));
 }
+function toGraphqlUnixSeconds(value) {
+    if (value === undefined || value === null)
+        return undefined;
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value))
+            return undefined;
+        return Math.trunc(value).toString();
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed)
+            return undefined;
+        if (/^-?\d+$/.test(trimmed))
+            return trimmed;
+        const millis = Date.parse(trimmed);
+        if (!Number.isFinite(millis))
+            return undefined;
+        return Math.floor(millis / 1000).toString();
+    }
+    if (value instanceof Date) {
+        const millis = value.getTime();
+        if (!Number.isFinite(millis))
+            return undefined;
+        return Math.floor(millis / 1000).toString();
+    }
+    return undefined;
+}
+function resolveAgentOrder(order) {
+    const resolved = order ?? 'created_at.desc';
+    const orderDirection = resolved.endsWith('.asc') ? 'asc' : 'desc';
+    const field = resolved.split('.')[0] ?? 'created_at';
+    const normalized = field.toLowerCase();
+    if (normalized === 'updated_at' || normalized === 'updatedat') {
+        return { orderBy: 'updatedAt', orderDirection };
+    }
+    if (normalized === 'total_feedback' || normalized === 'totalfeedback') {
+        return { orderBy: 'totalFeedback', orderDirection };
+    }
+    if (normalized === 'quality_score' || normalized === 'qualityscore') {
+        return { orderBy: 'qualityScore', orderDirection };
+    }
+    if (normalized === 'trust_tier' || normalized === 'trusttier') {
+        return { orderBy: 'trustTier', orderDirection };
+    }
+    if (normalized === 'agentid' || normalized === 'agent_id') {
+        return { orderBy: 'agentid', orderDirection };
+    }
+    return { orderBy: 'createdAt', orderDirection };
+}
 function agentId(asset) {
     return `sol:${asset}`;
 }
@@ -130,6 +179,23 @@ function buildAgentWhere(options) {
         where.colLocked = options.colLocked;
     if (options.parentLocked !== undefined)
         where.parentLocked = options.parentLocked;
+    const updatedAt = toGraphqlUnixSeconds(options.updatedAt);
+    const updatedAtGt = toGraphqlUnixSeconds(options.updatedAtGt);
+    const updatedAtLt = toGraphqlUnixSeconds(options.updatedAtLt);
+    if (updatedAt !== undefined) {
+        try {
+            const exact = BigInt(updatedAt);
+            where.updatedAt_gt = (exact - 1n).toString();
+            where.updatedAt_lt = (exact + 1n).toString();
+        }
+        catch {
+            // Ignore invalid numeric coercion and let explicit gt/lt (if any) drive the filter.
+        }
+    }
+    if (updatedAtGt !== undefined)
+        where.updatedAt_gt = updatedAtGt;
+    if (updatedAtLt !== undefined)
+        where.updatedAt_lt = updatedAtLt;
     return where;
 }
 function feedbackId(asset, client, index) {
@@ -322,12 +388,10 @@ export class IndexerGraphQLClient {
     async getAgents(options) {
         const limit = clampInt(options?.limit ?? 100, 0, 500);
         const offset = clampInt(options?.offset ?? 0, 0, 1_000_000);
-        // Legacy order string (PostgREST-style) mapping
-        const order = options?.order ?? 'created_at.desc';
-        const orderDirection = order.includes('.asc') ? 'asc' : 'desc';
+        const { orderBy, orderDirection } = resolveAgentOrder(options?.order);
         const where = buildAgentWhere(options);
-        const data = await this.request(`query($dir: OrderDirection!, $where: AgentFilter) {
-        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: createdAt, orderDirection: $dir) {
+        const data = await this.request(`query($orderBy: AgentOrderBy!, $dir: OrderDirection!, $where: AgentFilter) {
+        agents(first: ${limit}, skip: ${offset}, where: $where, orderBy: $orderBy, orderDirection: $dir) {
           id
           owner
           creator
@@ -344,6 +408,7 @@ export class IndexerGraphQLClient {
           solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
         }
       }`, {
+            orderBy,
             dir: orderDirection,
             where: Object.keys(where).length ? where : null,
         });
@@ -372,6 +437,9 @@ export class IndexerGraphQLClient {
         return agents[0] ?? null;
     }
     async getLeaderboard(options) {
+        if (options?.cursorSortKey) {
+            throw new Error('GraphQL backend does not support cursorSortKey keyset pagination; use REST indexer client.');
+        }
         const limit = clampInt(options?.limit ?? 50, 0, 200);
         const where = {};
         if (options?.collection)
@@ -943,8 +1011,7 @@ export class IndexerGraphQLClient {
     // Reputation
     // ============================================================================
     async getAgentReputation(_asset) {
-        // Not exposed by GraphQL v2. Prefer on-chain fallback in SolanaSDK.getAgentReputationFromIndexer().
-        return null;
+        throw new Error('GraphQL backend does not expose getAgentReputation');
     }
     // ============================================================================
     // Integrity (hash-chain)

@@ -17,11 +17,11 @@
 - Give feedback with rich metrics (value, decimals, tags)
 - SEAL v1 on-chain feedback authenticity
 - Read feedback (event-driven via indexer)
-- Revoke feedback (requires `sealHash`)
+- Revoke feedback (explicit or auto-resolved `sealHash`)
 - Get reputation summary (ATOM)
 - List all feedbacks
 - Get clients list
-- Response system (append requires `sealHash`, read)
+- Response system (append supports explicit or auto-resolved `sealHash`, read)
 
 ### Agent Wallet & Signatures
 - `setAgentWallet()` - Ed25519 signature verification
@@ -69,7 +69,7 @@ Raw feedback data uses event-driven storage:
 ### v0.6.0
 - SEAL v1 - on-chain feedback authenticity layer
 - Single-collection architecture (removed user registries)
-- `sealHash` required for `revokeFeedback()` / `appendResponse()`
+- `sealHash` accepted explicitly and can be auto-resolved for `revokeFeedback()` / `appendResponse()`
 - `feedbackHash` renamed to `feedbackFileHash` in `giveFeedback()`
 - SSRF protection improvements
 

@@ -28,6 +28,28 @@ export PINATA_JWT='your-jwt-token'          # Optional: required only when pinat
 
 ---
 
+### Network + Indexer Config (optional)
+
+- `cluster: 'devnet'` works out of the box.
+- `cluster: 'localnet'` and `cluster: 'mainnet-beta'` are prepared.
+- Mainnet program IDs are TBD, so override `programIds` for localnet/mainnet until IDs are published.
+
+```typescript
+const sdk = new SolanaSDK({
+  cluster: 'localnet', // or 'mainnet-beta'
+  rpcUrl: 'http://127.0.0.1:8899',
+  signer,
+  programIds: {
+    agentRegistry: 'YourRegistryProgramId',
+    atomEngine: 'YourAtomProgramId',
+    // mplCore is optional (defaults to canonical Metaplex Core ID)
+  },
+  indexerGraphqlUrl: 'http://127.0.0.1:3000/v2/graphql',
+});
+```
+
+---
+
 ## 3. Create Collection Metadata (CID-first)
 
 Create a new file `register.ts` and run with `npx tsx register.ts`:
@@ -44,18 +66,25 @@ const pinataJwt = process.env.PINATA_JWT;
 const ipfs = pinataJwt
   ? new IPFSClient({ pinataEnabled: true, pinataJwt })
   : new IPFSClient({ url: 'http://localhost:5001' });
-// Defaults use devnet program IDs.
-// For localnet/mainnet, add:
-// programIds: { agentRegistry: '...', atomEngine: '...' }
 const sdk = new SolanaSDK({ signer, ipfsClient: ipfs });
 
 // 2. Build + upload collection metadata
-const collection = await sdk.createCollection({
+const collectionMetadata = {
+  version: '1.0.0',
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection metadata',
-  socials: { website: 'https://castercorp.ai', x: '@castercorp' },
-});
+  image: 'ipfs://QmCollectionImage...',
+  banner_image: 'ipfs://QmCollectionBanner...',
+  parent: 'ParentAgentAssetPubkeyOrNull',
+  socials: {
+    website: 'https://castercorp.ai',
+    x: 'https://x.com/castercorp',
+    discord: 'https://discord.gg/castercorp',
+  },
+};
+const { parent, version, ...collectionInput } = collectionMetadata;
+const collection = await sdk.createCollection(collectionInput);
 
 console.log('Collection CID:', collection.cid);       // reuse for your asset workflow
 console.log('Collection URI:', collection.uri);       // ipfs://<cid>
@@ -65,13 +94,23 @@ console.log('Collection Pointer:', collection.pointer); // c1:b...
 If you only want the JSON (no upload), use:
 
 ```typescript
-const data = sdk.createCollectionData({
+const fullMetadata = {
+  version: '1.0.0',
   name: 'CasterCorp Agents',
+  symbol: 'CAST',
   description: 'Main collection metadata',
-});
+  image: 'ipfs://QmCollectionImage...',
+  banner_image: 'ipfs://QmCollectionBanner...',
+  parent: 'ParentAgentAssetPubkeyOrNull',
+  socials: {
+    website: 'https://castercorp.ai',
+    x: 'https://x.com/castercorp',
+    discord: 'https://discord.gg/castercorp',
+  },
+};
+const { parent, version, ...collectionInput } = fullMetadata;
+const data = sdk.createCollectionData(collectionInput);
 ```
-
-Legacy on-chain collection APIs (`sdk.createCollection(name, uri)` and `sdk.updateCollectionUri`) are deprecated on protocol `v0.6.x` and return `success: false`.
 
 ---
 
@@ -148,13 +187,15 @@ See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
 ### Association Rules (Collection + Parent)
 
-- Canonical collection pointer is `c1:<cid>` (use the `pointer` returned by `sdk.createCollection(...)`).
-- Pointer validation is strict on-chain: must start with `c1:`, CID payload must be non-empty lowercase alphanumeric, max total size `128` bytes.
-- `setCollectionPointer`: only immutable agent creator can sign this instruction.
-- `setParentAsset`: signer must own the child asset and must equal the parent agent creator snapshot.
-- Parent must be a live Core asset and self-parenting is forbidden.
-- Both methods support `{ lock?: boolean }`; default `lock=true` makes first valid write final (`col_locked` / `parent_locked`).
-- `c1:...` collection pointer is a string (not a pubkey). Explicit base-registry pubkeys are only needed for legacy overloads; standard `setAgentUri` / `transferAgent` auto-resolve base collection.
+- Use the canonical pointer from `sdk.createCollection(...)` (`c1:b...`).
+- On-chain pointer constraints: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
+- `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
+- `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
+- Editable workflow: first call with `{ lock: false }`, then finalize with `{ lock: true }` (or omit `lock`).
+- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child and equal the parent agent creator snapshot.
+- Parent constraints: parent exists/live, `child !== parent`, and `parent_locked` behaves like `col_locked`.
+- `loadAgent()` exposes `creator`, `creators`, `col`, `parent_asset`, `col_locked`, and `parent_locked`.
+- `c1:...` pointer is a string (not a pubkey); base registry pubkey is internal and standard `setAgentUri`/`transferAgent` calls auto-resolve it.
 
 ---
 
@@ -208,7 +249,7 @@ const isValid = await sdk.verify(signed, agentAsset);
 
 - [Full API Reference](./METHODS.md)
 - [Examples](https://github.com/QuantuLabs/8004-solana-ts/tree/main/examples)
-- [Create Collection Example](../examples/create-collection.ts)
+- [Collection Flow Example](../examples/collection-flow.ts)
 - [Explorer](https://x402synthex.xyz)
 - [Telegram](https://t.me/sol8004)
 - [X / Twitter](https://x.com/Quantu_AI)

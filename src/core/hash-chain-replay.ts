@@ -39,6 +39,11 @@ export const DOMAIN_RESPONSE_LEAF_V1 = Buffer.from('8004_RSP_LEAF_V1');
 /** 16 bytes — chain.rs DOMAIN_REVOKE_LEAF_V1 */
 export const DOMAIN_REVOKE_LEAF_V1 = Buffer.from('8004_RVK_LEAF_V1');
 
+const VALID_CHAIN_DOMAIN_LENGTHS = new Set<number>([
+  DOMAIN_FEEDBACK.length,
+  DOMAIN_REVOKE.length,
+]);
+
 // ---------------------------------------------------------------------------
 // Primitive hash functions
 // ---------------------------------------------------------------------------
@@ -53,6 +58,13 @@ export function chainHash(
   domain: Buffer,
   leaf: Buffer,
 ): Buffer {
+  assertBufferLength(prevDigest, 32, 'prevDigest');
+  assertBufferLength(leaf, 32, 'leaf');
+  if (!VALID_CHAIN_DOMAIN_LENGTHS.has(domain.length)) {
+    throw new Error(
+      `domain must be ${DOMAIN_FEEDBACK.length} or ${DOMAIN_REVOKE.length} bytes (got ${domain.length})`,
+    );
+  }
   return keccak256(Buffer.concat([prevDigest, domain, leaf]));
 }
 
@@ -178,6 +190,7 @@ export function replayFeedbackChain(
   startDigest: Buffer = Buffer.alloc(32),
   startCount: number = 0,
 ): ReplayResult {
+  assertBufferLength(startDigest, 32, 'startDigest');
   let digest = startDigest;
   let count = startCount;
 
@@ -210,6 +223,7 @@ export function replayResponseChain(
   startDigest: Buffer = Buffer.alloc(32),
   startCount: number = 0,
 ): ReplayResult {
+  assertBufferLength(startDigest, 32, 'startDigest');
   let digest = startDigest;
   let count = startCount;
 
@@ -245,6 +259,7 @@ export function replayRevokeChain(
   startDigest: Buffer = Buffer.alloc(32),
   startCount: number = 0,
 ): ReplayResult {
+  assertBufferLength(startDigest, 32, 'startDigest');
   let digest = startDigest;
   let count = startCount;
 
@@ -270,4 +285,13 @@ export function replayRevokeChain(
   }
 
   return { finalDigest: digest, count, valid: true };
+}
+
+function assertBufferLength(value: Buffer, expectedLength: number, name: string): void {
+  if (!(value instanceof Buffer)) {
+    throw new Error(`${name} must be a Buffer`);
+  }
+  if (value.length !== expectedLength) {
+    throw new Error(`${name} must be ${expectedLength} bytes (got ${value.length})`);
+  }
 }

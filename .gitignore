@@ -73,6 +73,7 @@ scripts/*.ts
 # Audit files (local only)
 audit.md
 formal.md
+# Local SDK coverage tracking (assistant working file)
+suivi-sdk.md
 # Local assistant settings (may contain secrets)
 .claude/settings.local.json
-

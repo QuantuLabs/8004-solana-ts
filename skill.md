@@ -210,21 +210,22 @@ await sdk.setAgentWallet(result.asset, opWallet);
 All agents register into the base collection automatically. Collection metadata now follows an off-chain CID-first flow:
 
 ```typescript
-// Build JSON only
-const collectionJson = sdk.createCollectionData({
+const { asset } = result; // from registerAgent(...)
+
+// Build JSON payload (off-chain)
+const collectionData = sdk.createCollectionData({
   name: 'CasterCorp Agents',
   symbol: 'CAST',
-  description: 'Main collection metadata',
+  description: 'Production agent collection metadata',
 });
 
-// Build + upload to IPFS
-const collection = await sdk.createCollection(collectionJson);
-// collection.cid
-// collection.uri
-// collection.pointer -> canonical c1:b... string
+// Upload and derive canonical pointer
+const { pointer, uri } = await sdk.createCollection(collectionData);
+// pointer -> canonical c1:b... string
+// uri -> ipfs://...
 
-// Advanced on-chain association (string pointer, not pubkey)
-await sdk.setCollectionPointer(result.asset, collection.pointer!); // lock=true default
+// Attach pointer to the agent (string pointer, not pubkey)
+await sdk.setCollectionPointer(asset, pointer!); // lock=true by default
 
 // Parent hierarchy (advanced)
 await sdk.setParentAsset(childAsset, parentAsset, { lock: false });

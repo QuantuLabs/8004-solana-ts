@@ -128,6 +128,25 @@ describe('SolanaFeedbackManager', () => {
       expect(summary.totalFeedbacks).toBe(1);
     });
 
+    it('should keep nextFeedbackIndex from aggregate feedback_count when filters are applied', async () => {
+      const indexer = createMockIndexer({
+        getAgent: jest.fn().mockResolvedValue({
+          asset: mockAsset.toBase58(),
+          feedback_count: 100,
+        }),
+        getFeedbacks: jest.fn().mockResolvedValue([
+          { asset: mockAsset.toBase58(), client_address: mockClient.toBase58(), score: 90, feedback_index: 0, is_revoked: false },
+          { asset: mockAsset.toBase58(), client_address: 'other-client', score: 40, feedback_index: 1, is_revoked: false },
+        ]),
+      });
+      const fm = new SolanaFeedbackManager(createMockClient(), undefined, indexer);
+
+      const summary = await fm.getSummary(mockAsset, 80);
+
+      expect(summary.totalFeedbacks).toBe(1);
+      expect(summary.nextFeedbackIndex).toBe(100);
+    });
+
     it('should fallback to indexer when AtomStats fails', async () => {
       const client = createMockClient({
         getAccount: jest.fn().mockResolvedValue(null),

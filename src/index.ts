@@ -41,6 +41,9 @@ export {
   UnsupportedRpcError,
   RpcNetworkError,
   SOLANA_DEVNET_RPC,
+  SOLANA_TESTNET_RPC,
+  SOLANA_MAINNET_RPC,
+  SOLANA_LOCALNET_RPC,
   RECOMMENDED_RPC_PROVIDERS,
   createDevnetClient,
 } from './core/client.js';
@@ -55,6 +58,7 @@ export type {
   CollectionInfo,
   SetCollectionPointerOptions,
   SetParentAssetOptions,
+  RevokeFeedbackOptions,
   CreateCollectionUploadOptions,
   CreateCollectionUploadResult,
   IntegrityResult,
