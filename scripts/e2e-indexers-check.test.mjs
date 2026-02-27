@@ -46,6 +46,8 @@ function expectedAgents(rows) {
     })),
     feedbacks: [],
     pendingValidations: [],
+    agentUriMetadata: [],
+    collections: [],
   };
 }
 
@@ -124,4 +126,109 @@ test('evaluateIdChecks flags missing ids when explicit id fields are absent', as
   assert.equal(result.passed, false);
   assert.ok(result.errors.some((line) => line === 'agent.agentId.missing:assetA'));
   assert.ok(result.errors.some((line) => line === 'agent.agentId.missing:assetB'));
+});
+
+test('evaluateIdChecks normalizes URL trailing slashes for URI and collection digests', async () => {
+  const client = makeClient({
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
+  });
+  client.getMetadata = async () => [
+    { key: '_uri:name', value: 'Agent A' },
+    { key: '_uri:description', value: 'Metadata body' },
+    { key: '_uri:image', value: 'https://cdn.example.com/agent-a.png/' },
+  ];
+  client.getCollectionPointers = async () => [
+    {
+      collection: 'c1:alpha',
+      version: '1.0.0',
+      name: 'Alpha Collection',
+      symbol: 'ALPHA',
+      description: 'Collection digest',
+      image: 'ipfs://bafyalphaimage',
+      banner_image: 'ipfs://bafyalphabanner',
+      social_website: 'https://quantu.ai/',
+      social_x: '@quantu_labs',
+      social_discord: 'https://discord.gg/quantu/',
+    },
+  ];
+
+  const expected = expectedAgents([{ asset: 'assetA', owner: 'ownerA' }]);
+  expected.agentUriMetadata.push({
+    asset: 'assetA',
+    '_uri:name': 'Agent A',
+    '_uri:description': 'Metadata body',
+    '_uri:image': 'https://cdn.example.com/agent-a.png',
+  });
+  expected.collections.push({
+    pointer: 'c1:alpha',
+    version: '1.0.0',
+    name: 'Alpha Collection',
+    symbol: 'ALPHA',
+    description: 'Collection digest',
+    image: 'ipfs://bafyalphaimage',
+    banner_image: 'ipfs://bafyalphabanner',
+    social_website: 'https://quantu.ai',
+    social_x: '@quantu_labs',
+    social_discord: 'https://discord.gg/quantu',
+  });
+
+  const result = await evaluateIdChecks(client, expected, { concurrency: 2, transport: 'rest' });
+
+  assert.equal(result.passed, true);
+  assert.equal(result.errors.length, 0);
+  assert.ok(typeof result.hashes.agentUriMetadata === 'string');
+  assert.ok(typeof result.hashes.collections === 'string');
+});
+
+test('evaluateIdChecks flags mismatched URI metadata and collection digests', async () => {
+  const client = makeClient({
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
+  });
+  client.getMetadata = async () => [
+    { key: '_uri:name', value: 'Agent A' },
+    { key: '_uri:description', value: 'Wrong description' },
+    { key: '_uri:image', value: 'ipfs://bafyasseta' },
+  ];
+  client.getCollectionPointers = async () => [
+    {
+      collection: 'c1:alpha',
+      version: '1.0.0',
+      name: 'Alpha Collection',
+      symbol: 'WRONG',
+      description: 'Collection digest',
+      image: 'ipfs://bafyalphaimage',
+      banner_image: 'ipfs://bafyalphabanner',
+      social_website: 'https://quantu.ai',
+      social_x: '@quantu_labs',
+      social_discord: 'https://discord.gg/quantu',
+    },
+  ];
+
+  const expected = expectedAgents([{ asset: 'assetA', owner: 'ownerA' }]);
+  expected.agentUriMetadata.push({
+    asset: 'assetA',
+    '_uri:name': 'Agent A',
+    '_uri:description': 'Expected description',
+    '_uri:image': 'ipfs://bafyasseta',
+  });
+  expected.collections.push({
+    pointer: 'c1:alpha',
+    version: '1.0.0',
+    name: 'Alpha Collection',
+    symbol: 'ALPHA',
+    description: 'Collection digest',
+    image: 'ipfs://bafyalphaimage',
+    banner_image: 'ipfs://bafyalphabanner',
+    social_website: 'https://quantu.ai',
+    social_x: '@quantu_labs',
+    social_discord: 'https://discord.gg/quantu',
+  });
+
+  const result = await evaluateIdChecks(client, expected, { concurrency: 2, transport: 'rest' });
+
+  assert.equal(result.passed, false);
+  assert.ok(
+    result.errors.some((line) => line.startsWith('uri_metadata.field:assetA:_uri:description'))
+  );
+  assert.ok(result.errors.some((line) => line.startsWith('collection.field:c1:alpha:symbol')));
 });

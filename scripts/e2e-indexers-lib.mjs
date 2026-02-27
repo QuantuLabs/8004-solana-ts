@@ -125,6 +125,63 @@ export function errorMessage(error) {
   }
 }
 
+export async function pollWithTimeout({
+  label = 'poll',
+  check,
+  maxAttempts = 10,
+  intervalMs = 500,
+  timeoutMs,
+}) {
+  if (typeof check !== 'function') {
+    throw new Error('pollWithTimeout requires a check function');
+  }
+
+  const attemptsLimit = Number.isFinite(maxAttempts)
+    ? Math.max(1, Math.trunc(maxAttempts))
+    : 1;
+  const delayMs = Number.isFinite(intervalMs)
+    ? Math.max(0, Math.trunc(intervalMs))
+    : 0;
+  const timeoutLimit = Number.isFinite(timeoutMs)
+    ? Math.max(delayMs, Math.trunc(timeoutMs))
+    : attemptsLimit * delayMs + delayMs;
+
+  const startedAt = Date.now();
+  let attempts = 0;
+  let lastError = null;
+
+  while (attempts < attemptsLimit && Date.now() - startedAt <= timeoutLimit) {
+    attempts += 1;
+    try {
+      const value = await check(attempts);
+      if (value) {
+        return {
+          value,
+          attempts,
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempts >= attemptsLimit) break;
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs >= timeoutLimit) break;
+    const sleepMs = Math.min(delayMs, timeoutLimit - elapsedMs);
+    await new Promise((resolve) => setTimeout(resolve, sleepMs));
+  }
+
+  const elapsedMs = Date.now() - startedAt;
+  const lastErrorSuffix = lastError
+    ? ` Last error: ${errorMessage(lastError)}`
+    : '';
+  throw new Error(
+    `${label} timed out after ${attempts} attempts in ${elapsedMs}ms ` +
+      `(limits: attempts=${attemptsLimit}, timeoutMs=${timeoutLimit}).${lastErrorSuffix}`
+  );
+}
+
 export function statusRank(status) {
   if (status === 'failed') return 3;
   if (status === 'partial') return 2;
@@ -332,6 +389,26 @@ function buildTransportDiff(transport, classicArtifact, substreamArtifact) {
       substreamArtifact?.idChecks?.observed?.pendingValidationsFound ?? null
     ),
     diffField(
+      'id_checks.expected_uri_metadata',
+      classicArtifact?.idChecks?.expected?.agentUriMetadata ?? null,
+      substreamArtifact?.idChecks?.expected?.agentUriMetadata ?? null
+    ),
+    diffField(
+      'id_checks.observed_uri_metadata',
+      classicArtifact?.idChecks?.observed?.agentUriMetadataFound ?? null,
+      substreamArtifact?.idChecks?.observed?.agentUriMetadataFound ?? null
+    ),
+    diffField(
+      'id_checks.expected_collections',
+      classicArtifact?.idChecks?.expected?.collections ?? null,
+      substreamArtifact?.idChecks?.expected?.collections ?? null
+    ),
+    diffField(
+      'id_checks.observed_collections',
+      classicArtifact?.idChecks?.observed?.collectionsFound ?? null,
+      substreamArtifact?.idChecks?.observed?.collectionsFound ?? null
+    ),
+    diffField(
       'id_checks.hash_agents',
       classicArtifact?.idChecks?.hashes?.agents ?? null,
       substreamArtifact?.idChecks?.hashes?.agents ?? null
@@ -345,6 +422,16 @@ function buildTransportDiff(transport, classicArtifact, substreamArtifact) {
       'id_checks.hash_pending_validations',
       classicArtifact?.idChecks?.hashes?.pendingValidations ?? null,
       substreamArtifact?.idChecks?.hashes?.pendingValidations ?? null
+    ),
+    diffField(
+      'id_checks.hash_uri_metadata',
+      classicArtifact?.idChecks?.hashes?.agentUriMetadata ?? null,
+      substreamArtifact?.idChecks?.hashes?.agentUriMetadata ?? null
+    ),
+    diffField(
+      'id_checks.hash_collections',
+      classicArtifact?.idChecks?.hashes?.collections ?? null,
+      substreamArtifact?.idChecks?.hashes?.collections ?? null
     ),
     diffField(
       'id_checks.error_count',

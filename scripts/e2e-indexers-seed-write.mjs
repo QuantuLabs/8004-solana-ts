@@ -25,6 +25,7 @@ import {
   makeRunId,
   nowIso,
   parseArgs,
+  pollWithTimeout,
   resolveFromCwd,
   writeJson,
 } from './e2e-indexers-lib.mjs';
@@ -382,6 +383,37 @@ async function main() {
     process.env.CLASSIC_INDEXER_API_KEY ||
     process.env.INDEXER_API_KEY ||
     undefined;
+  const revokePreflightPollAttempts = parsePositiveInt(
+    getArgOr(
+      args,
+      'revoke-preflight-poll-attempts',
+      process.env.E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_ATTEMPTS || '12'
+    ),
+    12,
+    1,
+    60
+  );
+  const revokePreflightPollDelayMs = parsePositiveInt(
+    getArgOr(
+      args,
+      'revoke-preflight-poll-delay-ms',
+      process.env.E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_DELAY_MS || '750'
+    ),
+    750,
+    50,
+    5000
+  );
+  const revokePreflightPollTimeoutMs = parsePositiveInt(
+    getArgOr(
+      args,
+      'revoke-preflight-poll-timeout-ms',
+      process.env.E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_TIMEOUT_MS ||
+        String(revokePreflightPollAttempts * revokePreflightPollDelayMs)
+    ),
+    revokePreflightPollAttempts * revokePreflightPollDelayMs,
+    revokePreflightPollDelayMs,
+    120000
+  );
 
   const artifact = {
     runId,
@@ -410,6 +442,9 @@ async function main() {
       pendingValidationCount,
       includeValidations,
       enableTransfer,
+      revokePreflightPollAttempts,
+      revokePreflightPollDelayMs,
+      revokePreflightPollTimeoutMs,
     },
     generatedDir: null,
     walletsFile: walletsPath,
@@ -424,6 +459,8 @@ async function main() {
       agents: [],
       feedbacks: [],
       pendingValidations: [],
+      agentUriMetadata: [],
+      collections: [],
     },
     payloadSamples: {
       feedbacks: [],
@@ -551,13 +588,16 @@ async function main() {
       const kp = Keypair.generate();
       const label = `feedback_signer_${String(i + 1).padStart(2, '0')}`;
       generatedWallets.push(toWalletRecord(label, kp));
+      const feedbackSdkConfig = {
+        rpcUrl,
+        signer: kp,
+        ...(ipfsClient ? { ipfsClient } : {}),
+      };
+      if (indexerUrl) feedbackSdkConfig.indexerUrl = indexerUrl;
+      if (indexerApiKey) feedbackSdkConfig.indexerApiKey = indexerApiKey;
       feedbackRunners.push({
         keypair: kp,
-        sdk: new SolanaSDK({
-          rpcUrl,
-          signer: kp,
-          ...(ipfsClient ? { ipfsClient } : {}),
-        }),
+        sdk: new SolanaSDK(feedbackSdkConfig),
       });
     }
 
@@ -602,6 +642,8 @@ async function main() {
     const collections = [];
     for (let i = 0; i < collectionDefs.length; i += 1) {
       const def = collectionDefs[i];
+      const collectionName = `${def.name} ${runId}`;
+      const collectionDescription = `E2E collection for ${runId}`;
       const logoSvg = buildAvatarSvg({
         title: def.symbol,
         subtitle: `${runId} logo`,
@@ -642,9 +684,9 @@ async function main() {
           `sdk.createCollection(${def.key})`,
           () =>
             sdk.createCollection({
-              name: `${def.name} ${runId}`,
+              name: collectionName,
               symbol: def.symbol,
-              description: `E2E collection for ${runId}`,
+              description: collectionDescription,
               image: logoUpload.uri,
               banner_image: bannerUpload.uri,
               socials: baseSocials,
@@ -670,8 +712,15 @@ async function main() {
         cid,
         uri,
         pointer,
+        version: '1.0.0',
+        name: collectionName,
+        symbol: def.symbol,
+        description: collectionDescription,
         image: logoUpload.uri,
         banner_image: bannerUpload.uri,
+        social_website: baseSocials.website,
+        social_x: baseSocials.x,
+        social_discord: baseSocials.discord,
       };
       collections.push(collectionRecord);
       artifact.collections.push(collectionRecord);
@@ -776,6 +825,11 @@ async function main() {
         colLocked: null,
         parentAsset: null,
         parentLocked: null,
+        uriMetadata: {
+          '_uri:name': metadataV1.name,
+          '_uri:description': metadataV1.description,
+          '_uri:image': metadataV1.image,
+        },
       };
 
       const metadataKey = 'e2e_idx_run';
@@ -842,6 +896,11 @@ async function main() {
         const uriError = asTxError(uriResult, `setAgentUri(agent_${code})`);
         if (uriError) throw uriError;
         artifact.counters.setAgentUri += 1;
+        expectedAgent.uriMetadata = {
+          '_uri:name': metadataV2.name,
+          '_uri:description': metadataV2.description,
+          '_uri:image': metadataV2.image,
+        };
       }
 
       createdAgents.push({
@@ -1022,9 +1081,24 @@ async function main() {
 
         let isRevoked = false;
         if (j === feedbackPerAgent - 1 && i % 2 === 1) {
+          await pollWithTimeout({
+            label: `indexer visibility for revoke preflight (${feedbackCode})`,
+            maxAttempts: revokePreflightPollAttempts,
+            intervalMs: revokePreflightPollDelayMs,
+            timeoutMs: revokePreflightPollTimeoutMs,
+            check: async () =>
+              feedbackSdk.readFeedback(
+                agent.pubkey,
+                feedbackSigner.publicKey,
+                feedbackIndex
+              ),
+          });
           const revokeResult = await withRetry(
             `sdk.revokeFeedback(${feedbackCode})`,
-            () => feedbackSdk.revokeFeedback(agent.pubkey, feedbackIndex, sealHash),
+            () =>
+              feedbackSdk.revokeFeedback(agent.pubkey, feedbackIndex, sealHash, {
+                waitForIndexerSync: false,
+              }),
             3,
             1100
           );
@@ -1184,6 +1258,24 @@ async function main() {
     }));
     artifact.expected.feedbacks = feedbackExpected;
     artifact.expected.pendingValidations = pendingExpected;
+    artifact.expected.agentUriMetadata = createdAgents.map((row) => ({
+      asset: row.expected.asset,
+      '_uri:name': row.expected.uriMetadata['_uri:name'],
+      '_uri:description': row.expected.uriMetadata['_uri:description'],
+      '_uri:image': row.expected.uriMetadata['_uri:image'],
+    }));
+    artifact.expected.collections = collections.map((row) => ({
+      pointer: row.pointer,
+      version: row.version,
+      name: row.name,
+      symbol: row.symbol,
+      description: row.description,
+      image: row.image,
+      banner_image: row.banner_image,
+      social_website: row.social_website,
+      social_x: row.social_x,
+      social_discord: row.social_discord,
+    }));
 
     let indexerSynced = null;
     if (indexerUrl && typeof sdk.waitForIndexerSync === 'function' && typeof sdk.getIndexerClient === 'function') {

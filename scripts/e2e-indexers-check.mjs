@@ -137,6 +137,244 @@ function toBigIntSafe(value, fallback = 0n) {
 }
 
 const AGENT_ID_FIELDS = ['agentId', 'agent_id', 'globalId', 'global_id', 'id'];
+const URI_METADATA_FIELDS = ['_uri:name', '_uri:description', '_uri:image'];
+const COLLECTION_DIGEST_FIELDS = [
+  'version',
+  'name',
+  'symbol',
+  'description',
+  'image',
+  'banner_image',
+  'social_website',
+  'social_x',
+  'social_discord',
+];
+
+function toStringOrNull(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
+function trimTrailingSlashes(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return '';
+  const normalized = trimmed.replace(/\/+$/g, '');
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:$/.test(normalized)) {
+    return trimmed;
+  }
+  return normalized;
+}
+
+function isUrlLikeValue(value) {
+  return typeof value === 'string' && /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/.+/.test(value.trim());
+}
+
+function normalizeDigestFieldValue(field, value) {
+  const asString = toStringOrNull(value);
+  if (asString === null) return null;
+  const trimmed = asString.trim();
+  if (trimmed.length === 0) return '';
+  if (field === 'social_x') return trimmed;
+  if (isUrlLikeValue(trimmed)) return trimTrailingSlashes(trimmed);
+  return trimmed;
+}
+
+function formatDigestValue(value) {
+  return value === null ? 'null' : String(value);
+}
+
+function normalizeUriMetadataShape(value) {
+  const item = value && typeof value === 'object' ? value : {};
+  return {
+    '_uri:name':
+      toStringOrNull(item['_uri:name']) ??
+      toStringOrNull(item.uriName) ??
+      toStringOrNull(item.uri_name) ??
+      toStringOrNull(item.values?.['_uri:name']) ??
+      null,
+    '_uri:description':
+      toStringOrNull(item['_uri:description']) ??
+      toStringOrNull(item.uriDescription) ??
+      toStringOrNull(item.uri_description) ??
+      toStringOrNull(item.values?.['_uri:description']) ??
+      null,
+    '_uri:image':
+      toStringOrNull(item['_uri:image']) ??
+      toStringOrNull(item.uriImage) ??
+      toStringOrNull(item.uri_image) ??
+      toStringOrNull(item.values?.['_uri:image']) ??
+      null,
+  };
+}
+
+function normalizeCollectionDigestShape(value) {
+  const item = value && typeof value === 'object' ? value : {};
+  return {
+    version: toStringOrNull(item.version),
+    name: toStringOrNull(item.name),
+    symbol: toStringOrNull(item.symbol),
+    description: toStringOrNull(item.description),
+    image: toStringOrNull(item.image),
+    banner_image: toStringOrNull(item.banner_image ?? item.bannerImage),
+    social_website: toStringOrNull(item.social_website ?? item.socialWebsite),
+    social_x: toStringOrNull(item.social_x ?? item.socialX),
+    social_discord: toStringOrNull(item.social_discord ?? item.socialDiscord),
+  };
+}
+
+function extractUriMetadataFromRows(rows, assetFilter = null) {
+  const byKey = new Map();
+  for (const row of rows || []) {
+    const rowAsset = toStringOrNull(row?.asset ?? row?.assetPubkey ?? null);
+    if (assetFilter && rowAsset && rowAsset !== assetFilter) continue;
+    const key =
+      (typeof row?.key === 'string' ? row.key : null) ??
+      (typeof row?.metadataKey === 'string' ? row.metadataKey : null);
+    if (!key) continue;
+    const value = toStringOrNull(row?.value ?? row?.metadataValue ?? null);
+    byKey.set(key, value);
+  }
+
+  return {
+    '_uri:name': byKey.get('_uri:name') ?? null,
+    '_uri:description': byKey.get('_uri:description') ?? null,
+    '_uri:image': byKey.get('_uri:image') ?? null,
+  };
+}
+
+async function readGraphqlUriMetadata(client, asset) {
+  if (!client || typeof client.request !== 'function') {
+    throw new Error('GraphQL metadata request method unavailable');
+  }
+
+  const attempts = [
+    {
+      query: `query($asset: String!) {
+        metadata(first: 256, asset: $asset) {
+          asset
+          key
+          value
+        }
+      }`,
+      parse: (data) =>
+        Array.isArray(data?.metadata) ? extractUriMetadataFromRows(data.metadata, asset) : null,
+    },
+    {
+      query: `query($asset: String!) {
+        metadata(first: 256, asset: $asset) {
+          asset
+          metadataKey
+          metadataValue
+        }
+      }`,
+      parse: (data) =>
+        Array.isArray(data?.metadata) ? extractUriMetadataFromRows(data.metadata, asset) : null,
+    },
+    {
+      query: `query($asset: String!) {
+        metadataEntries(first: 256, asset: $asset) {
+          asset
+          key
+          value
+        }
+      }`,
+      parse: (data) =>
+        Array.isArray(data?.metadataEntries)
+          ? extractUriMetadataFromRows(data.metadataEntries, asset)
+          : null,
+    },
+    {
+      query: `query($asset: String!) {
+        metadataEntries(first: 256, asset: $asset) {
+          asset
+          metadataKey
+          metadataValue
+        }
+      }`,
+      parse: (data) =>
+        Array.isArray(data?.metadataEntries)
+          ? extractUriMetadataFromRows(data.metadataEntries, asset)
+          : null,
+    },
+    {
+      query: `query($asset: String!) {
+        agents(first: 1, asset: $asset) {
+          uriName
+          uriDescription
+          uriImage
+        }
+      }`,
+      parse: (data) => {
+        const row = Array.isArray(data?.agents) ? data.agents[0] : null;
+        if (!row) return null;
+        return normalizeUriMetadataShape(row);
+      },
+    },
+    {
+      query: `query($asset: String!) {
+        agents(first: 1, asset: $asset) {
+          uri_name
+          uri_description
+          uri_image
+        }
+      }`,
+      parse: (data) => {
+        const row = Array.isArray(data?.agents) ? data.agents[0] : null;
+        if (!row) return null;
+        return normalizeUriMetadataShape(row);
+      },
+    },
+  ];
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const data = await client.request(attempt.query, { asset });
+      const parsed = attempt.parse(data);
+      if (parsed) return parsed;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `GraphQL URI metadata query unsupported for ${asset}${lastError ? ` (${errorMessage(lastError)})` : ''}`
+  );
+}
+
+async function readUriMetadataForAsset(client, transport, asset) {
+  if (typeof client.getMetadata === 'function') {
+    const rows = await client.getMetadata(asset);
+    return extractUriMetadataFromRows(rows);
+  }
+
+  if (typeof client.getMetadataByKey === 'function') {
+    const results = await Promise.all(
+      URI_METADATA_FIELDS.map(async (key) => {
+        const row = await client.getMetadataByKey(asset, key);
+        return [key, toStringOrNull(row?.value)];
+      })
+    );
+    return Object.fromEntries(results);
+  }
+
+  if (transport === 'graphql') {
+    return readGraphqlUriMetadata(client, asset);
+  }
+
+  throw new Error(`URI metadata lookup is unavailable for transport ${transport}`);
+}
+
+function valuesEqualForField(field, expectedValue, actualValue) {
+  return (
+    normalizeDigestFieldValue(field, expectedValue) === normalizeDigestFieldValue(field, actualValue)
+  );
+}
 
 function normalizeAgentIdValue(value) {
   if (typeof value === 'string') {
@@ -191,6 +429,10 @@ function normalizeExpected(seedExpected) {
   const pendingValidations = Array.isArray(seedExpected.pendingValidations)
     ? seedExpected.pendingValidations
     : [];
+  const agentUriMetadata = Array.isArray(seedExpected.agentUriMetadata)
+    ? seedExpected.agentUriMetadata
+    : [];
+  const collections = Array.isArray(seedExpected.collections) ? seedExpected.collections : [];
 
   return {
     agents: agents
@@ -221,6 +463,21 @@ function normalizeExpected(seedExpected) {
         nonce: toBigIntSafe(item?.nonce, -1n),
       }))
       .filter((item) => item.asset && item.validator && item.nonce >= 0n),
+    agentUriMetadata: agentUriMetadata
+      .map((item) => ({
+        asset: typeof item?.asset === 'string' ? item.asset : null,
+        ...normalizeUriMetadataShape(item),
+      }))
+      .filter((item) => item.asset),
+    collections: collections
+      .map((item) => ({
+        pointer:
+          (typeof item?.pointer === 'string' ? item.pointer : null) ??
+          (typeof item?.col === 'string' ? item.col : null) ??
+          (typeof item?.collection === 'string' ? item.collection : null),
+        ...normalizeCollectionDigestShape(item),
+      }))
+      .filter((item) => item.pointer),
   };
 }
 
@@ -247,6 +504,8 @@ async function evaluateIdChecks(client, expected, options) {
   const agentLines = [];
   const feedbackLines = [];
   const pendingValidationLines = [];
+  const uriMetadataLines = [];
+  const collectionDigestLines = [];
   const seenExpectedAssets = new Set();
   const seenAgentIdByAsset = new Map();
   const seenAssetByAgentId = new Map();
@@ -254,6 +513,8 @@ async function evaluateIdChecks(client, expected, options) {
   const expectedAgents = expected.agents.length;
   const expectedFeedbacks = expected.feedbacks.length;
   const expectedPending = expected.pendingValidations.length;
+  const expectedUriMetadata = expected.agentUriMetadata.length;
+  const expectedCollections = expected.collections.length;
 
   for (const item of expected.agents) {
     if (seenExpectedAssets.has(item.asset)) {
@@ -460,22 +721,123 @@ async function evaluateIdChecks(client, expected, options) {
     }
   }
 
+  let foundUriMetadata = 0;
+  const uriMetadataResults = await mapWithConcurrency(
+    expected.agentUriMetadata,
+    options.concurrency,
+    async (item) => {
+      try {
+        const observed = await readUriMetadataForAsset(client, options.transport, item.asset);
+        return { item, observed };
+      } catch (error) {
+        return { item, observed: null, error: errorMessage(error) };
+      }
+    }
+  );
+
+  for (const row of uriMetadataResults) {
+    if (row.error) {
+      errors.push(`uri_metadata.fetch:${row.item.asset}:${row.error}`);
+      continue;
+    }
+
+    if (row.observed) {
+      foundUriMetadata += 1;
+    }
+
+    const observedLineParts = [row.item.asset];
+    for (const field of URI_METADATA_FIELDS) {
+      const expectedValue = normalizeDigestFieldValue(field, row.item[field] ?? null);
+      const actualValue = normalizeDigestFieldValue(field, row.observed?.[field] ?? null);
+      observedLineParts.push(formatDigestValue(actualValue));
+      if (!valuesEqualForField(field, expectedValue, actualValue)) {
+        errors.push(
+          `uri_metadata.field:${row.item.asset}:${field}:expected=${formatDigestValue(
+            expectedValue
+          )}:actual=${formatDigestValue(actualValue)}`
+        );
+      }
+    }
+    uriMetadataLines.push(observedLineParts.join('|'));
+  }
+
+  let foundCollections = 0;
+  const collectionResults = await mapWithConcurrency(
+    expected.collections,
+    options.concurrency,
+    async (item) => {
+      if (typeof client.getCollectionPointers !== 'function') {
+        return { item, observed: null, error: 'getCollectionPointers unavailable' };
+      }
+      try {
+        const rows = await client.getCollectionPointers({
+          collection: item.pointer,
+          limit: 4,
+        });
+        const observed = Array.isArray(rows)
+          ? rows.find((entry) => {
+              const pointer = toStringOrNull(entry?.collection ?? entry?.col);
+              return pointer === item.pointer;
+            }) ?? rows[0] ?? null
+          : null;
+        return { item, observed };
+      } catch (error) {
+        return { item, observed: null, error: errorMessage(error) };
+      }
+    }
+  );
+
+  for (const row of collectionResults) {
+    if (row.error) {
+      errors.push(`collection.fetch:${row.item.pointer}:${row.error}`);
+      continue;
+    }
+
+    const observedDigest = row.observed ? normalizeCollectionDigestShape(row.observed) : null;
+    if (!observedDigest) {
+      errors.push(`collection.missing:${row.item.pointer}`);
+    } else {
+      foundCollections += 1;
+    }
+
+    const observedLineParts = [row.item.pointer];
+    for (const field of COLLECTION_DIGEST_FIELDS) {
+      const expectedValue = normalizeDigestFieldValue(field, row.item[field] ?? null);
+      const actualValue = normalizeDigestFieldValue(field, observedDigest?.[field] ?? null);
+      observedLineParts.push(formatDigestValue(actualValue));
+      if (!valuesEqualForField(field, expectedValue, actualValue)) {
+        errors.push(
+          `collection.field:${row.item.pointer}:${field}:expected=${formatDigestValue(
+            expectedValue
+          )}:actual=${formatDigestValue(actualValue)}`
+        );
+      }
+    }
+    collectionDigestLines.push(observedLineParts.join('|'));
+  }
+
   return {
     passed: errors.length === 0,
     expected: {
       agents: expectedAgents,
       feedbacks: expectedFeedbacks,
       pendingValidations: expectedPending,
+      agentUriMetadata: expectedUriMetadata,
+      collections: expectedCollections,
     },
     observed: {
       agentsFound: foundAgents,
       feedbacksFound: foundFeedbacks,
       pendingValidationsFound: foundPending,
+      agentUriMetadataFound: foundUriMetadata,
+      collectionsFound: foundCollections,
     },
     hashes: {
       agents: hashLines(agentLines),
       feedbacks: hashLines(feedbackLines),
       pendingValidations: hashLines(pendingValidationLines),
+      agentUriMetadata: hashLines(uriMetadataLines),
+      collections: hashLines(collectionDigestLines),
     },
     errors,
   };
@@ -582,16 +944,22 @@ async function main() {
         agents: expected?.agents.length || 0,
         feedbacks: expected?.feedbacks.length || 0,
         pendingValidations: expected?.pendingValidations.length || 0,
+        agentUriMetadata: expected?.agentUriMetadata.length || 0,
+        collections: expected?.collections.length || 0,
       },
       observed: {
         agentsFound: 0,
         feedbacksFound: 0,
         pendingValidationsFound: 0,
+        agentUriMetadataFound: 0,
+        collectionsFound: 0,
       },
       hashes: {
         agents: null,
         feedbacks: null,
         pendingValidations: null,
+        agentUriMetadata: null,
+        collections: null,
       },
       errors: [],
     },
@@ -672,6 +1040,7 @@ async function main() {
         timeoutMs: idCheckTimeoutMs,
         pollMs: idCheckPollMs,
         concurrency: idCheckConcurrency,
+        transport: transportRaw,
       });
       artifact.idChecks.passed = idCheck.passed;
       artifact.idChecks.attempts = idCheck.attempts;
@@ -693,6 +1062,9 @@ async function main() {
   }
 
   artifact.status = inferStatus(artifact.available, errors, baseUrl);
+  if (artifact.idChecks.enabled && artifact.idChecks.passed === false) {
+    artifact.status = 'failed';
+  }
   writeJson(artifactPath, artifact);
   console.log(`Check artifact: ${artifactPath}`);
 
