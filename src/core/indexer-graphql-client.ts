@@ -82,16 +82,38 @@ function clampInt(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
-function normalizeIndexerAgentId(agentId: string | number | bigint): string {
-  const normalized = typeof agentId === 'bigint'
-    ? agentId.toString()
-    : String(agentId).trim();
+function normalizeGraphqlAgentLookupId(agentId: string | number | bigint): string {
+  if (typeof agentId === 'bigint') {
+    if (agentId < 0n) {
+      throw new IndexerError(
+        'agentId must be a non-negative integer or non-empty string',
+        IndexerErrorCode.INVALID_RESPONSE
+      );
+    }
+    return agentId.toString();
+  }
 
-  if (!/^\d+$/.test(normalized)) {
+  if (typeof agentId === 'number') {
+    if (!Number.isFinite(agentId) || !Number.isInteger(agentId) || agentId < 0) {
+      throw new IndexerError(
+        'agentId must be a non-negative integer or non-empty string',
+        IndexerErrorCode.INVALID_RESPONSE
+      );
+    }
+    return Math.trunc(agentId).toString();
+  }
+
+  const normalized = String(agentId).trim();
+  if (!normalized) {
     throw new IndexerError(
-      'agentId must be a non-negative integer',
+      'agentId must be a non-empty string or non-negative integer',
       IndexerErrorCode.INVALID_RESPONSE
     );
+  }
+
+  if (normalized.startsWith('sol:')) {
+    const stripped = normalized.slice(4).trim();
+    if (stripped) return stripped;
   }
 
   return normalized;
@@ -119,7 +141,7 @@ function toGraphqlUnixSeconds(value: unknown): string | undefined {
   return undefined;
 }
 
-type AgentOrderField = 'createdAt' | 'updatedAt' | 'totalFeedback' | 'qualityScore' | 'trustTier' | 'agentid';
+type AgentOrderField = 'createdAt' | 'updatedAt' | 'totalFeedback' | 'qualityScore' | 'trustTier';
 
 function resolveAgentOrder(order?: string): { orderBy: AgentOrderField; orderDirection: 'asc' | 'desc' } {
   const resolved = order ?? 'created_at.desc';
@@ -140,19 +162,27 @@ function resolveAgentOrder(order?: string): { orderBy: AgentOrderField; orderDir
     return { orderBy: 'trustTier', orderDirection };
   }
   if (normalized === 'agentid' || normalized === 'agent_id') {
-    return { orderBy: 'agentid', orderDirection };
+    // GraphQL no longer exposes public sequence ids; keep compatibility by
+    // mapping this legacy alias to creation-time ordering.
+    return { orderBy: 'createdAt', orderDirection };
   }
   return { orderBy: 'createdAt', orderDirection };
 }
 
 function agentId(asset: string): string {
-  return `sol:${asset}`;
+  const normalized = asset.trim();
+  if (normalized.startsWith('sol:')) {
+    return normalized.slice(4);
+  }
+  return normalized;
 }
 
 function mapGqlAgent(agent: any, fallbackAsset = ''): IndexedAgent {
+  const mappedAsset = agent?.solana?.assetPubkey ?? agent?.id ?? fallbackAsset;
+  const mappedAgentId = agent?.agentid ?? agent?.agentId ?? agent?.id ?? mappedAsset ?? null;
   return {
-    agent_id: agent?.agentid ?? agent?.agentId ?? null,
-    asset: agent?.solana?.assetPubkey ?? fallbackAsset,
+    agent_id: mappedAgentId,
+    asset: mappedAsset,
     owner: agent?.owner ?? '',
     creator: agent?.creator ?? null,
     agent_uri: agent?.agentURI ?? null,
@@ -472,6 +502,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   // ============================================================================
 
   async getAgent(asset: string): Promise<IndexedAgent | null> {
+    const normalizedAsset = agentId(asset);
     const data = await this.request<{
       agent: any | null;
     }>(
@@ -493,21 +524,21 @@ export class IndexerGraphQLClient implements IndexerReadClient {
           solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
         }
       }`,
-      { id: agentId(asset) }
+      { id: normalizedAsset }
     );
 
     if (!data.agent) return null;
-    return mapGqlAgent(data.agent, asset);
+    return mapGqlAgent(data.agent, normalizedAsset);
   }
 
   async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
-    const normalizedAgentId = normalizeIndexerAgentId(agentId);
+    const normalizedAgentId = normalizeGraphqlAgentLookupId(agentId);
 
     const data = await this.request<{
-      agents: any[];
+      agent: any | null;
     }>(
-      `query($where: AgentFilter) {
-        agents(first: 1, where: $where, orderBy: createdAt, orderDirection: desc) {
+      `query($id: ID!) {
+        agent(id: $id) {
           id
           owner
           creator
@@ -524,12 +555,11 @@ export class IndexerGraphQLClient implements IndexerReadClient {
           solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
         }
       }`,
-      { where: { agentid: normalizedAgentId } }
+      { id: normalizedAgentId }
     );
 
-    const first = data.agents?.[0];
-    if (!first) return null;
-    const mapped = mapGqlAgent(first);
+    if (!data.agent) return null;
+    const mapped = mapGqlAgent(data.agent, normalizedAgentId);
     if (mapped.agent_id === undefined || mapped.agent_id === null) {
       mapped.agent_id = normalizedAgentId;
     }

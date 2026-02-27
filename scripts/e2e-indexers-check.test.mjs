@@ -50,7 +50,7 @@ function expectedAgents(rows) {
 }
 
 test('agent id helpers normalize explicit and derived IDs', () => {
-  assert.equal(canonicalAgentIdForAsset('abc'), 'sol:abc');
+  assert.equal(canonicalAgentIdForAsset('abc'), 'abc');
   assert.equal(normalizeAgentIdValue(' 42 '), '42');
   assert.equal(normalizeAgentIdValue(8), '8');
 
@@ -59,13 +59,13 @@ test('agent id helpers normalize explicit and derived IDs', () => {
   assert.equal(explicit.explicit, true);
 
   const derived = extractAgentId({}, 'asset-b');
-  assert.equal(derived.value, 'sol:asset-b');
+  assert.equal(derived.value, 'asset-b');
   assert.equal(derived.explicit, false);
 });
 
 test('evaluateIdChecks flags null and nondeterministic agent ids', async () => {
   const client = makeClient({
-    assetA: [makeAgent('ownerA', { id: 'sol:assetA' }), makeAgent('ownerA', { id: 'sol:assetA:v2' })],
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA:v2' })],
     assetB: [makeAgent('ownerB', { id: null }), makeAgent('ownerB', { id: null })],
   });
 

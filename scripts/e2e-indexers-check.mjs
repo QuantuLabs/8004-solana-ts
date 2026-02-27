@@ -156,7 +156,7 @@ function canonicalAgentIdForAsset(asset) {
   if (typeof asset !== 'string') return null;
   const trimmed = asset.trim();
   if (!trimmed) return null;
-  return `sol:${trimmed}`;
+  return trimmed;
 }
 
 function extractAgentId(agent, asset) {

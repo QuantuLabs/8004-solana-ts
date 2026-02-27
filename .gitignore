@@ -57,6 +57,10 @@ scripts/*.js
 .test-wallets.json
 # Reference docs (agent0-ts implementation reference)
 docs/reference/
+# Internal runlogs/audits (do not publish)
+docs/e2e-indexers-integrity-audit.md
+docs/e2e-indexers-runlog.md
+docs/e2e-sdk-runlog.md
 
 # Local check scripts
 check-pda.ts

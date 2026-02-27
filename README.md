@@ -263,14 +263,22 @@ Environment variables (optional):
 - `INDEXER_GRAPHQL_URL`: override GraphQL endpoint
 - `INDEXER_URL` + `INDEXER_API_KEY`: legacy REST v1 (Supabase PostgREST)
 
-Read by indexer sequence id (`agent_id`):
+Read by backend deterministic id:
 
 ```typescript
-const indexed = await sdk.getAgentByAgentId(42);
+// GraphQL: raw Agent.id (asset pubkey)
+const indexed = await sdk.getAgentByAgentId('AssetPubkeyBase58...');
 
-// Backward-compatible alias
-const indexedLegacy = await sdk.getAgentByIndexerId(42);
+// REST: legacy sequence id (`agent_id`)
+const indexedRest = await sdk.getAgentByAgentId(42);
+
+// Backward-compatible alias (same backend-specific semantics)
+const indexedLegacy = await sdk.getAgentByIndexerId('AssetPubkeyBase58...');
 ```
+
+`getAgentByAgentId()` semantics depend on backend:
+- REST (`indexerUrl`): uses numeric `agent_id`
+- GraphQL (`indexerGraphqlUrl`): uses raw `Agent.id` (asset pubkey); numeric `agent_id` lookup is not exposed
 
 ## Feedback System
 

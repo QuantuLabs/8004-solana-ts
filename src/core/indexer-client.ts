@@ -84,6 +84,11 @@ export interface IndexerReadClient {
 
   // Agents
   getAgent(asset: string): Promise<IndexedAgent | null>;
+  /**
+   * Backend-specific deterministic agent lookup key.
+   * REST: sequential `agent_id`.
+   * GraphQL: `Agent.id` (raw asset pubkey).
+   */
   getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
   /** @deprecated Use getAgentByAgentId(agentId) */
   getAgentByIndexerId?(agentId: string | number | bigint): Promise<IndexedAgent | null>;
@@ -154,6 +159,11 @@ export interface IndexerReadClient {
  * v2.0 - Includes ATOM stats and sort_key for leaderboard
  */
 export interface IndexedAgent {
+  /**
+   * Backend-specific deterministic id.
+   * REST: sequential `agent_id`.
+   * GraphQL: `Agent.id` (raw asset pubkey).
+   */
   agent_id?: number | string | null;
   asset: string;
   owner: string;
