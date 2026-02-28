@@ -30,6 +30,25 @@ const DEFAULT_COMPUTE_UNITS = 400_000;
 const COLLECTION_POINTER_PREFIX = 'c1:';
 const COLLECTION_POINTER_MAX_BYTES = 128;
 const COLLECTION_POINTER_PAYLOAD_RE = /^[a-z0-9]+$/;
+function isAlreadyInUseError(errorMsg) {
+    const lower = errorMsg.toLowerCase();
+    return (lower.includes('already in use') ||
+        lower.includes('already initialized') ||
+        lower.includes('alreadyinitialized') ||
+        lower.includes('accountinuse') ||
+        lower.includes('account in use'));
+}
+function isPermanentWriteError(errorMsg) {
+    return (errorMsg.includes('InstructionError') ||
+        errorMsg.includes('custom program error') ||
+        errorMsg.includes('insufficient funds') ||
+        errorMsg.includes('account not found') ||
+        errorMsg.includes('invalid account data') ||
+        errorMsg.includes('ConstraintViolation') ||
+        errorMsg.includes('AccountNotInitialized') ||
+        errorMsg.includes('InvalidProgramId') ||
+        isAlreadyInUseError(errorMsg));
+}
 export function validateCollectionPointer(col) {
     if (typeof col !== 'string') {
         throw new Error('col must be a string');
@@ -155,8 +174,31 @@ export class IdentityTransactionBuilder {
             if (!this.payer || !assetKeypair) {
                 throw new Error('No signer configured - SDK is read-only');
             }
-            // Send register transaction with retry
-            const registerSignature = await this.sendWithRetry(registerTransaction, [this.payer, assetKeypair]);
+            // Send register transaction with retry.
+            // If retries eventually hit "already in use", reconcile with on-chain state:
+            // this can happen when an earlier attempt actually landed after an expiry error.
+            let registerSignature;
+            try {
+                registerSignature = await this.sendWithRetry(registerTransaction, [this.payer, assetKeypair]);
+            }
+            catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                if (isAlreadyInUseError(errorMsg)) {
+                    const agentInfo = await this.connection.getAccountInfo(agentPda);
+                    if (agentInfo) {
+                        const recoveredSignature = typeof error.signature === 'string'
+                            ? error.signature
+                            : '';
+                        logger.warn('registerAgent saw "already in use" but agent account exists; treating as successful prior register.');
+                        return {
+                            signature: recoveredSignature,
+                            success: true,
+                            asset: assetPubkey,
+                        };
+                    }
+                }
+                throw error;
+            }
             return {
                 signature: registerSignature,
                 success: true,
@@ -709,14 +751,7 @@ export class IdentityTransactionBuilder {
                 lastError = error instanceof Error ? error : new Error(String(error));
                 const errorMsg = lastError.message;
                 // Check for permanent errors that should NOT be retried
-                const isPermanentError = errorMsg.includes('InstructionError') ||
-                    errorMsg.includes('custom program error') ||
-                    errorMsg.includes('insufficient funds') ||
-                    errorMsg.includes('account not found') ||
-                    errorMsg.includes('invalid account data') ||
-                    errorMsg.includes('ConstraintViolation') ||
-                    errorMsg.includes('AccountNotInitialized') ||
-                    errorMsg.includes('InvalidProgramId');
+                const isPermanentError = isPermanentWriteError(errorMsg);
                 if (isPermanentError) {
                     logger.warn(`Transaction failed with permanent error (not retrying): ${errorMsg}`);
                     throw lastError;
@@ -766,14 +801,7 @@ export class ReputationTransactionBuilder {
             catch (error) {
                 lastError = error instanceof Error ? error : new Error(String(error));
                 const errorMsg = lastError.message;
-                const isPermanentError = errorMsg.includes('InstructionError') ||
-                    errorMsg.includes('custom program error') ||
-                    errorMsg.includes('insufficient funds') ||
-                    errorMsg.includes('account not found') ||
-                    errorMsg.includes('invalid account data') ||
-                    errorMsg.includes('ConstraintViolation') ||
-                    errorMsg.includes('AccountNotInitialized') ||
-                    errorMsg.includes('InvalidProgramId');
+                const isPermanentError = isPermanentWriteError(errorMsg);
                 if (isPermanentError) {
                     logger.warn(`Transaction failed with permanent error (not retrying): ${errorMsg}`);
                     throw lastError;

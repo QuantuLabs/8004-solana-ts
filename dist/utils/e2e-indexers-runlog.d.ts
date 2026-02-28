@@ -55,7 +55,7 @@ export interface IndexerComparisonReport {
     overallMismatchCount: number;
     transports: IndexerTransportDiff[];
 }
-export declare const E2E_INDEXERS_RUNLOG_TEMPLATE = "# E2E Indexers Runlog\n\nExecution history for indexer E2E matrix runs.\n\n## Runs\n<!-- RUNS:START -->\n<!-- RUNS:END -->\n\n## Jobs\n<!-- JOBS:START -->\n<!-- JOBS:END -->\n\n## Diffs\n<!-- DIFFS:START -->\n<!-- DIFFS:END -->\n";
+export declare const E2E_INDEXERS_RUNLOG_TEMPLATE = "# E2E Indexers Runlog\n\nExecution history for indexer E2E matrix runs.\n\n## Runbook Notes\n\n- Matrix pass requires seed success plus passing endpoint availability and ID checks on enabled indexer check jobs (`available: true`, `idChecks.passed: true`).\n- Inter-indexer parity mismatch count is diagnostic; parity mismatch alone is not sufficient to classify a run as fail/pass.\n- Key env knobs: `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_ATTEMPTS`, `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_DELAY_MS`, `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_TIMEOUT_MS`, `E2E_INDEXERS_IPFS_API_URL`, `E2E_INDEXERS_IPFS_CONTAINER_NAME`, `E2E_INDEXERS_IPFS_API_PORT`, `E2E_INDEXERS_IPFS_GATEWAY_PORT`, `E2E_INDEXERS_IPFS_IMAGE`.\n\n## Runs\n<!-- RUNS:START -->\n<!-- RUNS:END -->\n\n## Jobs\n<!-- JOBS:START -->\n<!-- JOBS:END -->\n\n## Diffs\n<!-- DIFFS:START -->\n<!-- DIFFS:END -->\n";
 export declare function ensureRunlogTemplate(existingContent?: string): string;
 export declare function formatRunSectionEntry(run: MatrixRunRecord): string;
 export declare function formatJobsSectionEntry(run: MatrixRunRecord): string;

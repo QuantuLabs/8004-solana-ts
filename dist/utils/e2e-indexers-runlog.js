@@ -8,6 +8,12 @@ export const E2E_INDEXERS_RUNLOG_TEMPLATE = `# E2E Indexers Runlog
 
 Execution history for indexer E2E matrix runs.
 
+## Runbook Notes
+
+- Matrix pass requires seed success plus passing endpoint availability and ID checks on enabled indexer check jobs (\`available: true\`, \`idChecks.passed: true\`).
+- Inter-indexer parity mismatch count is diagnostic; parity mismatch alone is not sufficient to classify a run as fail/pass.
+- Key env knobs: \`E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_ATTEMPTS\`, \`E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_DELAY_MS\`, \`E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_TIMEOUT_MS\`, \`E2E_INDEXERS_IPFS_API_URL\`, \`E2E_INDEXERS_IPFS_CONTAINER_NAME\`, \`E2E_INDEXERS_IPFS_API_PORT\`, \`E2E_INDEXERS_IPFS_GATEWAY_PORT\`, \`E2E_INDEXERS_IPFS_IMAGE\`.
+
 ## Runs
 ${RUNS_START}
 ${RUNS_END}
