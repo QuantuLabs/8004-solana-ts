@@ -119,7 +119,7 @@ const upload = await sdk.createCollection(collectionInput);
 // upload.uri      -> ipfs://<cid>
 // upload.pointer  -> canonical c1:b... pointer
 
-// 3) Register agent (base collection is still automatic)
+// 3) Register agent (base registry is still automatic)
 const result = await sdk.registerAgent('ipfs://QmAgentMetadata...');
 
 // 4) Advanced: set canonical pointer on the agent account
@@ -138,9 +138,9 @@ Advanced end-to-end usage is shown in [`examples/collection-flow.ts`](../example
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `getCollection` | `(collection: PublicKey) => Promise<CollectionInfo \| null>` | Read one registry/collection config |
-| `getCollections` | `() => Promise<CollectionInfo[]>` | List all registry/collection configs |
-| `getCollectionAgents` | `(collection: PublicKey, options?) => Promise<AgentAccount[]>` | List agents linked to one registry/collection |
+| `getCollection` | `(collection: PublicKey) => Promise<CollectionInfo \| null>` | Read one registry config |
+| `getCollections` | `() => Promise<CollectionInfo[]>` | List all registry configs |
+| `getCollectionAgents` | `(collection: PublicKey, options?) => Promise<AgentAccount[]>` | List agents linked to one registry |
 
 ```typescript
 const baseRegistry = await sdk.getBaseCollection();
@@ -186,12 +186,12 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `registerAgent` | `(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions) => Promise<TransactionResult \| PreparedTransaction>` | Register new agent (base collection default) |
+| `registerAgent` | `(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions) => Promise<TransactionResult \| PreparedTransaction>` | Register new agent (base registry default) |
 | `enableAtom` | `(asset) => Promise<TransactionResult>` | Enable ATOM one-way for an existing agent |
-| `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base collection auto-resolved; standard token wallet transfer also works) |
+| `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base registry auto-resolved; standard token wallet transfer also works) |
 | `transferAgent` (legacy) | `(asset, collection, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership with explicit base registry pubkey |
 | `syncOwner` | `(asset, options?) => Promise<TransactionResult \| PreparedTransaction>` | Sync cached owner with live Core owner |
-| `setAgentUri` | `(asset, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update agent URI (base collection auto-resolved) |
+| `setAgentUri` | `(asset, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update agent URI (base registry auto-resolved) |
 | `setAgentUri` (legacy) | `(asset, collection, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update URI with explicit base registry pubkey |
 | `setCollectionPointer` | `(asset, col, options?: SetCollectionPointerOptions)` | Set canonical collection pointer (`c1:<cid>`) |
 | `setParentAsset` | `(asset, parentAsset, options?: SetParentAssetOptions)` | Set parent relationship |
@@ -201,6 +201,7 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 ### `registerAgent()` Options
 
 `registerAgent(tokenUri?, collection?, options?)` supports:
+- `collection` (2nd positional arg): optional base registry pubkey; omit to use the default registry.
 - `skipSend`: return unsigned transaction payload instead of sending.
 - `signer`: signer pubkey required in `skipSend` mode when SDK has no signer.
 - `assetPubkey`: pre-generated asset keypair pubkey required in `skipSend` mode.
@@ -256,8 +257,8 @@ Limits enforced on-chain:
 | `readFeedback` | `(asset, client, index) => Promise<Feedback \| null>` | Alias |
 | `revokeFeedback` | `(asset, index, sealHash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Revoke feedback (default ownership preflight + auto `sealHash`) |
 | `getLastIndex` | `(asset, client) => Promise<bigint>` | Get last feedback index for a client (`-1` when none) |
-| `appendResponse` | `(asset, client, index, sealHash, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response (explicit `sealHash`) |
 | `appendResponse` | `(asset, client, index, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response (auto-resolves `sealHash` from indexer) |
+| `appendResponse` | `(asset, client, index, sealHash, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response (explicit `sealHash`) |
 | `appendResponseBySealHash` | `(asset, client, sealHash, uri, hash?, options?) => Promise<TransactionResult \| PreparedTransaction>` | Add response when only `sealHash` is available (auto-resolves `feedbackIndex`) |
 
 ### Feedback Data
@@ -269,7 +270,6 @@ await sdk.giveFeedback(agentAsset, {
   tag1: 'uptime',                           // Category tag (optional)
   tag2: 'day',                              // Period tag (optional)
   feedbackUri: 'ipfs://QmFeedbackDetails',  // Feedback URI (required)
-  feedbackFileHash: Buffer.alloc(32),       // Optional SHA-256 of feedback file
 });
 ```
 
@@ -287,18 +287,15 @@ await sdk.revokeFeedback(agentAsset, 12n, sealHash, {
   verifyFeedbackClient: false,
   waitForIndexerSync: false,
 });
-```
-
-Use `appendResponseBySealHash()` when your service stores `sealHash` but not `feedbackIndex`:
-
-```typescript
-await sdk.appendResponseBySealHash(
+await sdk.appendResponse(
   agentAsset,
   clientPubkey,
-  sealHash,
+  12n,
   'ipfs://QmResponse...'
-);
+); // auto-resolves sealHash
 ```
+
+Use `appendResponseBySealHash()` only when your service stores `sealHash` but not `feedbackIndex`.
 
 ## SEAL v1 Methods
 
@@ -383,7 +380,7 @@ These methods query the indexer for aggregated data.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `searchAgents` | `(params: AgentSearchParams) => Promise<IndexedAgent[]>` | Search agents by owner/creator/base collection/pointer/parent filters |
+| `searchAgents` | `(params: AgentSearchParams) => Promise<IndexedAgent[]>` | Search agents by owner/creator/base registry/pointer/parent filters |
 | `getAgentByAgentId` | `(agentId: string \| number \| bigint) => Promise<IndexedAgent \| null>` | Read one agent by backend sequence id (REST: `agent_id`; GraphQL: `agentId`/`agentid`) |
 | `getFeedbackById` | `(feedbackId: string) => Promise<IndexedFeedback \| null>` | Read one feedback by sequential id (`feedbacks.feedback_id`) |
 | `getFeedbackResponsesByFeedbackId` | `(feedbackId: string, limit?: number) => Promise<IndexedFeedbackResponse[]>` | Read responses by backend feedback id using REST-safe lookup (`feedbacks.feedback_id -> asset`, then `feedback_responses.asset + feedback_id`); fails closed on ambiguous id-to-asset mappings |
@@ -401,7 +398,7 @@ These methods query the indexer for aggregated data.
 const results = await sdk.searchAgents({
   owner: 'OwnerPubkey...',
   creator: 'CreatorPubkey...',
-  collection: 'BaseRegistryCollectionPubkey...',
+  collection: 'BaseRegistryPubkey...',
   collectionPointer: 'c1:bafybeigdyr...',
   parentAsset: 'ParentAssetPubkey...',
   colLocked: true,

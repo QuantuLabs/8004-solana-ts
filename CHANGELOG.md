@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Documentation
+- Standardized registry terminology across docs for consistency.
+- Updated quickstart registration flow to use `registerAgent(..., { collectionPointer })`.
+- Moved collection pointer and parent/child association rules into `docs/COLLECTION.md`.
+- Removed the README SEAL block in favor of focused docs.
+- Removed the deprecated `basic-indexer` example from docs/examples references.
 
 ## [0.7.2] - 2026-02-27
 ### Fixed
@@ -38,7 +44,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Canonical collection model now documented around pointer-first flow (`c1:<cid>`) with max pointer size (`<= 128 bytes`) and on-chain association rules.
-- Transfer and URI update flows documented around base-registry auto-resolution (explicit base collection param kept only for legacy compatibility).
+- Transfer and URI update flows documented around base-registry auto-resolution (explicit base registry param kept only for legacy compatibility).
 - Value-encoding and indexer querying paths aligned with latest program/indexer behavior.
 
 ### Fixed
@@ -76,7 +82,7 @@ All notable changes to this project will be documented in this file.
 ### Architecture
 
 - Single-collection architecture (removed user registries)
-- All agents register into the base collection by default
+- All agents register into the base registry by default
 - SSRF protection improvements in URI fetching
 
 ### Breaking Changes

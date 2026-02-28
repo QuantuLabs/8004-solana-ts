@@ -10,6 +10,8 @@
 import { Keypair, PublicKey, Transaction, Connection } from '@solana/web3.js';
 import { SolanaSDK, PreparedTransaction } from '../src/index.js';
 
+const DEFAULT_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+
 // =============================================================================
 // SERVER SIDE - Build transactions without signing
 // =============================================================================
@@ -35,10 +37,10 @@ class TransactionServer {
     value: string;      // Decimal string (e.g., '85', '99.5')
     tag1: string;
     tag2: string;
-    fileUri: string;
+    feedbackUri: string;
     userWallet: string; // User's wallet address (base58)
   }): Promise<PreparedTransaction & { feedbackIndex: bigint }> {
-    const { agentAsset, value, tag1, tag2, fileUri, userWallet } = params;
+    const { agentAsset, value, tag1, tag2, feedbackUri, userWallet } = params;
 
     const prepared = await this.sdk.giveFeedback(
       new PublicKey(agentAsset),
@@ -46,8 +48,7 @@ class TransactionServer {
         value,
         tag1,
         tag2,
-        feedbackUri: fileUri,
-        feedbackFileHash: Buffer.alloc(32), // In production: compute actual hash
+        feedbackUri,
       },
       {
         skipSend: true,
@@ -57,7 +58,9 @@ class TransactionServer {
 
     // Type guard: ensure we got PreparedTransaction, not TransactionResult
     if ('signature' in prepared) {
-      throw new Error('Unexpected: got TransactionResult instead of PreparedTransaction');
+      throw new Error(
+        `Failed to build feedback transaction: ${prepared.error ?? 'unknown error'}`
+      );
     }
 
     return prepared;
@@ -86,7 +89,9 @@ class TransactionServer {
     );
 
     if ('signature' in prepared) {
-      throw new Error('Unexpected: got TransactionResult instead of PreparedTransaction');
+      throw new Error(
+        `Failed to build register transaction: ${prepared.error ?? 'unknown error'}`
+      );
     }
 
     return prepared as PreparedTransaction & { asset: PublicKey };
@@ -115,7 +120,9 @@ class TransactionServer {
     );
 
     if ('signature' in prepared) {
-      throw new Error('Unexpected: got TransactionResult instead of PreparedTransaction');
+      throw new Error(
+        `Failed to build transfer transaction: ${prepared.error ?? 'unknown error'}`
+      );
     }
 
     return prepared;
@@ -133,7 +140,7 @@ class TransactionServer {
 async function clientSideSigning() {
   // Simulated wallet adapter (in production: use @solana/wallet-adapter)
   const userKeypair = Keypair.generate();
-  const connection = new Connection('https://api.devnet.solana.com');
+  const connection = new Connection(DEFAULT_RPC_URL);
 
   // 1. Fetch prepared transaction from server
   const serverResponse: PreparedTransaction = {
@@ -169,13 +176,15 @@ async function clientSideSigning() {
  */
 async function clientSideRegisterAgent() {
   const userKeypair = Keypair.generate();
-  const connection = new Connection('https://api.devnet.solana.com');
+  const assetKeypair = Keypair.generate();
+  const connection = new Connection(DEFAULT_RPC_URL);
 
   // 1. Send request to server
   const server = new TransactionServer();
   const prepared = await server.buildRegisterTransaction({
     tokenUri: 'ipfs://QmYourAgentMetadata',
     userWallet: userKeypair.publicKey.toBase58(),
+    assetPubkey: assetKeypair.publicKey.toBase58(),
   });
 
   console.log('Agent asset will be:', prepared.asset.toBase58());
@@ -212,8 +221,12 @@ async function main() {
   console.log('User wallet:', userWallet.publicKey.toBase58());
 
   // Example agent asset and collection (replace with actual values)
-  const agentAsset = 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ';
-  const collection = 'AucZdyKKkeJL8J5ZMqLrqhqbp4DZPUfaCP9A8RZG5iSL';
+  const agentAsset = process.env.DEMO_AGENT_ASSET;
+  const collection = process.env.DEMO_REGISTRY;
+  if (!agentAsset || !collection) {
+    console.log('Set DEMO_AGENT_ASSET and DEMO_REGISTRY to run server write-transaction build demo');
+    return;
+  }
 
   try {
     // Build a feedback transaction
@@ -223,7 +236,7 @@ async function main() {
       value: '85',
       tag1: 'helpful',
       tag2: 'accurate',
-      fileUri: 'ipfs://QmFeedbackDetails',
+      feedbackUri: 'ipfs://QmFeedbackDetails',
       userWallet: userWallet.publicKey.toBase58(),
     });
 

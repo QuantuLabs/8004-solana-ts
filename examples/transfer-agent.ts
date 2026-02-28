@@ -9,6 +9,10 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 import { SolanaSDK } from '../src/index.js';
 
 async function main() {
+  const rpcUrl = process.env.SOLANA_RPC_URL;
+  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
+    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
+
   const secretKey = process.env.SOLANA_PRIVATE_KEY;
   if (!secretKey) {
     console.log('Set SOLANA_PRIVATE_KEY');
@@ -16,12 +20,22 @@ async function main() {
   }
 
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
-  const sdk = new SolanaSDK({ cluster: 'devnet', signer });
+  const sdk = new SolanaSDK({
+    cluster,
+    ...(rpcUrl ? { rpcUrl } : {}),
+    signer,
+  });
 
-  // Example agent asset and collection (replace with actual PublicKeys)
-  const agentAsset = new PublicKey('Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ');
-  const collection = new PublicKey('AucZdyKKkeJL8J5ZMqLrqhqbp4DZPUfaCP9A8RZG5iSL');
-  const newOwner = new PublicKey('NEW_OWNER_PUBKEY_HERE');
+  // Example agent asset (replace with actual PublicKey)
+  const agentAsset = new PublicKey(
+    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
+  );
+  const newOwnerEnv = process.env.NEW_OWNER_PUBKEY;
+  if (!newOwnerEnv) {
+    console.log('Set NEW_OWNER_PUBKEY');
+    return;
+  }
+  const newOwner = new PublicKey(newOwnerEnv);
 
   // Check current ownership
   const isOwner = await sdk.isAgentOwner(agentAsset, signer.publicKey);
@@ -34,7 +48,7 @@ async function main() {
   console.log(`Transferring to: ${newOwner.toBase58()}`);
 
   // SDK helper transfer (wallet-native asset transfer + sdk.syncOwner(asset) is also supported)
-  const result = await sdk.transferAgent(agentAsset, collection, newOwner);
+  const result = await sdk.transferAgent(agentAsset, newOwner);
   if ('signature' in result) {
     console.log(`Agent transferred! Tx: ${result.signature}`);
   }

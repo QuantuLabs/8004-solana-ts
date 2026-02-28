@@ -1,11 +1,11 @@
 /**
- * Collection Flow Example (full metadata + 20 assets)
+ * Collection Flow Example (simple metadata + 20 assets)
  *
  * Flow:
- * 1) Create one collection document using all supported metadata fields.
+ * 1) Create one collection metadata document.
  * 2) Create 20 distinct agent metadata files.
- * 3) Register 20 distinct assets.
- * 4) Associate each asset with the collection pointer.
+ * 3) Register each asset with `collectionPointer` directly in `registerAgent(...)`.
+ * 4) Also show explicit `setCollectionPointer(...)` flow on the first asset.
  *
  * Defaults:
  * - AGENT_COUNT=20
@@ -18,7 +18,12 @@ import {
   buildRegistrationFileJson,
   ServiceType,
 } from '../src/index.js';
-import type { CollectionMetadataInput, RegistrationFile } from '../src/index.js';
+import type {
+  CollectionMetadataInput,
+  RegistrationFile,
+  TransactionResult,
+  PreparedTransaction,
+} from '../src/index.js';
 
 const DEFAULT_AGENT_COUNT = 20;
 const DEFAULT_DRY_COLLECTION_POINTER = 'c1:dryruncollectionflow000000000000000000000001';
@@ -116,31 +121,12 @@ async function main() {
     ...(ipfsClient ? { ipfsClient } : {}),
   });
 
-  // Collection metadata input (canonical + practical optional fields)
+  // Keep collection metadata intentionally simple, similar to quickstart docs.
   const collectionMetadata: CollectionMetadataInput = {
     name: 'QuantuLabs Agent Fleet',
     symbol: 'QLFLEET',
-    description: 'Full collection metadata example for registering multiple QuantuLabs agents.',
+    description: 'Collection metadata for QuantuLabs agents.',
     image: 'ipfs://bafybeiquantucollection/logo.png',
-    banner_image: 'ipfs://bafybeiquantucollection/banner.png',
-    socials: {
-      website: 'https://quantu.ai',
-      x: '@Quantu_AI',
-      discord: 'https://discord.gg/quantu',
-      telegram: 'https://t.me/quantu',
-      github: 'https://github.com/QuantuLabs',
-      farcaster: 'https://warpcast.com/quantu_ai',
-      instagram: 'https://instagram.com/quantu.ai',
-      youtube: 'https://youtube.com/@Quantu_AI',
-    },
-    external_url: 'https://quantu.ai/agents',
-    category: 'automation',
-    tags: ['agents', 'automation', 'mcp', 'a2a', 'oasf', 'quantulabs'],
-    attributes: [
-      { trait_type: 'fleet', value: 'production' },
-      { trait_type: 'target_agents', value: agentCount },
-      { trait_type: 'cluster', value: process.env.SOLANA_NETWORK ?? 'devnet' },
-    ],
   };
 
   const uploadCollectionToIpfs = !!ipfsClient && (!dryRun || process.env.DRY_RUN_UPLOAD_COLLECTION === '1');
@@ -180,6 +166,8 @@ async function main() {
       agentUri = `ipfs://${cid}`;
     }
 
+    const shouldRunExplicitSetPointer = i === 1;
+    const shouldSetPointerInline = !shouldRunExplicitSetPointer;
     const registerResult = await sdk.registerAgent(
       agentUri,
       undefined,
@@ -188,8 +176,19 @@ async function main() {
             skipSend: true,
             signer: signer.publicKey,
             assetPubkey: Keypair.generate().publicKey,
+            ...(shouldSetPointerInline
+              ? {
+                  collectionPointer,
+                  collectionLock: true,
+                }
+              : {}),
           }
-        : undefined
+        : (shouldSetPointerInline
+            ? {
+                collectionPointer,
+                collectionLock: true,
+              }
+            : undefined)
     );
 
     if ('success' in registerResult && !registerResult.success) {
@@ -199,19 +198,22 @@ async function main() {
       throw new Error(`registerAgent did not return an asset for #${i}`);
     }
 
-    const setPointerResult = await sdk.setCollectionPointer(
-      registerResult.asset,
-      collectionPointer,
-      dryRun
-        ? {
-            skipSend: true,
-            signer: signer.publicKey,
-          }
-        : undefined
-    );
+    let setPointerResult: TransactionResult | PreparedTransaction | undefined;
+    if (shouldRunExplicitSetPointer) {
+      setPointerResult = await sdk.setCollectionPointer(
+        registerResult.asset,
+        collectionPointer,
+        dryRun
+          ? {
+              skipSend: true,
+              signer: signer.publicKey,
+            }
+          : undefined
+      );
 
-    if ('success' in setPointerResult && !setPointerResult.success) {
-      throw new Error(`setCollectionPointer failed for #${i}: ${setPointerResult.error ?? 'unknown error'}`);
+      if ('success' in setPointerResult && !setPointerResult.success) {
+        throw new Error(`setCollectionPointer failed for #${i}: ${setPointerResult.error ?? 'unknown error'}`);
+      }
     }
 
     const assetBase58 = registerResult.asset.toBase58();
@@ -220,7 +222,9 @@ async function main() {
     console.log(
       `[${String(i).padStart(2, '0')}/${String(agentCount).padStart(2, '0')}] ` +
         `asset=${assetBase58} | register=${describeResult(registerResult)} | ` +
-        `setCollectionPointer=${describeResult(setPointerResult)}`
+        (setPointerResult
+          ? `setCollectionPointer=${describeResult(setPointerResult)}`
+          : 'setCollectionPointer=inline-via-registerAgent')
     );
   }
 

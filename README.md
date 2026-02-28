@@ -81,9 +81,9 @@ const agentMeta = buildRegistrationFileJson({
   domains: ['technology/software_engineering/software_engineering'],
 });
 
-// 3. Upload and register (uses the base collection automatically)
-const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
-const agent = await sdk.registerAgent(agentUri);
+// 3. Upload and register (attach collection pointer in the same flow)
+const metadataUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
+const agent = await sdk.registerAgent(metadataUri, undefined, { collectionPointer: collection.pointer! });
 console.log('Agent:', agent.asset.toBase58());
 
 // 4. Set operational wallet
@@ -96,7 +96,6 @@ await sdk.giveFeedback(agent.asset, {
   tag1: Tag.uptime,                // 8004 standardized tag (or free text)
   tag2: Tag.day,                   // Time period
   feedbackUri: 'ipfs://QmFeedback...',
-  feedbackFileHash: Buffer.alloc(32), // Optional integrity hash
 });
 
 // 6. Check reputation
@@ -382,8 +381,6 @@ const sdk = new SolanaSDK({
 | [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
 | [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership (also possible via standard token wallet transfer) |
 | [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
-
-`basic-indexer.ts` is deprecated and kept as a reference stub; use [8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer) for active indexer flows.
 
 ## Documentation
 

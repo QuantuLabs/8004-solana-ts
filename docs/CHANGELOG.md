@@ -2,6 +2,15 @@
 
 > Note: Canonical release changelog is maintained in the repository root `CHANGELOG.md`.
 
+## Unreleased
+
+**Docs Cleanup:**
+- Standardized registry terminology across docs.
+- Updated quickstart registration examples to use `registerAgent(..., { collectionPointer })`.
+- Consolidated collection pointer and parent/child rules into `docs/COLLECTION.md`.
+- Removed the README SEAL block.
+- Removed references to the deprecated `basic-indexer` example.
+
 ## v0.6.5 (2026-02-25)
 
 **Collection + Parent/Child:**

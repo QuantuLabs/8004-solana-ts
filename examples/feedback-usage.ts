@@ -3,23 +3,39 @@
  *
  * Demonstrates:
  * 1) Reading indexed feedbacks
- * 2) Appending a response from sealHash (auto index resolution)
+ * 2) Appending a response with auto sealHash resolution
  * 3) Revoking an existing feedback (not just create+revoke in one flow)
  */
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { SolanaSDK } from '../src/index.js';
 
 async function main() {
-  // Example agent asset (replace with actual PublicKey)
-  const agentAsset = new PublicKey('Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ');
+  const rpcUrl = process.env.SOLANA_RPC_URL;
+  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
+    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
 
-  // Create SDK (devnet by default)
-  const sdk = new SolanaSDK();
+  // Example agent asset (replace with actual PublicKey)
+  const agentAsset = new PublicKey(
+    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
+  );
+  const indexerGraphqlUrl = process.env.INDEXER_GRAPHQL_URL;
+  const indexerUrl = process.env.INDEXER_URL;
+
+  // Read summary from on-chain to keep this step robust even if indexer schema differs.
+  const sdk = new SolanaSDK({
+    cluster,
+    ...(rpcUrl ? { rpcUrl } : {}),
+    forceOnChain: true,
+  });
 
   // Get reputation summary
-  const summary = await sdk.getReputationSummary(agentAsset);
-  console.log(`Agent ${agentAsset.toBase58().slice(0, 8)}... - Score: ${summary.averageScore}/100`);
-  console.log(`Total feedbacks: ${summary.count}`);
+  try {
+    const summary = await sdk.getReputationSummary(agentAsset);
+    console.log(`Agent ${agentAsset.toBase58().slice(0, 8)}... - Score: ${summary.averageScore}/100`);
+    console.log(`Total feedbacks: ${summary.count}`);
+  } catch {
+    console.log('Summary unavailable with current indexer setup; set INDEXER_GRAPHQL_URL/INDEXER_URL');
+  }
 
   // Read all feedback (requires custom RPC like Helius)
   try {
@@ -40,10 +56,23 @@ async function main() {
   }
 
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
-  const writeSdk = new SolanaSDK({ signer });
+
+  // Use explicit indexer config for response/revoke helper flows.
+  if (!indexerGraphqlUrl && !indexerUrl) {
+    console.log('\nSet INDEXER_GRAPHQL_URL or INDEXER_URL to run append/revoke examples');
+    return;
+  }
+
+  const indexedSdk = new SolanaSDK({
+    cluster,
+    ...(rpcUrl ? { rpcUrl } : {}),
+    signer,
+    ...(indexerGraphqlUrl ? { indexerGraphqlUrl } : {}),
+    ...(indexerUrl ? { indexerUrl } : {}),
+  });
 
   // Pull existing feedbacks from indexer (current agent)
-  const indexed = await writeSdk.getFeedbacksFromIndexer(agentAsset, {
+  const indexed = await indexedSdk.getFeedbacksFromIndexer(agentAsset, {
     includeRevoked: false,
     limit: 50,
     noFallback: true,
@@ -52,18 +81,17 @@ async function main() {
   // Ensure we have at least one feedback from signer for revoke demo
   let ownFeedback = indexed.find((f) => f.client.equals(signer.publicKey) && !f.isRevoked);
   if (!ownFeedback) {
-    const created = await writeSdk.giveFeedback(agentAsset, {
+    const created = await indexedSdk.giveFeedback(agentAsset, {
       value: '90',
       tag1: 'fast',
       tag2: 'reliable',
       feedbackUri: 'ipfs://QmDetailedFeedback',
-      feedbackFileHash: Buffer.alloc(32),
     });
     console.log(`Feedback submitted! Index: ${created.feedbackIndex?.toString() ?? 'unknown'}`);
 
     // Re-read so we get the indexed sealHash
-    await writeSdk.waitForIndexerSync(async () => {
-      const rows = await writeSdk.getFeedbacksFromIndexer(agentAsset, {
+    await indexedSdk.waitForIndexerSync(async () => {
+      const rows = await indexedSdk.getFeedbacksFromIndexer(agentAsset, {
         includeRevoked: false,
         limit: 50,
         noFallback: true,
@@ -77,16 +105,14 @@ async function main() {
     throw new Error('No feedback found for signer; cannot continue revoke demo');
   }
 
-  // Optional: append response by sealHash only (SDK resolves feedback index automatically)
-  if (ownFeedback.sealHash) {
-    await writeSdk.appendResponseBySealHash(
-      agentAsset,
-      ownFeedback.client,
-      ownFeedback.sealHash,
-      'ipfs://QmThankYouResponse'
-    );
-    console.log(`Response appended (auto index) for feedback #${ownFeedback.feedbackIndex.toString()}`);
-  }
+  // Append response with simple API (SDK auto-resolves sealHash from indexer)
+  await indexedSdk.appendResponse(
+    agentAsset,
+    ownFeedback.client,
+    ownFeedback.feedbackIndex,
+    'ipfs://QmThankYouResponse'
+  );
+  console.log(`Response appended for feedback #${ownFeedback.feedbackIndex.toString()}`);
 
   // Creator/client guard before revoke (extra local check for clarity).
   // SDK also performs ownership preflight internally.
@@ -94,7 +120,8 @@ async function main() {
     throw new Error('Refusing revoke: signer is not the original feedback client');
   }
 
-  await writeSdk.revokeFeedback(agentAsset, ownFeedback.feedbackIndex);
+  // Simple revoke (SDK preflights ownership and auto-resolves sealHash)
+  await indexedSdk.revokeFeedback(agentAsset, ownFeedback.feedbackIndex);
   console.log(`Feedback revoked: index=${ownFeedback.feedbackIndex.toString()}`);
 }
 

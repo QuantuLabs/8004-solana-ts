@@ -2,6 +2,9 @@
 
 Collection metadata is off-chain (IPFS JSON).  
 Collection and parent associations are on-chain fields in `AgentAccount`.
+Collection pointers (`c1:<cid>`) and registry pubkeys are different concepts:
+- pointer: string CID reference stored in `AgentAccount.col`
+- registry pubkey: internal program account pubkey used for registry configuration/routing
 
 ## 1. Create Collection Metadata (CID-first)
 
@@ -96,8 +99,9 @@ await sdk.setParentAsset(childAsset, parentAsset); // lock=true
 - `col_locked`
 - `parent_locked`
 
-## 5. Pointer vs Pubkey
+## 5. Pointer vs Registry Pubkey
 
-- `col` (`c1:...`) is a string pointer stored on-chain in `AgentAccount`
-- Base registry collection pubkey is an internal program account
-- Standard `setAgentUri()` and `transferAgent()` calls auto-resolve base registry pubkey
+- `col` (`c1:...`) is the collection CID pointer stored on-chain in `AgentAccount`
+- Legacy `collection` method args refer to registry pubkeys, not CID pointers
+- `getBaseCollection()` returns the default base registry pubkey
+- Standard `setAgentUri()` and `transferAgent()` calls auto-resolve the base registry pubkey

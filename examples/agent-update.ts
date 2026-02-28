@@ -17,6 +17,10 @@ import {
 } from '../src/index.js';
 
 async function main() {
+  const rpcUrl = process.env.SOLANA_RPC_URL;
+  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
+    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
+
   const secretKey = process.env.SOLANA_PRIVATE_KEY;
   if (!secretKey) {
     console.log('Set SOLANA_PRIVATE_KEY');
@@ -24,11 +28,16 @@ async function main() {
   }
 
   const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
-  const sdk = new SolanaSDK({ cluster: 'devnet', signer });
+  const sdk = new SolanaSDK({
+    cluster,
+    ...(rpcUrl ? { rpcUrl } : {}),
+    signer,
+  });
 
-  // Example agent asset and collection (replace with actual PublicKeys)
-  const agentAsset = new PublicKey('Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ');
-  const collection = new PublicKey('AucZdyKKkeJL8J5ZMqLrqhqbp4DZPUfaCP9A8RZG5iSL');
+  // Example agent asset (replace with actual PublicKey)
+  const agentAsset = new PublicKey(
+    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
+  );
 
   // Load current agent
   const agent = await sdk.loadAgent(agentAsset);
@@ -61,12 +70,12 @@ async function main() {
     const newCid = await ipfs.addJson(updatedMetadata);
     const newUri = `ipfs://${newCid}`;
 
-    // Update on-chain URI (requires asset and collection)
-    await sdk.setAgentUri(agentAsset, collection, newUri);
+    // Update on-chain URI (registry auto-resolved)
+    await sdk.setAgentUri(agentAsset, newUri);
     console.log(`Agent URI updated to: ${newUri}`);
   } else {
     // Without IPFS, use direct URL
-    await sdk.setAgentUri(agentAsset, collection, 'https://my-server.com/metadata.json');
+    await sdk.setAgentUri(agentAsset, 'https://my-server.com/metadata.json');
     console.log('Agent URI updated (web URL)');
   }
 

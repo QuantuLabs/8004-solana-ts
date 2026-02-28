@@ -145,8 +145,8 @@ const metadata = buildRegistrationFileJson({
 const metadataCid = await ipfs.addJson(metadata);
 const metadataUri = `ipfs://${metadataCid}`;
 
-// 6. Register on Solana (uses the base collection automatically)
-const result = await sdk.registerAgent(metadataUri);
+// 6. Register on Solana (attach collection pointer in the same flow)
+const result = await sdk.registerAgent(metadataUri, undefined, { collectionPointer: collection.pointer! });
 console.log('Agent:', result.asset.toBase58());
 
 // 7. Set operational wallet (for agent signing)
@@ -203,7 +203,6 @@ await sdk.giveFeedback(agentAsset, {
   tag1: 'uptime',             // Category tag
   tag2: 'day',                // Period tag
   feedbackUri: 'ipfs://QmFeedback...',
-  feedbackFileHash: Buffer.alloc(32), // Optional integrity hash (browser: new Uint8Array(32))
 });
 
 // Check reputation
@@ -211,7 +210,7 @@ const summary = await sdk.getSummary(agentAsset);
 console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
 
 // Update URI
-await sdk.setAgentUri(agentAsset, 'ipfs://newCid'); // base collection auto-resolved
+await sdk.setAgentUri(agentAsset, 'ipfs://newCid'); // registry auto-resolved
 
 // Sign data with agent's operational wallet
 const signed = sdk.sign(agentAsset, { action: 'authorize', user: 'alice' });

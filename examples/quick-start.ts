@@ -13,12 +13,22 @@ import {
 import type { RegistrationFile } from '../src/index.js';
 
 async function main() {
+  const rpcUrl = process.env.SOLANA_RPC_URL;
+  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
+    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
+
   // === READ OPERATIONS ===
-  // Create SDK (devnet by default, no signer = read-only)
-  const sdk = new SolanaSDK();
+  // Create SDK (devnet by default, force on-chain reads to avoid indexer schema drift)
+  const sdk = new SolanaSDK({
+    cluster,
+    ...(rpcUrl ? { rpcUrl } : {}),
+    forceOnChain: true,
+  });
 
   // Example agent asset (replace with actual asset PublicKey)
-  const agentAsset = new PublicKey('Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ');
+  const agentAsset = new PublicKey(
+    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
+  );
 
   // Load an agent by asset
   const agent = await sdk.loadAgent(agentAsset);
@@ -29,8 +39,12 @@ async function main() {
   }
 
   // Get reputation summary
-  const summary = await sdk.getSummary(agentAsset);
-  console.log(`Score: ${summary.averageScore}/100 (${summary.totalFeedbacks} reviews)`);
+  try {
+    const summary = await sdk.getSummary(agentAsset);
+    console.log(`Score: ${summary.averageScore}/100 (${summary.totalFeedbacks} reviews)`);
+  } catch {
+    console.log('Reputation summary unavailable with current indexer setup; set INDEXER_GRAPHQL_URL/INDEXER_URL');
+  }
 
   // === WRITE OPERATIONS ===
   // Requires signer
@@ -50,7 +64,12 @@ async function main() {
     : new IPFSClient({
         url: process.env.IPFS_API_URL || 'http://localhost:5001',
       });
-  const writeSdk = new SolanaSDK({ signer, ipfsClient: ipfs });
+  const writeSdk = new SolanaSDK({
+    cluster,
+    ...(rpcUrl ? { rpcUrl } : {}),
+    signer,
+    ipfsClient: ipfs,
+  });
 
   // === COLLECTION (CID-first) ===
   const collectionUpload = await writeSdk.createCollection({
