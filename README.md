@@ -49,21 +49,18 @@ const ipfs = pinataJwt
 const sdk = new SolanaSDK({ cluster: 'devnet', signer, ipfsClient: ipfs });
 
 // 1. Create complete collection metadata + upload (off-chain)
-const collectionMetadata = {
-  version: '1.0.0',
+const collectionInput = {
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection for CasterCorp agents',
   image: 'ipfs://QmCollectionImage...',
   banner_image: 'ipfs://QmCollectionBanner...',
-  parent: 'ParentAgentAssetPubkeyOrNull',
   socials: {
     website: 'https://castercorp.ai',
     x: 'https://x.com/castercorp',
     discord: 'https://discord.gg/castercorp',
   },
 };
-const { parent, version, ...collectionInput } = collectionMetadata;
 const collection = await sdk.createCollection(collectionInput);
 
 console.log('Collection CID:', collection.cid);   // <- reuse this in your asset workflow
@@ -89,14 +86,11 @@ const agentUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
 const agent = await sdk.registerAgent(agentUri);
 console.log('Agent:', agent.asset.toBase58());
 
-// 4. (Advanced) Link agent to canonical collection pointer on-chain
-await sdk.setCollectionPointer(agent.asset, collection.pointer!); // lock=true by default
-
-// 5. Set operational wallet
+// 4. Set operational wallet
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(agent.asset, opWallet);
 
-// 6. Give feedback - accepts decimal strings or raw values
+// 5. Give feedback - accepts decimal strings or raw values
 await sdk.giveFeedback(agent.asset, {
   value: '99.77',                  // Decimal string -> auto-encoded to 9977, decimals=2
   tag1: Tag.uptime,                // 8004 standardized tag (or free text)
@@ -105,7 +99,7 @@ await sdk.giveFeedback(agent.asset, {
   feedbackFileHash: Buffer.alloc(32), // Optional integrity hash
 });
 
-// 7. Check reputation
+// 6. Check reputation
 const summary = await sdk.getSummary(agent.asset);
 console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks}`);
 ```
@@ -113,21 +107,18 @@ console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks
 ### Create Collection (CID-first flow)
 
 ```typescript
-const collectionMetadata = {
-  version: '1.0.0',
+const collectionInput = {
   name: 'My Collection',
   symbol: 'MYCOL',
   description: 'Collection metadata stored on IPFS',
   image: 'ipfs://QmCollectionImage...',
   banner_image: 'ipfs://QmCollectionBanner...',
-  parent: 'ParentAgentAssetPubkeyOrNull',
   socials: {
     website: 'https://example.com',
     x: 'https://x.com/example',
     discord: 'https://discord.gg/example',
   },
 };
-const { parent, version, ...collectionInput } = collectionMetadata;
 const collectionUpload = await sdk.createCollection(collectionInput);
 
 // Returned by createCollection()
@@ -136,21 +127,10 @@ const uri = collectionUpload.uri;          // ipfs://Qm...
 const pointer = collectionUpload.pointer;  // c1:b...
 
 // Use `cid` / `uri` in your asset creation pipeline.
-// Set parent association on-chain via `setParentAsset(...)`.
-// Keep `setCollectionPointer()` separate for advanced on-chain linking.
 ```
 
-### Collection + Parent Association Rules
-
-- Use the canonical pointer returned by `sdk.createCollection(...)` (`c1:b...`).
-- On-chain pointer constraints: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
-- `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
-- `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
-- Editable workflow: first write with `{ lock: false }`, then finalize with `{ lock: true }` (or omit `lock`).
-- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child and equal the parent agent creator snapshot.
-- Parent constraints: parent exists/live, `child !== parent`, and `parent_locked` behaves like `col_locked`.
-- `loadAgent()` exposes `creator`, `creators`, `col`, `parent_asset`, `col_locked`, and `parent_locked`.
-- `c1:...` pointer is a string (not a pubkey); base registry pubkey is internal and standard `setAgentUri`/`transferAgent` calls auto-resolve it.
+Collection and parent association rules are documented in [`docs/COLLECTION.md`](./docs/COLLECTION.md).  
+Advanced end-to-end usage is shown in [`examples/collection-flow.ts`](examples/collection-flow.ts).
 
 ### Web3 Wallet (Phantom, Solflare)
 
@@ -280,49 +260,6 @@ const indexedLegacy = await sdk.getAgentByIndexerId(42);
 - REST (`indexerUrl`): uses numeric `agent_id`
 - GraphQL (`indexerGraphqlUrl`): uses sequence id fields (`agentId`, with legacy fallback `agentid`)
 
-## E2E Indexer Matrix
-
-The indexer matrix scripts support IPFS uploads during seed/write with this provider order:
-
-1. Local IPFS API (`--ipfs-api-url` or `E2E_INDEXERS_IPFS_API_URL`)
-2. Pinata JWT fallback (`E2E_INDEXERS_PINATA_JWT` or `PINATA_JWT`)
-
-Matrix pass criteria:
-
-- `Seed/Write Flow` must pass.
-- For each enabled indexer check job, endpoint availability must be true and ID checks must pass (`available: true`, `idChecks.passed: true` in the check artifact).
-- Parity mismatch count in `Inter-Indexer Comparison` is diagnostic only; mismatch count alone (including `0`) is not sufficient to mark the matrix run as pass.
-
-Start/stop a local Kubo node for tests:
-
-```bash
-# defaults: container=e2e-indexers-ipfs-kubo, api=5001, gateway=8080
-npm run e2e:indexers:ipfs:start
-npm run e2e:indexers:ipfs:stop
-```
-
-Optional overrides:
-
-- `E2E_INDEXERS_IPFS_CONTAINER_NAME` or `--container-name`
-- `E2E_INDEXERS_IPFS_API_PORT` or `--api-port`
-- `E2E_INDEXERS_IPFS_GATEWAY_PORT` or `--gateway-port`
-- `E2E_INDEXERS_IPFS_IMAGE` or `--image`
-
-Additional env knobs used by matrix seed/revoke preflight:
-
-- `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_ATTEMPTS` (default `12`)
-- `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_DELAY_MS` (default `750`)
-- `E2E_INDEXERS_REVOKE_PREFLIGHT_POLL_TIMEOUT_MS` (default `attempts * delay`)
-
-Example matrix run using local IPFS via docker hooks:
-
-```bash
-E2E_INDEXERS_DOCKER_PRE_HOOK='npm run e2e:indexers:ipfs:start' \
-E2E_INDEXERS_DOCKER_POST_HOOK='npm run e2e:indexers:ipfs:stop' \
-E2E_INDEXERS_IPFS_API_URL='http://127.0.0.1:5001' \
-npm run e2e:indexers:matrix
-```
-
 ## Feedback System
 
 The feedback system supports rich metrics with 8004 standardized tags. `value` is required, `score` is optional.
@@ -352,7 +289,7 @@ await sdk.giveFeedback(agent.asset, {
 });
 ```
 
-### Revoke + Response Workflows
+### Revoke Workflows
 
 `revokeFeedback()` now does indexer preflight by default:
 - Uses signer (or `options.signer`) as the feedback client.
@@ -366,17 +303,6 @@ await sdk.revokeFeedback(agent.asset, 12n, sealHash, {
   verifyFeedbackClient: false, // intentionally skip ownership preflight
   waitForIndexerSync: false,   // skip indexer sync wait
 });
-```
-
-Use `appendResponseBySealHash()` when your system stores `sealHash` but not `feedbackIndex`:
-
-```typescript
-await sdk.appendResponseBySealHash(
-  agent.asset,
-  clientPubkey,
-  sealHash,
-  'ipfs://QmResponse...'
-);
 ```
 
 See [FEEDBACK.md](./docs/FEEDBACK.md) for all 8004 tags and patterns.
@@ -427,39 +353,7 @@ await sdk.enableAtom(asset);
 await sdk.initializeAtomStats(asset);
 ```
 
-## SEAL v1 (Solana Event Authenticity Layer)
-
-SEAL provides client-side hash computation that mirrors the on-chain algorithm, enabling trustless verification of feedback integrity without replaying all events.
-
-```typescript
-import {
-  computeSealHash,
-  computeFeedbackLeafV1,
-  verifySealHash,
-  createSealParams,
-  validateSealInputs,
-} from '8004-solana';
-
-// Build SEAL params from feedback data
-const params = createSealParams(
-  9977n,              // value (bigint)
-  2,                  // valueDecimals
-  85,                 // score (or null)
-  'uptime',           // tag1
-  'day',              // tag2
-  'https://api.example.com/mcp', // endpoint
-  'ipfs://QmFeedback...',        // feedbackUri
-);
-
-// Compute the SEAL hash (matches on-chain Keccak256)
-const sealHash = computeSealHash(params);
-
-// Verify a feedback's integrity
-const isValid = verifySealHash({ ...params, sealHash });
-```
-
-`sealHash` can be passed explicitly, but SDK can also auto-resolve it from indexed feedback for `revokeFeedback()` and `appendResponse()`.  
-Use `appendResponseBySealHash()` when only `sealHash` is available and `feedbackIndex` must be resolved from indexer data.
+SEAL helper methods and examples are documented in [`docs/METHODS.md#seal-v1-methods`](./docs/METHODS.md#seal-v1-methods).
 
 ## RPC Provider Recommendations
 
@@ -495,6 +389,7 @@ const sdk = new SolanaSDK({
 
 - [API Reference](./docs/METHODS.md) - All methods with examples
 - [Feedback Guide](./docs/FEEDBACK.md) - Tags, value/decimals, advanced patterns
+- [Collection Guide](./docs/COLLECTION.md) - Collection pointer and parent association rules
 - [Quickstart](./docs/QUICKSTART.md) - Step-by-step guide
 - [Costs](./docs/COSTS.md) - Transaction costs
 - [OASF Taxonomies](./docs/OASF.md) - Skills & domains reference

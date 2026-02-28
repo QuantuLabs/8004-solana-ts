@@ -96,21 +96,18 @@ await sdk.verify('./signed-payload.json', asset);
 | `updateCollectionUri` (legacy) | `(collection, newUri, options?) => Promise<TransactionResult>` | Legacy on-chain API, kept for compatibility only |
 
 ```typescript
-const collectionMetadata = {
-  version: '1.0.0',
+const collectionInput = {
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection metadata',
   image: 'ipfs://QmCollectionImage...',
   banner_image: 'ipfs://QmCollectionBanner...',
-  parent: 'ParentAgentAssetPubkeyOrNull',
   socials: {
     website: 'https://castercorp.ai',
     x: 'https://x.com/castercorp',
     discord: 'https://discord.gg/castercorp',
   },
 };
-const { parent, version, ...collectionInput } = collectionMetadata;
 
 // 1) Create schema-compliant JSON only
 const collectionData = sdk.createCollectionData(collectionInput);
@@ -132,20 +129,8 @@ await sdk.setCollectionPointer(result.asset, upload.pointer!); // lock=true by d
 await sdk.setParentAsset(result.asset, parentAssetPubkey, { lock: false });
 ```
 
-### Collection + Parent Association Rules (on-chain)
-
-- Use the canonical pointer returned by `sdk.createCollection(...)` (`c1:b...`).
-- On-chain pointer constraints: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
-- `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
-- `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
-- Editable workflow: first call with `{ lock: false }`, then finalize with `{ lock: true }` (or omit `lock`).
-- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child and equal the parent agent creator snapshot.
-- Parent constraints: parent exists/live, `child !== parent`, and `parent_locked` behaves like `col_locked`.
-- `loadAgent()` exposes `creator`, `creators`, `col`, `parent_asset`, `col_locked`, and `parent_locked`.
-
-Pointer vs Pubkey:
-- `collection pointer` (`c1:...`) is a string stored in `AgentAccount.col`.
-- `base registry pubkey` is an internal on-chain account; standard `setAgentUri()` / `transferAgent()` calls auto-resolve it.
+Collection pointer and parent association rules are documented in [`COLLECTION.md`](./COLLECTION.md).  
+Advanced end-to-end usage is shown in [`examples/collection-flow.ts`](../examples/collection-flow.ts).
 
 ### Collection Read Methods
 
@@ -220,6 +205,8 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 - `signer`: signer pubkey required in `skipSend` mode when SDK has no signer.
 - `assetPubkey`: pre-generated asset keypair pubkey required in `skipSend` mode.
 - `atomEnabled`: defaults to `true`; set `false` to skip ATOM auto-init at registration time.
+- `collectionPointer`: optional canonical pointer (`c1:...`) attached right after successful register.
+- `collectionLock`: optional lock flag for `collectionPointer` attach (`true` by default).
 
 ### On-chain Metadata
 

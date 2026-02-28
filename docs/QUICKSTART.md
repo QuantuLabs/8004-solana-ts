@@ -69,21 +69,18 @@ const ipfs = pinataJwt
 const sdk = new SolanaSDK({ signer, ipfsClient: ipfs });
 
 // 2. Build + upload collection metadata
-const collectionMetadata = {
-  version: '1.0.0',
+const collectionInput = {
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection metadata',
   image: 'ipfs://QmCollectionImage...',
   banner_image: 'ipfs://QmCollectionBanner...',
-  parent: 'ParentAgentAssetPubkeyOrNull',
   socials: {
     website: 'https://castercorp.ai',
     x: 'https://x.com/castercorp',
     discord: 'https://discord.gg/castercorp',
   },
 };
-const { parent, version, ...collectionInput } = collectionMetadata;
 const collection = await sdk.createCollection(collectionInput);
 
 console.log('Collection CID:', collection.cid);       // reuse for your asset workflow
@@ -95,21 +92,18 @@ If you only want the JSON (no upload), use:
 
 ```typescript
 const fullMetadata = {
-  version: '1.0.0',
   name: 'CasterCorp Agents',
   symbol: 'CAST',
   description: 'Main collection metadata',
   image: 'ipfs://QmCollectionImage...',
   banner_image: 'ipfs://QmCollectionBanner...',
-  parent: 'ParentAgentAssetPubkeyOrNull',
   socials: {
     website: 'https://castercorp.ai',
     x: 'https://x.com/castercorp',
     discord: 'https://discord.gg/castercorp',
   },
 };
-const { parent, version, ...collectionInput } = fullMetadata;
-const data = sdk.createCollectionData(collectionInput);
+const data = sdk.createCollectionData(fullMetadata);
 ```
 
 ---
@@ -118,7 +112,6 @@ const data = sdk.createCollectionData(collectionInput);
 
 ```typescript
 import { buildRegistrationFileJson, ServiceType } from '8004-solana';
-import { PublicKey } from '@solana/web3.js';
 
 // 3. Upload your agent's avatar image
 const imageCid = await ipfs.addFile('./my-agent-avatar.png');
@@ -156,24 +149,12 @@ const metadataUri = `ipfs://${metadataCid}`;
 const result = await sdk.registerAgent(metadataUri);
 console.log('Agent:', result.asset.toBase58());
 
-// 7. (Advanced) Set canonical collection pointer on-chain
-await sdk.setCollectionPointer(result.asset, collection.pointer!); // lock=true by default
-
-// Optional editable workflow:
-// await sdk.setCollectionPointer(result.asset, collection.pointer!, { lock: false });
-// ...later finalize and lock:
-// await sdk.setCollectionPointer(result.asset, collection.pointer!);
-
-// 7b. (Advanced) Link a parent agent
-const parentAsset = new PublicKey('ParentAgentAssetPubkey...');
-await sdk.setParentAsset(result.asset, parentAsset, { lock: false }); // lock=true by default when omitted
-
-// 8. Set operational wallet (for agent signing)
+// 7. Set operational wallet (for agent signing)
 const opWallet = Keypair.generate();
 await sdk.setAgentWallet(result.asset, opWallet);
 console.log('Operational wallet:', opWallet.publicKey.toBase58());
 
-// 9. (Optional) Store on-chain metadata
+// 8. (Optional) Store on-chain metadata
 await sdk.setMetadata(result.asset, 'token', 'So11111111111111111111111111111111111111112', true);
 ```
 
@@ -185,17 +166,9 @@ See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
 **Note on Metadata:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching. Limits: metadata key max `32` bytes, metadata value max `250` bytes, and `agent_uri` max `250` bytes.
 
-### Association Rules (Collection + Parent)
-
-- Use the canonical pointer from `sdk.createCollection(...)` (`c1:b...`).
-- On-chain pointer constraints: `c1:` prefix, non-empty CID payload, lowercase letters/digits only after prefix, max `128` bytes total.
-- `sdk.setCollectionPointer(asset, pointer, { lock? })`: signer must match immutable `AgentAccount.creator`.
-- `lock` defaults to `true` (first successful write makes `col` immutable via `col_locked`).
-- Editable workflow: first call with `{ lock: false }`, then finalize with `{ lock: true }` (or omit `lock`).
-- `sdk.setParentAsset(child, parent, { lock? })`: signer must be current owner of the child and equal the parent agent creator snapshot.
-- Parent constraints: parent exists/live, `child !== parent`, and `parent_locked` behaves like `col_locked`.
-- `loadAgent()` exposes `creator`, `creators`, `col`, `parent_asset`, `col_locked`, and `parent_locked`.
-- `c1:...` pointer is a string (not a pubkey); base registry pubkey is internal and standard `setAgentUri`/`transferAgent` calls auto-resolve it.
+For advanced collection pointer and parent workflows, see:
+- [`COLLECTION.md`](./COLLECTION.md)
+- [`examples/collection-flow.ts`](../examples/collection-flow.ts)
 
 ---
 
