@@ -310,138 +310,138 @@ function normalizeField(value) {
   return JSON.stringify(value);
 }
 
-function diffField(field, classic, substream) {
-  const classicValue = normalizeField(classic);
+function diffField(field, indexer, substream) {
+  const indexerValue = normalizeField(indexer);
   const substreamValue = normalizeField(substream);
   return {
     field,
-    classic: classicValue,
+    indexer: indexerValue,
     substream: substreamValue,
-    match: classicValue === substreamValue,
+    match: indexerValue === substreamValue,
   };
 }
 
-function buildTransportDiff(transport, classicArtifact, substreamArtifact) {
+function buildTransportDiff(transport, indexerArtifact, substreamArtifact) {
   const fields = [
-    diffField('available', classicArtifact?.available ?? null, substreamArtifact?.available ?? null),
+    diffField('available', indexerArtifact?.available ?? null, substreamArtifact?.available ?? null),
     diffField(
       'global.total_agents',
-      classicArtifact?.globalStats?.total_agents ?? null,
+      indexerArtifact?.globalStats?.total_agents ?? null,
       substreamArtifact?.globalStats?.total_agents ?? null
     ),
     diffField(
       'global.total_feedbacks',
-      classicArtifact?.globalStats?.total_feedbacks ?? null,
+      indexerArtifact?.globalStats?.total_feedbacks ?? null,
       substreamArtifact?.globalStats?.total_feedbacks ?? null
     ),
     diffField(
       'global.total_collections',
-      classicArtifact?.globalStats?.total_collections ?? null,
+      indexerArtifact?.globalStats?.total_collections ?? null,
       substreamArtifact?.globalStats?.total_collections ?? null
     ),
     diffField(
       'leaderboard.count',
-      classicArtifact?.leaderboardAssets?.length ?? 0,
+      indexerArtifact?.leaderboardAssets?.length ?? 0,
       substreamArtifact?.leaderboardAssets?.length ?? 0
     ),
     diffField(
       'leaderboard.top_asset',
-      classicArtifact?.leaderboardAssets?.[0] ?? null,
+      indexerArtifact?.leaderboardAssets?.[0] ?? null,
       substreamArtifact?.leaderboardAssets?.[0] ?? null
     ),
     diffField(
       'seed_asset_found',
-      classicArtifact?.seedAssetFound ?? null,
+      indexerArtifact?.seedAssetFound ?? null,
       substreamArtifact?.seedAssetFound ?? null
     ),
     diffField(
       'id_checks.enabled',
-      classicArtifact?.idChecks?.enabled ?? null,
+      indexerArtifact?.idChecks?.enabled ?? null,
       substreamArtifact?.idChecks?.enabled ?? null
     ),
     diffField(
       'id_checks.passed',
-      classicArtifact?.idChecks?.passed ?? null,
+      indexerArtifact?.idChecks?.passed ?? null,
       substreamArtifact?.idChecks?.passed ?? null
     ),
     diffField(
       'id_checks.expected_agents',
-      classicArtifact?.idChecks?.expected?.agents ?? null,
+      indexerArtifact?.idChecks?.expected?.agents ?? null,
       substreamArtifact?.idChecks?.expected?.agents ?? null
     ),
     diffField(
       'id_checks.observed_agents',
-      classicArtifact?.idChecks?.observed?.agentsFound ?? null,
+      indexerArtifact?.idChecks?.observed?.agentsFound ?? null,
       substreamArtifact?.idChecks?.observed?.agentsFound ?? null
     ),
     diffField(
       'id_checks.expected_feedbacks',
-      classicArtifact?.idChecks?.expected?.feedbacks ?? null,
+      indexerArtifact?.idChecks?.expected?.feedbacks ?? null,
       substreamArtifact?.idChecks?.expected?.feedbacks ?? null
     ),
     diffField(
       'id_checks.observed_feedbacks',
-      classicArtifact?.idChecks?.observed?.feedbacksFound ?? null,
+      indexerArtifact?.idChecks?.observed?.feedbacksFound ?? null,
       substreamArtifact?.idChecks?.observed?.feedbacksFound ?? null
     ),
     diffField(
       'id_checks.expected_pending_validations',
-      classicArtifact?.idChecks?.expected?.pendingValidations ?? null,
+      indexerArtifact?.idChecks?.expected?.pendingValidations ?? null,
       substreamArtifact?.idChecks?.expected?.pendingValidations ?? null
     ),
     diffField(
       'id_checks.observed_pending_validations',
-      classicArtifact?.idChecks?.observed?.pendingValidationsFound ?? null,
+      indexerArtifact?.idChecks?.observed?.pendingValidationsFound ?? null,
       substreamArtifact?.idChecks?.observed?.pendingValidationsFound ?? null
     ),
     diffField(
       'id_checks.expected_uri_metadata',
-      classicArtifact?.idChecks?.expected?.agentUriMetadata ?? null,
+      indexerArtifact?.idChecks?.expected?.agentUriMetadata ?? null,
       substreamArtifact?.idChecks?.expected?.agentUriMetadata ?? null
     ),
     diffField(
       'id_checks.observed_uri_metadata',
-      classicArtifact?.idChecks?.observed?.agentUriMetadataFound ?? null,
+      indexerArtifact?.idChecks?.observed?.agentUriMetadataFound ?? null,
       substreamArtifact?.idChecks?.observed?.agentUriMetadataFound ?? null
     ),
     diffField(
       'id_checks.expected_collections',
-      classicArtifact?.idChecks?.expected?.collections ?? null,
+      indexerArtifact?.idChecks?.expected?.collections ?? null,
       substreamArtifact?.idChecks?.expected?.collections ?? null
     ),
     diffField(
       'id_checks.observed_collections',
-      classicArtifact?.idChecks?.observed?.collectionsFound ?? null,
+      indexerArtifact?.idChecks?.observed?.collectionsFound ?? null,
       substreamArtifact?.idChecks?.observed?.collectionsFound ?? null
     ),
     diffField(
       'id_checks.hash_agents',
-      classicArtifact?.idChecks?.hashes?.agents ?? null,
+      indexerArtifact?.idChecks?.hashes?.agents ?? null,
       substreamArtifact?.idChecks?.hashes?.agents ?? null
     ),
     diffField(
       'id_checks.hash_feedbacks',
-      classicArtifact?.idChecks?.hashes?.feedbacks ?? null,
+      indexerArtifact?.idChecks?.hashes?.feedbacks ?? null,
       substreamArtifact?.idChecks?.hashes?.feedbacks ?? null
     ),
     diffField(
       'id_checks.hash_pending_validations',
-      classicArtifact?.idChecks?.hashes?.pendingValidations ?? null,
+      indexerArtifact?.idChecks?.hashes?.pendingValidations ?? null,
       substreamArtifact?.idChecks?.hashes?.pendingValidations ?? null
     ),
     diffField(
       'id_checks.hash_uri_metadata',
-      classicArtifact?.idChecks?.hashes?.agentUriMetadata ?? null,
+      indexerArtifact?.idChecks?.hashes?.agentUriMetadata ?? null,
       substreamArtifact?.idChecks?.hashes?.agentUriMetadata ?? null
     ),
     diffField(
       'id_checks.hash_collections',
-      classicArtifact?.idChecks?.hashes?.collections ?? null,
+      indexerArtifact?.idChecks?.hashes?.collections ?? null,
       substreamArtifact?.idChecks?.hashes?.collections ?? null
     ),
     diffField(
       'id_checks.error_count',
-      Array.isArray(classicArtifact?.idChecks?.errors) ? classicArtifact.idChecks.errors.length : null,
+      Array.isArray(indexerArtifact?.idChecks?.errors) ? indexerArtifact.idChecks.errors.length : null,
       Array.isArray(substreamArtifact?.idChecks?.errors) ? substreamArtifact.idChecks.errors.length : null
     ),
   ];
@@ -451,13 +451,13 @@ function buildTransportDiff(transport, classicArtifact, substreamArtifact) {
 
 export function buildComparisonReport({
   runId,
-  classicRest,
-  classicGraphql,
+  indexerRest,
+  indexerGraphql,
   substreamRest,
   substreamGraphql,
 }) {
-  const rest = buildTransportDiff('rest', classicRest, substreamRest);
-  const graphql = buildTransportDiff('graphql', classicGraphql, substreamGraphql);
+  const rest = buildTransportDiff('rest', indexerRest, substreamRest);
+  const graphql = buildTransportDiff('graphql', indexerGraphql, substreamGraphql);
   return {
     runId,
     generatedAt: nowIso(),
@@ -479,10 +479,10 @@ export function renderComparisonMarkdown(report) {
   for (const transport of report.transports) {
     lines.push(`## ${transport.transport.toUpperCase()}`);
     lines.push('');
-    lines.push('| Field | Classic | Substream | Match |');
+    lines.push('| Field | Indexer | Substream | Match |');
     lines.push('| --- | --- | --- | --- |');
     for (const field of transport.fields) {
-      lines.push(`| ${field.field} | \`${field.classic}\` | \`${field.substream}\` | ${field.match ? 'YES' : 'NO'} |`);
+      lines.push(`| ${field.field} | \`${field.indexer}\` | \`${field.substream}\` | ${field.match ? 'YES' : 'NO'} |`);
     }
     lines.push('');
     lines.push(`Mismatches: **${transport.mismatchCount}**`);

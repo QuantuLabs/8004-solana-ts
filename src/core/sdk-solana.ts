@@ -103,6 +103,8 @@ const COLLECTION_POINTER_PREFIX = 'c1:';
 const COLLECTION_POINTER_PATTERN = /^c1:b[a-z2-7]+$/;
 const COLLECTION_POINTER_MIN_LENGTH = 62;
 const COLLECTION_POINTER_MAX_LENGTH = 128;
+const VALIDATION_ARCHIVED_ERROR =
+  'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
 
 function extractCidCandidate(value: string): string {
   const trimmed = value.trim();
@@ -207,7 +209,7 @@ export interface SolanaSDKConfig {
    */
   indexerUrl?: string;
   /**
-   * @deprecated Legacy Supabase anon key (override via INDEXER_API_KEY env)
+   * @deprecated Legacy REST auth token (override via INDEXER_API_KEY env)
    * Prefer `indexerGraphqlUrl` (GraphQL v2).
    */
   indexerApiKey?: string;
@@ -1841,9 +1843,8 @@ export class SolanaSDK {
    * @param validator - Validator pubkey string
    * @returns Array of pending validation requests
    */
-  async getPendingValidations(validator: string): Promise<IndexedValidation[]> {
-    this.requireIndexer('getPendingValidations');
-    return this.indexerClient.getPendingValidations(validator);
+  async getPendingValidations(_validator: string): Promise<IndexedValidation[]> {
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
@@ -2043,8 +2044,8 @@ export class SolanaSDK {
    *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
    *   - `signer`: PublicKey of the signer (required with skipSend)
    *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
-   *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
-   *     (use enableAtom() to turn it on later, one-way)
+   *   - `atomEnabled`: Set to true to enable ATOM at creation (default false)
+   *     (use enableAtom() to turn it on later, one-way/irreversible)
    *   - `collectionPointer`: Optional pointer (c1:<payload>) to attach after successful register
    *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
    *     Note: when `skipSend=true`, only the register tx is prepared, so pointer attach is skipped.
@@ -2075,10 +2076,15 @@ export class SolanaSDK {
       throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
     }
 
-    const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, options);
+    const registerOptions: RegisterAgentOptions = {
+      ...(options ?? {}),
+      atomEnabled: options?.atomEnabled ?? false,
+    };
+
+    const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, registerOptions);
 
     const canRunPostRegister =
-      !options?.skipSend
+      !registerOptions.skipSend
       && 'success' in result
       && result.success
       && !!result.asset;
@@ -2086,10 +2092,10 @@ export class SolanaSDK {
     if (canRunPostRegister && result.asset) {
       const signatures: string[] = [result.signature];
 
-      // Auto-initialize ATOM stats unless ATOM is disabled at creation
-      if (options?.atomEnabled !== false) {
+      // Auto-initialize ATOM stats only when ATOM is explicitly enabled at creation
+      if (registerOptions.atomEnabled) {
         try {
-          const atomResult = await this.atomTxBuilder.initializeStats(result.asset, options);
+          const atomResult = await this.atomTxBuilder.initializeStats(result.asset, registerOptions);
 
           if ('success' in atomResult && atomResult.success) {
             signatures.push(atomResult.signature);
@@ -2104,16 +2110,16 @@ export class SolanaSDK {
         }
       }
 
-      if (options?.collectionPointer) {
+      if (registerOptions.collectionPointer) {
         const pointerOptions: SetCollectionPointerOptions = {
-          lock: options.collectionLock ?? true,
+          lock: registerOptions.collectionLock ?? true,
         };
-        if (options.signer !== undefined) pointerOptions.signer = options.signer;
-        if (options.feePayer !== undefined) pointerOptions.feePayer = options.feePayer;
-        if (options.computeUnits !== undefined) pointerOptions.computeUnits = options.computeUnits;
+        if (registerOptions.signer !== undefined) pointerOptions.signer = registerOptions.signer;
+        if (registerOptions.feePayer !== undefined) pointerOptions.feePayer = registerOptions.feePayer;
+        if (registerOptions.computeUnits !== undefined) pointerOptions.computeUnits = registerOptions.computeUnits;
 
         try {
-          const pointerResult = await this.setCollectionPointer(result.asset, options.collectionPointer, pointerOptions);
+          const pointerResult = await this.setCollectionPointer(result.asset, registerOptions.collectionPointer, pointerOptions);
           if ('success' in pointerResult && pointerResult.success) {
             signatures.push(pointerResult.signature);
           } else {

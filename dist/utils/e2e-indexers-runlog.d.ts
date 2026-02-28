@@ -22,7 +22,7 @@ export interface MatrixRunRecord {
     comparisonJsonPath?: string;
 }
 export interface IndexerCheckArtifact {
-    backend: 'classic' | 'substream';
+    backend: 'indexer' | 'substream';
     transport: 'rest' | 'graphql';
     status: MatrixStatus;
     baseUrl: string | null;
@@ -40,7 +40,7 @@ export interface IndexerCheckArtifact {
 }
 export interface IndexerFieldDiff {
     field: string;
-    classic: string;
+    indexer: string;
     substream: string;
     match: boolean;
 }
@@ -63,8 +63,8 @@ export declare function formatDiffSectionEntry(run: MatrixRunRecord, mismatchCou
 export declare function injectRunIntoMarkdown(runlogContent: string, run: MatrixRunRecord, mismatchCount: number): string;
 export declare function buildIndexerComparisonReport(input: {
     runId: string;
-    classicRest: IndexerCheckArtifact | null;
-    classicGraphql: IndexerCheckArtifact | null;
+    indexerRest: IndexerCheckArtifact | null;
+    indexerGraphql: IndexerCheckArtifact | null;
     substreamRest: IndexerCheckArtifact | null;
     substreamGraphql: IndexerCheckArtifact | null;
 }): IndexerComparisonReport;

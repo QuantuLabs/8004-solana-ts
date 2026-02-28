@@ -44,6 +44,8 @@ export interface IndexerGraphQLClientConfig {
 type GraphQLErrorShape = { message?: string; extensions?: Record<string, unknown> };
 type AgentIdFieldName = 'agentId' | 'agentid';
 type AgentIdVariableType = 'String' | 'BigInt';
+const VALIDATION_ARCHIVED_ERROR =
+  'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
 
 function toIsoFromUnixSeconds(unix: unknown): string {
   if (typeof unix === 'string') {
@@ -309,14 +311,6 @@ function decodeFeedbackId(id: string): { asset: string; client: string; index: s
   return null;
 }
 
-function decodeValidationId(id: string): { asset: string; validator: string; nonce: string } | null {
-  const parts = id.split(':');
-  if (parts.length !== 4 || parts[0] !== 'sol') return null;
-  const [, asset, validator, nonce] = parts;
-  if (!asset || !validator || !nonce) return null;
-  return { asset, validator, nonce };
-}
-
 function resolveFeedbackAsset(row: any, fallbackAsset = ''): string {
   if (typeof row?.id === 'string') {
     const decoded = decodeFeedbackId(row.id);
@@ -378,12 +372,6 @@ function mapGqlFeedbackResponse(
     tx_signature: row?.solana?.txSignature ?? '',
     created_at: toIsoFromUnixSeconds(row.createdAt),
   };
-}
-
-function mapValidationStatus(status: unknown): 'PENDING' | 'RESPONDED' {
-  if (status === 'PENDING') return 'PENDING';
-  // GraphQL uses COMPLETED; legacy SDK uses RESPONDED.
-  return 'RESPONDED';
 }
 
 type GqlHashChainHead = { digest: string | null; count: string };
@@ -566,10 +554,10 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.retries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+      try {
         const response = await fetch(this.graphqlUrl, {
           method: 'POST',
           headers: {
@@ -580,8 +568,6 @@ export class IndexerGraphQLClient implements IndexerReadClient {
           signal: controller.signal,
           redirect: 'error',
         });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
           // Many GraphQL servers (including ours) can return JSON error bodies with HTTP 400.
@@ -653,6 +639,8 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         }
 
         throw lastError instanceof IndexerError ? lastError : new IndexerUnavailableError(lastError.message);
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
 
@@ -878,17 +866,24 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   }
 
   async getGlobalStats(): Promise<GlobalStats> {
-    const data = await this.request<{ protocols: Array<{ totalAgents: string; totalFeedback: string; totalValidations: string }> }>(
+    const data = await this.request<{
+      globalStats: {
+        totalAgents?: string | number | null;
+        totalFeedback?: string | number | null;
+        totalCollections?: string | number | null;
+        tags?: unknown[];
+      } | null;
+    }>(
       `query {
-        protocols { totalAgents totalFeedback totalValidations }
+        globalStats { totalAgents totalFeedback totalCollections tags }
       }`
     );
-    const p = data.protocols?.[0];
+    const stats = data.globalStats;
     return {
-      total_agents: toNumberSafe(p?.totalAgents, 0),
-      total_collections: 1,
-      total_feedbacks: toNumberSafe(p?.totalFeedback, 0),
-      total_validations: toNumberSafe(p?.totalValidations, 0),
+      total_agents: toNumberSafe(stats?.totalAgents, 0),
+      total_collections: toNumberSafe(stats?.totalCollections, 0),
+      total_feedbacks: toNumberSafe(stats?.totalFeedback, 0),
+      total_validations: 0,
       platinum_agents: 0,
       gold_agents: 0,
       avg_quality: null,
@@ -1104,35 +1099,48 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     asset: string,
     options?: { includeRevoked?: boolean; limit?: number; offset?: number }
   ): Promise<IndexedFeedback[]> {
-    const first = clampInt(options?.limit ?? 100, 0, 1000);
-    const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
+    const limit = clampInt(options?.limit ?? 100, 0, 1000);
+    const initialSkip = clampInt(options?.offset ?? 0, 0, 1_000_000);
+    if (limit === 0) return [];
 
     const where: Record<string, unknown> = { agent: agentId(asset) };
     if (!options?.includeRevoked) {
       where.isRevoked = false;
     }
 
-    const data = await this.request<{ feedbacks: any[] }>(
-      `query($where: FeedbackFilter) {
-        feedbacks(first: ${first}, skip: ${skip}, where: $where, orderBy: createdAt, orderDirection: desc) {
-          id
-          clientAddress
-          feedbackIndex
-          tag1
-          tag2
-          endpoint
-          feedbackURI
-          feedbackHash
-          isRevoked
-          createdAt
-          revokedAt
-          solana { valueRaw valueDecimals score txSignature blockSlot }
-        }
-      }`,
-      { where }
-    );
+    const pageSize = 100;
+    const feedbacks: IndexedFeedback[] = [];
+    let skip = initialSkip;
 
-    return data.feedbacks.map((f) => mapGqlFeedback(f, asset));
+    while (feedbacks.length < limit) {
+      const first = Math.min(pageSize, limit - feedbacks.length);
+      const data = await this.request<{ feedbacks: any[] }>(
+        `query($where: FeedbackFilter) {
+          feedbacks(first: ${first}, skip: ${skip}, where: $where, orderBy: createdAt, orderDirection: desc) {
+            id
+            clientAddress
+            feedbackIndex
+            tag1
+            tag2
+            endpoint
+            feedbackURI
+            feedbackHash
+            isRevoked
+            createdAt
+            revokedAt
+            solana { valueRaw valueDecimals score txSignature blockSlot }
+          }
+        }`,
+        { where }
+      );
+
+      const page = data.feedbacks.map((f) => mapGqlFeedback(f, asset));
+      if (page.length === 0) break;
+      feedbacks.push(...page);
+      skip += page.length;
+    }
+
+    return feedbacks;
   }
 
   async getFeedback(
@@ -1191,51 +1199,60 @@ export class IndexerGraphQLClient implements IndexerReadClient {
 
   async getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]> {
     // GraphQL filter doesn't support OR on tag1/tag2, so query both and merge.
-    const [tag1, tag2] = await Promise.all([
-      this.request<{ feedbacks: any[] }>(
-        `query($tag: String!) {
-          feedbacks(first: 250, where: { tag1: $tag }, orderBy: createdAt, orderDirection: desc) {
-            id
-            agent { id }
-            clientAddress
-            feedbackIndex
-            tag1
-            tag2
-            endpoint
-            feedbackURI
-            feedbackHash
-            isRevoked
-            createdAt
-            revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot }
-          }
-        }`,
-        { tag }
-      ),
-      this.request<{ feedbacks: any[] }>(
-        `query($tag: String!) {
-          feedbacks(first: 250, where: { tag2: $tag }, orderBy: createdAt, orderDirection: desc) {
-            id
-            agent { id }
-            clientAddress
-            feedbackIndex
-            tag1
-            tag2
-            endpoint
-            feedbackURI
-            feedbackHash
-            isRevoked
-            createdAt
-            revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot }
-          }
-        }`,
-        { tag }
-      ),
+    // Use paginated reads to stay below hosted GraphQL complexity limits.
+    const pageSize = 100;
+    const maxRows = 5000;
+
+    const fetchByTagField = async (field: 'tag1' | 'tag2'): Promise<any[]> => {
+      const rows: any[] = [];
+      let skip = 0;
+
+      while (rows.length < maxRows) {
+        const first = Math.min(pageSize, maxRows - rows.length);
+        const data = await this.request<{ feedbacks: any[] }>(
+          `query($tag: String!) {
+            feedbacks(
+              first: ${first},
+              skip: ${skip},
+              where: { ${field}: $tag },
+              orderBy: createdAt,
+              orderDirection: desc
+            ) {
+              id
+              agent { id }
+              clientAddress
+              feedbackIndex
+              tag1
+              tag2
+              endpoint
+              feedbackURI
+              feedbackHash
+              isRevoked
+              createdAt
+              revokedAt
+              solana { valueRaw valueDecimals score txSignature blockSlot }
+            }
+          }`,
+          { tag }
+        );
+
+        const page = data.feedbacks ?? [];
+        if (page.length === 0) break;
+        rows.push(...page);
+        if (page.length < first) break;
+        skip += page.length;
+      }
+
+      return rows;
+    };
+
+    const [tag1Rows, tag2Rows] = await Promise.all([
+      fetchByTagField('tag1'),
+      fetchByTagField('tag2'),
     ]);
 
     const merged = new Map<string, any>();
-    for (const f of [...(tag1.feedbacks ?? []), ...(tag2.feedbacks ?? [])]) {
+    for (const f of [...tag1Rows, ...tag2Rows]) {
       merged.set(f.id, f);
     }
 
@@ -1243,28 +1260,48 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   }
 
   async getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]> {
-    const data = await this.request<{ feedbacks: any[] }>(
-      `query($endpoint: String!) {
-        feedbacks(first: 250, where: { endpoint: $endpoint }, orderBy: createdAt, orderDirection: desc) {
-          id
-          agent { id }
-          clientAddress
-          feedbackIndex
-          tag1
-          tag2
-          endpoint
-          feedbackURI
-          feedbackHash
-          isRevoked
-          createdAt
-          revokedAt
-          solana { valueRaw valueDecimals score txSignature blockSlot }
-        }
-      }`,
-      { endpoint }
-    );
+    const pageSize = 100;
+    const maxRows = 5000;
+    const rows: any[] = [];
+    let skip = 0;
 
-    return data.feedbacks.map((f) => mapGqlFeedback(f));
+    while (rows.length < maxRows) {
+      const first = Math.min(pageSize, maxRows - rows.length);
+      const data = await this.request<{ feedbacks: any[] }>(
+        `query($endpoint: String!) {
+          feedbacks(
+            first: ${first},
+            skip: ${skip},
+            where: { endpoint: $endpoint },
+            orderBy: createdAt,
+            orderDirection: desc
+          ) {
+            id
+            agent { id }
+            clientAddress
+            feedbackIndex
+            tag1
+            tag2
+            endpoint
+            feedbackURI
+            feedbackHash
+            isRevoked
+            createdAt
+            revokedAt
+            solana { valueRaw valueDecimals score txSignature blockSlot }
+          }
+        }`,
+        { endpoint }
+      );
+
+      const page = data.feedbacks ?? [];
+      if (page.length === 0) break;
+      rows.push(...page);
+      if (page.length < first) break;
+      skip += page.length;
+    }
+
+    return rows.map((f) => mapGqlFeedback(f));
   }
 
   async getAllFeedbacks(options?: { includeRevoked?: boolean; limit?: number }): Promise<IndexedFeedback[]> {
@@ -1342,57 +1379,103 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   // Validations
   // ============================================================================
 
-  async getPendingValidations(validator: string): Promise<IndexedValidation[]> {
-    const data = await this.request<{ validations: any[] }>(
-      `query($validator: String!) {
-        validations(first: 250, where: { validatorAddress: $validator, status: PENDING }) {
-          id
-          validatorAddress
-          requestUri
-          requestHash
-          response
-          responseUri
-          responseHash
-          tag
-          status
-          createdAt
-          updatedAt
-        }
-      }`,
-      { validator }
-    );
-
-    return data.validations.map((v) => {
-      const decoded = decodeValidationId(v.id);
-      const asset = decoded?.asset ?? '';
-      const nonce = decoded?.nonce ?? '0';
-      return {
-        id: v.id,
-        asset,
-        validator_address: v.validatorAddress,
-        nonce: toNumberSafe(nonce, 0),
-        requester: null,
-        request_uri: v.requestUri ?? null,
-        request_hash: v.requestHash ?? null,
-        response: v.response ?? null,
-        response_uri: v.responseUri ?? null,
-        response_hash: v.responseHash ?? null,
-        tag: v.tag ?? null,
-        status: mapValidationStatus(v.status),
-        block_slot: 0,
-        tx_signature: '',
-        created_at: toIsoFromUnixSeconds(v.createdAt),
-        updated_at: v.updatedAt ? toIsoFromUnixSeconds(v.updatedAt) : toIsoFromUnixSeconds(v.createdAt),
-      };
-    });
+  async getPendingValidations(_validator: string): Promise<IndexedValidation[]> {
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   // ============================================================================
   // Reputation
   // ============================================================================
 
-  async getAgentReputation(_asset: string): Promise<IndexedAgentReputation | null> {
-    throw new Error('GraphQL backend does not expose getAgentReputation');
+  async getAgentReputation(asset: string): Promise<IndexedAgentReputation | null> {
+    const normalizedAsset = agentId(asset);
+    const data = await this.request<{ agent: any | null }>(
+      `query($id: ID!) {
+        agent(id: $id) {
+          id
+          owner
+          agentURI
+          totalFeedback
+          solana { assetPubkey collection qualityScore }
+        }
+      }`,
+      { id: normalizedAsset }
+    );
+
+    const row = data.agent;
+    if (!row) return null;
+
+    const feedbackCount = Math.max(0, toIntSafe(row?.totalFeedback, 0));
+    const rawQualityScore = toNumberSafe(row?.solana?.qualityScore, 0);
+    const qualityAvg = Math.max(0, Math.min(100, rawQualityScore > 100 ? rawQualityScore / 100 : rawQualityScore));
+    const scores: number[] = [];
+
+    const maxRows = Math.min(feedbackCount, 5000);
+    const pageSize = 100;
+    let skip = 0;
+    while (skip < maxRows) {
+      const first = Math.min(pageSize, maxRows - skip);
+      const pageData = await this.request<{ feedbacks: Array<{ solana?: { score?: number | null } | null }> }>(
+        `query($agent: ID!) {
+          feedbacks(
+            first: ${first},
+            skip: ${skip},
+            where: { agent: $agent },
+            orderBy: createdAt,
+            orderDirection: desc
+          ) {
+            solana { score }
+          }
+        }`,
+        { agent: normalizedAsset }
+      );
+
+      const page = pageData.feedbacks ?? [];
+      if (page.length === 0) break;
+      for (const feedback of page) {
+        const score = feedback?.solana?.score;
+        if (score === null || score === undefined) continue;
+        const parsed = toNumberSafe(score, Number.NaN);
+        if (Number.isFinite(parsed)) {
+          scores.push(parsed);
+        }
+      }
+      skip += page.length;
+      if (page.length < first) break;
+    }
+
+    let avgScore: number | null = feedbackCount > 0 ? qualityAvg : null;
+    let positiveCount = 0;
+    let negativeCount = 0;
+
+    if (scores.length > 0) {
+      const sum = scores.reduce((acc, score) => acc + score, 0);
+      avgScore = sum / scores.length;
+      positiveCount = scores.filter((score) => score >= 50).length;
+      negativeCount = scores.length - positiveCount;
+    }
+
+    const observedCount = positiveCount + negativeCount;
+    if (feedbackCount > observedCount) {
+      const remaining = feedbackCount - observedCount;
+      const ratio = avgScore === null ? 0 : Math.max(0, Math.min(1, avgScore / 100));
+      const estimatedPositive = Math.round(remaining * ratio);
+      positiveCount += estimatedPositive;
+      negativeCount += remaining - estimatedPositive;
+    }
+
+    return {
+      asset: row?.solana?.assetPubkey ?? row?.id ?? normalizedAsset,
+      owner: row?.owner ?? '',
+      collection: row?.solana?.collection ?? '',
+      nft_name: null,
+      agent_uri: row?.agentURI ?? null,
+      feedback_count: feedbackCount,
+      avg_score: feedbackCount > 0 ? avgScore : null,
+      positive_count: positiveCount,
+      negative_count: negativeCount,
+      validation_count: 0,
+    };
   }
 
   // ============================================================================

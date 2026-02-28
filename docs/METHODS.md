@@ -119,8 +119,10 @@ const upload = await sdk.createCollection(collectionInput);
 // upload.uri      -> ipfs://<cid>
 // upload.pointer  -> canonical c1:b... pointer
 
-// 3) Register agent (base registry is still automatic)
+// 3) Register agent (ATOM is off by default)
 const result = await sdk.registerAgent('ipfs://QmAgentMetadata...');
+// Optional ATOM opt-in at registration:
+// const result = await sdk.registerAgent('ipfs://QmAgentMetadata...', undefined, { atomEnabled: true });
 
 // 4) Advanced: set canonical pointer on the agent account
 await sdk.setCollectionPointer(result.asset, upload.pointer!); // lock=true by default
@@ -205,9 +207,12 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 - `skipSend`: return unsigned transaction payload instead of sending.
 - `signer`: signer pubkey required in `skipSend` mode when SDK has no signer.
 - `assetPubkey`: pre-generated asset keypair pubkey required in `skipSend` mode.
-- `atomEnabled`: defaults to `true`; set `false` to skip ATOM auto-init at registration time.
+- `atomEnabled`: defaults to `false`; set `true` to enable ATOM auto-init at registration time.
 - `collectionPointer`: optional canonical pointer (`c1:...`) attached right after successful register.
 - `collectionLock`: optional lock flag for `collectionPointer` attach (`true` by default).
+
+ATOM can also be enabled later via `enableAtom(asset)` + `initializeAtomStats(asset)`.  
+`enableAtom()` is one-way/irreversible for that agent.
 
 ### On-chain Metadata
 

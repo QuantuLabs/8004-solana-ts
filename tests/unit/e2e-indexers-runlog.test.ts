@@ -30,15 +30,15 @@ describe('e2e-indexers-runlog utilities', () => {
       durationMs: 60000,
       jobs: [
         {
-          id: 'classic-rest',
-          label: 'Classic REST',
+          id: 'indexer-rest',
+          label: 'Indexer REST',
           status: 'passed',
           startedAt: '2026-02-25T18:00:00.000Z',
           endedAt: '2026-02-25T18:00:20.000Z',
           durationMs: 20000,
-          command: 'bun run e2e:indexers:check:classic:rest',
-          artifactPath: 'artifacts/run-123/classic-rest.json',
-          logPath: 'artifacts/run-123/classic-rest.log',
+          command: 'bun run e2e:indexers:check:indexer:rest',
+          artifactPath: 'artifacts/run-123/indexer-rest.json',
+          logPath: 'artifacts/run-123/indexer-rest.log',
         },
       ],
       comparisonMarkdownPath: 'artifacts/run-123/comparison.md',
@@ -48,7 +48,7 @@ describe('e2e-indexers-runlog utilities', () => {
     const next = injectRunIntoMarkdown(ensureRunlogTemplate(''), run, 2);
 
     expect(next).toContain('run-123');
-    expect(next).toContain('Classic REST');
+    expect(next).toContain('Indexer REST');
     expect(next).toContain('mismatches: **2**');
     expect(next).toContain('artifacts/run-123/comparison.md');
   });
@@ -56,11 +56,11 @@ describe('e2e-indexers-runlog utilities', () => {
   it('should build mismatch counts and markdown report', () => {
     const report = buildIndexerComparisonReport({
       runId: 'run-456',
-      classicRest: {
-        backend: 'classic',
+      indexerRest: {
+        backend: 'indexer',
         transport: 'rest',
         status: 'passed',
-        baseUrl: 'https://classic/rest/v1',
+        baseUrl: 'https://indexer/rest/v1',
         available: true,
         seedAsset: 'asset-1',
         seedAssetFound: true,
@@ -73,7 +73,7 @@ describe('e2e-indexers-runlog utilities', () => {
         errors: [],
         generatedAt: '2026-02-25T18:00:00.000Z',
       },
-      classicGraphql: null,
+      indexerGraphql: null,
       substreamRest: {
         backend: 'substream',
         transport: 'rest',

@@ -750,7 +750,7 @@ describe('SolanaSDK extended', () => {
       });
       mockAtomTxBuilder.initializeStats.mockRejectedValueOnce(new Error('ATOM exploded'));
 
-      const result = await signerSdk.registerAgent('ipfs://test');
+      const result = await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: true });
       expect('success' in result && result.success).toBe(true);
     });
   });

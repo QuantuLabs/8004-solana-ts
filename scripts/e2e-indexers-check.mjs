@@ -22,7 +22,7 @@ import {
 } from './e2e-indexers-lib.mjs';
 
 function isBackend(value) {
-  return value === 'classic' || value === 'substream';
+  return value === 'indexer' || value === 'substream';
 }
 
 function isTransport(value) {
@@ -42,10 +42,9 @@ function parseHeadersJson(raw) {
 
 function resolveBaseUrl(args, backend, transport) {
   if (transport === 'rest') {
-    if (backend === 'classic') {
+    if (backend === 'indexer') {
       return (
         getArg(args, 'base-url') ||
-        process.env.CLASSIC_INDEXER_URL ||
         process.env.INDEXER_URL ||
         DEFAULT_INDEXER_URL
       );
@@ -58,10 +57,9 @@ function resolveBaseUrl(args, backend, transport) {
     );
   }
 
-  if (backend === 'classic') {
+  if (backend === 'indexer') {
     return (
       getArg(args, 'base-url') ||
-      process.env.CLASSIC_INDEXER_GRAPHQL_URL ||
       process.env.INDEXER_GRAPHQL_URL ||
       DEFAULT_INDEXER_GRAPHQL_URL
     );
@@ -75,10 +73,9 @@ function resolveBaseUrl(args, backend, transport) {
 }
 
 function resolveApiKey(args, backend) {
-  if (backend === 'classic') {
+  if (backend === 'indexer') {
     return (
       getArg(args, 'api-key') ||
-      process.env.CLASSIC_INDEXER_API_KEY ||
       process.env.INDEXER_API_KEY ||
       DEFAULT_INDEXER_API_KEY
     );
@@ -93,8 +90,8 @@ function resolveApiKey(args, backend) {
 
 function resolveGraphqlHeaders(backend) {
   const scoped =
-    backend === 'classic'
-      ? process.env.CLASSIC_INDEXER_GRAPHQL_HEADERS_JSON
+    backend === 'indexer'
+      ? process.env.INDEXER_GRAPHQL_HEADERS_JSON
       : process.env.SUBSTREAM_INDEXER_GRAPHQL_HEADERS_JSON;
   return {
     ...parseHeadersJson(process.env.INDEXER_GRAPHQL_HEADERS_JSON),
@@ -134,6 +131,18 @@ function toBigIntSafe(value, fallback = 0n) {
     }
   }
   return fallback;
+}
+
+const VALIDATION_ARCHIVED_ERROR_SNIPPET = 'Validation feature is archived';
+
+function isArchivedValidationError(error) {
+  const message = errorMessage(error);
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    message.includes(VALIDATION_ARCHIVED_ERROR_SNIPPET) ||
+    (normalized.includes('validation') && normalized.includes('archived'))
+  );
 }
 
 const AGENT_ID_FIELDS = ['agentId', 'agent_id', 'globalId', 'global_id', 'id'];
@@ -512,7 +521,7 @@ async function evaluateIdChecks(client, expected, options) {
 
   const expectedAgents = expected.agents.length;
   const expectedFeedbacks = expected.feedbacks.length;
-  const expectedPending = expected.pendingValidations.length;
+  let expectedPending = expected.pendingValidations.length;
   const expectedUriMetadata = expected.agentUriMetadata.length;
   const expectedCollections = expected.collections.length;
 
@@ -693,32 +702,40 @@ async function evaluateIdChecks(client, expected, options) {
   }
 
   let foundPending = 0;
-  for (const [validator, expectedRows] of expectedPendingByValidator.entries()) {
+  let validationChecksArchived = false;
+  for (const [validator] of expectedPendingByValidator.entries()) {
+    if (typeof client.getPendingValidations !== 'function') {
+      validationChecksArchived = true;
+      break;
+    }
+
     let pending;
     try {
       pending = await client.getPendingValidations(validator);
     } catch (error) {
+      if (isArchivedValidationError(error)) {
+        validationChecksArchived = true;
+        break;
+      }
       errors.push(`validation.fetch:${validator}:${errorMessage(error)}`);
       continue;
     }
 
-    const actualSet = new Set(
-      (pending || []).map((item) => `${item.asset}:${toBigIntSafe(item.nonce, 0n).toString()}`)
-    );
-    foundPending += pending?.length || 0;
-
-    for (const expectedRow of expectedRows) {
-      const expectedKey = `${expectedRow.asset}:${expectedRow.nonce.toString()}`;
-      if (!actualSet.has(expectedKey)) {
-        errors.push(`validation.pending_missing:${validator}:${expectedKey}`);
-      }
-    }
-
-    for (const pendingRow of pending || []) {
+    const pendingRows = Array.isArray(pending) ? pending : [];
+    foundPending += pendingRows.length;
+    // Validation reads are archived and should not be exposed by indexer clients.
+    errors.push(`validation.archived_exposed:${validator}:rows=${pendingRows.length}`);
+    for (const pendingRow of pendingRows) {
       pendingValidationLines.push(
         `${validator}|${pendingRow.asset}|${toBigIntSafe(pendingRow.nonce, 0n).toString()}`
       );
     }
+  }
+
+  if (validationChecksArchived) {
+    expectedPending = 0;
+    foundPending = 0;
+    pendingValidationLines.length = 0;
   }
 
   let foundUriMetadata = 0;
@@ -873,11 +890,12 @@ function isDirectExecution() {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const backendRaw = getArgOr(args, 'backend', 'classic');
+  const backendRaw = getArgOr(args, 'backend', 'indexer');
+  const backend = backendRaw;
   const transportRaw = getArgOr(args, 'transport', 'rest');
 
   if (!isBackend(backendRaw)) {
-    throw new Error(`--backend must be classic|substream (got: ${backendRaw})`);
+    throw new Error(`--backend must be indexer|substream (got: ${backendRaw})`);
   }
   if (!isTransport(transportRaw)) {
     throw new Error(`--transport must be rest|graphql (got: ${transportRaw})`);
@@ -885,7 +903,7 @@ async function main() {
 
   const runId = getArgOr(args, 'run-id', process.env.E2E_INDEXERS_RUN_ID || 'manual');
   const artifactPath = resolveFromCwd(
-    getArgOr(args, 'artifact', `artifacts/e2e-indexers/${runId}/jobs/${backendRaw}-${transportRaw}.json`)
+    getArgOr(args, 'artifact', `artifacts/e2e-indexers/${runId}/jobs/${backend}-${transportRaw}.json`)
   );
   const seedAsset = getArg(args, 'seed-asset') || process.env.E2E_INDEXERS_SEED_ASSET || null;
   const seedArtifactPath = resolveFromCwd(
@@ -912,7 +930,7 @@ async function main() {
     10
   );
 
-  const baseUrl = resolveBaseUrl(args, backendRaw, transportRaw);
+  const baseUrl = resolveBaseUrl(args, backend, transportRaw);
   const errors = [];
 
   const seedArtifact = readJson(seedArtifactPath);
@@ -920,7 +938,7 @@ async function main() {
 
   const artifact = {
     runId,
-    backend: backendRaw,
+    backend,
     transport: transportRaw,
     status: 'skipped',
     baseUrl,
@@ -979,14 +997,14 @@ async function main() {
   if (transportRaw === 'rest') {
     client = new IndexerClient({
       baseUrl,
-      apiKey: resolveApiKey(args, backendRaw),
+      apiKey: resolveApiKey(args, backend),
       timeout: timeoutMs,
       retries: 0,
     });
   } else {
     client = new IndexerGraphQLClient({
       graphqlUrl: baseUrl,
-      headers: resolveGraphqlHeaders(backendRaw),
+      headers: resolveGraphqlHeaders(backend),
       timeout: timeoutMs,
       retries: 0,
     });

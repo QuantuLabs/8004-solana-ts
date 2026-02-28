@@ -63,8 +63,8 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     }): Promise<IndexedFeedback[]>;
     getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
     getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
-    getPendingValidations(validator: string): Promise<IndexedValidation[]>;
-    getAgentReputation(_asset: string): Promise<IndexedAgentReputation | null>;
+    getPendingValidations(_validator: string): Promise<IndexedValidation[]>;
+    getAgentReputation(asset: string): Promise<IndexedAgentReputation | null>;
     getLastFeedbackDigest(asset: string): Promise<{
         digest: string | null;
         count: number;

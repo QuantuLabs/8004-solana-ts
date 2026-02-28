@@ -8,8 +8,8 @@
 export interface IndexerClientConfig {
     /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
     baseUrl: string;
-    /** Supabase anon key for authentication */
-    apiKey: string;
+    /** Optional API key/bearer token for REST indexers that require auth */
+    apiKey?: string;
     /** Request timeout in milliseconds (default: 10000) */
     timeout?: number;
     /** Number of retries on failure (default: 2) */
@@ -527,20 +527,20 @@ export declare class IndexerClient implements IndexerReadClient {
     /**
      * Get validations for an agent
      */
-    getValidations(asset: string): Promise<IndexedValidation[]>;
+    getValidations(_asset: string): Promise<IndexedValidation[]>;
     /**
      * Get validations by validator
      */
-    getValidationsByValidator(validator: string): Promise<IndexedValidation[]>;
+    getValidationsByValidator(_validator: string): Promise<IndexedValidation[]>;
     /**
      * Get pending validations for a validator
      */
-    getPendingValidations(validator: string): Promise<IndexedValidation[]>;
+    getPendingValidations(_validator: string): Promise<IndexedValidation[]>;
     /**
      * Get a specific validation by asset, validator, and nonce
      * Returns full validation data including URIs (not available on-chain)
      */
-    getValidation(asset: string, validator: string, nonce: number | bigint): Promise<IndexedValidation | null>;
+    getValidation(_asset: string, _validator: string, _nonce: number | bigint): Promise<IndexedValidation | null>;
     /**
      * Get canonical collection pointer rows.
      */

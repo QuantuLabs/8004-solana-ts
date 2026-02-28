@@ -81,7 +81,7 @@ const agentMeta = buildRegistrationFileJson({
   domains: ['technology/software_engineering/software_engineering'],
 });
 
-// 3. Upload and register (attach collection pointer in the same flow)
+// 3. Upload and register (ATOM is off by default; pass atomEnabled: true to opt in now)
 const metadataUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
 const agent = await sdk.registerAgent(metadataUri, undefined, { collectionPointer: collection.pointer! });
 console.log('Agent:', agent.asset.toBase58());
@@ -223,10 +223,11 @@ const sdk = new SolanaSDK({
   indexerGraphqlUrl: 'https://your-indexer.example.com/v2/graphql',
 });
 
-// Legacy REST v1 (Supabase PostgREST) - deprecated but supported for now
+// Legacy REST v1 (deprecated but supported for now)
 const sdk = new SolanaSDK({
   cluster: 'devnet',
-  indexerUrl: 'https://your-project.supabase.co/rest/v1',
+  indexerUrl: 'https://your-indexer.example.com/rest/v1',
+  // optional: only if your endpoint requires auth
   indexerApiKey: process.env.INDEXER_API_KEY,
 });
 
@@ -240,7 +241,8 @@ const sdk = new SolanaSDK({
 Environment variables (optional):
 
 - `INDEXER_GRAPHQL_URL`: override GraphQL endpoint
-- `INDEXER_URL` + `INDEXER_API_KEY`: legacy REST v1 (Supabase PostgREST)
+- `INDEXER_URL`: override REST v1 endpoint (legacy mode)
+- `INDEXER_API_KEY`: optional auth token for REST v1 if required by your endpoint
 
 Read by backend sequence id:
 
@@ -334,23 +336,25 @@ See [FEEDBACK.md](./docs/FEEDBACK.md) for the complete tag reference.
 
 ## ATOM Engine
 
-The SDK auto-initializes ATOM stats on registration (atomEnabled: true by default). ATOM provides:
+By default, `registerAgent()` does **not** initialize ATOM stats (`atomEnabled: false`). ATOM provides:
 
 - **Trust Tiers**: Bronze → Silver → Gold → Platinum
 - **Quality Score**: Weighted average with decay
 - **Sybil Detection**: HyperLogLog client tracking
 
 ```typescript
-// Disable ATOM at creation (if you aggregate reputation via indexer)
-await sdk.registerAgent('ipfs://...', undefined, { atomEnabled: false });
+// Enable ATOM during registration
+await sdk.registerAgent('ipfs://...', undefined, { atomEnabled: true });
 ```
 
-If you opt out at creation, you can later enable ATOM (one-way) and initialize stats:
+Or enable later after registration:
 
 ```typescript
 await sdk.enableAtom(asset);
 await sdk.initializeAtomStats(asset);
 ```
+
+`enableAtom()` is one-way/irreversible for that agent (cannot be disabled later).
 
 SEAL helper methods and examples are documented in [`docs/METHODS.md#seal-v1-methods`](./docs/METHODS.md#seal-v1-methods).
 

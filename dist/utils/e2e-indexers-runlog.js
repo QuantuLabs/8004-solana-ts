@@ -112,25 +112,25 @@ function normalizeField(value) {
         return value.join(',');
     return JSON.stringify(value);
 }
-function diffField(field, classic, substream) {
-    const classicNorm = normalizeField(classic);
+function diffField(field, indexer, substream) {
+    const indexerNorm = normalizeField(indexer);
     const substreamNorm = normalizeField(substream);
     return {
         field,
-        classic: classicNorm,
+        indexer: indexerNorm,
         substream: substreamNorm,
-        match: classicNorm === substreamNorm,
+        match: indexerNorm === substreamNorm,
     };
 }
-function buildTransportDiff(transport, classic, substream) {
+function buildTransportDiff(transport, indexer, substream) {
     const fields = [];
-    fields.push(diffField('available', classic?.available ?? null, substream?.available ?? null));
-    fields.push(diffField('global.total_agents', classic?.globalStats.total_agents ?? null, substream?.globalStats.total_agents ?? null));
-    fields.push(diffField('global.total_feedbacks', classic?.globalStats.total_feedbacks ?? null, substream?.globalStats.total_feedbacks ?? null));
-    fields.push(diffField('global.total_collections', classic?.globalStats.total_collections ?? null, substream?.globalStats.total_collections ?? null));
-    fields.push(diffField('leaderboard.count', classic?.leaderboardAssets.length ?? 0, substream?.leaderboardAssets.length ?? 0));
-    fields.push(diffField('leaderboard.top_asset', classic?.leaderboardAssets[0] ?? null, substream?.leaderboardAssets[0] ?? null));
-    fields.push(diffField('seed_asset_found', classic?.seedAssetFound ?? null, substream?.seedAssetFound ?? null));
+    fields.push(diffField('available', indexer?.available ?? null, substream?.available ?? null));
+    fields.push(diffField('global.total_agents', indexer?.globalStats.total_agents ?? null, substream?.globalStats.total_agents ?? null));
+    fields.push(diffField('global.total_feedbacks', indexer?.globalStats.total_feedbacks ?? null, substream?.globalStats.total_feedbacks ?? null));
+    fields.push(diffField('global.total_collections', indexer?.globalStats.total_collections ?? null, substream?.globalStats.total_collections ?? null));
+    fields.push(diffField('leaderboard.count', indexer?.leaderboardAssets.length ?? 0, substream?.leaderboardAssets.length ?? 0));
+    fields.push(diffField('leaderboard.top_asset', indexer?.leaderboardAssets[0] ?? null, substream?.leaderboardAssets[0] ?? null));
+    fields.push(diffField('seed_asset_found', indexer?.seedAssetFound ?? null, substream?.seedAssetFound ?? null));
     const mismatchCount = fields.reduce((acc, item) => acc + (item.match ? 0 : 1), 0);
     return {
         transport,
@@ -139,8 +139,8 @@ function buildTransportDiff(transport, classic, substream) {
     };
 }
 export function buildIndexerComparisonReport(input) {
-    const rest = buildTransportDiff('rest', input.classicRest, input.substreamRest);
-    const graphql = buildTransportDiff('graphql', input.classicGraphql, input.substreamGraphql);
+    const rest = buildTransportDiff('rest', input.indexerRest, input.substreamRest);
+    const graphql = buildTransportDiff('graphql', input.indexerGraphql, input.substreamGraphql);
     const overallMismatchCount = rest.mismatchCount + graphql.mismatchCount;
     return {
         runId: input.runId,
@@ -161,10 +161,10 @@ export function renderIndexerComparisonMarkdown(report) {
     for (const transport of report.transports) {
         lines.push(`## ${transport.transport.toUpperCase()}`);
         lines.push('');
-        lines.push('| Field | Classic | Substream | Match |');
+        lines.push('| Field | Indexer | Substream | Match |');
         lines.push('| --- | --- | --- | --- |');
         for (const item of transport.fields) {
-            lines.push(`| ${item.field} | \`${item.classic}\` | \`${item.substream}\` | ${item.match ? 'YES' : 'NO'} |`);
+            lines.push(`| ${item.field} | \`${item.indexer}\` | \`${item.substream}\` | ${item.match ? 'YES' : 'NO'} |`);
         }
         lines.push('');
         lines.push(`Mismatches: **${transport.mismatchCount}**`);

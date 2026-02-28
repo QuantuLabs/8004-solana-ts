@@ -52,7 +52,7 @@ export interface GiveFeedbackOptions extends WriteOptions {
 export interface RegisterAgentOptions extends WriteOptions {
     /** Required when skipSend is true - the client generates the asset keypair locally */
     assetPubkey?: PublicKey;
-    /** Explicitly disable ATOM at creation (default: true = enabled). */
+    /** Enable ATOM at creation (high-level SolanaSDK.registerAgent defaults this to false). */
     atomEnabled?: boolean;
     /**
      * Optional collection pointer to attach after successful register in the high-level SDK flow.

@@ -52,8 +52,8 @@ const CONFIG = {
   RETRY_DELAY_MS: 1000,
 
   // Indexer for verification (from indexer-defaults.ts)
-  INDEXER_URL: 'https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1',
-  SUPABASE_ANON_KEY: 'sb_publishable_i-ycBRGiolBr8GMdiVq1rA_nwt7N2bq',
+  INDEXER_URL: 'https://8004-indexer-production.up.railway.app/rest/v1',
+  SUPABASE_ANON_KEY: process.env.INDEXER_API_KEY || '',
 };
 
 // ============ TYPES ============

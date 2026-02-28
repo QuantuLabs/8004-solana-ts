@@ -145,7 +145,7 @@ const metadata = buildRegistrationFileJson({
 const metadataCid = await ipfs.addJson(metadata);
 const metadataUri = `ipfs://${metadataCid}`;
 
-// 6. Register on Solana (attach collection pointer in the same flow)
+// 6. Register on Solana (ATOM is off by default; pass atomEnabled: true to opt in now)
 const result = await sdk.registerAgent(metadataUri, undefined, { collectionPointer: collection.pointer! });
 console.log('Agent:', result.asset.toBase58());
 
@@ -162,7 +162,7 @@ If you are building a browser app, use `ipfs.add(data)` or `ipfs.addJson(data)` 
 
 See [OASF.md](./OASF.md) for the full list of available skills and domains.
 
-**Note on ATOM (Reputation Engine):** By default, `registerAgent()` automatically initializes on-chain reputation tracking (ATOM) which costs ~0.002 SOL rent. This enables instant feedback and trust tier calculation. If you prefer to aggregate reputation yourself via the indexer, pass `{ atomEnabled: false }` to skip ATOM initialization and save the rent cost. You can later call `enableAtom()` (one-way) followed by `initializeAtomStats()`.
+**Note on ATOM (Reputation Engine):** By default, `registerAgent()` does not initialize on-chain ATOM stats (`atomEnabled: false`), so you avoid the extra rent unless you opt in. To enable immediately at registration, pass `{ atomEnabled: true }`. You can also enable later with `enableAtom()` followed by `initializeAtomStats()`. `enableAtom()` is one-way/irreversible for that agent.
 
 **Note on Metadata:** On-chain metadata (via `setMetadata`) is stored directly on Solana for quick access without IPFS fetching. Limits: metadata key max `32` bytes, metadata value max `250` bytes, and `agent_uri` max `250` bytes.
 

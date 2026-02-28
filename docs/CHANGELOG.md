@@ -20,7 +20,7 @@
 - Clarified that `collection pointer` is a string field on agent account and differs from base registry pubkey.
 
 **Indexer + E2E:**
-- Added indexer matrix tooling docs and runlog artifacts for classic/substream REST/GraphQL checks.
+- Added indexer matrix tooling docs and runlog artifacts for indexer/substream REST/GraphQL checks.
 - Added guidance for parity checks and comparison reports between indexers.
 
 **Developer Experience:**

@@ -1,32 +1,42 @@
 /**
  * Integration tests for Indexer Queries
- * Tests against real Supabase indexer on devnet
- * Requires INDEXER_URL and INDEXER_API_KEY environment variables
+ * Tests against real indexer on devnet
+ * Public GraphQL is used by default (no API key required).
+ * Legacy REST can be enabled via INDEXER_URL (+ optional INDEXER_API_KEY).
  */
 
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import { SolanaSDK } from '../../src/index.js';
 
-// Skip integration tests if no indexer config
-const INDEXER_URL = process.env.INDEXER_URL || 'https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1';
-const INDEXER_API_KEY = process.env.INDEXER_API_KEY || 'sb_publishable_i-ycBRGiolBr8GMdiVq1rA_nwt7N2bq';
+const INDEXER_URL = process.env.INDEXER_URL || '';
+const INDEXER_API_KEY = process.env.INDEXER_API_KEY || '';
+const INDEXER_GRAPHQL_URL = process.env.INDEXER_GRAPHQL_URL
+  || 'https://8004-indexer-production.up.railway.app/v2/graphql';
+const USING_REST = Boolean(INDEXER_URL);
 
-const runIntegration = INDEXER_URL && INDEXER_API_KEY;
+const runIntegration = Boolean(INDEXER_URL || INDEXER_GRAPHQL_URL);
 
 describe('Indexer Queries (Integration)', () => {
   let sdk: SolanaSDK;
 
   beforeAll(() => {
     if (!runIntegration) {
-      console.log('Skipping indexer integration tests - no INDEXER_URL/INDEXER_API_KEY');
+      console.log('Skipping indexer integration tests - no INDEXER_URL');
       return;
     }
 
-    sdk = new SolanaSDK({
-      cluster: 'devnet',
-      indexerUrl: INDEXER_URL,
-      indexerApiKey: INDEXER_API_KEY,
-    });
+    sdk = new SolanaSDK(
+      INDEXER_URL
+        ? {
+          cluster: 'devnet',
+          indexerUrl: INDEXER_URL,
+          indexerApiKey: INDEXER_API_KEY,
+        }
+        : {
+          cluster: 'devnet',
+          indexerGraphqlUrl: INDEXER_GRAPHQL_URL,
+        }
+    );
   });
 
   describe('Leaderboard', () => {
@@ -50,7 +60,7 @@ describe('Indexer Queries (Integration)', () => {
     });
 
     it('should support keyset pagination', async () => {
-      if (!runIntegration) return;
+      if (!runIntegration || !USING_REST) return;
 
       const page1 = await sdk.getLeaderboard({ limit: 3 });
 

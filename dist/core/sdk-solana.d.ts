@@ -35,7 +35,7 @@ export interface SolanaSDKConfig {
      */
     indexerUrl?: string;
     /**
-     * @deprecated Legacy Supabase anon key (override via INDEXER_API_KEY env)
+     * @deprecated Legacy REST auth token (override via INDEXER_API_KEY env)
      * Prefer `indexerGraphqlUrl` (GraphQL v2).
      */
     indexerApiKey?: string;
@@ -692,7 +692,7 @@ export declare class SolanaSDK {
      * @param validator - Validator pubkey string
      * @returns Array of pending validation requests
      */
-    getPendingValidations(validator: string): Promise<IndexedValidation[]>;
+    getPendingValidations(_validator: string): Promise<IndexedValidation[]>;
     /**
      * Get agent reputation from indexer (with on-chain fallback)
      * @param asset - Agent asset pubkey
@@ -777,8 +777,8 @@ export declare class SolanaSDK {
      *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
      *   - `signer`: PublicKey of the signer (required with skipSend)
      *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
-     *   - `atomEnabled`: Set to false to disable ATOM at creation (default true)
-     *     (use enableAtom() to turn it on later, one-way)
+     *   - `atomEnabled`: Set to true to enable ATOM at creation (default false)
+     *     (use enableAtom() to turn it on later, one-way/irreversible)
      *   - `collectionPointer`: Optional pointer (c1:<payload>) to attach after successful register
      *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
      *     Note: when `skipSend=true`, only the register tx is prepared, so pointer attach is skipped.

@@ -12,7 +12,9 @@ import {
   IndexerUnauthorizedError,
 } from './indexer-errors.js';
 import { decompressBase64Value } from '../utils/compression.js';
-import { validateNonce } from '../utils/validation.js';
+
+const VALIDATION_ARCHIVED_ERROR =
+  'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
 
 /**
  * Configuration for IndexerClient
@@ -20,8 +22,8 @@ import { validateNonce } from '../utils/validation.js';
 export interface IndexerClientConfig {
   /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
   baseUrl: string;
-  /** Supabase anon key for authentication */
-  apiKey: string;
+  /** Optional API key/bearer token for REST indexers that require auth */
+  apiKey?: string;
   /** Request timeout in milliseconds (default: 10000) */
   timeout?: number;
   /** Number of retries on failure (default: 2) */
@@ -499,7 +501,7 @@ export class IndexerClient implements IndexerReadClient {
   constructor(config: IndexerClientConfig) {
     // Remove trailing slash from baseUrl
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
-    this.apiKey = config.apiKey;
+    this.apiKey = config.apiKey || '';
     this.timeout = config.timeout || 10000;
     this.retries = config.retries ?? 2;
   }
@@ -520,12 +522,24 @@ export class IndexerClient implements IndexerReadClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    const headers = {
-      apikey: this.apiKey,
-      Authorization: `Bearer ${this.apiKey}`,
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
     };
+    if (this.apiKey) {
+      headers.apikey = this.apiKey;
+      headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+    if (options.headers instanceof Headers) {
+      options.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+    } else if (Array.isArray(options.headers)) {
+      for (const [key, value] of options.headers) {
+        headers[key] = value;
+      }
+    } else if (options.headers) {
+      Object.assign(headers, options.headers as Record<string, string>);
+    }
 
     let lastError: Error | null = null;
 
@@ -701,12 +715,16 @@ export class IndexerClient implements IndexerReadClient {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+        const countHeaders: Record<string, string> = {
+          Prefer: 'count=exact',
+        };
+        if (this.apiKey) {
+          countHeaders.apikey = this.apiKey;
+          countHeaders.Authorization = `Bearer ${this.apiKey}`;
+        }
+
         const response = await fetch(url, {
-          headers: {
-            'apikey': this.apiKey,
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Prefer': 'count=exact',
-          },
+          headers: countHeaders,
           signal: controller.signal,
           redirect: 'error',
         });
@@ -1094,35 +1112,22 @@ export class IndexerClient implements IndexerReadClient {
   /**
    * Get validations for an agent
    */
-  async getValidations(asset: string): Promise<IndexedValidation[]> {
-    const query = this.buildQuery({
-      asset: `eq.${asset}`,
-      order: 'created_at.desc',
-    });
-    return this.request<IndexedValidation[]>(`/validations${query}`);
+  async getValidations(_asset: string): Promise<IndexedValidation[]> {
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
    * Get validations by validator
    */
-  async getValidationsByValidator(validator: string): Promise<IndexedValidation[]> {
-    const query = this.buildQuery({
-      validator_address: `eq.${validator}`,
-      order: 'created_at.desc',
-    });
-    return this.request<IndexedValidation[]>(`/validations${query}`);
+  async getValidationsByValidator(_validator: string): Promise<IndexedValidation[]> {
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
    * Get pending validations for a validator
    */
-  async getPendingValidations(validator: string): Promise<IndexedValidation[]> {
-    const query = this.buildQuery({
-      validator_address: `eq.${validator}`,
-      status: 'eq.PENDING',
-      order: 'created_at.desc',
-    });
-    return this.request<IndexedValidation[]>(`/validations${query}`);
+  async getPendingValidations(_validator: string): Promise<IndexedValidation[]> {
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
@@ -1130,19 +1135,11 @@ export class IndexerClient implements IndexerReadClient {
    * Returns full validation data including URIs (not available on-chain)
    */
   async getValidation(
-    asset: string,
-    validator: string,
-    nonce: number | bigint
+    _asset: string,
+    _validator: string,
+    _nonce: number | bigint
   ): Promise<IndexedValidation | null> {
-    const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
-    validateNonce(nonceNum);
-    const query = this.buildQuery({
-      asset: `eq.${asset}`,
-      validator_address: `eq.${validator}`,
-      nonce: `eq.${nonceNum}`,
-    });
-    const result = await this.request<IndexedValidation[]>(`/validations${query}`);
-    return result.length > 0 ? result[0] : null;
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   // ============================================================================
@@ -1258,18 +1255,24 @@ export class IndexerClient implements IndexerReadClient {
    * Get global statistics
    */
   async getGlobalStats(): Promise<GlobalStats> {
-    const result = await this.request<GlobalStats[]>('/global_stats');
-    return (
-      result[0] || {
-        total_agents: 0,
-        total_collections: 0,
-        total_feedbacks: 0,
-        total_validations: 0,
-        platinum_agents: 0,
-        gold_agents: 0,
-        avg_quality: null,
-      }
-    );
+    const result = await this.request<Partial<GlobalStats>[]>('/global_stats');
+    const fallback: GlobalStats = {
+      total_agents: 0,
+      total_collections: 0,
+      total_feedbacks: 0,
+      total_validations: 0,
+      platinum_agents: 0,
+      gold_agents: 0,
+      avg_quality: null,
+    };
+    const row = result[0];
+    if (!row) return fallback;
+
+    return {
+      ...fallback,
+      ...row,
+      total_validations: this.parseCountValue(row.total_validations, 0),
+    };
   }
 
   // ============================================================================

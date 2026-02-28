@@ -25,7 +25,7 @@ export interface MatrixRunRecord {
 }
 
 export interface IndexerCheckArtifact {
-  backend: 'classic' | 'substream';
+  backend: 'indexer' | 'substream';
   transport: 'rest' | 'graphql';
   status: MatrixStatus;
   baseUrl: string | null;
@@ -44,7 +44,7 @@ export interface IndexerCheckArtifact {
 
 export interface IndexerFieldDiff {
   field: string;
-  classic: string;
+  indexer: string;
   substream: string;
   match: boolean;
 }
@@ -200,64 +200,64 @@ function normalizeField(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function diffField(field: string, classic: unknown, substream: unknown): IndexerFieldDiff {
-  const classicNorm = normalizeField(classic);
+function diffField(field: string, indexer: unknown, substream: unknown): IndexerFieldDiff {
+  const indexerNorm = normalizeField(indexer);
   const substreamNorm = normalizeField(substream);
   return {
     field,
-    classic: classicNorm,
+    indexer: indexerNorm,
     substream: substreamNorm,
-    match: classicNorm === substreamNorm,
+    match: indexerNorm === substreamNorm,
   };
 }
 
 function buildTransportDiff(
   transport: 'rest' | 'graphql',
-  classic: IndexerCheckArtifact | null,
+  indexer: IndexerCheckArtifact | null,
   substream: IndexerCheckArtifact | null
 ): IndexerTransportDiff {
   const fields: IndexerFieldDiff[] = [];
 
-  fields.push(diffField('available', classic?.available ?? null, substream?.available ?? null));
+  fields.push(diffField('available', indexer?.available ?? null, substream?.available ?? null));
   fields.push(
     diffField(
       'global.total_agents',
-      classic?.globalStats.total_agents ?? null,
+      indexer?.globalStats.total_agents ?? null,
       substream?.globalStats.total_agents ?? null
     )
   );
   fields.push(
     diffField(
       'global.total_feedbacks',
-      classic?.globalStats.total_feedbacks ?? null,
+      indexer?.globalStats.total_feedbacks ?? null,
       substream?.globalStats.total_feedbacks ?? null
     )
   );
   fields.push(
     diffField(
       'global.total_collections',
-      classic?.globalStats.total_collections ?? null,
+      indexer?.globalStats.total_collections ?? null,
       substream?.globalStats.total_collections ?? null
     )
   );
   fields.push(
     diffField(
       'leaderboard.count',
-      classic?.leaderboardAssets.length ?? 0,
+      indexer?.leaderboardAssets.length ?? 0,
       substream?.leaderboardAssets.length ?? 0
     )
   );
   fields.push(
     diffField(
       'leaderboard.top_asset',
-      classic?.leaderboardAssets[0] ?? null,
+      indexer?.leaderboardAssets[0] ?? null,
       substream?.leaderboardAssets[0] ?? null
     )
   );
   fields.push(
     diffField(
       'seed_asset_found',
-      classic?.seedAssetFound ?? null,
+      indexer?.seedAssetFound ?? null,
       substream?.seedAssetFound ?? null
     )
   );
@@ -272,13 +272,13 @@ function buildTransportDiff(
 
 export function buildIndexerComparisonReport(input: {
   runId: string;
-  classicRest: IndexerCheckArtifact | null;
-  classicGraphql: IndexerCheckArtifact | null;
+  indexerRest: IndexerCheckArtifact | null;
+  indexerGraphql: IndexerCheckArtifact | null;
   substreamRest: IndexerCheckArtifact | null;
   substreamGraphql: IndexerCheckArtifact | null;
 }): IndexerComparisonReport {
-  const rest = buildTransportDiff('rest', input.classicRest, input.substreamRest);
-  const graphql = buildTransportDiff('graphql', input.classicGraphql, input.substreamGraphql);
+  const rest = buildTransportDiff('rest', input.indexerRest, input.substreamRest);
+  const graphql = buildTransportDiff('graphql', input.indexerGraphql, input.substreamGraphql);
   const overallMismatchCount = rest.mismatchCount + graphql.mismatchCount;
 
   return {
@@ -302,10 +302,10 @@ export function renderIndexerComparisonMarkdown(report: IndexerComparisonReport)
   for (const transport of report.transports) {
     lines.push(`## ${transport.transport.toUpperCase()}`);
     lines.push('');
-    lines.push('| Field | Classic | Substream | Match |');
+    lines.push('| Field | Indexer | Substream | Match |');
     lines.push('| --- | --- | --- | --- |');
     for (const item of transport.fields) {
-      lines.push(`| ${item.field} | \`${item.classic}\` | \`${item.substream}\` | ${item.match ? 'YES' : 'NO'} |`);
+      lines.push(`| ${item.field} | \`${item.indexer}\` | \`${item.substream}\` | ${item.match ? 'YES' : 'NO'} |`);
     }
     lines.push('');
     lines.push(`Mismatches: **${transport.mismatchCount}**`);

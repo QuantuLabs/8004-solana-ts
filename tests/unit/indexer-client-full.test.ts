@@ -545,46 +545,45 @@ describe('IndexerClient', () => {
   });
 
   describe('getValidations', () => {
-    it('should return validations for asset', async () => {
+    it('should throw because validation feature is archived', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
-      const result = await client.getValidations('asset1');
-      expect(result).toEqual([]);
+      await expect(client.getValidations('asset1')).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
   describe('getValidationsByValidator', () => {
-    it('should filter by validator', async () => {
+    it('should throw because validation feature is archived', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
-      await client.getValidationsByValidator('val1');
-      const url = (mockFetch.mock.calls[0][0] as string);
-      expect(url).toContain('validator_address=eq.val1');
+      await expect(client.getValidationsByValidator('val1')).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
   describe('getPendingValidations', () => {
-    it('should filter by PENDING status', async () => {
+    it('should throw because validation feature is archived', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
-      await client.getPendingValidations('val1');
-      const url = (mockFetch.mock.calls[0][0] as string);
-      expect(url).toContain('status=eq.PENDING');
+      await expect(client.getPendingValidations('val1')).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
   describe('getValidation', () => {
-    it('should find specific validation', async () => {
+    it('should throw because validation feature is archived', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([{ id: '1' }]));
-      const result = await client.getValidation('a', 'v', 0);
-      expect(result).not.toBeNull();
+      await expect(client.getValidation('a', 'v', 0)).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should accept bigint nonce', async () => {
+    it('should also throw for bigint nonce', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
-      expect(await client.getValidation('a', 'v', 5n)).toBeNull();
+      await expect(client.getValidation('a', 'v', 5n)).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -595,6 +594,30 @@ describe('IndexerClient', () => {
       mockFetch.mockResolvedValue(mockJsonResponse([stats]));
       const result = await client.getGlobalStats();
       expect(result.total_agents).toBe(100);
+    });
+
+    it('should default total_validations to 0 when omitted by archived indexers', async () => {
+      const client = createClient();
+      const stats = {
+        total_agents: 100,
+        total_collections: 12,
+        total_feedbacks: 500,
+        platinum_agents: 1,
+        gold_agents: 2,
+        avg_quality: 81.5,
+      };
+      mockFetch.mockResolvedValue(mockJsonResponse([stats]));
+
+      const result = await client.getGlobalStats();
+      expect(result).toMatchObject({
+        total_agents: 100,
+        total_collections: 12,
+        total_feedbacks: 500,
+        total_validations: 0,
+        platinum_agents: 1,
+        gold_agents: 2,
+        avg_quality: 81.5,
+      });
     });
 
     it('should return defaults when empty', async () => {

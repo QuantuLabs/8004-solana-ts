@@ -1,14 +1,13 @@
 /**
  * Default Indexer Configuration
- * Public anon key for read-only access to Supabase indexer
  * Browser-compatible - guards process.env access
  *
  * Override via environment variables:
  * - INDEXER_GRAPHQL_URL: Custom GraphQL v2 endpoint (recommended)
  *
- * Legacy (REST v1 / Supabase PostgREST):
- * - INDEXER_URL: Custom Supabase REST API URL
- * - INDEXER_API_KEY: Custom anon key
+ * Legacy REST v1:
+ * - INDEXER_URL: Custom REST API URL
+ * - INDEXER_API_KEY: Optional API key/bearer token (only if your endpoint requires it)
  * - FORCE_ON_CHAIN: Set to 'true' to bypass indexer
  */
 export declare const DEFAULT_INDEXER_URL: string;

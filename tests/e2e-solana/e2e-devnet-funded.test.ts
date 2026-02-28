@@ -17,7 +17,7 @@ import { computeSealHash } from '../../src/core/seal.js';
 import { loadTestWallets, fundNewKeypair, returnFunds, type DevnetTestWallets } from './devnet-setup.js';
 
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
-const INDEXER_URL = process.env.INDEXER_URL || 'https://uhjytdjxvfbppgjicfly.supabase.co/rest/v1';
+const INDEXER_URL = process.env.INDEXER_URL || 'https://8004-indexer-production.up.railway.app/rest/v1';
 const DEVNET_INDEXER_SYNC_TIMEOUT_MS = Number.parseInt(
   process.env.E2E_INDEXER_SYNC_TIMEOUT_MS ?? '90000',
   10

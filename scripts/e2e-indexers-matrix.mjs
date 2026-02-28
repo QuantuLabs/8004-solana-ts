@@ -197,20 +197,20 @@ function buildCheckArgs({ backend, transport, runId, artifactPath, seedAsset, se
 
 function buildStagedCheckJobs({
   skipGraphql,
-  classicRestArtifact,
-  classicGraphqlArtifact,
+  indexerRestArtifact,
+  indexerGraphqlArtifact,
   substreamRestArtifact,
   substreamGraphqlArtifact,
   logsDir,
 }) {
-  const classic = [
+  const indexer = [
     {
-      id: 'classic-rest',
-      label: 'Classic REST Check',
-      backend: 'classic',
+      id: 'indexer-rest',
+      label: 'Indexer REST Check',
+      backend: 'indexer',
       transport: 'rest',
-      artifactPath: classicRestArtifact,
-      logPath: resolveFromCwd(`${logsDir}/classic-rest.log`),
+      artifactPath: indexerRestArtifact,
+      logPath: resolveFromCwd(`${logsDir}/indexer-rest.log`),
     },
   ];
 
@@ -226,13 +226,13 @@ function buildStagedCheckJobs({
   ];
 
   if (!skipGraphql) {
-    classic.push({
-      id: 'classic-graphql',
-      label: 'Classic GraphQL Check',
-      backend: 'classic',
+    indexer.push({
+      id: 'indexer-graphql',
+      label: 'Indexer GraphQL Check',
+      backend: 'indexer',
       transport: 'graphql',
-      artifactPath: classicGraphqlArtifact,
-      logPath: resolveFromCwd(`${logsDir}/classic-graphql.log`),
+      artifactPath: indexerGraphqlArtifact,
+      logPath: resolveFromCwd(`${logsDir}/indexer-graphql.log`),
     });
     substream.push({
       id: 'substream-graphql',
@@ -244,7 +244,7 @@ function buildStagedCheckJobs({
     });
   }
 
-  return { classic, substream };
+  return { indexer, substream };
 }
 
 async function runCheckStage({
@@ -279,11 +279,11 @@ async function runCheckStage({
   );
 }
 
-async function runStagedChecks({ classicJobs, substreamJobs, runStage, runCatchup }) {
+async function runStagedChecks({ indexerJobs, substreamJobs, runStage, runCatchup }) {
   const records = [];
 
-  if (classicJobs.length > 0) {
-    records.push(...(await runStage(classicJobs)));
+  if (indexerJobs.length > 0) {
+    records.push(...(await runStage(indexerJobs)));
   }
 
   records.push(await runCatchup());
@@ -314,7 +314,7 @@ function buildSeedBlockedJobRecords({
 }) {
   const skippedAt = nowIso();
   const reason = `seed-write status=${seedStatus || 'unknown'}; skipped to avoid false-green parity`;
-  const checkJobs = [...stagedChecks.classic, ...stagedChecks.substream];
+  const checkJobs = [...stagedChecks.indexer, ...stagedChecks.substream];
 
   const records = checkJobs.map((job) =>
     createManualJobRecord({
@@ -439,16 +439,16 @@ async function fetchSnapshot({ client, seedAsset }) {
   return snapshot;
 }
 
-function isAlignedWithClassic({ classicArtifact, snapshot, seedAsset }) {
-  const targetStats = classicArtifact?.globalStats || {};
+function isAlignedWithIndexer({ indexerArtifact, snapshot, seedAsset }) {
+  const targetStats = indexerArtifact?.globalStats || {};
   const stats = snapshot.stats || {};
-  const topClassic = classicArtifact?.leaderboardAssets?.[0] ?? null;
+  const topIndexer = indexerArtifact?.leaderboardAssets?.[0] ?? null;
 
   const statsMatch =
     stats.total_agents === targetStats.total_agents &&
     stats.total_feedbacks === targetStats.total_feedbacks &&
     stats.total_collections === targetStats.total_collections;
-  const topMatch = topClassic ? snapshot.topAsset === topClassic : true;
+  const topMatch = topIndexer ? snapshot.topAsset === topIndexer : true;
   const seedMatch = seedAsset ? snapshot.seedAssetFound === true : true;
   return statsMatch && topMatch && seedMatch;
 }
@@ -457,7 +457,7 @@ async function runSubstreamCatchupJob({
   runId,
   env,
   seedAsset,
-  classicRestArtifactPath,
+  indexerRestArtifactPath,
   artifactPath,
   logPath,
 }) {
@@ -466,7 +466,7 @@ async function runSubstreamCatchupJob({
   const timeoutMs = Number.parseInt(env.E2E_INDEXERS_CATCHUP_TIMEOUT_MS || '120000', 10);
   const pollMs = Number.parseInt(env.E2E_INDEXERS_CATCHUP_POLL_MS || '2000', 10);
 
-  const classicArtifact = readJson(classicRestArtifactPath);
+  const indexerArtifact = readJson(indexerRestArtifactPath);
   const substreamUrl = env.SUBSTREAM_INDEXER_URL || env.E2E_INDEXERS_SUBSTREAM_REST_URL || null;
   const substreamApiKey = env.SUBSTREAM_INDEXER_API_KEY || env.E2E_INDEXERS_SUBSTREAM_API_KEY || '';
   const command = `internal:substream-catchup(${substreamUrl || 'no-url'})`;
@@ -481,9 +481,9 @@ async function runSubstreamCatchupJob({
     pollMs,
     attempts: 0,
     aligned: false,
-    classicTarget: {
-      globalStats: classicArtifact?.globalStats || null,
-      topAsset: classicArtifact?.leaderboardAssets?.[0] ?? null,
+    indexerTarget: {
+      globalStats: indexerArtifact?.globalStats || null,
+      topAsset: indexerArtifact?.leaderboardAssets?.[0] ?? null,
     },
     lastSnapshot: null,
     errors: [],
@@ -494,8 +494,8 @@ async function runSubstreamCatchupJob({
 
   if (!substreamUrl) {
     artifact.errors.push('No substream REST URL configured');
-  } else if (!classicArtifact?.globalStats) {
-    artifact.errors.push('Classic REST artifact missing global stats');
+  } else if (!indexerArtifact?.globalStats) {
+    artifact.errors.push('Indexer REST artifact missing global stats');
   } else {
     const client = new IndexerClient({
       baseUrl: substreamUrl,
@@ -512,7 +512,7 @@ async function runSubstreamCatchupJob({
       pollLog.push(
         `attempt=${artifact.attempts} stats=${JSON.stringify(snapshot.stats)} top=${snapshot.topAsset} seed=${snapshot.seedAssetFound} errors=${snapshot.errors.join(' | ')}`
       );
-      if (isAlignedWithClassic({ classicArtifact, snapshot, seedAsset })) {
+      if (isAlignedWithIndexer({ indexerArtifact, snapshot, seedAsset })) {
         artifact.aligned = true;
         artifact.status = 'passed';
         break;
@@ -522,7 +522,7 @@ async function runSubstreamCatchupJob({
 
     if (!artifact.aligned) {
       artifact.status = 'partial';
-      artifact.errors.push('Substream REST did not catch up to classic REST before timeout');
+      artifact.errors.push('Substream REST did not catch up to indexer REST before timeout');
     }
   }
 
@@ -573,17 +573,17 @@ async function main() {
     env.E2E_INDEXERS_SKIP_SEED_WRITE = '1';
   }
 
-  applyArgToEnv(args, 'classic-rest-url', 'CLASSIC_INDEXER_URL', env);
-  applyArgToEnv(args, 'classic-rest-key', 'CLASSIC_INDEXER_API_KEY', env);
-  applyArgToEnv(args, 'classic-graphql-url', 'CLASSIC_INDEXER_GRAPHQL_URL', env);
+  applyArgToEnv(args, 'indexer-rest-url', 'INDEXER_URL', env);
+  applyArgToEnv(args, 'indexer-rest-key', 'INDEXER_API_KEY', env);
+  applyArgToEnv(args, 'indexer-graphql-url', 'INDEXER_GRAPHQL_URL', env);
   applyArgToEnv(args, 'substream-rest-url', 'SUBSTREAM_INDEXER_URL', env);
   applyArgToEnv(args, 'substream-rest-key', 'SUBSTREAM_INDEXER_API_KEY', env);
   applyArgToEnv(args, 'substream-graphql-url', 'SUBSTREAM_INDEXER_GRAPHQL_URL', env);
 
   const dockerPreArtifact = resolveFromCwd(`${jobsDir}/docker-pre.json`);
   const seedArtifact = resolveFromCwd(`${jobsDir}/seed-write.json`);
-  const classicRestArtifact = resolveFromCwd(`${jobsDir}/classic-rest.json`);
-  const classicGraphqlArtifact = resolveFromCwd(`${jobsDir}/classic-graphql.json`);
+  const indexerRestArtifact = resolveFromCwd(`${jobsDir}/indexer-rest.json`);
+  const indexerGraphqlArtifact = resolveFromCwd(`${jobsDir}/indexer-graphql.json`);
   const substreamRestArtifact = resolveFromCwd(`${jobsDir}/substream-rest.json`);
   const substreamGraphqlArtifact = resolveFromCwd(`${jobsDir}/substream-graphql.json`);
   const substreamCatchupArtifact = resolveFromCwd(`${jobsDir}/substream-catchup.json`);
@@ -636,8 +636,8 @@ async function main() {
 
   const stagedChecks = buildStagedCheckJobs({
     skipGraphql,
-    classicRestArtifact,
-    classicGraphqlArtifact,
+    indexerRestArtifact,
+    indexerGraphqlArtifact,
     substreamRestArtifact,
     substreamGraphqlArtifact,
     logsDir,
@@ -652,7 +652,7 @@ async function main() {
   if (canRunParity) {
     jobRecords.push(
       ...(await runStagedChecks({
-        classicJobs: stagedChecks.classic,
+        indexerJobs: stagedChecks.indexer,
         substreamJobs: stagedChecks.substream,
         runStage: (jobs) =>
           runCheckStage({
@@ -668,7 +668,7 @@ async function main() {
             runId,
             env,
             seedAsset,
-            classicRestArtifactPath: classicRestArtifact,
+            indexerRestArtifactPath: indexerRestArtifact,
             artifactPath: substreamCatchupArtifact,
             logPath: resolveFromCwd(`${logsDir}/substream-catchup.log`),
           }),

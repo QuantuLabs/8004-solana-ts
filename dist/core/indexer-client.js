@@ -4,7 +4,7 @@
  */
 import { IndexerError, IndexerErrorCode, IndexerUnavailableError, IndexerTimeoutError, IndexerRateLimitError, IndexerUnauthorizedError, } from './indexer-errors.js';
 import { decompressBase64Value } from '../utils/compression.js';
-import { validateNonce } from '../utils/validation.js';
+const VALIDATION_ARCHIVED_ERROR = 'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
 export function encodeCanonicalFeedbackId(asset, client, index) {
     return `${asset}:${client}:${index.toString()}`;
 }
@@ -61,7 +61,7 @@ export class IndexerClient {
     constructor(config) {
         // Remove trailing slash from baseUrl
         this.baseUrl = config.baseUrl.replace(/\/$/, '');
-        this.apiKey = config.apiKey;
+        this.apiKey = config.apiKey || '';
         this.timeout = config.timeout || 10000;
         this.retries = config.retries ?? 2;
     }
@@ -77,11 +77,25 @@ export class IndexerClient {
     async request(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
         const headers = {
-            apikey: this.apiKey,
-            Authorization: `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
-            ...options.headers,
         };
+        if (this.apiKey) {
+            headers.apikey = this.apiKey;
+            headers.Authorization = `Bearer ${this.apiKey}`;
+        }
+        if (options.headers instanceof Headers) {
+            options.headers.forEach((value, key) => {
+                headers[key] = value;
+            });
+        }
+        else if (Array.isArray(options.headers)) {
+            for (const [key, value] of options.headers) {
+                headers[key] = value;
+            }
+        }
+        else if (options.headers) {
+            Object.assign(headers, options.headers);
+        }
         let lastError = null;
         for (let attempt = 0; attempt <= this.retries; attempt++) {
             try {
@@ -229,12 +243,15 @@ export class IndexerClient {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+                const countHeaders = {
+                    Prefer: 'count=exact',
+                };
+                if (this.apiKey) {
+                    countHeaders.apikey = this.apiKey;
+                    countHeaders.Authorization = `Bearer ${this.apiKey}`;
+                }
                 const response = await fetch(url, {
-                    headers: {
-                        'apikey': this.apiKey,
-                        'Authorization': `Bearer ${this.apiKey}`,
-                        'Prefer': 'count=exact',
-                    },
+                    headers: countHeaders,
                     signal: controller.signal,
                     redirect: 'error',
                 });
@@ -561,48 +578,27 @@ export class IndexerClient {
     /**
      * Get validations for an agent
      */
-    async getValidations(asset) {
-        const query = this.buildQuery({
-            asset: `eq.${asset}`,
-            order: 'created_at.desc',
-        });
-        return this.request(`/validations${query}`);
+    async getValidations(_asset) {
+        throw new Error(VALIDATION_ARCHIVED_ERROR);
     }
     /**
      * Get validations by validator
      */
-    async getValidationsByValidator(validator) {
-        const query = this.buildQuery({
-            validator_address: `eq.${validator}`,
-            order: 'created_at.desc',
-        });
-        return this.request(`/validations${query}`);
+    async getValidationsByValidator(_validator) {
+        throw new Error(VALIDATION_ARCHIVED_ERROR);
     }
     /**
      * Get pending validations for a validator
      */
-    async getPendingValidations(validator) {
-        const query = this.buildQuery({
-            validator_address: `eq.${validator}`,
-            status: 'eq.PENDING',
-            order: 'created_at.desc',
-        });
-        return this.request(`/validations${query}`);
+    async getPendingValidations(_validator) {
+        throw new Error(VALIDATION_ARCHIVED_ERROR);
     }
     /**
      * Get a specific validation by asset, validator, and nonce
      * Returns full validation data including URIs (not available on-chain)
      */
-    async getValidation(asset, validator, nonce) {
-        const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
-        validateNonce(nonceNum);
-        const query = this.buildQuery({
-            asset: `eq.${asset}`,
-            validator_address: `eq.${validator}`,
-            nonce: `eq.${nonceNum}`,
-        });
-        const result = await this.request(`/validations${query}`);
-        return result.length > 0 ? result[0] : null;
+    async getValidation(_asset, _validator, _nonce) {
+        throw new Error(VALIDATION_ARCHIVED_ERROR);
     }
     // ============================================================================
     // Stats (Views)
@@ -709,7 +705,7 @@ export class IndexerClient {
      */
     async getGlobalStats() {
         const result = await this.request('/global_stats');
-        return (result[0] || {
+        const fallback = {
             total_agents: 0,
             total_collections: 0,
             total_feedbacks: 0,
@@ -717,7 +713,15 @@ export class IndexerClient {
             platinum_agents: 0,
             gold_agents: 0,
             avg_quality: null,
-        });
+        };
+        const row = result[0];
+        if (!row)
+            return fallback;
+        return {
+            ...fallback,
+            ...row,
+            total_validations: this.parseCountValue(row.total_validations, 0),
+        };
     }
     // ============================================================================
     // RPC Functions

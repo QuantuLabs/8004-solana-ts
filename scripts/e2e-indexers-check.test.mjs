@@ -232,3 +232,48 @@ test('evaluateIdChecks flags mismatched URI metadata and collection digests', as
   );
   assert.ok(result.errors.some((line) => line.startsWith('collection.field:c1:alpha:symbol')));
 });
+
+test('evaluateIdChecks skips pending validation checks when validation feature is archived', async () => {
+  const client = makeClient({
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
+  });
+  client.getPendingValidations = async () => {
+    throw new Error('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+  };
+
+  const expected = expectedAgents([{ asset: 'assetA', owner: 'ownerA' }]);
+  expected.pendingValidations.push({
+    asset: 'assetA',
+    validator: 'validatorA',
+    nonce: 1n,
+  });
+
+  const result = await evaluateIdChecks(client, expected, { concurrency: 2, transport: 'rest' });
+
+  assert.equal(result.passed, true);
+  assert.equal(result.expected.pendingValidations, 0);
+  assert.equal(result.observed.pendingValidationsFound, 0);
+  assert.equal(result.hashes.pendingValidations, null);
+  assert.ok(result.errors.every((line) => !line.startsWith('validation.')));
+});
+
+test('evaluateIdChecks fails when indexer exposes archived pending validation reads', async () => {
+  const client = makeClient({
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
+  });
+  client.getPendingValidations = async () => [
+    { asset: 'assetA', nonce: 1n },
+  ];
+
+  const expected = expectedAgents([{ asset: 'assetA', owner: 'ownerA' }]);
+  expected.pendingValidations.push({
+    asset: 'assetA',
+    validator: 'validatorA',
+    nonce: 1n,
+  });
+
+  const result = await evaluateIdChecks(client, expected, { concurrency: 2, transport: 'rest' });
+
+  assert.equal(result.passed, false);
+  assert.ok(result.errors.some((line) => line === 'validation.archived_exposed:validatorA:rows=1'));
+});

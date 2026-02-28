@@ -1011,9 +1011,10 @@ describe('SolanaSDK', () => {
   });
 
   describe('getPendingValidations', () => {
-    it('should delegate to indexerClient', async () => {
-      await sdk.getPendingValidations('validator-pubkey');
-      expect(mockIndexerClient.getPendingValidations).toHaveBeenCalledWith('validator-pubkey');
+    it('should throw because validation feature is archived', async () => {
+      await expect(sdk.getPendingValidations('validator-pubkey')).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
+      expect(mockIndexerClient.getPendingValidations).not.toHaveBeenCalled();
     });
   });
 
@@ -1395,9 +1396,13 @@ describe('SolanaSDK', () => {
   });
 
   describe('write methods - with signer', () => {
-    it('registerAgent should delegate to identityTxBuilder', async () => {
+    it('registerAgent should delegate to identityTxBuilder with atomEnabled=false by default', async () => {
       await signerSdk.registerAgent('ipfs://test');
-      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalled();
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        undefined,
+        expect.objectContaining({ atomEnabled: false })
+      );
     });
 
     it('registerAgent should auto-initialize ATOM on success', async () => {
@@ -1411,7 +1416,7 @@ describe('SolanaSDK', () => {
         success: true,
       });
 
-      const result = await signerSdk.registerAgent('ipfs://test');
+      const result = await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: true });
       expect(mockAtomTxBuilder.initializeStats).toHaveBeenCalled();
       if ('signatures' in result) {
         expect(result.signatures).toHaveLength(2);
@@ -1435,6 +1440,7 @@ describe('SolanaSDK', () => {
       });
 
       const result = await signerSdk.registerAgent('ipfs://test', undefined, {
+        atomEnabled: true,
         collectionPointer: 'c1:abc123',
       });
 
@@ -1505,6 +1511,17 @@ describe('SolanaSDK', () => {
       expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
     });
 
+    it('registerAgent should not init ATOM when atomEnabled is omitted', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset: PublicKey.unique(),
+      });
+
+      await signerSdk.registerAgent('ipfs://test');
+      expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
+    });
+
     it('registerAgent should still return success if ATOM init fails', async () => {
       mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
         signature: 'sig1',
@@ -1517,7 +1534,7 @@ describe('SolanaSDK', () => {
         error: 'ATOM init failed',
       });
 
-      const result = await signerSdk.registerAgent('ipfs://test');
+      const result = await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: true });
       expect('success' in result && result.success).toBe(true);
     });
 
@@ -1733,8 +1750,34 @@ describe('SolanaSDK', () => {
 
     it('should fallback to on-chain', async () => {
       mockIndexerClient.getFeedbacks.mockRejectedValueOnce(new Error('indexer down'));
-      const result = await sdk.getFeedbacksFromIndexer(mockAssetKey);
+      await sdk.getFeedbacksFromIndexer(mockAssetKey);
       expect(mockFeedbackManager.readAllFeedback).toHaveBeenCalled();
+    });
+
+    it('should use on-chain path directly when useIndexer=false (no signer)', async () => {
+      const noIndexerSdk = new SolanaSDK({
+        useIndexer: false,
+        indexerUrl: 'https://example.supabase.co/rest/v1',
+        indexerApiKey: 'test-key',
+      });
+
+      await noIndexerSdk.getFeedbacksFromIndexer(mockAssetKey, { includeRevoked: true });
+
+      expect(mockIndexerClient.getFeedbacks).not.toHaveBeenCalled();
+      expect(mockFeedbackManager.readAllFeedback).toHaveBeenCalledWith(mockAssetKey, true);
+    });
+
+    it('should throw when useIndexer=false and noFallback=true', async () => {
+      const noIndexerSdk = new SolanaSDK({
+        useIndexer: false,
+        indexerUrl: 'https://example.supabase.co/rest/v1',
+        indexerApiKey: 'test-key',
+      });
+
+      await expect(
+        noIndexerSdk.getFeedbacksFromIndexer(mockAssetKey, { noFallback: true })
+      ).rejects.toThrow('Indexer not available for getFeedbacks');
+      expect(mockFeedbackManager.readAllFeedback).not.toHaveBeenCalled();
     });
   });
 
@@ -1805,7 +1848,8 @@ describe('SolanaSDK', () => {
     });
 
     it('should throw on getPendingValidations', async () => {
-      await expect(forcedSdk.getPendingValidations('v')).rejects.toThrow('requires indexer');
+      await expect(forcedSdk.getPendingValidations('v')).rejects
+        .toThrow('Validation feature is archived (v0.5.0+) and is not exposed by indexers.');
     });
   });
 

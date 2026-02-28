@@ -36,8 +36,12 @@ async function main() {
   const runId = getArgOr(args, 'run-id', process.env.E2E_INDEXERS_RUN_ID || 'manual');
   const artifactsDir = resolveFromCwd(getArgOr(args, 'artifacts-dir', `artifacts/e2e-indexers/${runId}/jobs`));
 
-  const classicRestPath = resolveFromCwd(getArgOr(args, 'classic-rest', `${artifactsDir}/classic-rest.json`));
-  const classicGraphqlPath = resolveFromCwd(getArgOr(args, 'classic-graphql', `${artifactsDir}/classic-graphql.json`));
+  const indexerRestPath = resolveFromCwd(
+    getArgOr(args, 'indexer-rest', `${artifactsDir}/indexer-rest.json`)
+  );
+  const indexerGraphqlPath = resolveFromCwd(
+    getArgOr(args, 'indexer-graphql', `${artifactsDir}/indexer-graphql.json`)
+  );
   const substreamRestPath = resolveFromCwd(getArgOr(args, 'substream-rest', `${artifactsDir}/substream-rest.json`));
   const substreamGraphqlPath = resolveFromCwd(getArgOr(args, 'substream-graphql', `${artifactsDir}/substream-graphql.json`));
 
@@ -50,8 +54,8 @@ async function main() {
 
   const report = buildComparisonReport({
     runId,
-    classicRest: readCheckArtifact(classicRestPath),
-    classicGraphql: readCheckArtifact(classicGraphqlPath),
+    indexerRest: readCheckArtifact(indexerRestPath),
+    indexerGraphql: readCheckArtifact(indexerGraphqlPath),
     substreamRest: readCheckArtifact(substreamRestPath),
     substreamGraphql: readCheckArtifact(substreamGraphqlPath),
   });

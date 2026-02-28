@@ -435,12 +435,10 @@ async function main() {
   const rpcUrl = getArgOr(args, 'rpc-url', process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com');
   const indexerUrl =
     getArg(args, 'indexer-url') ||
-    process.env.CLASSIC_INDEXER_URL ||
     process.env.INDEXER_URL ||
     null;
   const indexerApiKey =
     getArg(args, 'indexer-api-key') ||
-    process.env.CLASSIC_INDEXER_API_KEY ||
     process.env.INDEXER_API_KEY ||
     undefined;
   const revokePreflightPollAttempts = parsePositiveInt(

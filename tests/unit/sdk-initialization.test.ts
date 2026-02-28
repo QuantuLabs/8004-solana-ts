@@ -77,6 +77,16 @@ describe('SolanaSDK Initialization', () => {
       expect(sdk.getIndexerClient()).toBeDefined();
     });
 
+    it('should default to GraphQL transport when REST config is not provided', () => {
+      const sdk = new SolanaSDK({
+        indexerUrl: '',
+        indexerApiKey: '',
+        indexerGraphqlUrl: 'https://graphql.example.com/v2/graphql',
+      });
+
+      expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://graphql.example.com/v2/graphql');
+    });
+
     it('should use custom URL and key when provided', () => {
       const sdk = new SolanaSDK({
         indexerUrl: 'https://custom.supabase.co/rest/v1',
@@ -120,6 +130,16 @@ describe('SolanaSDK Initialization', () => {
 
       // The client is still created but useIndexer flag is false
       expect(sdk.getIndexerClient()).toBeDefined();
+    });
+
+    it('should prioritize REST transport when both REST and GraphQL configs are provided', () => {
+      const sdk = new SolanaSDK({
+        indexerUrl: 'https://rest.example.com/rest/v1',
+        indexerApiKey: 'rest-key',
+        indexerGraphqlUrl: 'https://graphql.example.com/v2/graphql',
+      });
+
+      expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://rest.example.com/rest/v1');
     });
 
     it('should default forceOnChain to false (smart routing)', () => {
