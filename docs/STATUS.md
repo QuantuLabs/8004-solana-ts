@@ -1,6 +1,6 @@
-# Project Status - agent0-ts-solana v0.6.4
+# Project Status - agent0-ts-solana v0.7.x
 
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-02-27
 
 ## Completed Features
 
@@ -65,6 +65,20 @@ Raw feedback data uses event-driven storage:
 - Aggregated stats (`getSummary()`) use ATOM and read instantly
 
 ## Version History
+
+### v0.7.2
+- Fixed `getAgentByAgentId()` GraphQL reads to resolve sequence-id fields (`agentId` / legacy `agentid`) instead of asset-id semantics.
+- Removed asset-derived fallback in indexer integrity checks when explicit agent id fields are absent.
+- Updated backend sequence-id docs (`agent_id` for REST, `agentId` for GraphQL).
+
+### v0.7.1
+- Bumped SDK package version to `0.7.1`.
+
+### v0.7.0
+- Added deterministic `getAgentByAgentId()` indexer read path.
+- Expanded SDK/indexer parity tooling and coverage for localnet/devnet validation.
+- Updated pointer-first collection docs/examples and simplified common feedback/response helper usage.
+- Added collection read-method docs coverage and aligned feedback value docs (`i128`, `valueDecimals` `0-18`).
 
 ### v0.6.0
 - SEAL v1 - on-chain feedback authenticity layer
