@@ -3,12 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+
+## [0.7.5] - 2026-03-01
+### Fixed
+- Added a strict `appendResponse()` guardrail: when an explicit `sealHash` is provided and indexed feedback is available, mismatched hashes are now rejected.
+- Added a `registerAgent(tokenUri?, options?)` overload while keeping the legacy `registerAgent(tokenUri?, collection?, options?)` compatibility path.
+
 ### Documentation
-- Standardized registry terminology across docs for consistency.
-- Updated quickstart registration flow to use `registerAgent(..., { collectionPointer })`.
-- Moved collection pointer and parent/child association rules into `docs/COLLECTION.md`.
-- Removed the README SEAL block in favor of focused docs.
-- Removed the deprecated `basic-indexer` example from docs/examples references.
+- Standardized collection/pointer docs and examples around canonical pointer-first flow (`c1:...`) and modern `registerAgent(..., { collectionPointer })` usage.
+- Clarified indexer collection compatibility (`/collections` primary path with classic fallback to `/collection_pointers` where needed).
+- Clarified that validation indexer reads are archived (`v0.5.0+`) and intentionally not exposed.
 
 ## [0.7.4] - 2026-03-01
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "8004-solana",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "TypeScript SDK for 8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
@@ -37,6 +37,8 @@
     "e2e:indexers:docker:pre": "node scripts/e2e-indexers-docker-hook.mjs --stage pre",
     "e2e:indexers:docker:post": "node scripts/e2e-indexers-docker-hook.mjs --stage post",
     "e2e:indexers:seed-write": "node scripts/e2e-indexers-seed-write.mjs",
+    "e2e:indexers:stress:sdk:aggressive": "node scripts/stress-sdk-devnet-aggressive.mjs",
+    "e2e:indexers:stress:sdk:feedback-focus": "node scripts/stress-sdk-devnet-feedback-focus.mjs",
     "e2e:indexers:check:indexer:rest": "node scripts/e2e-indexers-check.mjs --backend indexer --transport rest",
     "e2e:indexers:check:indexer:graphql": "node scripts/e2e-indexers-check.mjs --backend indexer --transport graphql",
     "e2e:indexers:check:substream:rest": "node scripts/e2e-indexers-check.mjs --backend substream --transport rest",

@@ -426,6 +426,14 @@ async function main() {
   const enableTransfer =
     getFlag(args, 'enable-transfer') ||
     boolFromEnv('E2E_INDEXERS_ENABLE_TRANSFER', true);
+  const reuseOwnerForFeedback =
+    getFlag(args, 'reuse-owner-feedback') ||
+    boolFromEnv('E2E_INDEXERS_REUSE_OWNER_FEEDBACK', false);
+  const explicitFeedbackSignerRaw =
+    getArg(args, 'feedback-signer-private-key') ||
+    process.env.E2E_INDEXERS_FEEDBACK_PRIVATE_KEY ||
+    process.env.E2E_INDEXERS_FEEDBACK_SIGNER_PRIVATE_KEY ||
+    null;
 
   const disableWrites =
     getFlag(args, 'skip-write') ||
@@ -500,6 +508,8 @@ async function main() {
       pendingValidationCount,
       includeValidations,
       enableTransfer,
+      reuseOwnerForFeedback,
+      hasExplicitFeedbackSigner: Boolean(explicitFeedbackSignerRaw),
       revokePreflightPollAttempts,
       revokePreflightPollDelayMs,
       revokePreflightPollTimeoutMs,
@@ -636,11 +646,21 @@ async function main() {
     const ownerBalance = await connection.getBalance(signer.publicKey);
     const ownerReserve = Math.max(rentExemptMin, 400_000);
     const fundingBudget = Math.max(0, ownerBalance - ownerReserve);
-    const affordableWalletCount = Math.max(
+    let affordableWalletCount = Math.max(
       1,
       Math.min(feedbackWalletCount, Math.floor(fundingBudget / fundingLamportsPerWallet))
     );
-    if (affordableWalletCount < feedbackWalletCount) {
+    if (explicitFeedbackSignerRaw) {
+      affordableWalletCount = 1;
+      if (!artifact.notes) artifact.notes = [];
+      artifact.notes.push('explicit feedback signer configured: no generated feedback signer funding transfer');
+      artifact.settings.feedbackWalletCount = 1;
+    } else if (reuseOwnerForFeedback) {
+      affordableWalletCount = 1;
+      if (!artifact.notes) artifact.notes = [];
+      artifact.notes.push('reuse_owner_for_feedback enabled: no feedback wallet funding transfer');
+      artifact.settings.feedbackWalletCount = 1;
+    } else if (affordableWalletCount < feedbackWalletCount) {
       if (!artifact.notes) artifact.notes = [];
       artifact.notes.push(
         `feedback_wallet_count reduced from ${feedbackWalletCount} to ${affordableWalletCount} (budget constrained)`
@@ -649,43 +669,86 @@ async function main() {
     }
 
     const feedbackRunners = [];
-    for (let i = 0; i < affordableWalletCount; i += 1) {
-      const kp = Keypair.generate();
-      const label = `feedback_signer_${String(i + 1).padStart(2, '0')}`;
-      generatedWallets.push(toWalletRecord(label, kp));
+    if (explicitFeedbackSignerRaw) {
+      const feedbackKp = Keypair.fromSecretKey(parseSecretKey(explicitFeedbackSignerRaw));
+      if (feedbackKp.publicKey.equals(signer.publicKey)) {
+        throw new Error('Explicit feedback signer must differ from owner to avoid self-feedback');
+      }
       const feedbackSdkConfig = {
         rpcUrl,
-        signer: kp,
+        signer: feedbackKp,
         ...(ipfsClient ? { ipfsClient } : {}),
       };
       if (indexerUrl) feedbackSdkConfig.indexerUrl = indexerUrl;
       if (indexerApiKey) feedbackSdkConfig.indexerApiKey = indexerApiKey;
       feedbackRunners.push({
-        keypair: kp,
+        keypair: feedbackKp,
         sdk: new SolanaSDK(feedbackSdkConfig),
       });
+      generatedWallets.push({
+        label: 'feedback_signer_explicit',
+        publicKey: feedbackKp.publicKey.toBase58(),
+      });
+    } else if (reuseOwnerForFeedback) {
+      feedbackRunners.push({
+        keypair: signer,
+        sdk,
+      });
+      generatedWallets.push({
+        label: 'feedback_signer_reused_owner',
+        publicKey: signer.publicKey.toBase58(),
+      });
+    } else {
+      for (let i = 0; i < affordableWalletCount; i += 1) {
+        const kp = Keypair.generate();
+        const label = `feedback_signer_${String(i + 1).padStart(2, '0')}`;
+        generatedWallets.push(toWalletRecord(label, kp));
+        const feedbackSdkConfig = {
+          rpcUrl,
+          signer: kp,
+          ...(ipfsClient ? { ipfsClient } : {}),
+        };
+        if (indexerUrl) feedbackSdkConfig.indexerUrl = indexerUrl;
+        if (indexerApiKey) feedbackSdkConfig.indexerApiKey = indexerApiKey;
+        feedbackRunners.push({
+          keypair: kp,
+          sdk: new SolanaSDK(feedbackSdkConfig),
+        });
+      }
     }
 
     artifact.feedbackWallet = feedbackRunners[0].keypair.publicKey.toBase58();
     artifact.feedbackWallets = feedbackRunners.map((entry) => entry.keypair.publicKey.toBase58());
 
-    for (let i = 0; i < feedbackRunners.length; i += 1) {
-      const feedbackSigner = feedbackRunners[i].keypair;
-      const feedbackBalance = await connection.getBalance(feedbackSigner.publicKey);
-      if (feedbackBalance >= fundingLamportsPerWallet) continue;
-      const fundingTx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: signer.publicKey,
-          toPubkey: feedbackSigner.publicKey,
-          lamports: fundingLamportsPerWallet - feedbackBalance,
-        })
-      );
-      await withRetry(
-        `fund-feedback-signer-${i + 1}`,
-        () => sendAndConfirmTransaction(connection, fundingTx, [signer]),
-        3,
-        1200
-      );
+    if (explicitFeedbackSignerRaw) {
+      const explicitFeedbackBalance = await connection.getBalance(feedbackRunners[0].keypair.publicKey);
+      if (explicitFeedbackBalance < minWalletFunding) {
+        throw new Error(
+          `Explicit feedback signer balance too low: ${explicitFeedbackBalance} lamports < required ${minWalletFunding}`
+        );
+      }
+    } else if (!reuseOwnerForFeedback) {
+      for (let i = 0; i < feedbackRunners.length; i += 1) {
+        const feedbackSigner = feedbackRunners[i].keypair;
+        const feedbackBalance = await connection.getBalance(feedbackSigner.publicKey);
+        if (feedbackBalance >= fundingLamportsPerWallet) continue;
+        const lamportsToFund = fundingLamportsPerWallet - feedbackBalance;
+        await withRetry(
+          `fund-feedback-signer-${i + 1}`,
+          () => {
+            const fundingTx = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: signer.publicKey,
+                toPubkey: feedbackSigner.publicKey,
+                lamports: lamportsToFund,
+              })
+            );
+            return sendAndConfirmTransaction(connection, fundingTx, [signer]);
+          },
+          3,
+          1200
+        );
+      }
     }
 
     const generatedDir = resolveFromCwd(
@@ -890,6 +953,7 @@ async function main() {
         colLocked: null,
         parentAsset: null,
         parentLocked: null,
+        uriMetadataExpected: false,
         uriMetadata: {
           '_uri:name': metadataV1.name,
           '_uri:description': metadataV1.description,
@@ -961,6 +1025,7 @@ async function main() {
         const uriError = asTxError(uriResult, `setAgentUri(agent_${code})`);
         if (uriError) throw uriError;
         artifact.counters.setAgentUri += 1;
+        expectedAgent.uriMetadataExpected = true;
         expectedAgent.uriMetadata = {
           '_uri:name': metadataV2.name,
           '_uri:description': metadataV2.description,
@@ -1335,24 +1400,28 @@ async function main() {
     }));
     artifact.expected.feedbacks = feedbackExpected;
     artifact.expected.pendingValidations = pendingExpected;
-    artifact.expected.agentUriMetadata = createdAgents.map((row) => ({
-      asset: row.expected.asset,
-      '_uri:name': row.expected.uriMetadata['_uri:name'],
-      '_uri:description': row.expected.uriMetadata['_uri:description'],
-      '_uri:image': row.expected.uriMetadata['_uri:image'],
-    }));
-    artifact.expected.collections = collections.map((row) => ({
-      pointer: row.pointer,
-      version: row.version,
-      name: row.name,
-      symbol: row.symbol,
-      description: row.description,
-      image: row.image,
-      banner_image: row.banner_image,
-      social_website: row.social_website,
-      social_x: row.social_x,
-      social_discord: row.social_discord,
-    }));
+    artifact.expected.agentUriMetadata = createdAgents
+      .filter((row) => row.expected.uriMetadataExpected)
+      .map((row) => ({
+        asset: row.expected.asset,
+        '_uri:name': row.expected.uriMetadata['_uri:name'],
+        '_uri:description': row.expected.uriMetadata['_uri:description'],
+        '_uri:image': row.expected.uriMetadata['_uri:image'],
+      }));
+    artifact.expected.collections = artifact.ipfs.enabled
+      ? collections.map((row) => ({
+          pointer: row.pointer,
+          version: row.version,
+          name: row.name,
+          symbol: row.symbol,
+          description: row.description,
+          image: row.image,
+          banner_image: row.banner_image,
+          social_website: row.social_website,
+          social_x: row.social_x,
+          social_discord: row.social_discord,
+        }))
+      : [];
 
     let indexerSynced = null;
     if (indexerUrl && typeof sdk.waitForIndexerSync === 'function' && typeof sdk.getIndexerClient === 'function') {

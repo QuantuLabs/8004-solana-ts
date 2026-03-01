@@ -187,6 +187,7 @@ function normalizeDigestFieldValue(field, value) {
   const asString = toStringOrNull(value);
   if (asString === null) return null;
   const trimmed = asString.trim();
+  if (trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined') return null;
   if (trimmed.length === 0) return '';
   if (field === 'social_x') return trimmed;
   if (isUrlLikeValue(trimmed)) return trimTrailingSlashes(trimmed);
@@ -758,14 +759,14 @@ async function evaluateIdChecks(client, expected, options) {
       continue;
     }
 
-    if (row.observed) {
-      foundUriMetadata += 1;
-    }
-
     const observedLineParts = [row.item.asset];
+    let hasObservedUriValue = false;
     for (const field of URI_METADATA_FIELDS) {
       const expectedValue = normalizeDigestFieldValue(field, row.item[field] ?? null);
       const actualValue = normalizeDigestFieldValue(field, row.observed?.[field] ?? null);
+      if (actualValue !== null) {
+        hasObservedUriValue = true;
+      }
       observedLineParts.push(formatDigestValue(actualValue));
       if (!valuesEqualForField(field, expectedValue, actualValue)) {
         errors.push(
@@ -775,7 +776,10 @@ async function evaluateIdChecks(client, expected, options) {
         );
       }
     }
-    uriMetadataLines.push(observedLineParts.join('|'));
+    if (hasObservedUriValue) {
+      foundUriMetadata += 1;
+      uriMetadataLines.push(observedLineParts.join('|'));
+    }
   }
 
   let foundCollections = 0;
@@ -795,7 +799,7 @@ async function evaluateIdChecks(client, expected, options) {
           ? rows.find((entry) => {
               const pointer = toStringOrNull(entry?.collection ?? entry?.col);
               return pointer === item.pointer;
-            }) ?? rows[0] ?? null
+            }) ?? null
           : null;
         return { item, observed };
       } catch (error) {
@@ -830,7 +834,9 @@ async function evaluateIdChecks(client, expected, options) {
         );
       }
     }
-    collectionDigestLines.push(observedLineParts.join('|'));
+    if (observedDigest) {
+      collectionDigestLines.push(observedLineParts.join('|'));
+    }
   }
 
   return {
@@ -918,7 +924,11 @@ async function main() {
     10
   );
   const idCheckTimeoutMs = Number.parseInt(
-    getArgOr(args, 'id-check-timeout-ms', process.env.E2E_INDEXERS_IDCHECK_TIMEOUT_MS || '120000'),
+    getArgOr(
+      args,
+      'id-check-timeout-ms',
+      process.env.E2E_INDEXERS_IDCHECK_TIMEOUT_MS || String(timeoutMs)
+    ),
     10
   );
   const idCheckPollMs = Number.parseInt(

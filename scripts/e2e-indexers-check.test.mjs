@@ -233,6 +233,56 @@ test('evaluateIdChecks flags mismatched URI metadata and collection digests', as
   assert.ok(result.errors.some((line) => line.startsWith('collection.field:c1:alpha:symbol')));
 });
 
+test('evaluateIdChecks does not count or hash URI metadata when all _uri fields are null', async () => {
+  const client = makeClient({
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
+  });
+  client.getMetadata = async () => [];
+
+  const expected = expectedAgents([{ asset: 'assetA', owner: 'ownerA' }]);
+  expected.agentUriMetadata.push({
+    asset: 'assetA',
+    '_uri:name': 'Agent A',
+    '_uri:description': 'Expected description',
+    '_uri:image': 'ipfs://bafyasseta',
+  });
+
+  const result = await evaluateIdChecks(client, expected, { concurrency: 2, transport: 'rest' });
+
+  assert.equal(result.passed, false);
+  assert.equal(result.observed.agentUriMetadataFound, 0);
+  assert.equal(result.hashes.agentUriMetadata, null);
+  assert.ok(result.errors.some((line) => line.startsWith('uri_metadata.field:assetA:_uri:name')));
+});
+
+test('evaluateIdChecks does not hash collection digest when collection pointer is missing', async () => {
+  const client = makeClient({
+    assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
+  });
+  client.getCollectionPointers = async () => [];
+
+  const expected = expectedAgents([{ asset: 'assetA', owner: 'ownerA' }]);
+  expected.collections.push({
+    pointer: 'c1:alpha',
+    version: '1.0.0',
+    name: 'Alpha Collection',
+    symbol: 'ALPHA',
+    description: 'Collection digest',
+    image: 'ipfs://bafyalphaimage',
+    banner_image: 'ipfs://bafyalphabanner',
+    social_website: 'https://quantu.ai',
+    social_x: '@quantu_labs',
+    social_discord: 'https://discord.gg/quantu',
+  });
+
+  const result = await evaluateIdChecks(client, expected, { concurrency: 2, transport: 'rest' });
+
+  assert.equal(result.passed, false);
+  assert.equal(result.observed.collectionsFound, 0);
+  assert.equal(result.hashes.collections, null);
+  assert.ok(result.errors.some((line) => line.startsWith('collection.missing:c1:alpha')));
+});
+
 test('evaluateIdChecks skips pending validation checks when validation feature is archived', async () => {
   const client = makeClient({
     assetA: [makeAgent('ownerA', { id: 'assetA' }), makeAgent('ownerA', { id: 'assetA' })],
