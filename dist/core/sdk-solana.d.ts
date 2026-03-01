@@ -792,6 +792,12 @@ export declare class SolanaSDK {
      * // With explicit base registry override (legacy)
      * const result = await sdk.registerAgent('ipfs://QmMetadata...', myBaseRegistryCollection);
      */
+    registerAgent(tokenUri?: string, options?: RegisterAgentOptions): Promise<(TransactionResult & {
+        asset?: PublicKey;
+        signatures?: string[];
+    }) | (PreparedTransaction & {
+        asset: PublicKey;
+    })>;
     registerAgent(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
         signatures?: string[];

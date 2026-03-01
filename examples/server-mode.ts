@@ -74,19 +74,14 @@ class TransactionServer {
     tokenUri: string;
     userWallet: string;
     assetPubkey: string; // Client generates Keypair locally, sends pubkey to server
-    collection?: string;
   }): Promise<PreparedTransaction & { asset: PublicKey }> {
-    const { tokenUri, userWallet, assetPubkey, collection } = params;
+    const { tokenUri, userWallet, assetPubkey } = params;
 
-    const prepared = await this.sdk.registerAgent(
-      tokenUri,
-      collection ? new PublicKey(collection) : undefined,
-      {
-        skipSend: true,
-        signer: new PublicKey(userWallet),
-        assetPubkey: new PublicKey(assetPubkey),
-      }
-    );
+    const prepared = await this.sdk.registerAgent(tokenUri, {
+      skipSend: true,
+      signer: new PublicKey(userWallet),
+      assetPubkey: new PublicKey(assetPubkey),
+    });
 
     if ('signature' in prepared) {
       throw new Error(
@@ -103,15 +98,13 @@ class TransactionServer {
    */
   async buildTransferTransaction(params: {
     agentAsset: string;
-    collection: string;
     newOwner: string;
     userWallet: string;
   }): Promise<PreparedTransaction> {
-    const { agentAsset, collection, newOwner, userWallet } = params;
+    const { agentAsset, newOwner, userWallet } = params;
 
     const prepared = await this.sdk.transferAgent(
       new PublicKey(agentAsset),
-      new PublicKey(collection),
       new PublicKey(newOwner),
       {
         skipSend: true,
@@ -220,11 +213,10 @@ async function main() {
   const userWallet = Keypair.generate();
   console.log('User wallet:', userWallet.publicKey.toBase58());
 
-  // Example agent asset and collection (replace with actual values)
+  // Example agent asset (replace with actual value)
   const agentAsset = process.env.DEMO_AGENT_ASSET;
-  const collection = process.env.DEMO_REGISTRY;
-  if (!agentAsset || !collection) {
-    console.log('Set DEMO_AGENT_ASSET and DEMO_REGISTRY to run server write-transaction build demo');
+  if (!agentAsset) {
+    console.log('Set DEMO_AGENT_ASSET to run server write-transaction build demo');
     return;
   }
 
@@ -256,7 +248,6 @@ async function main() {
     const newOwner = Keypair.generate();
     const transferTx = await server.buildTransferTransaction({
       agentAsset,
-      collection,
       newOwner: newOwner.publicKey.toBase58(),
       userWallet: userWallet.publicKey.toBase58(),
     });

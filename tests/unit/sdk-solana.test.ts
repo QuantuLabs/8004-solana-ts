@@ -1283,6 +1283,29 @@ describe('SolanaSDK', () => {
       );
     });
 
+    it('appendResponse should reject explicit sealHash mismatch with indexed feedback when available', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const indexedSeal = Buffer.alloc(32, 0xaa);
+      const providedSeal = Buffer.alloc(32, 0xbb);
+      mockFeedbackManager.readFeedback.mockResolvedValueOnce({ sealHash: indexedSeal });
+
+      await expect(
+        sdk.appendResponse(
+          asset,
+          client,
+          4,
+          providedSeal,
+          'ipfs://r',
+          undefined,
+          { skipSend: true, signer }
+        )
+      ).rejects.toThrow('does not match indexed feedback');
+
+      expect(mockReputationTxBuilder.appendResponse).not.toHaveBeenCalled();
+    });
+
     it('appendResponse should fail when sealHash omitted and not yet indexed', async () => {
       const asset = PublicKey.unique();
       const client = PublicKey.unique();

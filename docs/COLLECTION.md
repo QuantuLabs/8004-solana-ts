@@ -1,12 +1,12 @@
 # Collection Guide
 
-Collection metadata is off-chain (IPFS JSON).  
-Collection and parent associations are on-chain fields in `AgentAccount`.
-Collection pointers (`c1:<cid>`) and registry pubkeys are different concepts:
-- pointer: string CID reference stored in `AgentAccount.col`
-- registry pubkey: internal program account pubkey used for registry configuration/routing
+This guide is only about the collection system used now:
+- off-chain collection metadata JSON (typically IPFS)
+- on-chain canonical collection pointer in `AgentAccount.col` (`c1:<cid_norm>`)
 
-## 1. Create Collection Metadata (CID-first)
+It does not describe legacy multi-registry creation flows.
+
+## 1. Create Collection Metadata
 
 ```typescript
 const collectionInput = {
@@ -22,86 +22,73 @@ const collectionInput = {
   },
 };
 
-// JSON only (no upload)
-const data = sdk.createCollectionData(collectionInput);
+// Build JSON only (no upload)
+const metadata = sdk.createCollectionData(collectionInput);
 
-// Build + upload
+// Build + upload to IPFS
 const upload = await sdk.createCollection(collectionInput);
-// upload.pointer -> canonical c1:... pointer
+// upload.cid
+// upload.uri      => ipfs://...
+// upload.pointer  => c1:...
 ```
 
-## 2. Attach Collection Pointer
+## 2. Attach a Collection Pointer to an Agent
 
-You can attach the pointer in two ways.
+Two supported flows:
 
 ```typescript
-// A) One flow: register + attach pointer
-await sdk.registerAgent(agentUri, undefined, {
+// A) Register + attach in one high-level flow
+const result = await sdk.registerAgent(agentUri, {
   collectionPointer: upload.pointer!,
+  collectionLock: true, // optional, defaults to true
 });
 
-// B) Separate flow: attach after registration
-await sdk.setCollectionPointer(asset, upload.pointer!); // lock=true by default
+// B) Attach after registration
+await sdk.setCollectionPointer(result.asset!, upload.pointer!); // lock=true by default
 ```
 
-### Pointer Constraints (on-chain)
+## 3. Editable Then Finalize (Lock)
 
-- Must start with `c1:`
-- Payload must be non-empty
-- Lowercase letters and digits only after prefix
-- Maximum total length: `128` bytes
-
-### Pointer Lock Rules
-
-- `setCollectionPointer(asset, pointer, { lock? })`
-- Signer must match immutable `AgentAccount.creator`
-- `lock` defaults to `true`
-- First successful write with `lock=true` makes `col` immutable (`col_locked=true`)
-
-Editable workflow:
+If you want to iterate first, set without lock, then finalize:
 
 ```typescript
 await sdk.setCollectionPointer(asset, upload.pointer!, { lock: false });
-// ...later finalize:
+// ...later
 await sdk.setCollectionPointer(asset, upload.pointer!); // lock=true
 ```
 
-## 3. Parent Association
+Once locked, pointer changes are rejected on-chain.
 
-```typescript
-await sdk.setParentAsset(childAsset, parentAsset); // lock=true by default
-```
-
-### Parent Rules (on-chain)
-
-- Signer must be current owner of the child asset
-- Signer must equal parent agent creator snapshot
-- Parent must exist/live
-- `child !== parent`
-- `parent_locked` follows same semantics as `col_locked`
-
-Editable workflow:
+## 4. Parent/Child Association (Optional)
 
 ```typescript
 await sdk.setParentAsset(childAsset, parentAsset, { lock: false });
-// ...later finalize:
+// ...later
 await sdk.setParentAsset(childAsset, parentAsset); // lock=true
 ```
 
-## 4. Read Back Fields
+## 5. On-Chain Rules
 
-`loadAgent(asset)` exposes:
+- Pointer must be canonical `c1:<payload>`
+- Pointer max size is `128` bytes
+- Collection pointer writes require agent creator authority
+- `col_locked=true` makes pointer immutable
+- `parent_locked=true` makes parent association immutable
 
-- `creator`
-- `creators` (compat alias)
-- `col`
-- `parent_asset`
-- `col_locked`
-- `parent_locked`
+## 6. Read and Query
 
-## 5. Pointer vs Registry Pubkey
+On-chain read:
 
-- `col` (`c1:...`) is the collection CID pointer stored on-chain in `AgentAccount`
-- Legacy `collection` method args refer to registry pubkeys, not CID pointers
-- `getBaseCollection()` returns the default base registry pubkey
-- Standard `setAgentUri()` and `transferAgent()` calls auto-resolve the base registry pubkey
+```typescript
+const agent = await sdk.loadAgent(asset);
+console.log(agent.col); // canonical pointer (c1:...)
+console.log(agent.isCollectionPointerLocked());
+```
+
+Indexer reads:
+
+```typescript
+const pointers = await sdk.getCollectionPointers({ creator: creatorPubkey });
+const count = await sdk.getCollectionAssetCount(upload.pointer!);
+const assets = await sdk.getCollectionAssets(upload.pointer!, { limit: 50 });
+```

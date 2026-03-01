@@ -122,7 +122,7 @@ const upload = await sdk.createCollection(collectionInput);
 // 3) Register agent (ATOM is off by default)
 const result = await sdk.registerAgent('ipfs://QmAgentMetadata...');
 // Optional ATOM opt-in at registration:
-// const result = await sdk.registerAgent('ipfs://QmAgentMetadata...', undefined, { atomEnabled: true });
+// const result = await sdk.registerAgent('ipfs://QmAgentMetadata...', { atomEnabled: true });
 
 // 4) Advanced: set canonical pointer on the agent account
 await sdk.setCollectionPointer(result.asset, upload.pointer!); // lock=true by default
@@ -140,9 +140,9 @@ Advanced end-to-end usage is shown in [`examples/collection-flow.ts`](../example
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `getCollection` | `(collection: PublicKey) => Promise<CollectionInfo \| null>` | Read one registry config |
-| `getCollections` | `() => Promise<CollectionInfo[]>` | List all registry configs |
-| `getCollectionAgents` | `(collection: PublicKey, options?) => Promise<AgentAccount[]>` | List agents linked to one registry |
+| `getCollection` | `(collection: PublicKey) => Promise<CollectionInfo \| null>` | Advanced/compat: read registry config for a base collection pubkey |
+| `getCollections` | `() => Promise<CollectionInfo[]>` | Advanced introspection (single-base deployments usually return 1) |
+| `getCollectionAgents` | `(collection: PublicKey, options?) => Promise<AgentAccount[]>` | Advanced/compat: list agents for a base collection pubkey |
 
 ```typescript
 const baseRegistry = await sdk.getBaseCollection();
@@ -188,7 +188,7 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `registerAgent` | `(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions) => Promise<TransactionResult \| PreparedTransaction>` | Register new agent (base registry default) |
+| `registerAgent` | `(tokenUri?: string, options?: RegisterAgentOptions) => Promise<TransactionResult \| PreparedTransaction>` | Register new agent (base registry auto-resolved) |
 | `enableAtom` | `(asset) => Promise<TransactionResult>` | Enable ATOM one-way for an existing agent |
 | `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base registry auto-resolved; standard token wallet transfer also works) |
 | `transferAgent` (legacy) | `(asset, collection, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership with explicit base registry pubkey |
@@ -202,14 +202,15 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 
 ### `registerAgent()` Options
 
-`registerAgent(tokenUri?, collection?, options?)` supports:
-- `collection` (2nd positional arg): optional base registry pubkey; omit to use the default registry.
+`registerAgent(tokenUri?, options?)` supports:
 - `skipSend`: return unsigned transaction payload instead of sending.
 - `signer`: signer pubkey required in `skipSend` mode when SDK has no signer.
 - `assetPubkey`: pre-generated asset keypair pubkey required in `skipSend` mode.
 - `atomEnabled`: defaults to `false`; set `true` to enable ATOM auto-init at registration time.
 - `collectionPointer`: optional canonical pointer (`c1:...`) attached right after successful register.
 - `collectionLock`: optional lock flag for `collectionPointer` attach (`true` by default).
+
+Legacy overload (compat only): `registerAgent(tokenUri?, collection?, options?)`.
 
 ATOM can also be enabled later via `enableAtom(asset)` + `initializeAtomStats(asset)`.  
 `enableAtom()` is one-way/irreversible for that agent.
@@ -397,6 +398,7 @@ These methods query the indexer for aggregated data.
 | `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
 
 `getFeedbackById()` and `getFeedbackResponsesByFeedbackId()` accept only sequential numeric backend IDs (for example `"123"`). Canonical IDs like `"<asset>:<client>:<index>"` are rejected (return `null` / `[]`) and are not auto-converted. For REST indexers where response ids are asset-scoped, `getFeedbackResponsesByFeedbackId()` internally resolves the feedback asset first, then filters responses by `asset + feedback_id`. If one `feedback_id` maps to multiple distinct assets, the method fails closed and throws `IndexerError` (`INVALID_RESPONSE`) instead of returning potentially incorrect responses.
+Indexer validation reads are archived (`v0.5.0+`): `getValidations`, `getValidationsByValidator`, `getPendingValidations`, and `getValidation` are intentionally not exposed by current indexer clients.
 
 ```typescript
 // Search agents with explicit filters

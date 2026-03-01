@@ -1324,10 +1324,11 @@ export class ReputationTransactionBuilder {
       const agentAccount = AgentAccount.deserialize(agentInfo.data);
       const collection = agentAccount.getCollectionPublicKey();
 
-      const atomEnabled = agentAccount.isAtomEnabled();
-      const atomConfig = atomEnabled ? getAtomConfigPDA(this.programIds.atomEngine)[0] : null;
-      const atomStats = atomEnabled ? getAtomStatsPDA(asset, this.programIds.atomEngine)[0] : null;
-      const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0] : null;
+      // Always provide optional ATOM account keys to satisfy on-chain account parsing.
+      // Runtime behavior still depends on agent_account.atom_enabled and atom_stats initialization.
+      const atomConfig = getAtomConfigPDA(this.programIds.atomEngine)[0];
+      const atomStats = getAtomStatsPDA(asset, this.programIds.atomEngine)[0];
+      const registryAuthority = PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0];
 
       // v0.5.0: feedbackIndex is determined on-chain from agent_account.feedback_count
       // The SDK reads this value to return to the caller (for reference/tracking)
@@ -1419,10 +1420,11 @@ export class ReputationTransactionBuilder {
         throw new Error('Agent not found');
       }
       const agentAccount = AgentAccount.deserialize(agentInfo.data);
-      const atomEnabled = agentAccount.isAtomEnabled();
-      const atomConfig = atomEnabled ? getAtomConfigPDA(this.programIds.atomEngine)[0] : null;
-      const atomStats = atomEnabled ? getAtomStatsPDA(asset, this.programIds.atomEngine)[0] : null;
-      const registryAuthority = atomEnabled ? PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0] : null;
+      // Always provide optional ATOM account keys to satisfy on-chain account parsing.
+      // Runtime behavior still depends on agent_account.atom_enabled and atom_stats initialization.
+      const atomConfig = getAtomConfigPDA(this.programIds.atomEngine)[0];
+      const atomStats = getAtomStatsPDA(asset, this.programIds.atomEngine)[0];
+      const registryAuthority = PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0];
 
       const instruction = this.instructionBuilder.buildRevokeFeedback(
         signerPubkey,

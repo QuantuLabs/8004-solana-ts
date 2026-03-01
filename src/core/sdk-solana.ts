@@ -2061,9 +2061,40 @@ export class SolanaSDK {
    */
   async registerAgent(
     tokenUri?: string,
+    options?: RegisterAgentOptions
+  ): Promise<
+    | (TransactionResult & { asset?: PublicKey; signatures?: string[] })
+    | (PreparedTransaction & { asset: PublicKey })
+  >;
+  async registerAgent(
+    tokenUri?: string,
     collection?: PublicKey,
     options?: RegisterAgentOptions
+  ): Promise<
+    | (TransactionResult & { asset?: PublicKey; signatures?: string[] })
+    | (PreparedTransaction & { asset: PublicKey })
+  >;
+  async registerAgent(
+    tokenUri?: string,
+    collectionOrOptions?: PublicKey | RegisterAgentOptions,
+    maybeOptions?: RegisterAgentOptions
   ) {
+    const isPublicKeyLike = (value: unknown): value is PublicKey =>
+      !!value
+      && typeof value === 'object'
+      && typeof (value as PublicKey).toBase58 === 'function'
+      && typeof (value as PublicKey).toBuffer === 'function';
+
+    const collection = isPublicKeyLike(collectionOrOptions)
+      ? collectionOrOptions
+      : undefined;
+    const options =
+      isPublicKeyLike(collectionOrOptions)
+        ? maybeOptions
+        : (collectionOrOptions !== undefined
+          ? (collectionOrOptions as RegisterAgentOptions)
+          : maybeOptions);
+
     if (options?.collectionPointer !== undefined) {
       validateCollectionPointer(options.collectionPointer);
     }
@@ -2516,6 +2547,7 @@ export class SolanaSDK {
     responseHashOrOptions?: Buffer | WriteOptions,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
+    const providedSealHash = Buffer.isBuffer(sealHashOrResponseUri);
     let resolvedSealHash: Buffer | undefined;
     let responseUri: string;
     let responseHash: Buffer | undefined;
@@ -2562,6 +2594,17 @@ export class SolanaSDK {
         );
       }
       resolvedSealHash = feedback.sealHash;
+    }
+
+    // Guardrail: if caller supplied a sealHash, validate it against indexer when available.
+    // Do not block the write on indexer lag (waitForSync=false).
+    if (providedSealHash) {
+      const feedback = await this.resolveFeedbackFromIndexer(asset, client, idx, { waitForSync: false });
+      if (feedback?.sealHash && feedback.sealHash.length === 32 && !resolvedSealHash.equals(feedback.sealHash)) {
+        throw new Error(
+          `Provided sealHash does not match indexed feedback ${idx.toString()} for client ${client.toBase58()}.`
+        );
+      }
     }
 
     return await this.reputationTxBuilder.appendResponse(

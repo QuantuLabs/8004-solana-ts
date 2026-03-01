@@ -83,7 +83,7 @@ const agentMeta = buildRegistrationFileJson({
 
 // 3. Upload and register (ATOM is off by default; pass atomEnabled: true to opt in now)
 const metadataUri = `ipfs://${await ipfs.addJson(agentMeta)}`;
-const agent = await sdk.registerAgent(metadataUri, undefined, { collectionPointer: collection.pointer! });
+const agent = await sdk.registerAgent(metadataUri, { collectionPointer: collection.pointer! });
 console.log('Agent:', agent.asset.toBase58());
 
 // 4. Set operational wallet
@@ -188,7 +188,8 @@ const summary = await sdk.getSummary(assetPubkey);
 
 ## Indexer
 
-The SDK uses an indexer by default for search and query operations (feedbacks, validations, agent listings). This provides fast off-chain queries without scanning the blockchain.
+The SDK uses an indexer by default for search and query operations (feedbacks, collections/pointers, agent listings). This provides fast off-chain queries without scanning the blockchain.
+Indexer validation reads are archived (`v0.5.0+`) and intentionally not exposed by current indexer clients.
 
 Default backend is **GraphQL v2** (public read-only reference deployment).
 
@@ -344,7 +345,7 @@ By default, `registerAgent()` does **not** initialize ATOM stats (`atomEnabled: 
 
 ```typescript
 // Enable ATOM during registration
-await sdk.registerAgent('ipfs://...', undefined, { atomEnabled: true });
+await sdk.registerAgent('ipfs://...', { atomEnabled: true });
 ```
 
 Or enable later after registration:

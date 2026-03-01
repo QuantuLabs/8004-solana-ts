@@ -146,7 +146,7 @@ const metadataCid = await ipfs.addJson(metadata);
 const metadataUri = `ipfs://${metadataCid}`;
 
 // 6. Register on Solana (ATOM is off by default; pass atomEnabled: true to opt in now)
-const result = await sdk.registerAgent(metadataUri, undefined, { collectionPointer: collection.pointer! });
+const result = await sdk.registerAgent(metadataUri, { collectionPointer: collection.pointer! });
 console.log('Agent:', result.asset.toBase58());
 
 // 7. Set operational wallet (for agent signing)
