@@ -10,6 +10,15 @@ All notable changes to this project will be documented in this file.
 - Removed the README SEAL block in favor of focused docs.
 - Removed the deprecated `basic-indexer` example from docs/examples references.
 
+## [0.7.4] - 2026-03-01
+### Fixed
+- Hardened indexer `getAgentByAgentId()` sequence-id lookups across GraphQL field variants and removed asset-id fallback assumptions.
+- Updated archived validation handling so pending validations are not exposed in SDK validation reads.
+- Strengthened `appendResponse()` / `revokeFeedback()` flows to consistently use SEAL hash inputs for deterministic validation and replay safety.
+
+### Documentation
+- Aligned collection terminology across SDK docs with canonical collection/pointer naming.
+
 ## [0.7.2] - 2026-02-27
 ### Fixed
 - Aligned GraphQL indexer reads so `getAgentByAgentId()` resolves sequence ids (`agentId` / legacy `agentid`) instead of relying on asset-id semantics.
