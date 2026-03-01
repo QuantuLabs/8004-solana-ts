@@ -1419,7 +1419,6 @@ export class ReputationTransactionBuilder {
       if (!agentInfo) {
         throw new Error('Agent not found');
       }
-      const agentAccount = AgentAccount.deserialize(agentInfo.data);
       // Always provide optional ATOM account keys to satisfy on-chain account parsing.
       // Runtime behavior still depends on agent_account.atom_enabled and atom_stats initialization.
       const atomConfig = getAtomConfigPDA(this.programIds.atomEngine)[0];
