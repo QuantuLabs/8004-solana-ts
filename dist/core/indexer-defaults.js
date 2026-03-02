@@ -20,8 +20,8 @@ const INDEXER_DEFAULTS_BY_CLUSTER = {
         restUrl: 'https://8004-indexer-production.up.railway.app/rest/v1',
     },
     'mainnet-beta': {
-        graphqlUrl: 'https://8004.qnt.sh/v2/graphql',
-        restUrl: 'https://8004.qnt.sh/rest/v1',
+        graphqlUrl: 'https://8004-api.qnt.sh/v2/graphql',
+        restUrl: 'https://8004-api.qnt.sh/rest/v1',
     },
     localnet: {
         graphqlUrl: 'http://127.0.0.1:3005/v2/graphql',

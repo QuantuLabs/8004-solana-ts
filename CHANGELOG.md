@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-03-02
+### Changed
+- Switched `mainnet-beta` SDK default indexer host to `https://8004-api.qnt.sh` for both REST (`/rest/v1`) and GraphQL (`/v2/graphql`).
+
+### Fixed
+- Aligned SDK unit expectation for mainnet default GraphQL endpoint with the new `8004-api.qnt.sh` host.
+- Updated SDK skill documentation examples/defaults to use `8004-api.qnt.sh`.
+
 ## [0.7.6] - 2026-03-02
 ### Added
 - Added cluster-aware SDK defaults for `mainnet-beta`:
