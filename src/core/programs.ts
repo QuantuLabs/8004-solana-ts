@@ -4,12 +4,14 @@
  */
 
 import { PublicKey } from '@solana/web3.js';
+import type { Cluster } from './client.js';
 
 /**
  * Consolidated AgentRegistry8004 Program ID (devnet default)
  * Single program containing Identity, Reputation, and Validation modules
  */
 export const DEVNET_AGENT_REGISTRY_PROGRAM_ID = new PublicKey('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
+export const MAINNET_AGENT_REGISTRY_PROGRAM_ID = new PublicKey('8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ');
 
 /**
  * Backward-compatible alias for devnet default Agent Registry ID.
@@ -29,6 +31,7 @@ export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
 export const DEVNET_ATOM_ENGINE_PROGRAM_ID = new PublicKey('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
+export const MAINNET_ATOM_ENGINE_PROGRAM_ID = new PublicKey('AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb');
 
 /**
  * Backward-compatible alias for devnet default ATOM Engine ID.
@@ -56,6 +59,21 @@ export interface ProgramIdSet {
   mplCore: PublicKey;
 }
 
+function getClusterProgramDefaults(cluster: Cluster): Pick<ProgramIdSet, 'agentRegistry' | 'atomEngine' | 'mplCore'> {
+  if (cluster === 'mainnet-beta') {
+    return {
+      agentRegistry: MAINNET_AGENT_REGISTRY_PROGRAM_ID,
+      atomEngine: MAINNET_ATOM_ENGINE_PROGRAM_ID,
+      mplCore: MPL_CORE_PROGRAM_ID,
+    };
+  }
+  return {
+    agentRegistry: DEVNET_AGENT_REGISTRY_PROGRAM_ID,
+    atomEngine: DEVNET_ATOM_ENGINE_PROGRAM_ID,
+    mplCore: MPL_CORE_PROGRAM_ID,
+  };
+}
+
 function toPublicKey(value?: ProgramIdInput): PublicKey | undefined {
   if (!value) return undefined;
   return value instanceof PublicKey ? value : new PublicKey(value);
@@ -66,12 +84,22 @@ function toPublicKey(value?: ProgramIdInput): PublicKey | undefined {
  * Defaults target devnet and can be overridden per SDK instance.
  */
 export function getProgramIds(overrides: ProgramIdOverrides = {}): ProgramIdSet {
-  const agentRegistry = toPublicKey(overrides.agentRegistry) ?? PROGRAM_ID;
+  return getProgramIdsForCluster('devnet', overrides);
+}
+
+/**
+ * Resolve program IDs for a specific cluster.
+ * - devnet/testnet/localnet default to devnet IDs (overrideable)
+ * - mainnet-beta defaults to mainnet IDs (overrideable)
+ */
+export function getProgramIdsForCluster(cluster: Cluster, overrides: ProgramIdOverrides = {}): ProgramIdSet {
+  const clusterDefaults = getClusterProgramDefaults(cluster);
+  const agentRegistry = toPublicKey(overrides.agentRegistry) ?? clusterDefaults.agentRegistry;
   const identityRegistry = toPublicKey(overrides.identityRegistry) ?? agentRegistry;
   const reputationRegistry = toPublicKey(overrides.reputationRegistry) ?? agentRegistry;
   const validationRegistry = toPublicKey(overrides.validationRegistry) ?? agentRegistry;
-  const atomEngine = toPublicKey(overrides.atomEngine) ?? ATOM_ENGINE_PROGRAM_ID;
-  const mplCore = toPublicKey(overrides.mplCore) ?? MPL_CORE_PROGRAM_ID;
+  const atomEngine = toPublicKey(overrides.atomEngine) ?? clusterDefaults.atomEngine;
+  const mplCore = toPublicKey(overrides.mplCore) ?? clusterDefaults.mplCore;
 
   return {
     identityRegistry,

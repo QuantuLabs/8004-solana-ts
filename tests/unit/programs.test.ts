@@ -2,11 +2,16 @@ import { describe, it, expect } from '@jest/globals';
 import { PublicKey } from '@solana/web3.js';
 import {
   PROGRAM_ID,
+  DEVNET_AGENT_REGISTRY_PROGRAM_ID,
+  MAINNET_AGENT_REGISTRY_PROGRAM_ID,
   MPL_CORE_PROGRAM_ID,
   ATOM_ENGINE_PROGRAM_ID,
+  DEVNET_ATOM_ENGINE_PROGRAM_ID,
+  MAINNET_ATOM_ENGINE_PROGRAM_ID,
   PROGRAM_IDS,
   getProgramId,
   getProgramIds,
+  getProgramIdsForCluster,
   DISCRIMINATORS,
   ACCOUNT_SIZES,
   calculateRentExempt,
@@ -20,12 +25,20 @@ describe('programs', () => {
       expect(PROGRAM_ID.toBase58()).toBe('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
     });
 
+    it('should have valid mainnet agent registry default', () => {
+      expect(MAINNET_AGENT_REGISTRY_PROGRAM_ID.toBase58()).toBe('8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ');
+    });
+
     it('should have valid MPL_CORE_PROGRAM_ID', () => {
       expect(MPL_CORE_PROGRAM_ID.toBase58()).toBe('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
     });
 
     it('should have valid ATOM_ENGINE_PROGRAM_ID', () => {
       expect(ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
+    });
+
+    it('should have valid mainnet atom engine default', () => {
+      expect(MAINNET_ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb');
     });
 
     it('should have PROGRAM_IDS pointing to consolidated program', () => {
@@ -45,10 +58,10 @@ describe('programs', () => {
   });
 
   describe('getProgramIds', () => {
-    it('should return PROGRAM_IDS', () => {
+    it('should return devnet PROGRAM_IDS by default', () => {
       const ids = getProgramIds();
-      expect(ids.agentRegistry).toBeDefined();
-      expect(ids.atomEngine).toBeDefined();
+      expect(ids.agentRegistry.equals(DEVNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.atomEngine.equals(DEVNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
       expect(ids.mplCore).toBeDefined();
     });
 
@@ -66,6 +79,15 @@ describe('programs', () => {
       expect(ids.reputationRegistry.equals(customAgent)).toBe(true);
       expect(ids.validationRegistry.equals(customAgent)).toBe(true);
       expect(ids.atomEngine.equals(customAtom)).toBe(true);
+    });
+
+    it('should resolve mainnet defaults when cluster=mainnet-beta', () => {
+      const ids = getProgramIdsForCluster('mainnet-beta');
+      expect(ids.agentRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.identityRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.reputationRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.validationRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.atomEngine.equals(MAINNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
     });
   });
 

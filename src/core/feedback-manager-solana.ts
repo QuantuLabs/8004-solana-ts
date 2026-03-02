@@ -92,7 +92,8 @@ export class SolanaFeedbackManager {
   constructor(
     private client: SolanaClient,
     private ipfsClient?: IPFSClient,
-    indexerClient?: IndexerReadClient
+    indexerClient?: IndexerReadClient,
+    private atomEngineProgramId?: PublicKey
   ) {
     this.indexerClient = indexerClient;
   }
@@ -181,7 +182,7 @@ export class SolanaFeedbackManager {
    */
   private async getAtomStatsForSummary(asset: PublicKey): Promise<AtomStats | null> {
     try {
-      const [atomStatsPDA] = getAtomStatsPDA(asset);
+      const [atomStatsPDA] = getAtomStatsPDA(asset, this.atomEngineProgramId);
       const data = await this.client.getAccount(atomStatsPDA);
       if (!data) return null;
       return AtomStats.deserialize(Buffer.from(data));

@@ -3,7 +3,7 @@
  * Tests SDK configuration and state properties
  */
 
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import { Keypair } from '@solana/web3.js';
 import { SolanaSDK } from '../../src/core/sdk-solana.js';
 
@@ -43,29 +43,28 @@ describe('SolanaSDK Initialization', () => {
       expect(sdk.getCluster()).toBe('devnet');
     });
 
-    it('should accept explicit mainnet-beta cluster while keeping default IDs overrideable', () => {
+    it('should accept explicit mainnet-beta cluster', () => {
       const sdk = new SolanaSDK({ cluster: 'mainnet-beta' });
       expect(sdk.getCluster()).toBe('mainnet-beta');
     });
 
-    it('should warn when mainnet-beta is selected without programIds override', () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      new SolanaSDK({ cluster: 'mainnet-beta' });
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cluster=mainnet-beta selected without programIds override'));
-      warnSpy.mockRestore();
+    it('should use mainnet default program IDs when mainnet-beta is selected', () => {
+      const sdk = new SolanaSDK({ cluster: 'mainnet-beta' });
+      const ids = sdk.getProgramIds();
+      expect(ids.agentRegistry.toBase58()).toBe('8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ');
+      expect(ids.atomEngine.toBase58()).toBe('AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb');
     });
 
-    it('should not warn on mainnet-beta when programIds override is provided', () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      new SolanaSDK({
+    it('should still allow overriding program IDs on mainnet-beta', () => {
+      const sdk = new SolanaSDK({
         cluster: 'mainnet-beta',
         programIds: {
           agentRegistry: '11111111111111111111111111111111',
           atomEngine: '11111111111111111111111111111111',
         },
       });
-      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('cluster=mainnet-beta selected without programIds override'));
-      warnSpy.mockRestore();
+      expect(sdk.getProgramIds().agentRegistry.toBase58()).toBe('11111111111111111111111111111111');
+      expect(sdk.getProgramIds().atomEngine.toBase58()).toBe('11111111111111111111111111111111');
     });
   });
 
@@ -85,6 +84,24 @@ describe('SolanaSDK Initialization', () => {
       });
 
       expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://graphql.example.com/v2/graphql');
+    });
+
+    it('should use mainnet GraphQL indexer default for mainnet-beta cluster', () => {
+      const sdk = new SolanaSDK({
+        cluster: 'mainnet-beta',
+        indexerUrl: '',
+        indexerApiKey: '',
+      });
+      expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://8004.qnt.sh/v2/graphql');
+    });
+
+    it('should use localnet GraphQL indexer default for localnet cluster', () => {
+      const sdk = new SolanaSDK({
+        cluster: 'localnet',
+        indexerUrl: '',
+        indexerApiKey: '',
+      });
+      expect(sdk.getIndexerClient().getBaseUrl()).toBe('http://127.0.0.1:3005/v2/graphql');
     });
 
     it('should use custom URL and key when provided', () => {

@@ -35,6 +35,7 @@ jest.unstable_mockModule('../../src/core/indexer-types.js', () => ({
 
 const { SolanaFeedbackManager } = await import('../../src/core/feedback-manager-solana.js');
 const { AtomStats } = await import('../../src/core/atom-schemas.js');
+const { getAtomStatsPDA } = await import('../../src/core/atom-pda.js');
 
 const mockAsset = new PublicKey('So11111111111111111111111111111111111111112');
 const mockClient = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -76,6 +77,10 @@ describe('SolanaFeedbackManager', () => {
   });
 
   describe('getSummary', () => {
+    beforeEach(() => {
+      (getAtomStatsPDA as jest.Mock).mockClear();
+    });
+
     it('should return empty summary when no data available', async () => {
       const fm = new SolanaFeedbackManager(createMockClient());
       const summary = await fm.getSummary(mockAsset);
@@ -101,6 +106,16 @@ describe('SolanaFeedbackManager', () => {
       expect(summary.averageScore).toBe(75);
       expect(summary.totalFeedbacks).toBe(100);
       expect(summary.totalClients).toBe(42);
+    });
+
+    it('should derive AtomStats PDA with provided atom program override', async () => {
+      const atomProgram = new PublicKey('AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb');
+      const client = createMockClient({
+        getAccount: jest.fn().mockResolvedValue(null),
+      });
+      const fm = new SolanaFeedbackManager(client, undefined, undefined, atomProgram);
+      await fm.getSummary(mockAsset);
+      expect(getAtomStatsPDA as jest.Mock).toHaveBeenCalledWith(mockAsset, atomProgram);
     });
 
     it('should use indexer when filters provided', async () => {

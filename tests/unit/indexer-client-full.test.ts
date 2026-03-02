@@ -891,6 +891,7 @@ describe('IndexerClient', () => {
       expect(urls.some((url) => url.includes('offset=1'))).toBe(true);
       expect(result.size).toBe(2);
     });
+
   });
 
   describe('getRevocationsAtCounts', () => {
@@ -898,6 +899,35 @@ describe('IndexerClient', () => {
       const client = createClient();
       const result = await client.getRevocationsAtCounts('asset', []);
       expect(result.size).toBe(0);
+    });
+
+    it('should use revoke_count IN filter and map rows by revoke_count', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([
+        {
+          id: 'rev-3',
+          asset: 'asset',
+          client_address: 'client2',
+          feedback_index: 4,
+          feedback_hash: null,
+          slot: 250,
+          original_score: 80,
+          atom_enabled: true,
+          had_impact: false,
+          running_digest: null,
+          revoke_count: 3,
+          tx_signature: 'sig2',
+          created_at: '2025-01-02T00:00:00.000Z',
+        },
+      ]));
+
+      const result = await client.getRevocationsAtCounts('asset', [1, 3]);
+      const url = mockFetch.mock.calls[0][0] as string;
+
+      expect(url).toContain('revoke_count=in.%281%2C3%29');
+      expect(url).toContain('order=revoke_count.asc');
+      expect(result.get(1)).toBeNull();
+      expect(result.get(3)?.id).toBe('rev-3');
     });
   });
 

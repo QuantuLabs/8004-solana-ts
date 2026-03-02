@@ -16,7 +16,7 @@ import { SolanaFeedbackManager, SolanaFeedback } from './feedback-manager-solana
 import type { IPFSClient } from './ipfs-client.js';
 import { EndpointCrawler } from './endpoint-crawler.js';
 import { PDAHelpers } from './pda-helpers.js';
-import { getProgramIds, type ProgramIdOverrides } from './programs.js';
+import { getProgramIdsForCluster, type ProgramIdOverrides } from './programs.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
@@ -83,9 +83,9 @@ import type { AgentSearchParams } from './indexer-types.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import {
-  DEFAULT_INDEXER_URL,
-  DEFAULT_INDEXER_API_KEY,
-  DEFAULT_INDEXER_GRAPHQL_URL,
+  getDefaultIndexerUrl,
+  getDefaultIndexerGraphqlUrl,
+  getDefaultIndexerApiKey,
   DEFAULT_FORCE_ON_CHAIN,
   SMALL_QUERY_OPERATIONS,
 } from './indexer-defaults.js';
@@ -217,7 +217,7 @@ export interface SolanaSDKConfig {
   useIndexer?: boolean;
   /** Fallback to on-chain if indexer unavailable (default: true) */
   indexerFallback?: boolean;
-  /** Program IDs override (defaults target devnet IDs) */
+  /** Program IDs override (cluster defaults are used when omitted) */
   programIds?: ProgramIdOverrides;
   /**
    * Force all queries on-chain, bypass indexer (default: false, or FORCE_ON_CHAIN=true env)
@@ -488,7 +488,7 @@ export class SolanaSDK {
   private readonly client: SolanaClient;
   private readonly feedbackManager: SolanaFeedbackManager;
   private readonly cluster: Cluster;
-  private readonly programIds: ReturnType<typeof getProgramIds>;
+  private readonly programIds: ReturnType<typeof getProgramIdsForCluster>;
   private readonly signer?: Keypair;
   private readonly ipfsClient?: IPFSClient;
   private readonly identityTxBuilder: IdentityTransactionBuilder;
@@ -506,7 +506,7 @@ export class SolanaSDK {
 
   constructor(config: SolanaSDKConfig = {}) {
     this.cluster = config.cluster || 'devnet';
-    this.programIds = getProgramIds(config.programIds);
+    this.programIds = getProgramIdsForCluster(this.cluster, config.programIds);
     this.signer = config.signer;
     this.ipfsClient = config.ipfsClient;
 
@@ -515,18 +515,8 @@ export class SolanaSDK {
       rpcUrl: config.rpcUrl,
     });
 
-    const hasProgramIdOverrides = !!(
-      config.programIds
-      && Object.values(config.programIds).some((value) => value !== undefined && value !== null)
-    );
-    if (this.cluster === 'mainnet-beta' && !hasProgramIdOverrides) {
-      logger.warn(
-        'cluster=mainnet-beta selected without programIds override; SDK will use devnet default program IDs until mainnet IDs are provided.'
-      );
-    }
-
     // Initialize feedback manager
-    this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
+    this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient, undefined, this.programIds.atomEngine);
 
     // Initialize indexer client first (v0.7.0)
     // Default: GraphQL v2 (Railway reference deployment)
@@ -537,15 +527,18 @@ export class SolanaSDK {
 
     const restBaseUrl = config.indexerUrl ?? envRestUrl;
     const restApiKey = config.indexerApiKey ?? envRestKey;
+    const defaultRestUrlForCluster = getDefaultIndexerUrl(this.cluster);
+    const defaultGraphqlUrlForCluster = getDefaultIndexerGraphqlUrl(this.cluster);
+    const defaultApiKey = getDefaultIndexerApiKey();
 
     if (restBaseUrl || restApiKey) {
       this.indexerClient = new IndexerClient({
-        baseUrl: restBaseUrl ?? DEFAULT_INDEXER_URL,
-        apiKey: restApiKey ?? DEFAULT_INDEXER_API_KEY,
+        baseUrl: restBaseUrl ?? defaultRestUrlForCluster,
+        apiKey: restApiKey ?? defaultApiKey,
       });
     } else {
       this.indexerClient = new IndexerGraphQLClient({
-        graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? DEFAULT_INDEXER_GRAPHQL_URL,
+        graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? defaultGraphqlUrlForCluster,
       });
     }
 
