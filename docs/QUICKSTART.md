@@ -16,7 +16,7 @@ Or use yarn/pnpm: `yarn add 8004-solana`
 
 ## 2. Setup Environment
 
-Export your Solana wallet private key (devnet only for now):
+Export your Solana wallet private key:
 
 ```bash
 export SOLANA_PRIVATE_KEY='[1,2,3,...,64]'  # JSON array format
@@ -31,8 +31,8 @@ export PINATA_JWT='your-jwt-token'          # Optional: required only when pinat
 ### Network + Indexer Config (optional)
 
 - `cluster: 'devnet'` works out of the box.
-- `cluster: 'localnet'` and `cluster: 'mainnet-beta'` are prepared.
-- Mainnet program IDs are TBD, so override `programIds` for localnet/mainnet until IDs are published.
+- `cluster: 'mainnet-beta'` works out of the box with built-in mainnet program IDs.
+- `cluster: 'localnet'` is supported; set local deployed `programIds`.
 
 ```typescript
 const sdk = new SolanaSDK({

@@ -25,8 +25,8 @@ npm install 8004-solana
 ## Network Defaults
 
 - `devnet`: fully configured by default.
-- `localnet`: prepared, requires your deployed `programIds`.
-- `mainnet-beta`: cluster/RPC switch is ready; pass `programIds` to switch off devnet defaults.
+- `mainnet-beta`: fully configured by default.
+- `localnet`: supported; set local deployed `programIds`.
 - See the [Indexer](#indexer) section for the combined network + indexer config snippet.
 
 ## Quick Start
@@ -46,7 +46,7 @@ const pinataJwt = process.env.PINATA_JWT;
 const ipfs = pinataJwt
   ? new IPFSClient({ pinataEnabled: true, pinataJwt })
   : new IPFSClient({ url: 'http://localhost:5001' });
-const sdk = new SolanaSDK({ cluster: 'devnet', signer, ipfsClient: ipfs });
+const sdk = new SolanaSDK({ cluster: 'mainnet-beta', signer, ipfsClient: ipfs });
 
 // 1. Create complete collection metadata + upload (off-chain)
 const collectionInput = {
@@ -200,14 +200,27 @@ You can self-host your own indexer: [github.com/QuantuLabs/8004-solana-indexer](
 - `cluster: 'devnet'` uses built-in devnet IDs:
   - Agent Registry: `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C`
   - ATOM Engine: `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF`
+- `cluster: 'mainnet-beta'` uses built-in mainnet IDs:
+  - Agent Registry: `8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ`
+  - ATOM Engine: `AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb`
 - `cluster: 'localnet'` is supported; set your deployed `programIds`.
-- `cluster: 'mainnet-beta'` is supported and RPC-ready; provide mainnet `programIds` to complete the switch.
-- If `cluster: 'mainnet-beta'` is set without `programIds`, SDK logs a warning and still uses devnet default program IDs.
 
 ```typescript
-// Localnet/Mainnet custom config + indexer endpoint
+// Mainnet-beta (default mainnet program IDs + default mainnet indexer)
 const sdk = new SolanaSDK({
-  cluster: 'localnet', // or 'mainnet-beta'
+  cluster: 'mainnet-beta',
+  signer,
+});
+
+// Devnet (default devnet program IDs + default devnet indexer)
+const sdk = new SolanaSDK({
+  cluster: 'devnet',
+  signer,
+});
+
+// Localnet custom config + local indexer endpoint
+const sdk = new SolanaSDK({
+  cluster: 'localnet',
   rpcUrl: 'http://127.0.0.1:8899',
   signer,
   programIds: {
@@ -218,9 +231,9 @@ const sdk = new SolanaSDK({
   indexerGraphqlUrl: 'http://127.0.0.1:3000/v2/graphql',
 });
 
-// Custom GraphQL indexer (recommended)
+// Custom GraphQL indexer override (recommended)
 const sdk = new SolanaSDK({
-  cluster: 'devnet',
+  cluster: 'mainnet-beta',
   indexerGraphqlUrl: 'https://your-indexer.example.com/v2/graphql',
 });
 

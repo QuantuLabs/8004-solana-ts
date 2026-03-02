@@ -36,7 +36,7 @@ This directory contains comprehensive End-to-End (E2E) tests covering **100% of 
 2. **Environment variables**:
    ```bash
    export SOLANA_RPC_URL=http://127.0.0.1:8899
-   export INDEXER_URL=https://your-indexer-url.com
+   export INDEXER_URL=https://your-indexer-url.com/rest/v1
    ```
 
 ### Run All Tests

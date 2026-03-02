@@ -31,8 +31,7 @@ const sdk = new SolanaSDK({
 Network guidance:
 - `devnet`: built-in program IDs are preconfigured.
 - `localnet`: supported; provide your deployed `programIds`.
-- `mainnet-beta`: supported and RPC-ready; provide mainnet `programIds` to complete the switch.
-- Without `programIds`, `cluster: 'mainnet-beta'` currently warns and still resolves to devnet default program IDs.
+- `mainnet-beta`: built-in mainnet program IDs are preconfigured.
 
 ## Utility Methods
 

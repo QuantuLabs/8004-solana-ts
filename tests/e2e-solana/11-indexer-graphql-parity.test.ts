@@ -39,7 +39,7 @@ type SearchFilters = {
 type ParityFixture = {
   agentAsset: string;
   searchFilters: SearchFilters;
-  feedbackAsset: string;
+  feedbackAsset?: string;
 };
 
 function getRestApiKey(restUrl: string): string {
@@ -184,14 +184,10 @@ async function findParityFixture(restSdk: SolanaSDK, gqlSdk: SolanaSDK): Promise
     }
   }
 
-  if (!feedbackAsset) {
-    throw new Error('No common feedback-bearing asset found across REST and GraphQL');
-  }
-
   return {
     agentAsset: selected.asset,
     searchFilters: selectedFilters,
-    feedbackAsset,
+    ...(feedbackAsset ? { feedbackAsset } : {}),
   };
 }
 
@@ -199,9 +195,10 @@ describe('Indexer GraphQL Parity (devnet remote, read mode)', () => {
   let restSdk: SolanaSDK;
   let gqlSdk: SolanaSDK;
   let agentAsset: PublicKey;
-  let feedbackAsset: PublicKey;
+  let feedbackAsset: PublicKey | null = null;
   let searchFilters: SearchFilters;
   let skipReason = '';
+  let feedbackSkipReason = '';
   let graphqlReady = false;
   let restReady = false;
 
@@ -240,8 +237,13 @@ describe('Indexer GraphQL Parity (devnet remote, read mode)', () => {
 
     const fixture = await findParityFixture(restSdk, gqlSdk);
     agentAsset = new PublicKey(fixture.agentAsset);
-    feedbackAsset = new PublicKey(fixture.feedbackAsset);
     searchFilters = fixture.searchFilters;
+    if (fixture.feedbackAsset) {
+      feedbackAsset = new PublicKey(fixture.feedbackAsset);
+    } else {
+      feedbackSkipReason = 'No common feedback-bearing asset found across REST and GraphQL';
+      console.log(`⚠️  ${feedbackSkipReason}, feedback parity test skipped`);
+    }
   }, 120000);
 
   it('returns consistent agent projection between REST and GraphQL', async () => {
@@ -281,6 +283,10 @@ describe('Indexer GraphQL Parity (devnet remote, read mode)', () => {
   it('returns feedbacks for the same asset on REST and GraphQL', async () => {
     if (!graphqlReady || !restReady) {
       console.log(`⏭️  ${skipReason}`);
+      return;
+    }
+    if (!feedbackAsset) {
+      console.log(`⏭️  ${feedbackSkipReason}`);
       return;
     }
     const restFeedbacks = await restSdk.getFeedbacksFromIndexer(feedbackAsset, { limit: 50 });
