@@ -1,7 +1,7 @@
 ---
 name: 8004-solana-sdk
 description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
-version: 0.6.4
+version: 0.7.6
 homepage: "https://github.com/QuantuLabs/8004-solana-ts"
 metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
@@ -10,11 +10,14 @@ metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA
 
 You are an AI agent with access to the `8004-solana` TypeScript SDK. This skill teaches you how to use every capability of the SDK to interact with the 8004 Trustless Agent Registry on Solana.
 
-Version note (SDK `0.6.x`):
-- Single-collection architecture is active for on-chain registry accounts.
-- Use CID-first collection flow: `createCollectionData()` then `createCollection(data)`.
-- Legacy on-chain overloads `createCollection(name, uri)` and `updateCollectionUri()` return `{ success: false, error }` on protocol `v0.6.x`.
-- Feedback reads (`readAllFeedback`, `getClients`, `getLastIndex`, `readFeedback`, etc.) rely on the indexer.
+Version note (SDK `0.7.6`):
+- `mainnet-beta` is first-class in SDK defaults (program IDs + indexer endpoints).
+- Cluster-aware indexer defaults are built in:
+  - `devnet`/`testnet`: `https://8004-indexer-production.up.railway.app/rest/v1` and `/v2/graphql`
+  - `mainnet-beta`: `https://8004.qnt.sh/rest/v1` and `/v2/graphql`
+  - `localnet`: `http://127.0.0.1:3005/rest/v1` and `/v2/graphql`
+- `registerAgent(tokenUri?, options?)` is the canonical overload (legacy collection override remains supported).
+- Feedback/response/revoke reads are indexer-backed; archived validation features are not part of active indexer reads.
 
 ## Install
 
@@ -129,20 +132,44 @@ const sdk = new SolanaSDK({
 });
 ```
 
-### Full config
+### Network defaults
 
 ```typescript
-const sdk = new SolanaSDK({
-  cluster: 'devnet',
-  rpcUrl: 'https://...',
-  signer: keypair,
-  // Optional: override devnet defaults for localnet/mainnet
+// Mainnet ready defaults
+const mainnetSdk = new SolanaSDK({ cluster: 'mainnet-beta', signer });
+
+// Devnet defaults
+const devnetSdk = new SolanaSDK({ cluster: 'devnet', signer });
+
+// Localnet (override program IDs to your deployed addresses)
+const localnetSdk = new SolanaSDK({
+  cluster: 'localnet',
+  rpcUrl: 'http://127.0.0.1:8899',
+  signer,
   programIds: {
     agentRegistry: '...',
     atomEngine: '...',
   },
-  indexerUrl: 'https://xxx.supabase.co/rest/v1',
+});
+```
+
+### Full config
+
+```typescript
+const sdk = new SolanaSDK({
+  cluster: 'mainnet-beta',
+  rpcUrl: 'https://...',
+  signer: keypair,
+  // Optional: explicit overrides (otherwise cluster defaults are used)
+  programIds: {
+    agentRegistry: '...',
+    atomEngine: '...',
+  },
+  // Optional: force REST mode (otherwise GraphQL default is used)
+  indexerUrl: 'https://8004.qnt.sh/rest/v1',
   indexerApiKey: process.env.INDEXER_API_KEY, // if your indexer requires an API key, keep it in env
+  // Optional GraphQL override
+  indexerGraphqlUrl: 'https://8004.qnt.sh/v2/graphql',
   useIndexer: true,
   indexerFallback: true,
   forceOnChain: false,
@@ -195,7 +222,11 @@ const cid = await ipfs.addJson(metadata);
 const result = await sdk.registerAgent(`ipfs://${cid}`);
 // result.asset   -> PublicKey (agent NFT address)
 // result.signature -> transaction signature
-// ATOM stats are auto-initialized
+
+// Optional: enable ATOM at creation (irreversible)
+const withAtom = await sdk.registerAgent(`ipfs://${cid}`, {
+  atomEnabled: true,
+});
 ```
 
 ### Step 4: Set operational wallet
@@ -700,17 +731,18 @@ const a2a = await crawler.fetchA2aCapabilities('https://agent.com');
 ```typescript
 // Chain identity (CAIP-2 format)
 const chain = await sdk.chainId();       // 'solana-devnet'
-const cluster = sdk.getCluster();         // 'devnet' | 'mainnet-beta' | 'testnet'
+const cluster = sdk.getCluster();         // 'devnet' | 'testnet' | 'mainnet-beta' | 'localnet'
 
-// Program IDs for all registries
+// Program IDs
 const programs = sdk.getProgramIds();
 // programs.identityRegistry   -> PublicKey
 // programs.reputationRegistry -> PublicKey
-// programs.validationRegistry -> PublicKey
+// programs.agentRegistry      -> PublicKey
+// programs.atomEngine         -> PublicKey
 
 // Registry addresses as strings (parity with agent0-ts)
 const regs = sdk.registries();
-// { IDENTITY: 'base58...', REPUTATION: 'base58...', VALIDATION: 'base58...' }
+// { IDENTITY: 'base58...', REPUTATION: 'base58...', ...legacy aliases }
 
 // RPC info
 const rpcUrl = sdk.getRpcUrl();
@@ -718,7 +750,7 @@ const isDefaultRpc = sdk.isUsingDefaultDevnetRpc();
 const canBulkQuery = sdk.supportsAdvancedQueries();
 const readOnly = sdk.isReadOnly;
 
-// Base collection (single-collection architecture in v0.6.x)
+// Base collection (single-collection architecture)
 const base = await sdk.getBaseCollection();
 
 // Advanced: access underlying clients
@@ -917,7 +949,7 @@ For browser wallets or external signing:
 ```typescript
 // Get unsigned transaction
 const assetKeypair = Keypair.generate();
-const prepared = await sdk.registerAgent(uri, undefined, {
+const prepared = await sdk.registerAgent(uri, {
   skipSend: true,
   signer: ownerPubkey,              // required when SDK has no signer
   assetPubkey: assetKeypair.publicKey, // required in skipSend mode
@@ -1010,7 +1042,8 @@ Indexer-backed reads (`readAllFeedback()`, `getClients()`, `getLastIndex()`, `re
 
 | Operation | Cost | Notes |
 |-----------|------|-------|
-| `registerAgent()` | ~0.00651 SOL | Includes ATOM auto-init |
+| `registerAgent()` | ~0.00651 SOL | Base registration (without ATOM init) |
+| `registerAgent(..., { atomEnabled: true })` | higher than base | Includes extra ATOM stats init transaction |
 | `giveFeedback()` (1st for agent) | ~0.00332 SOL | Creates reputation PDA |
 | `giveFeedback()` (subsequent) | ~0.00209 SOL | Feedback PDA only |
 | `setMetadata()` (1st key) | ~0.00319 SOL | PDA rent |
@@ -1137,8 +1170,16 @@ if (!integrity.trustworthy) {
 
 ```typescript
 import {
-  PROGRAM_ID,            // Agent Registry (devnet default): 8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C
-  MPL_CORE_PROGRAM_ID,   // Metaplex Core: CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
-  ATOM_ENGINE_PROGRAM_ID, // ATOM (devnet default): AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF
+  PROGRAM_ID,                       // devnet default Agent Registry
+  ATOM_ENGINE_PROGRAM_ID,           // devnet default ATOM
+  DEVNET_AGENT_REGISTRY_PROGRAM_ID,
+  DEVNET_ATOM_ENGINE_PROGRAM_ID,
+  MAINNET_AGENT_REGISTRY_PROGRAM_ID,
+  MAINNET_ATOM_ENGINE_PROGRAM_ID,
+  MPL_CORE_PROGRAM_ID,
 } from '8004-solana';
 ```
+
+Cluster mapping in SDK defaults:
+- `devnet` / `testnet` / `localnet`: devnet program defaults unless overridden.
+- `mainnet-beta`: mainnet program defaults.
