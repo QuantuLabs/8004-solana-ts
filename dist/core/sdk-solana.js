@@ -14,7 +14,7 @@ import { SolanaClient, UnsupportedRpcError } from './client.js';
 import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import { EndpointCrawler } from './endpoint-crawler.js';
 import { PDAHelpers } from './pda-helpers.js';
-import { getProgramIds } from './programs.js';
+import { getProgramIdsForCluster } from './programs.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
@@ -36,7 +36,7 @@ import { IndexerGraphQLClient } from './indexer-graphql-client.js';
 import { replayFeedbackChain, replayResponseChain, replayRevokeChain, } from './hash-chain-replay.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
-import { DEFAULT_INDEXER_URL, DEFAULT_INDEXER_API_KEY, DEFAULT_INDEXER_GRAPHQL_URL, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
+import { getDefaultIndexerUrl, getDefaultIndexerGraphqlUrl, getDefaultIndexerApiKey, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
 function getEnv(key) {
     if (typeof process !== 'undefined' && process.env) {
         return process.env[key];
@@ -147,20 +147,15 @@ export class SolanaSDK {
     forceOnChain;
     constructor(config = {}) {
         this.cluster = config.cluster || 'devnet';
-        this.programIds = getProgramIds(config.programIds);
+        this.programIds = getProgramIdsForCluster(this.cluster, config.programIds);
         this.signer = config.signer;
         this.ipfsClient = config.ipfsClient;
         this.client = new SolanaClient({
             cluster: this.cluster,
             rpcUrl: config.rpcUrl,
         });
-        const hasProgramIdOverrides = !!(config.programIds
-            && Object.values(config.programIds).some((value) => value !== undefined && value !== null));
-        if (this.cluster === 'mainnet-beta' && !hasProgramIdOverrides) {
-            logger.warn('cluster=mainnet-beta selected without programIds override; SDK will use devnet default program IDs until mainnet IDs are provided.');
-        }
         // Initialize feedback manager
-        this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient);
+        this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient, undefined, this.programIds.atomEngine);
         // Initialize indexer client first (v0.7.0)
         // Default: GraphQL v2 (Railway reference deployment)
         // Legacy: REST v1 (only if explicitly configured via config or env)
@@ -169,15 +164,18 @@ export class SolanaSDK {
         const envGraphqlUrl = getEnv('INDEXER_GRAPHQL_URL');
         const restBaseUrl = config.indexerUrl ?? envRestUrl;
         const restApiKey = config.indexerApiKey ?? envRestKey;
+        const defaultRestUrlForCluster = getDefaultIndexerUrl(this.cluster);
+        const defaultGraphqlUrlForCluster = getDefaultIndexerGraphqlUrl(this.cluster);
+        const defaultApiKey = getDefaultIndexerApiKey();
         if (restBaseUrl || restApiKey) {
             this.indexerClient = new IndexerClient({
-                baseUrl: restBaseUrl ?? DEFAULT_INDEXER_URL,
-                apiKey: restApiKey ?? DEFAULT_INDEXER_API_KEY,
+                baseUrl: restBaseUrl ?? defaultRestUrlForCluster,
+                apiKey: restApiKey ?? defaultApiKey,
             });
         }
         else {
             this.indexerClient = new IndexerGraphQLClient({
-                graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? DEFAULT_INDEXER_GRAPHQL_URL,
+                graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? defaultGraphqlUrlForCluster,
             });
         }
         // Initialize transaction builders (v0.4.0)

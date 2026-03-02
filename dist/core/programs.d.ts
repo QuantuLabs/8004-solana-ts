@@ -3,11 +3,13 @@
  * v0.2.0 - Consolidated single program architecture
  */
 import { PublicKey } from '@solana/web3.js';
+import type { Cluster } from './client.js';
 /**
  * Consolidated AgentRegistry8004 Program ID (devnet default)
  * Single program containing Identity, Reputation, and Validation modules
  */
 export declare const DEVNET_AGENT_REGISTRY_PROGRAM_ID: PublicKey;
+export declare const MAINNET_AGENT_REGISTRY_PROGRAM_ID: PublicKey;
 /**
  * Backward-compatible alias for devnet default Agent Registry ID.
  * Override in SDK config for localnet/mainnet deployments.
@@ -24,6 +26,7 @@ export declare const MPL_CORE_PROGRAM_ID: PublicKey;
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
 export declare const DEVNET_ATOM_ENGINE_PROGRAM_ID: PublicKey;
+export declare const MAINNET_ATOM_ENGINE_PROGRAM_ID: PublicKey;
 /**
  * Backward-compatible alias for devnet default ATOM Engine ID.
  * Override in SDK config for localnet/mainnet deployments.
@@ -51,6 +54,12 @@ export interface ProgramIdSet {
  * Defaults target devnet and can be overridden per SDK instance.
  */
 export declare function getProgramIds(overrides?: ProgramIdOverrides): ProgramIdSet;
+/**
+ * Resolve program IDs for a specific cluster.
+ * - devnet/testnet/localnet default to devnet IDs (overrideable)
+ * - mainnet-beta defaults to mainnet IDs (overrideable)
+ */
+export declare function getProgramIdsForCluster(cluster: Cluster, overrides?: ProgramIdOverrides): ProgramIdSet;
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
  * Program IDs resolved to devnet defaults (legacy 3-program naming)

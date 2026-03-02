@@ -25,10 +25,12 @@ const DEFAULT_MAX_ALL_FEEDBACKS = 5000;
 export class SolanaFeedbackManager {
     client;
     ipfsClient;
+    atomEngineProgramId;
     indexerClient;
-    constructor(client, ipfsClient, indexerClient) {
+    constructor(client, ipfsClient, indexerClient, atomEngineProgramId) {
         this.client = client;
         this.ipfsClient = ipfsClient;
+        this.atomEngineProgramId = atomEngineProgramId;
         this.indexerClient = indexerClient;
     }
     /**
@@ -105,7 +107,7 @@ export class SolanaFeedbackManager {
      */
     async getAtomStatsForSummary(asset) {
         try {
-            const [atomStatsPDA] = getAtomStatsPDA(asset);
+            const [atomStatsPDA] = getAtomStatsPDA(asset, this.atomEngineProgramId);
             const data = await this.client.getAccount(atomStatsPDA);
             if (!data)
                 return null;

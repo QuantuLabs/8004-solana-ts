@@ -10,11 +10,24 @@
  * - INDEXER_API_KEY: Optional API key/bearer token (only if your endpoint requires it)
  * - FORCE_ON_CHAIN: Set to 'true' to bypass indexer
  */
-// Hardcoded defaults
-// - GraphQL v2 reference deployment (public read-only)
-const HARDCODED_INDEXER_GRAPHQL_URL = 'https://8004-indexer-production.up.railway.app/v2/graphql';
-// - Legacy REST v1 (deprecated; kept for backward compatibility)
-const HARDCODED_INDEXER_URL = 'https://8004-indexer-production.up.railway.app/rest/v1';
+const INDEXER_DEFAULTS_BY_CLUSTER = {
+    devnet: {
+        graphqlUrl: 'https://8004-indexer-production.up.railway.app/v2/graphql',
+        restUrl: 'https://8004-indexer-production.up.railway.app/rest/v1',
+    },
+    testnet: {
+        graphqlUrl: 'https://8004-indexer-production.up.railway.app/v2/graphql',
+        restUrl: 'https://8004-indexer-production.up.railway.app/rest/v1',
+    },
+    'mainnet-beta': {
+        graphqlUrl: 'https://8004.qnt.sh/v2/graphql',
+        restUrl: 'https://8004.qnt.sh/rest/v1',
+    },
+    localnet: {
+        graphqlUrl: 'http://127.0.0.1:3005/v2/graphql',
+        restUrl: 'http://127.0.0.1:3005/rest/v1',
+    },
+};
 /**
  * Safe environment variable access (browser-compatible)
  */
@@ -24,10 +37,19 @@ function getEnv(key) {
     }
     return undefined;
 }
-// Export with env override
-export const DEFAULT_INDEXER_URL = getEnv('INDEXER_URL') || HARDCODED_INDEXER_URL;
-export const DEFAULT_INDEXER_API_KEY = getEnv('INDEXER_API_KEY') || '';
-export const DEFAULT_INDEXER_GRAPHQL_URL = getEnv('INDEXER_GRAPHQL_URL') || HARDCODED_INDEXER_GRAPHQL_URL;
+export function getDefaultIndexerUrl(cluster) {
+    return getEnv('INDEXER_URL') || INDEXER_DEFAULTS_BY_CLUSTER[cluster].restUrl;
+}
+export function getDefaultIndexerGraphqlUrl(cluster) {
+    return getEnv('INDEXER_GRAPHQL_URL') || INDEXER_DEFAULTS_BY_CLUSTER[cluster].graphqlUrl;
+}
+export function getDefaultIndexerApiKey() {
+    return getEnv('INDEXER_API_KEY') || '';
+}
+// Backward-compatible devnet exports.
+export const DEFAULT_INDEXER_URL = getDefaultIndexerUrl('devnet');
+export const DEFAULT_INDEXER_API_KEY = getDefaultIndexerApiKey();
+export const DEFAULT_INDEXER_GRAPHQL_URL = getDefaultIndexerGraphqlUrl('devnet');
 /**
  * Force on-chain mode (bypass indexer):
  * - false (default): Smart routing - RPC for small queries, indexer for large

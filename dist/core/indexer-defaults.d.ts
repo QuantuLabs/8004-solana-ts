@@ -10,6 +10,10 @@
  * - INDEXER_API_KEY: Optional API key/bearer token (only if your endpoint requires it)
  * - FORCE_ON_CHAIN: Set to 'true' to bypass indexer
  */
+import type { Cluster } from './client.js';
+export declare function getDefaultIndexerUrl(cluster: Cluster): string;
+export declare function getDefaultIndexerGraphqlUrl(cluster: Cluster): string;
+export declare function getDefaultIndexerApiKey(): string;
 export declare const DEFAULT_INDEXER_URL: string;
 export declare const DEFAULT_INDEXER_API_KEY: string;
 export declare const DEFAULT_INDEXER_GRAPHQL_URL: string;

@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-03-02
+### Added
+- Added cluster-aware SDK defaults for `mainnet-beta`:
+  - Agent Registry: `8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ`
+  - ATOM Engine: `AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb`
+  - Indexer defaults: `https://8004.qnt.sh/rest/v1` and `https://8004.qnt.sh/v2/graphql`
+- Added localnet indexer defaults (`http://127.0.0.1:3005/rest/v1`, `http://127.0.0.1:3005/v2/graphql`) for cluster-based initialization.
+
+### Fixed
+- Hardened SDK transaction submission by replacing websocket-dependent confirmation with HTTP polling + resend strategy in `TransactionBuilder`.
+- Ensured feedback summary AtomStats PDA derivation respects the SDK-selected ATOM program ID (including mainnet overrides).
+- Updated GraphQL parity e2e flow to skip feedback parity check when no feedback exists on the target indexer, while preserving agent projection/search parity checks.
+
+### Documentation
+- Updated README/Quickstart/Methods to reflect that `mainnet-beta` is fully configured by default and clarified cluster-specific examples.
+
 ## [0.7.5] - 2026-03-01
 ### Fixed
 - Added a strict `appendResponse()` guardrail: when an explicit `sealHash` is provided and indexed feedback is available, mismatched hashes are now rejected.

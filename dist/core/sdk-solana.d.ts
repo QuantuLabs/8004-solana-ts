@@ -43,7 +43,7 @@ export interface SolanaSDKConfig {
     useIndexer?: boolean;
     /** Fallback to on-chain if indexer unavailable (default: true) */
     indexerFallback?: boolean;
-    /** Program IDs override (defaults target devnet IDs) */
+    /** Program IDs override (cluster defaults are used when omitted) */
     programIds?: ProgramIdOverrides;
     /**
      * Force all queries on-chain, bypass indexer (default: false, or FORCE_ON_CHAIN=true env)

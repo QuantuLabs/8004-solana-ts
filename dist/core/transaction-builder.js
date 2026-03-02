@@ -8,7 +8,7 @@
  * - agent_id removed from all methods, uses asset (Pubkey) for PDA derivation
  * - Multi-collection support via RootConfig
  */
-import { PublicKey, Transaction, TransactionInstruction, Keypair, sendAndConfirmTransaction, ComputeBudgetProgram, } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction, Keypair, ComputeBudgetProgram, } from '@solana/web3.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { writeBigUInt64LE } from '../utils/buffer-utils.js';
@@ -21,6 +21,53 @@ import { validateByteLength, validateNonce } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { resolveScore } from './feedback-normalizer.js';
 import { encodeReputationValue } from '../utils/value-encoding.js';
+/**
+ * Send and confirm a transaction via HTTP polling.
+ * Signs, sends via sendRawTransaction, then polls getSignatureStatuses.
+ * Resends periodically to handle UDP drops. Checks blockhash expiry.
+ * Works with any RPC (no WebSocket/signatureSubscribe dependency).
+ */
+async function sendAndConfirmTransaction(connection, transaction, signers) {
+    if (!transaction.recentBlockhash) {
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        transaction.lastValidBlockHeight = lastValidBlockHeight;
+    }
+    if (!transaction.feePayer) {
+        transaction.feePayer = signers[0].publicKey;
+    }
+    transaction.sign(...signers);
+    const rawTx = transaction.serialize();
+    const sig = await connection.sendRawTransaction(rawTx, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+    });
+    const start = Date.now();
+    const timeout = 60_000;
+    let lastResend = start;
+    while (Date.now() - start < timeout) {
+        const { value } = await connection.getSignatureStatus(sig);
+        if (value?.confirmationStatus === 'confirmed' || value?.confirmationStatus === 'finalized') {
+            if (value.err) {
+                throw new Error(`Transaction ${sig} failed: ${JSON.stringify(value.err)}`);
+            }
+            return sig;
+        }
+        if (transaction.lastValidBlockHeight) {
+            const blockHeight = await connection.getBlockHeight('confirmed').catch(() => 0);
+            if (blockHeight > 0 && blockHeight > transaction.lastValidBlockHeight) {
+                throw new Error(`Transaction ${sig} expired (blockhash no longer valid)`);
+            }
+        }
+        // Resend every 5s to handle UDP drops
+        if (Date.now() - lastResend > 5_000) {
+            connection.sendRawTransaction(rawTx, { skipPreflight: true }).catch(() => { });
+            lastResend = Date.now();
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+    }
+    throw new Error(`Transaction ${sig} confirmation timeout after ${timeout}ms`);
+}
 /**
  * Options for all write methods
  * Use skipSend to get the serialized transaction instead of sending it

@@ -70,8 +70,9 @@ export interface SolanaResponse {
 export declare class SolanaFeedbackManager {
     private client;
     private ipfsClient?;
+    private atomEngineProgramId?;
     private indexerClient?;
-    constructor(client: SolanaClient, ipfsClient?: IPFSClient | undefined, indexerClient?: IndexerReadClient);
+    constructor(client: SolanaClient, ipfsClient?: IPFSClient | undefined, indexerClient?: IndexerReadClient, atomEngineProgramId?: PublicKey | undefined);
     /**
      * Set the indexer client (for late binding)
      */

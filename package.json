@@ -1,6 +1,6 @@
 {
   "name": "8004-solana",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "TypeScript SDK for 8004 on Solana - Agent identity, reputation and validation",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
     "test:e2e:validation": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' bunx jest tests/e2e-solana/03-validation-complete.test.ts --verbose",
     "test:e2e:atom": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' bunx jest tests/e2e-solana/04-atom-engine-complete.test.ts --verbose",
     "test:e2e:security": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' bunx jest tests/e2e-solana/05-security-attacks.test.ts --verbose",
-    "test:e2e:indexer": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' bunx jest tests/e2e-solana/06-indexer-api.test.ts --verbose",
+    "test:e2e:indexer": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' bunx jest --config jest.e2e.config.js tests/e2e-solana/06-indexer-api.test.ts --verbose --runInBand",
     "test:e2e:seal": "NODE_OPTIONS='--experimental-vm-modules' INDEXER_URL='http://localhost:3001/rest/v1' bunx jest tests/e2e-solana/09-seal-v1-complete.test.ts --verbose",
     "test:e2e:all": "bun run test:e2e:identity && bun run test:e2e:reputation && bun run test:e2e:atom && bun run test:e2e:security && bun run test:e2e:indexer && bun run test:e2e:seal",
     "test:e2e:coverage": "bun run test:e2e:coverage:major",
