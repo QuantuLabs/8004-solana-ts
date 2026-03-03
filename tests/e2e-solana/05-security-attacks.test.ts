@@ -66,7 +66,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
     expect(collection).toBeDefined();
 
     const agentUri = `ipfs://security_agent_${Date.now()}`;
-    const registerResult = await sdk.registerAgent(agentUri, collection);
+    const registerResult = await sdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agent = registerResult.asset!;
 
@@ -224,7 +224,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
             score: 75,
             tag1: 'cpi-test',
             feedbackUri,
-            feedbackHash: await SolanaSDK.computeUriHash(feedbackUri),
+            feedbackFileHash: await SolanaSDK.computeUriHash(feedbackUri),
           }
         );
 
@@ -402,7 +402,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
             score: 80,
             tag1: 'fake-agent',
             feedbackUri,
-            feedbackHash: await SolanaSDK.computeUriHash(feedbackUri),
+            feedbackFileHash: await SolanaSDK.computeUriHash(feedbackUri),
           }
         );
 
@@ -443,7 +443,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
             score: 90,
             tag1: 'self-feedback',
             feedbackUri,
-            feedbackHash: await SolanaSDK.computeUriHash(feedbackUri),
+            feedbackFileHash: await SolanaSDK.computeUriHash(feedbackUri),
           }
         );
 
@@ -480,7 +480,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
               score: 101, // Invalid score
               tag1: 'invalid-score',
               feedbackUri,
-              feedbackHash: await SolanaSDK.computeUriHash(feedbackUri),
+              feedbackFileHash: await SolanaSDK.computeUriHash(feedbackUri),
             }
           );
 
@@ -566,7 +566,7 @@ describe('Security & Attack Scenarios (13 Tests)', () => {
               score: 75,
               tag1: longTag,
               feedbackUri,
-              feedbackHash: await SolanaSDK.computeUriHash(feedbackUri),
+              feedbackFileHash: await SolanaSDK.computeUriHash(feedbackUri),
             }
           );
           expect(result.success).toBe(false);

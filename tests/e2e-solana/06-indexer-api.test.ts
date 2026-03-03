@@ -185,7 +185,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
       expect(collection).toBeDefined();
 
       const agentUri = `ipfs://indexer_agent_${Date.now()}`;
-      const registerResult = await sdk.registerAgent(agentUri, collection);
+      const registerResult = await sdk.registerAgent(agentUri);
       expect(registerResult.success).toBe(true);
       agent = registerResult.asset!;
 
@@ -193,7 +193,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
       await sdk.initializeAtomStats(agent);
 
       // Create parent agent and relationship fields for indexer filtering tests
-      const parentResult = await sdk.registerAgent(`ipfs://indexer_parent_${Date.now()}`, collection);
+      const parentResult = await sdk.registerAgent(`ipfs://indexer_parent_${Date.now()}`);
       expect(parentResult.success).toBe(true);
       parentAgent = parentResult.asset!;
       parentAgentAddress = parentAgent.toBase58();
@@ -230,7 +230,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
         score: 85,
         tag1: 'indexer-test',
         feedbackUri,
-        feedbackHash: createFeedbackHash(feedbackUri),
+        feedbackFileHash: createFeedbackHash(feedbackUri),
       });
       expect(feedbackResult.success).toBe(true);
       feedbackIndex = feedbackResult.feedbackIndex!;
@@ -544,7 +544,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
           tag1: 'endpoint-test',
           endpoint: endpoint,
           feedbackUri: endpointUri,
-          feedbackHash: createFeedbackHash(endpointUri),
+          feedbackFileHash: createFeedbackHash(endpointUri),
         });
 
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -588,7 +588,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
           score: 78,
           tag1: tag,
           feedbackUri: tagUri,
-          feedbackHash: createFeedbackHash(tagUri),
+          feedbackFileHash: createFeedbackHash(tagUri),
         });
 
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -663,7 +663,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
 
       // Create new agent
       const newAgentUri = `ipfs://transfer_test_${Date.now()}`;
-      const registerResult = await sdk.registerAgent(newAgentUri, collection);
+      const registerResult = await sdk.registerAgent(newAgentUri);
       expect(registerResult.success).toBe(true);
       const newAgent = registerResult.asset!;
       const oldOperationalWallet = Keypair.generate();
@@ -888,7 +888,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
         score: 70,
         tag1: 'to-revoke',
         feedbackUri: revokeUri,
-        feedbackHash: revokeHash,
+        feedbackFileHash: revokeHash,
       });
       expect(feedbackResult.success).toBe(true);
       const index = feedbackResult.feedbackIndex!;

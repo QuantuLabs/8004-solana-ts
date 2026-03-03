@@ -503,7 +503,7 @@ describe('Section 10: Integrity Verification', () => {
 describe('Section 19: Server Mode (skipSend)', () => {
   test('registerAgent with skipSend', async () => {
     const assetKeypair = Keypair.generate();
-    const prepared = await sdk.registerAgent('https://example.com/test.json', undefined, {
+    const prepared = await sdk.registerAgent('https://example.com/test.json', {
       skipSend: true,
       signer: signer.publicKey,
       assetPubkey: assetKeypair.publicKey,

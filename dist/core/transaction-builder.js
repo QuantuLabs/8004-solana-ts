@@ -147,27 +147,30 @@ export class IdentityTransactionBuilder {
     connection;
     payer;
     instructionBuilder;
+    atomInstructionBuilder;
     programIds;
     constructor(connection, payer, programIds) {
         this.connection = connection;
         this.payer = payer;
         this.programIds = getProgramIds(programIds);
         this.instructionBuilder = new IdentityInstructionBuilder(this.programIds.agentRegistry, this.programIds.mplCore);
+        this.atomInstructionBuilder = new AtomInstructionBuilder(this.programIds.atomEngine);
     }
     /**
      * Register a new agent (Metaplex Core) - v0.3.0
      * @param agentUri - Optional agent URI
-     * @param metadata - Optional metadata entries (key-value pairs)
-     * @param collection - Optional base registry collection pubkey (defaults to root-config base collection)
      * @param options - Write options (skipSend, signer, assetPubkey, atomEnabled)
      * @returns Transaction result with asset and all signatures
      */
-    async registerAgent(agentUri, collection, options) {
+    async registerAgent(agentUri, options) {
         try {
             // Determine the signer pubkey
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
+            }
+            if (options?.collectionLock !== undefined && typeof options.collectionLock !== 'boolean') {
+                throw new Error('collectionLock must be a boolean');
             }
             // v0.6.0 single-collection: always use base collection from RootConfig
             const [rootConfigPda] = PDAHelpers.getRootConfigPDA(this.programIds.agentRegistry);
@@ -175,7 +178,7 @@ export class IdentityTransactionBuilder {
             if (!rootConfig) {
                 throw new Error('Root config not initialized. Please initialize the registry first.');
             }
-            const baseCollectionPubkey = collection || rootConfig.getBaseCollectionPublicKey();
+            const baseCollectionPubkey = rootConfig.getBaseCollectionPublicKey();
             // Determine the asset pubkey (Metaplex Core asset)
             let assetPubkey;
             let assetKeypair;
@@ -208,6 +211,19 @@ export class IdentityTransactionBuilder {
             const registerTransaction = new Transaction()
                 .add(computeBudgetIx)
                 .add(registerInstruction);
+            if (options?.collectionPointer) {
+                validateCollectionPointer(options.collectionPointer);
+                const pointerInstruction = options.collectionLock === false
+                    ? this.instructionBuilder.buildSetCollectionPointerWithOptions(agentPda, assetPubkey, signerPubkey, options.collectionPointer, false)
+                    : this.instructionBuilder.buildSetCollectionPointer(agentPda, assetPubkey, signerPubkey, options.collectionPointer);
+                registerTransaction.add(pointerInstruction);
+            }
+            if (options?.atomEnabled === true) {
+                const [atomConfigPda] = getAtomConfigPDA(this.programIds.atomEngine);
+                const [atomStatsPda] = getAtomStatsPDA(assetPubkey, this.programIds.atomEngine);
+                const initAtomInstruction = this.atomInstructionBuilder.buildInitializeStats(signerPubkey, assetPubkey, baseCollectionPubkey, atomConfigPda, atomStatsPda);
+                registerTransaction.add(initAtomInstruction);
+            }
             // If skipSend, return serialized transaction
             if (options?.skipSend) {
                 const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
@@ -889,10 +905,11 @@ export class ReputationTransactionBuilder {
                 valueDecimals,
                 score: params.score,
             });
+            const feedbackUri = params.feedbackUri ?? '';
             validateByteLength(params.tag1 ?? '', 32, 'tag1');
             validateByteLength(params.tag2 ?? '', 32, 'tag2');
             validateByteLength(params.endpoint ?? '', 250, 'endpoint');
-            validateByteLength(params.feedbackUri, 250, 'feedbackUri');
+            validateByteLength(feedbackUri, 250, 'feedbackUri');
             // SEAL v1: feedbackFileHash is optional
             if (params.feedbackFileHash && params.feedbackFileHash.length !== 32) {
                 throw new Error('feedbackFileHash must be 32 bytes');
@@ -915,7 +932,7 @@ export class ReputationTransactionBuilder {
             // part of the instruction data, which is no longer the case
             const feedbackIndex = BigInt(agentAccount.feedback_count.toString());
             // SEAL v1: feedbackFileHash is optional (null if not provided)
-            const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, agentPda, asset, collection, atomConfig, atomStats, registryAuthority, valueBigInt, valueDecimals, resolvedScore, params.feedbackFileHash ?? null, feedbackIndex, params.tag1 ?? '', params.tag2 ?? '', params.endpoint ?? '', params.feedbackUri);
+            const giveFeedbackInstruction = this.instructionBuilder.buildGiveFeedback(signerPubkey, agentPda, asset, collection, atomConfig, atomStats, registryAuthority, valueBigInt, valueDecimals, resolvedScore, params.feedbackFileHash ?? null, feedbackIndex, params.tag1 ?? '', params.tag2 ?? '', params.endpoint ?? '', feedbackUri);
             const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
                 units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
             });

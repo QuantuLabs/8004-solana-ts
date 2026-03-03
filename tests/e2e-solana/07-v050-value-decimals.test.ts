@@ -74,7 +74,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
     expect(collection).toBeDefined();
 
     const agentUri = `ipfs://v050_agent_${Date.now()}`;
-    const registerResult = await sdk.registerAgent(agentUri, collection);
+    const registerResult = await sdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agent = registerResult.asset!;
 
@@ -97,7 +97,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           // score: undefined (not provided)
           tag1: 'performance',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -116,7 +116,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: undefined, // Explicit null
           tag1: 'accuracy',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -135,7 +135,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           // No score, unknown tag -> defaults to 50
           tag1: 'unknown-category',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -161,7 +161,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 50,
           tag1: 'zero-value',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -180,7 +180,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 25, // Poor score for loss
           tag1: 'pnl',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -199,7 +199,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 95,
           tag1: 'large-metric',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -218,7 +218,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 5,
           tag1: 'large-loss',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -238,7 +238,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 100,
           tag1: 'i128-max',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -258,7 +258,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 0,
           tag1: 'i128-min',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -280,7 +280,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 50,
             tag1: 'overflow',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -306,7 +306,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 50,
             tag1: 'underflow',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -335,7 +335,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 99,
           tag1: 'integer',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -354,7 +354,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 99,
           tag1: 'cents',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -373,7 +373,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 99,
           tag1: 'microseconds',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -394,7 +394,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 99,
             tag1: 'invalid-dec',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -419,7 +419,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 99,
             tag1: 'neg-dec',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -441,7 +441,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 99,
           tag1: 'default-dec',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -471,7 +471,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             // score: undefined -> defaults to 50
             tag1: 'spam',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -499,7 +499,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 10, // But low score
           tag1: 'mismatch',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -518,7 +518,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 100,
           tag1: 'edge-case',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -537,7 +537,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 95, // But high score (maybe they're happy with controlled loss?)
           tag1: 'controlled-loss',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -562,7 +562,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
           score: 95,
           tag1: 'number-value',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -583,7 +583,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 50,
             tag1: 'nan',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -607,7 +607,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 50,
             tag1: 'infinity',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -631,7 +631,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 95,
             tag1: 'float-dec',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -655,7 +655,7 @@ describe('v0.5.0 - Value/Decimals/Optional Score', () => {
             score: 95.5, // Float, not integer
             tag1: 'float-score',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );

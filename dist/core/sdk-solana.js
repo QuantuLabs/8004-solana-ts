@@ -1386,19 +1386,32 @@ export class SolanaSDK {
         // Always pass null for name (immutable)
         return await this.identityTxBuilder.updateCollectionMetadata(collection, null, newUri, options);
     }
-    async registerAgent(tokenUri, collectionOrOptions, maybeOptions) {
-        const isPublicKeyLike = (value) => !!value
-            && typeof value === 'object'
-            && typeof value.toBase58 === 'function'
-            && typeof value.toBuffer === 'function';
-        const collection = isPublicKeyLike(collectionOrOptions)
-            ? collectionOrOptions
-            : undefined;
-        const options = isPublicKeyLike(collectionOrOptions)
-            ? maybeOptions
-            : (collectionOrOptions !== undefined
-                ? collectionOrOptions
-                : maybeOptions);
+    async registerAgent(tokenUri, options) {
+        const legacyOverloadError = 'registerAgent(tokenUri, collection, options) was removed. '
+            + 'Use registerAgent(tokenUri, options).';
+        if (arguments.length > 2) {
+            throw new Error(legacyOverloadError);
+        }
+        const maybeOptions = options;
+        const looksLikePublicKey = maybeOptions instanceof PublicKey
+            || (maybeOptions !== null
+                && typeof maybeOptions === 'object'
+                && typeof maybeOptions.toBase58 === 'function'
+                && typeof maybeOptions.toBuffer === 'function');
+        if (looksLikePublicKey) {
+            throw new Error(legacyOverloadError);
+        }
+        if (options !== undefined && options !== null && typeof options === 'object' && 'collection' in options) {
+            throw new Error('registerAgent no longer accepts a base collection override. '
+                + 'Use registerAgent(tokenUri, options) without collection.');
+        }
+        if (options !== undefined
+            && (options === null
+                || typeof options !== 'object'
+                || Array.isArray(options)
+                || (Object.getPrototypeOf(options) !== Object.prototype && Object.getPrototypeOf(options) !== null))) {
+            throw new Error('Invalid registerAgent options argument: expected options object.');
+        }
         if (options?.collectionPointer !== undefined) {
             validateCollectionPointer(options.collectionPointer);
         }
@@ -1413,63 +1426,7 @@ export class SolanaSDK {
             ...(options ?? {}),
             atomEnabled: options?.atomEnabled ?? false,
         };
-        const result = await this.identityTxBuilder.registerAgent(tokenUri, collection, registerOptions);
-        const canRunPostRegister = !registerOptions.skipSend
-            && 'success' in result
-            && result.success
-            && !!result.asset;
-        if (canRunPostRegister && result.asset) {
-            const signatures = [result.signature];
-            // Auto-initialize ATOM stats only when ATOM is explicitly enabled at creation
-            if (registerOptions.atomEnabled) {
-                try {
-                    const atomResult = await this.atomTxBuilder.initializeStats(result.asset, registerOptions);
-                    if ('success' in atomResult && atomResult.success) {
-                        signatures.push(atomResult.signature);
-                    }
-                    else {
-                        // Non-blocking: registration still succeeded.
-                        const errorMsg = 'error' in atomResult ? atomResult.error : 'Unknown error';
-                        logger.warn(`Agent registered but ATOM stats init failed: ${errorMsg}`);
-                    }
-                }
-                catch (error) {
-                    // Non-blocking: registration still succeeded.
-                    logger.warn(`Agent registered but ATOM stats init failed: ${error instanceof Error ? error.message : String(error)}`);
-                }
-            }
-            if (registerOptions.collectionPointer) {
-                const pointerOptions = {
-                    lock: registerOptions.collectionLock ?? true,
-                };
-                if (registerOptions.signer !== undefined)
-                    pointerOptions.signer = registerOptions.signer;
-                if (registerOptions.feePayer !== undefined)
-                    pointerOptions.feePayer = registerOptions.feePayer;
-                if (registerOptions.computeUnits !== undefined)
-                    pointerOptions.computeUnits = registerOptions.computeUnits;
-                try {
-                    const pointerResult = await this.setCollectionPointer(result.asset, registerOptions.collectionPointer, pointerOptions);
-                    if ('success' in pointerResult && pointerResult.success) {
-                        signatures.push(pointerResult.signature);
-                    }
-                    else {
-                        const errorMsg = 'error' in pointerResult ? pointerResult.error : 'Unknown error';
-                        logger.warn(`Agent registered but collection pointer attach failed: ${errorMsg}`);
-                    }
-                }
-                catch (error) {
-                    logger.warn(`Agent registered but collection pointer attach failed: ${error instanceof Error ? error.message : String(error)}`);
-                }
-            }
-            if (signatures.length > 1) {
-                return {
-                    ...result,
-                    signatures,
-                };
-            }
-        }
-        return result;
+        return await this.identityTxBuilder.registerAgent(tokenUri, registerOptions);
     }
     async setAgentUri(asset, collectionOrUri, newUriOrOptions, maybeOptions) {
         let collection;

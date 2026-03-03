@@ -739,19 +739,33 @@ describe('SolanaSDK extended', () => {
     });
   });
 
-  // ==================== registerAgent with ATOM init error ====================
+  // ==================== registerAgent atomic ATOM behavior ====================
 
-  describe('registerAgent ATOM catch path', () => {
-    it('should handle ATOM init throwing an error', async () => {
+  describe('registerAgent ATOM atomic path', () => {
+    it('should not call separate ATOM initializeStats transaction', async () => {
       mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
         signature: 'sig1',
         success: true,
         asset: PublicKey.unique(),
       });
-      mockAtomTxBuilder.initializeStats.mockRejectedValueOnce(new Error('ATOM exploded'));
 
-      const result = await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: true });
-      expect('success' in result && result.success).toBe(true);
+      await signerSdk.registerAgent('ipfs://test', { atomEnabled: true });
+      expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
+    });
+
+    it('should propagate failure returned by atomic register', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: '',
+        success: false,
+        error: 'ATOM exploded',
+      });
+
+      const result = await signerSdk.registerAgent('ipfs://test', { atomEnabled: true });
+      expect('success' in result && result.success).toBe(false);
+      if ('success' in result) {
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('ATOM exploded');
+      }
     });
   });
 

@@ -85,7 +85,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
 
     // Create agent with ATOM enabled (default)
     const agentUri = `ipfs://agent_${Date.now()}`;
-    const registerResult = await sdk.registerAgent(agentUri, collection);
+    const registerResult = await sdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agent = registerResult.asset!;
     atomEnabledAgent = agent;
@@ -225,7 +225,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should initialize ATOM stats for agent', async () => {
         // Create new agent with atomEnabled: false to prevent auto-init
         const agentUri = `ipfs://newagent_${Date.now()}`;
-        const registerResult = await sdk.registerAgent(agentUri, collection, { atomEnabled: false });
+        const registerResult = await sdk.registerAgent(agentUri, { atomEnabled: false });
         expect(registerResult.success).toBe(true);
         const newAgent = registerResult.asset!;
 
@@ -273,7 +273,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should reject initialization by non-asset-holder', async () => {
         // Create agent owned by agentWallet with atomEnabled: false
         const agentUri = `ipfs://security_${Date.now()}`;
-        const registerResult = await sdk.registerAgent(agentUri, collection, { atomEnabled: false });
+        const registerResult = await sdk.registerAgent(agentUri, { atomEnabled: false });
         expect(registerResult.success).toBe(true);
         const secureAgent = registerResult.asset!;
 
@@ -307,7 +307,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should update stats after first feedback', async () => {
         // Create fresh agent
         const agentUri = `ipfs://ema_${Date.now()}`;
-        const registerResult = await sdk.registerAgent(agentUri, collection);
+        const registerResult = await sdk.registerAgent(agentUri);
         expect(registerResult.success).toBe(true);
         const emaAgent = registerResult.asset!;
 
@@ -327,7 +327,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
             score: 80,
             tag1: 'ema-test',
             feedbackUri: emaUri,
-            feedbackHash: createFeedbackHash(emaUri),
+            feedbackFileHash: createFeedbackHash(emaUri),
           }
         );
         expect(result.success).toBe(true);
@@ -345,7 +345,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should progress trust tier with multiple feedbacks', async () => {
         // Create fresh agent
         const agentUri = `ipfs://tier_${Date.now()}`;
-        const registerResult = await sdk.registerAgent(agentUri, collection);
+        const registerResult = await sdk.registerAgent(agentUri);
         expect(registerResult.success).toBe(true);
         const tierAgent = registerResult.asset!;
 
@@ -365,7 +365,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
               score: 85 + (i % 16), // High scores (max 100)
               tag1: `tier-test-${i}`,
               feedbackUri: tierUri,
-              feedbackHash: createFeedbackHash(tierUri),
+              feedbackFileHash: createFeedbackHash(tierUri),
             }
           );
           await new Promise(resolve => setTimeout(resolve, 1500));
@@ -380,7 +380,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should update HLL sketch for unique clients', async () => {
         // Create fresh agent
         const agentUri = `ipfs://hll_${Date.now()}`;
-        const registerResult = await sdk.registerAgent(agentUri, collection);
+        const registerResult = await sdk.registerAgent(agentUri);
         expect(registerResult.success).toBe(true);
         const hllAgent = registerResult.asset!;
 
@@ -404,15 +404,15 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         });
 
         const hll1Uri = `ipfs://hll1_${Date.now()}`;
-        await clientSdk.giveFeedback(hllAgent, { value: 75n, score: 75, tag1: 'hll1', feedbackUri: hll1Uri, feedbackHash: createFeedbackHash(hll1Uri) });
+        await clientSdk.giveFeedback(hllAgent, { value: 75n, score: 75, tag1: 'hll1', feedbackUri: hll1Uri, feedbackFileHash: createFeedbackHash(hll1Uri) });
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const hll2Uri = `ipfs://hll2_${Date.now()}`;
-        await client2Sdk.giveFeedback(hllAgent, { value: 80n, score: 80, tag1: 'hll2', feedbackUri: hll2Uri, feedbackHash: createFeedbackHash(hll2Uri) });
+        await client2Sdk.giveFeedback(hllAgent, { value: 80n, score: 80, tag1: 'hll2', feedbackUri: hll2Uri, feedbackFileHash: createFeedbackHash(hll2Uri) });
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         const hll3Uri = `ipfs://hll3_${Date.now()}`;
-        await client3Sdk.giveFeedback(hllAgent, { value: 85n, score: 85, tag1: 'hll3', feedbackUri: hll3Uri, feedbackHash: createFeedbackHash(hll3Uri) });
+        await client3Sdk.giveFeedback(hllAgent, { value: 85n, score: 85, tag1: 'hll3', feedbackUri: hll3Uri, feedbackFileHash: createFeedbackHash(hll3Uri) });
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         // Verify unique client count (HLL estimate)
@@ -425,7 +425,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
       it('should maintain ring buffer of recent scores', async () => {
         // Create fresh agent
         const agentUri = `ipfs://ring_${Date.now()}`;
-        const registerResult = await sdk.registerAgent(agentUri, collection);
+        const registerResult = await sdk.registerAgent(agentUri);
         expect(registerResult.success).toBe(true);
         const ringAgent = registerResult.asset!;
 
@@ -445,7 +445,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
               score: 70 + i * 5,
               tag1: `ring-${i}`,
               feedbackUri: ringUri,
-              feedbackHash: createFeedbackHash(ringUri),
+              feedbackFileHash: createFeedbackHash(ringUri),
             }
           );
           await new Promise(resolve => setTimeout(resolve, 1500));
@@ -483,7 +483,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
             score: 77,
             tag1: 'cpi-test',
             feedbackUri: cpiUri,
-            feedbackHash: createFeedbackHash(cpiUri),
+            feedbackFileHash: createFeedbackHash(cpiUri),
           }
         );
 
@@ -540,7 +540,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
             score: 88,
             tag1: 'summary-test',
             feedbackUri: summaryUri,
-            feedbackHash: createFeedbackHash(summaryUri),
+            feedbackFileHash: createFeedbackHash(summaryUri),
           }
         );
 
@@ -570,7 +570,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
             score: 72,
             tag1: 'cpi-read',
             feedbackUri: cpiReadUri,
-            feedbackHash: createFeedbackHash(cpiReadUri),
+            feedbackFileHash: createFeedbackHash(cpiReadUri),
           }
         );
 
@@ -592,7 +592,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
     beforeAll(async () => {
       // Create agent with feedback to revoke
       const agentUri = `ipfs://revoke_${Date.now()}`;
-      const registerResult = await sdk.registerAgent(agentUri, collection);
+      const registerResult = await sdk.registerAgent(agentUri);
       expect(registerResult.success).toBe(true);
       revokableAgent = registerResult.asset!;
 
@@ -612,7 +612,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           score: 65,
           tag1: 'revoke-test',
           feedbackUri: revokeUri,
-          feedbackHash: revokableFeedbackHash,
+          feedbackFileHash: revokableFeedbackHash,
         }
       );
       expect(feedbackResult.success).toBe(true);
@@ -669,7 +669,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
               score: 70 + (i % 20),
               tag1: `fillbuffer-${i}`,
               feedbackUri: fillUri,
-              feedbackHash: fillHash,
+              feedbackFileHash: fillHash,
             }
           );
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -708,7 +708,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
             score: 68,
             tag1: 'cpi-revoke-test',
             feedbackUri: cpiRevokeUri,
-            feedbackHash: cpiRevokeHash,
+            feedbackFileHash: cpiRevokeHash,
           }
         );
         expect(feedbackResult.success).toBe(true);
@@ -732,7 +732,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
     it('should demonstrate complete ATOM lifecycle', async () => {
       // 1. Create agent
       const agentUri = `ipfs://lifecycle_${Date.now()}`;
-      const registerResult = await sdk.registerAgent(agentUri, collection);
+      const registerResult = await sdk.registerAgent(agentUri);
       expect(registerResult.success).toBe(true);
       const lifecycleAgent = registerResult.asset!;
 
@@ -756,7 +756,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           score: 80,
           tag1: 'lifecycle-1',
           feedbackUri: lc1Uri,
-          feedbackHash: lc1Hash,
+          feedbackFileHash: lc1Hash,
         }
       );
       expect(feedback1.success).toBe(true);
@@ -777,7 +777,7 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
           score: 90,
           tag1: 'lifecycle-2',
           feedbackUri: lc2Uri,
-          feedbackHash: lc2Hash,
+          feedbackFileHash: lc2Hash,
         }
       );
       expect(feedback2.success).toBe(true);

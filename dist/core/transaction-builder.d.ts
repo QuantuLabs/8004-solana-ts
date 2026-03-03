@@ -98,17 +98,16 @@ export declare class IdentityTransactionBuilder {
     private connection;
     private payer?;
     private instructionBuilder;
+    private atomInstructionBuilder;
     private readonly programIds;
     constructor(connection: Connection, payer?: Keypair | undefined, programIds?: TransactionBuilderProgramIdOverrides);
     /**
      * Register a new agent (Metaplex Core) - v0.3.0
      * @param agentUri - Optional agent URI
-     * @param metadata - Optional metadata entries (key-value pairs)
-     * @param collection - Optional base registry collection pubkey (defaults to root-config base collection)
      * @param options - Write options (skipSend, signer, assetPubkey, atomEnabled)
      * @returns Transaction result with asset and all signatures
      */
-    registerAgent(agentUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
+    registerAgent(agentUri?: string, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {

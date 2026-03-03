@@ -563,10 +563,9 @@ class UltimateStressTest {
       const startTime = Date.now();
 
       const batchResults = await Promise.all(
-        batch.map(async (uri, idx) => {
-          const collection = this.collections[(i + idx) % this.collections.length];
+        batch.map(async (uri) => {
           try {
-            const result = await this.sdk.registerAgent(uri, { collection });
+            const result = await this.sdk.registerAgent(uri);
 
             if (result.success && result.asset) {
               this.agents.push(result.asset);
@@ -649,10 +648,9 @@ class UltimateStressTest {
     console.log('  Generating URI update tasks...');
     for (let i = 0; i < CONFIG.URI_UPDATES; i++) {
       const agent = this.agents[i % this.agents.length];
-      const collection = this.collections[i % this.collections.length];
       tasks.push({
         priority: 4,
-        task: () => this.updateUri(agent, collection, i),
+        task: () => this.updateUri(agent, i),
       });
     }
 
@@ -661,10 +659,9 @@ class UltimateStressTest {
     for (let i = 0; i < Math.min(CONFIG.OWNERSHIP_TRANSFERS, this.agents.length); i++) {
       const agent = this.agents[i];
       const newOwner = this.clients[i % this.clients.length];
-      const collection = this.collections[i % this.collections.length];
       tasks.push({
         priority: 5,
-        task: () => this.transferOwnership(agent, newOwner.publicKey, collection),
+        task: () => this.transferOwnership(agent, newOwner.publicKey),
       });
     }
 
@@ -719,7 +716,7 @@ class UltimateStressTest {
         tag1,
         tag2,
         feedbackUri,
-        feedbackHash: sha256(feedbackUri),
+        feedbackFileHash: sha256(feedbackUri),
       }, {
         feedbackIndex,
       });
@@ -796,23 +793,23 @@ class UltimateStressTest {
     }
   }
 
-  private async updateUri(agent: PublicKey, collection: PublicKey, taskIdx: number): Promise<void> {
+  private async updateUri(agent: PublicKey, taskIdx: number): Promise<void> {
     const startTime = Date.now();
     const uri = URI_GENERATORS[taskIdx % URI_GENERATORS.length]();
 
     try {
-      const result = await this.sdk.setAgentUri(agent, collection, uri);
+      const result = await this.sdk.setAgentUri(agent, uri);
       this.recordResult('uri_update', result.success ?? false, result.signature, startTime, result.error);
     } catch (e: any) {
       this.recordResult('uri_update', false, undefined, startTime, e.message);
     }
   }
 
-  private async transferOwnership(agent: PublicKey, newOwner: PublicKey, collection: PublicKey): Promise<void> {
+  private async transferOwnership(agent: PublicKey, newOwner: PublicKey): Promise<void> {
     const startTime = Date.now();
 
     try {
-      const result = await this.sdk.transferAgent(agent, newOwner, { collection });
+      const result = await this.sdk.transferAgent(agent, newOwner);
       this.recordResult('transfer', 'success' in result && result.success, result.signature, startTime, result.error);
     } catch (e: any) {
       this.recordResult('transfer', false, undefined, startTime, e.message);

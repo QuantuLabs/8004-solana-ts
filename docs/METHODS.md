@@ -205,11 +205,11 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 - `skipSend`: return unsigned transaction payload instead of sending.
 - `signer`: signer pubkey required in `skipSend` mode when SDK has no signer.
 - `assetPubkey`: pre-generated asset keypair pubkey required in `skipSend` mode.
-- `atomEnabled`: defaults to `false`; set `true` to enable ATOM auto-init at registration time.
-- `collectionPointer`: optional canonical pointer (`c1:...`) attached right after successful register.
+- `atomEnabled`: defaults to `false`; set `true` to enable ATOM and initialize stats atomically in the register transaction.
+- `collectionPointer`: optional canonical pointer (`c1:...`) attached atomically in the same register transaction.
 - `collectionLock`: optional lock flag for `collectionPointer` attach (`true` by default).
 
-Legacy overload (compat only): `registerAgent(tokenUri?, collection?, options?)`.
+Legacy overload removed: `registerAgent(tokenUri?, collection?, options?)` is no longer supported.
 
 ATOM can also be enabled later via `enableAtom(asset)` + `initializeAtomStats(asset)`.  
 `enableAtom()` is one-way/irreversible for that agent.
@@ -274,7 +274,7 @@ await sdk.giveFeedback(agentAsset, {
   score: 85,                                // 0-100 (optional)
   tag1: 'uptime',                           // Category tag (optional)
   tag2: 'day',                              // Period tag (optional)
-  feedbackUri: 'ipfs://QmFeedbackDetails',  // Feedback URI (required)
+  feedbackUri: 'ipfs://QmFeedbackDetails',  // Feedback URI (optional, defaults to '')
 });
 ```
 

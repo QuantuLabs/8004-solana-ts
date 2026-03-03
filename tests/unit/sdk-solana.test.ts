@@ -1134,7 +1134,7 @@ describe('SolanaSDK', () => {
     });
 
     it('registerAgent should allow skipSend', async () => {
-      await sdk.registerAgent('ipfs://test', undefined, {
+      await sdk.registerAgent('ipfs://test', {
         skipSend: true,
         signer: PublicKey.unique(),
         assetPubkey: PublicKey.unique(),
@@ -1142,14 +1142,21 @@ describe('SolanaSDK', () => {
       expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalled();
     });
 
-    it('registerAgent should skip pointer attach in skipSend mode', async () => {
-      await sdk.registerAgent('ipfs://test', undefined, {
+    it('registerAgent should pass pointer options in skipSend mode (single tx)', async () => {
+      await sdk.registerAgent('ipfs://test', {
         skipSend: true,
         signer: PublicKey.unique(),
         assetPubkey: PublicKey.unique(),
         collectionPointer: 'c1:abc123',
       });
 
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        expect.objectContaining({
+          skipSend: true,
+          collectionPointer: 'c1:abc123',
+        })
+      );
       expect(mockIdentityTxBuilder.setCollectionPointer).not.toHaveBeenCalled();
       expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).not.toHaveBeenCalled();
     });
@@ -1423,90 +1430,122 @@ describe('SolanaSDK', () => {
       await signerSdk.registerAgent('ipfs://test');
       expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
         'ipfs://test',
-        undefined,
         expect.objectContaining({ atomEnabled: false })
       );
     });
 
-    it('registerAgent should auto-initialize ATOM on success', async () => {
+    it('registerAgent should request atomic ATOM setup in register tx', async () => {
       mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
         signature: 'sig1',
         success: true,
         asset: PublicKey.unique(),
       });
-      mockAtomTxBuilder.initializeStats.mockResolvedValueOnce({
-        signature: 'sig2',
-        success: true,
-      });
 
-      const result = await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: true });
-      expect(mockAtomTxBuilder.initializeStats).toHaveBeenCalled();
-      if ('signatures' in result) {
-        expect(result.signatures).toHaveLength(2);
-      }
+      await signerSdk.registerAgent('ipfs://test', { atomEnabled: true });
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        expect.objectContaining({ atomEnabled: true })
+      );
+      expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
     });
 
     it('registerAgent should attach collection pointer with default lock=true', async () => {
-      const asset = PublicKey.unique();
       mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
         signature: 'sig1',
         success: true,
-        asset,
-      });
-      mockAtomTxBuilder.initializeStats.mockResolvedValueOnce({
-        signature: 'sig2',
-        success: true,
-      });
-      mockIdentityTxBuilder.setCollectionPointer.mockResolvedValueOnce({
-        signature: 'sig3',
-        success: true,
+        asset: PublicKey.unique(),
       });
 
-      const result = await signerSdk.registerAgent('ipfs://test', undefined, {
+      const result = await signerSdk.registerAgent('ipfs://test', {
         atomEnabled: true,
         collectionPointer: 'c1:abc123',
       });
 
-      expect(mockIdentityTxBuilder.setCollectionPointer).toHaveBeenCalledWith(
-        asset,
-        'c1:abc123',
-        undefined
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        expect.objectContaining({
+          atomEnabled: true,
+          collectionPointer: 'c1:abc123',
+        })
       );
+      if ('success' in result) {
+        expect(result.success).toBe(true);
+      }
+      expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should accept options as second argument (no undefined placeholder)', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: 'sig1',
+        success: true,
+        asset: PublicKey.unique(),
+      });
+
+      const result = await signerSdk.registerAgent('ipfs://test', {
+        atomEnabled: false,
+        collectionPointer: 'c1:abc123',
+      });
+
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        expect.objectContaining({
+          atomEnabled: false,
+          collectionPointer: 'c1:abc123',
+        })
+      );
+      expect(mockIdentityTxBuilder.setCollectionPointer).not.toHaveBeenCalled();
       expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).not.toHaveBeenCalled();
-      if ('signatures' in result) {
-        expect(result.signatures).toEqual(['sig1', 'sig2', 'sig3']);
+      if ('success' in result) {
+        expect(result.success).toBe(true);
       }
     });
 
     it('registerAgent should attach collection pointer with lock override', async () => {
-      const asset = PublicKey.unique();
       mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
         signature: 'sig1',
         success: true,
-        asset,
-      });
-      mockIdentityTxBuilder.setCollectionPointerWithOptions.mockResolvedValueOnce({
-        signature: 'sig3',
-        success: true,
+        asset: PublicKey.unique(),
       });
 
-      await signerSdk.registerAgent('ipfs://test', undefined, {
+      await signerSdk.registerAgent('ipfs://test', {
         atomEnabled: false,
         collectionPointer: 'c1:abc123',
         collectionLock: false,
       });
 
-      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).toHaveBeenCalledWith(
-        asset,
-        'c1:abc123',
-        false,
-        undefined
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        expect.objectContaining({
+          atomEnabled: false,
+          collectionPointer: 'c1:abc123',
+          collectionLock: false,
+        })
       );
+      expect(mockIdentityTxBuilder.setCollectionPointer).not.toHaveBeenCalled();
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should return failure when atomic register tx fails', async () => {
+      mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
+        signature: '',
+        success: false,
+        error: 'CollectionPointerAlreadySet',
+      });
+
+      const result = await signerSdk.registerAgent('ipfs://test', {
+        atomEnabled: false,
+        collectionPointer: 'c1:abc123',
+      });
+
+      expect('success' in result && result.success).toBe(false);
+      if ('success' in result) {
+        expect(result.error).toContain('CollectionPointerAlreadySet');
+      }
     });
 
     it('registerAgent should validate collection pointer before register', async () => {
       await expect(
-        signerSdk.registerAgent('ipfs://test', undefined, {
+        signerSdk.registerAgent('ipfs://test', {
           collectionPointer: 'bad-pointer',
         })
       ).rejects.toThrow('c1:');
@@ -1515,11 +1554,39 @@ describe('SolanaSDK', () => {
 
     it('registerAgent should validate collectionLock type before register', async () => {
       await expect(
-        signerSdk.registerAgent('ipfs://test', undefined, {
+        signerSdk.registerAgent('ipfs://test', {
           collectionPointer: 'c1:abc123',
           collectionLock: 'true' as any,
         })
       ).rejects.toThrow('collectionLock must be a boolean');
+      expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should reject invalid options argument type', async () => {
+      await expect(
+        (signerSdk.registerAgent as any)('ipfs://test', 'c1:abc123')
+      ).rejects.toThrow('Invalid registerAgent options argument');
+      expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should reject removed legacy collection overload', async () => {
+      await expect(
+        (signerSdk.registerAgent as any)('ipfs://test', PublicKey.unique())
+      ).rejects.toThrow('registerAgent(tokenUri, collection, options) was removed');
+      expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should reject options containing legacy collection key', async () => {
+      await expect(
+        (signerSdk.registerAgent as any)('ipfs://test', { collection: PublicKey.unique() })
+      ).rejects.toThrow('registerAgent no longer accepts a base collection override');
+      expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
+    });
+
+    it('registerAgent should reject removed legacy collection overload with 3 args', async () => {
+      await expect(
+        (signerSdk.registerAgent as any)('ipfs://test', PublicKey.unique(), 'bad-options')
+      ).rejects.toThrow('registerAgent(tokenUri, collection, options) was removed');
       expect(mockIdentityTxBuilder.registerAgent).not.toHaveBeenCalled();
     });
 
@@ -1530,7 +1597,7 @@ describe('SolanaSDK', () => {
         asset: PublicKey.unique(),
       });
 
-      await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: false });
+      await signerSdk.registerAgent('ipfs://test', { atomEnabled: false });
       expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
     });
 
@@ -1545,20 +1612,18 @@ describe('SolanaSDK', () => {
       expect(mockAtomTxBuilder.initializeStats).not.toHaveBeenCalled();
     });
 
-    it('registerAgent should still return success if ATOM init fails', async () => {
+    it('registerAgent should return failure when atomic register fails with atomEnabled=true', async () => {
       mockIdentityTxBuilder.registerAgent.mockResolvedValueOnce({
-        signature: 'sig1',
-        success: true,
-        asset: PublicKey.unique(),
-      });
-      mockAtomTxBuilder.initializeStats.mockResolvedValueOnce({
         signature: '',
         success: false,
         error: 'ATOM init failed',
       });
 
-      const result = await signerSdk.registerAgent('ipfs://test', undefined, { atomEnabled: true });
-      expect('success' in result && result.success).toBe(true);
+      const result = await signerSdk.registerAgent('ipfs://test', { atomEnabled: true });
+      expect('success' in result && result.success).toBe(false);
+      if ('success' in result) {
+        expect(result.error).toContain('ATOM init failed');
+      }
     });
 
     it('setAgentUri should delegate to identityTxBuilder', async () => {

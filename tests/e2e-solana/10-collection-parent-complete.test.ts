@@ -70,12 +70,11 @@ describe('Collection + Parent-Child E2E', () => {
     }
     baseCollection = base;
 
-    const child = await sdk.registerAgent(`ipfs://QmChild_${Date.now()}`, baseCollection, { atomEnabled: false });
-    const parentA = await sdk.registerAgent(`ipfs://QmParentA_${Date.now()}`, baseCollection, { atomEnabled: false });
-    const parentB = await sdk.registerAgent(`ipfs://QmParentB_${Date.now()}`, baseCollection, { atomEnabled: false });
+    const child = await sdk.registerAgent(`ipfs://QmChild_${Date.now()}`, { atomEnabled: false });
+    const parentA = await sdk.registerAgent(`ipfs://QmParentA_${Date.now()}`, { atomEnabled: false });
+    const parentB = await sdk.registerAgent(`ipfs://QmParentB_${Date.now()}`, { atomEnabled: false });
     const unauthorizedChild = await sdk.registerAgent(
       `ipfs://QmUnauthorizedChild_${Date.now()}`,
-      baseCollection,
       { atomEnabled: false }
     );
 

@@ -136,7 +136,7 @@ describe('SolanaSDK', () => {
           value: 85n,
           score: 85,
           feedbackUri: 'ipfs://QmTest',
-          feedbackHash: Buffer.alloc(32),
+          feedbackFileHash: Buffer.alloc(32),
         })
       ).rejects.toThrow('No signer configured - SDK is read-only');
     });

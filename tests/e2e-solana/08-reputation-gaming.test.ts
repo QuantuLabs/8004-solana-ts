@@ -93,7 +93,7 @@ describe('Reputation Gaming & Exploitation', () => {
     expect(collection).toBeDefined();
 
     const agentUri = `ipfs://gaming_agent_${Date.now()}`;
-    const registerResult = await ownerSdk.registerAgent(agentUri, collection);
+    const registerResult = await ownerSdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agent = registerResult.asset!;
 
@@ -120,7 +120,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 100, // Perfect score
             tag1: 'sybil-attack',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -159,7 +159,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 100,
             tag1: 'repeat-spam',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -196,7 +196,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 100,
             tag1: 'burst',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -225,7 +225,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 10, // Low score
             tag1: 'baseline',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -246,7 +246,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 100, // Sudden high score
             tag1: 'shock',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -285,7 +285,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 100,
             tag1: 'tier-boost',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -342,7 +342,7 @@ describe('Reputation Gaming & Exploitation', () => {
           score: 100,
           tag1: 'cycle1',
           feedbackUri: uri1,
-          feedbackHash: createFeedbackHash(uri1),
+          feedbackFileHash: createFeedbackHash(uri1),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -367,7 +367,7 @@ describe('Reputation Gaming & Exploitation', () => {
           score: 100,
           tag1: 'cycle2',
           feedbackUri: uri2,
-          feedbackHash: createFeedbackHash(uri2),
+          feedbackFileHash: createFeedbackHash(uri2),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -392,7 +392,7 @@ describe('Reputation Gaming & Exploitation', () => {
           score: 90,
           tag1: 'rapid-revoke',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -426,7 +426,7 @@ describe('Reputation Gaming & Exploitation', () => {
           score: 100,
           tag1: 'self-deal',
           feedbackUri: uri,
-          feedbackHash: createFeedbackHash(uri),
+          feedbackFileHash: createFeedbackHash(uri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -439,7 +439,7 @@ describe('Reputation Gaming & Exploitation', () => {
     it('should prevent creating sockpuppet agent for self-feedback loop', async () => {
       // Create second agent owned by same wallet
       const uri2 = `ipfs://sockpuppet_${Date.now()}`;
-      const result2 = await ownerSdk.registerAgent(uri2, collection);
+      const result2 = await ownerSdk.registerAgent(uri2);
       expect(result2.success).toBe(true);
       const agent2 = result2.asset!;
 
@@ -453,7 +453,7 @@ describe('Reputation Gaming & Exploitation', () => {
           score: 100,
           tag1: 'cross-agent',
           feedbackUri: fbUri,
-          feedbackHash: createFeedbackHash(fbUri),
+          feedbackFileHash: createFeedbackHash(fbUri),
         },
         { feedbackIndex: getNextFeedbackIndex() }
       );
@@ -481,7 +481,7 @@ describe('Reputation Gaming & Exploitation', () => {
             score: 100,
             tag1: 'timing-attack',
             feedbackUri: uri,
-            feedbackHash: createFeedbackHash(uri),
+            feedbackFileHash: createFeedbackHash(uri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );

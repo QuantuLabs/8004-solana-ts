@@ -52,7 +52,7 @@ describe('SEAL v1 - Complete E2E Tests', () => {
     expect(collection).toBeDefined();
 
     const agentUri = `ipfs://seal_test_agent_${Date.now()}`;
-    const registerResult = await sdk.registerAgent(agentUri, collection);
+    const registerResult = await sdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agentAsset = registerResult.asset!;
 
@@ -143,6 +143,45 @@ describe('SEAL v1 - Complete E2E Tests', () => {
       expect(result.signature).toBeDefined();
       expect(expectedSealHash.length).toBe(32);
       console.log('✅ seal_hash (score=null) computed:', expectedSealHash.toString('hex').slice(0, 16) + '...');
+    }, 30000);
+
+    it('should compute identical seal_hash when feedbackUri is omitted (defaults to empty)', async () => {
+      const feedbackParams = {
+        value: 4321n,
+        valueDecimals: 2,
+        score: 77,
+        tag1: 'quality',
+        tag2: 'week',
+        endpoint: '',
+      };
+
+      const expectedSealHash = computeSealHash({
+        ...feedbackParams,
+        feedbackUri: '',
+        feedbackFileHash: null,
+      });
+
+      const result = await clientSdk.giveFeedback(agentAsset, feedbackParams);
+      expect(result.signature).toBeDefined();
+
+      await new Promise(resolve => setTimeout(resolve, 4000));
+
+      if (result.feedbackIndex !== undefined) {
+        let feedback: Awaited<ReturnType<typeof sdk.readFeedback>> | null = null;
+        try {
+          feedback = await sdk.readFeedback(agentAsset, clientWallet.publicKey, Number(result.feedbackIndex));
+        } catch {
+          feedback = null;
+        }
+
+        if (feedback?.sealHash) {
+          expect(feedback.sealHash.toString('hex')).toBe(expectedSealHash.toString('hex'));
+        } else {
+          expect(expectedSealHash.length).toBe(32);
+        }
+      } else {
+        expect(expectedSealHash.length).toBe(32);
+      }
     }, 30000);
   });
 

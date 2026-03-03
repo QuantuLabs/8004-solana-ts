@@ -252,7 +252,7 @@ async function runScenario(config: ScenarioConfig): Promise<ScenarioReport> {
           tag1: 'quality',
           tag2: 'day',
           feedbackUri: `ipfs://fb_${i}`,
-          feedbackHash: sha256(`feedback_${i}`),
+          feedbackFileHash: sha256(`feedback_${i}`),
         });
         return {
           operation: 'feedback',

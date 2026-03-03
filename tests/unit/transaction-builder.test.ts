@@ -143,7 +143,7 @@ describe('IdentityTransactionBuilder', () => {
   describe('registerAgent', () => {
     it('should return PreparedTransaction when skipSend', async () => {
       const assetPubkey = PublicKey.unique();
-      const result = await builder.registerAgent('ipfs://test', undefined, {
+      const result = await builder.registerAgent('ipfs://test', {
         skipSend: true,
         assetPubkey,
         signer: payer.publicKey,
@@ -157,7 +157,7 @@ describe('IdentityTransactionBuilder', () => {
     });
 
     it('should require assetPubkey when skipSend', async () => {
-      const result = await builder.registerAgent('ipfs://test', undefined, {
+      const result = await builder.registerAgent('ipfs://test', {
         skipSend: true,
         signer: payer.publicKey,
       });
@@ -176,7 +176,7 @@ describe('IdentityTransactionBuilder', () => {
     });
 
     it('should use atomEnabled=false option', async () => {
-      const result = await builder.registerAgent('ipfs://test', undefined, {
+      const result = await builder.registerAgent('ipfs://test', {
         skipSend: true,
         assetPubkey: PublicKey.unique(),
         signer: payer.publicKey,
@@ -185,9 +185,54 @@ describe('IdentityTransactionBuilder', () => {
       expect('transaction' in result).toBe(true);
     });
 
-    it('should accept custom collection', async () => {
-      const collection = PublicKey.unique();
-      const result = await builder.registerAgent('ipfs://test', collection, {
+    it('should attach collection pointer atomically in the same transaction', async () => {
+      const result = await builder.registerAgent('ipfs://test', {
+        skipSend: true,
+        assetPubkey: PublicKey.unique(),
+        signer: payer.publicKey,
+        collectionPointer: 'c1:abc123',
+      });
+
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.instructions).toHaveLength(3); // compute budget + register + setCollectionPointer
+      }
+    });
+
+    it('should attach collection pointer atomically with lock=false option', async () => {
+      const result = await builder.registerAgent('ipfs://test', {
+        skipSend: true,
+        assetPubkey: PublicKey.unique(),
+        signer: payer.publicKey,
+        collectionPointer: 'c1:abc123',
+        collectionLock: false,
+      });
+
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.instructions).toHaveLength(3); // compute budget + register + setCollectionPointerWithOptions(false)
+      }
+    });
+
+    it('should initialize ATOM stats atomically when atomEnabled=true', async () => {
+      const result = await builder.registerAgent('ipfs://test', {
+        skipSend: true,
+        assetPubkey: PublicKey.unique(),
+        signer: payer.publicKey,
+        atomEnabled: true,
+      });
+
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.instructions).toHaveLength(3); // compute budget + register + initializeStats
+      }
+    });
+
+    it('should resolve base collection from root config', async () => {
+      const result = await builder.registerAgent('ipfs://test', {
         skipSend: true,
         assetPubkey: PublicKey.unique(),
         signer: payer.publicKey,
@@ -196,7 +241,7 @@ describe('IdentityTransactionBuilder', () => {
     });
 
     it('should accept empty agentUri', async () => {
-      const result = await builder.registerAgent(undefined, undefined, {
+      const result = await builder.registerAgent(undefined, {
         skipSend: true,
         assetPubkey: PublicKey.unique(),
         signer: payer.publicKey,
@@ -208,7 +253,7 @@ describe('IdentityTransactionBuilder', () => {
       const { fetchRootConfig } = await import('../../src/core/config-reader.js');
       (fetchRootConfig as jest.Mock).mockResolvedValueOnce(null);
 
-      const result = await builder.registerAgent('ipfs://test', undefined, {
+      const result = await builder.registerAgent('ipfs://test', {
         skipSend: true,
         assetPubkey: PublicKey.unique(),
         signer: payer.publicKey,
@@ -552,6 +597,35 @@ describe('ReputationTransactionBuilder', () => {
       expect('transaction' in result).toBe(true);
       if ('transaction' in result) {
         expect(result.feedbackIndex).toBeDefined();
+      }
+    });
+
+    it('should default omitted feedbackUri to empty string', async () => {
+      const result = await builder.giveFeedback(
+        PublicKey.unique(),
+        { value: '100' },
+        { skipSend: true, signer: payer.publicKey }
+      );
+      expect('transaction' in result).toBe(true);
+    });
+
+    it('should encode omitted feedbackUri exactly like empty feedbackUri', async () => {
+      const asset = PublicKey.unique();
+      const omitted = await builder.giveFeedback(
+        asset,
+        { value: '100' },
+        { skipSend: true, signer: payer.publicKey }
+      );
+      const explicitEmpty = await builder.giveFeedback(
+        asset,
+        { value: '100', feedbackUri: '' },
+        { skipSend: true, signer: payer.publicKey }
+      );
+
+      expect('transaction' in omitted).toBe(true);
+      expect('transaction' in explicitEmpty).toBe(true);
+      if ('transaction' in omitted && 'transaction' in explicitEmpty) {
+        expect(omitted.transaction).toBe(explicitEmpty.transaction);
       }
     });
 

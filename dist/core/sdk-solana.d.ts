@@ -772,33 +772,22 @@ export declare class SolanaSDK {
      * Register a new agent (write operation) - v0.3.0
      *
      * @param tokenUri - Token URI pointing to agent metadata JSON (IPFS, Arweave, or HTTP)
-     * @param collection - Optional base registry collection pubkey override (defaults to root-config base collection)
      * @param options - Optional settings for server mode:
      *   - `skipSend`: Return unsigned transaction instead of sending (for frontend signing)
      *   - `signer`: PublicKey of the signer (required with skipSend)
      *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
-     *   - `atomEnabled`: Set to true to enable ATOM at creation (default false)
+     *   - `atomEnabled`: Set to true to enable ATOM + initialize stats atomically at creation (default false)
      *     (use enableAtom() to turn it on later, one-way/irreversible)
-     *   - `collectionPointer`: Optional pointer (c1:<payload>) to attach after successful register
+     *   - `collectionPointer`: Optional pointer (c1:<payload>) attached atomically in the same tx
      *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
-     *     Note: when `skipSend=true`, only the register tx is prepared, so pointer attach is skipped.
+     *     If pointer attach fails, register also fails (single atomic transaction).
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
      *
      * @example
      * // Simple usage
      * const result = await sdk.registerAgent('ipfs://QmMetadata...');
-     *
-     * @example
-     * // With explicit base registry override (legacy)
-     * const result = await sdk.registerAgent('ipfs://QmMetadata...', myBaseRegistryCollection);
      */
     registerAgent(tokenUri?: string, options?: RegisterAgentOptions): Promise<(TransactionResult & {
-        asset?: PublicKey;
-        signatures?: string[];
-    }) | (PreparedTransaction & {
-        asset: PublicKey;
-    })>;
-    registerAgent(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions): Promise<(TransactionResult & {
         asset?: PublicKey;
         signatures?: string[];
     }) | (PreparedTransaction & {

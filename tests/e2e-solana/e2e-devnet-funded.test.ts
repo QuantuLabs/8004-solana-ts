@@ -85,7 +85,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       const tokenUri = `ipfs://devnet_test_${Date.now()}`;
 
       console.log('\n📝 Registering agent...');
-      const result = await sdk.registerAgent(tokenUri);
+      const result = await sdk.registerAgent(tokenUri, { atomEnabled: true });
 
       expect(result.success).toBe(true);
       expect(result.asset).toBeInstanceOf(PublicKey);
@@ -145,7 +145,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
         score: 85,
         tag1: 'devnet-test',
         feedbackUri,
-        feedbackHash: sha256(feedbackUri),
+        feedbackFileHash: sha256(feedbackUri),
       };
       const result = await clientSdk.giveFeedback(agentAsset, feedbackParams);
 
@@ -162,7 +162,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
         tag2: '',
         endpoint: '',
         feedbackUri: feedbackParams.feedbackUri,
-        feedbackFileHash: feedbackParams.feedbackHash,
+        feedbackFileHash: feedbackParams.feedbackFileHash,
       });
 
       console.log(`✅ Feedback index: ${feedbackIndex}`);
@@ -297,7 +297,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
         score: 90,
         tag1: 'multi-client-test',
         feedbackUri,
-        feedbackHash: sha256(feedbackUri),
+        feedbackFileHash: sha256(feedbackUri),
       });
 
       if (!result.success) {
@@ -327,7 +327,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
         score: 75,
         tag1: 'index-test-1',
         feedbackUri: feedbackUri1,
-        feedbackHash: sha256(feedbackUri1),
+        feedbackFileHash: sha256(feedbackUri1),
       });
 
       expect(result1.success).toBe(true);
@@ -382,7 +382,7 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
         score: 95,
         tag1: 'index-test-2',
         feedbackUri: feedbackUri2,
-        feedbackHash: sha256(feedbackUri2),
+        feedbackFileHash: sha256(feedbackUri2),
       });
 
       expect(result2.success).toBe(true);

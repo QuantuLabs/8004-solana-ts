@@ -168,7 +168,7 @@ class IndexerDBManipulator {
 // ============ TEST HELPERS ============
 async function createTestAgent(sdk: SolanaSDK, signer: Keypair): Promise<PublicKey> {
   console.log('  Creating test agent...');
-  // registerAgent(tokenUri?: string, collection?: PublicKey, options?: RegisterAgentOptions)
+  // registerAgent(tokenUri?: string, options?: RegisterAgentOptions)
   const tokenUri = `ipfs://integrity_test_${Date.now()}`;
   const result = await sdk.registerAgent(tokenUri);
   if (!result.asset) {

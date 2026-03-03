@@ -124,7 +124,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       const tokenUri = `ipfs://QmNoAtom${Date.now()}`;
 
       console.log('\n📝 Registering agent with atomEnabled: false...');
-      const result = await sdk.registerAgent(tokenUri, undefined, {
+      const result = await sdk.registerAgent(tokenUri, {
         atomEnabled: false,
       });
 
@@ -243,7 +243,7 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
         value: BigInt(score),
         score,
         feedbackUri,
-        feedbackHash: feedbackHashForRevoke,
+        feedbackFileHash: feedbackHashForRevoke,
       });
 
       expect(result).toHaveProperty('signature');

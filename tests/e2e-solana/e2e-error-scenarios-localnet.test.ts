@@ -122,7 +122,7 @@ describe('E2E: Error Scenarios (Localnet)', () => {
 
     it('should throw on giveFeedback without signer', async () => {
       await expect(
-        sdkReadOnly.giveFeedback(testAgent, { value: 85n, score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) })
+        sdkReadOnly.giveFeedback(testAgent, { value: 85n, score: 85, feedbackUri: 'ipfs://test', feedbackFileHash: Buffer.alloc(32) })
       ).rejects.toThrow('No signer configured');
     });
 
@@ -154,7 +154,7 @@ describe('E2E: Error Scenarios (Localnet)', () => {
 
   describe('Invalid inputs', () => {
     it('should handle invalid score in giveFeedback', async () => {
-      const result = await sdk.giveFeedback(testAgent, { value: 150n, score: 150, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(32) }) as { success: boolean; error?: string };
+      const result = await sdk.giveFeedback(testAgent, { value: 150n, score: 150, feedbackUri: 'ipfs://test', feedbackFileHash: Buffer.alloc(32) }) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toContain('Score must be between 0 and 100');
     }, 15000);
@@ -166,9 +166,9 @@ describe('E2E: Error Scenarios (Localnet)', () => {
     }, 15000);
 
     it('should handle invalid hash size', async () => {
-      const result = await sdk.giveFeedback(testAgent, { value: 85n, score: 85, feedbackUri: 'ipfs://test', feedbackHash: Buffer.alloc(16) }) as { success: boolean; error?: string };
+      const result = await sdk.giveFeedback(testAgent, { value: 85n, score: 85, feedbackUri: 'ipfs://test', feedbackFileHash: Buffer.alloc(16) }) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
-      expect(result.error).toContain('feedbackHash must be 32 bytes');
+      expect(result.error).toContain('feedbackFileHash must be 32 bytes');
     }, 15000);
   });
 
@@ -246,7 +246,7 @@ describe('E2E: Error Scenarios (Localnet)', () => {
         value: 0n,
         score: 0,
         feedbackUri: 'ipfs://score0',
-        feedbackHash: Buffer.alloc(32, 1),
+        feedbackFileHash: Buffer.alloc(32, 1),
       });
       // Self-feedback not allowed, so this will fail for a different reason
       // If using a different client, score=0 should be accepted
@@ -258,7 +258,7 @@ describe('E2E: Error Scenarios (Localnet)', () => {
         value: 100n,
         score: 100,
         feedbackUri: 'ipfs://score100',
-        feedbackHash: Buffer.alloc(32, 2),
+        feedbackFileHash: Buffer.alloc(32, 2),
       });
       // Self-feedback not allowed, so this will fail for a different reason
       expect(result).toBeDefined();
@@ -269,7 +269,7 @@ describe('E2E: Error Scenarios (Localnet)', () => {
         value: 101n,
         score: 101,
         feedbackUri: 'ipfs://score101',
-        feedbackHash: Buffer.alloc(32, 3),
+        feedbackFileHash: Buffer.alloc(32, 3),
       }) as { success: boolean; error?: string };
       expect(result.success).toBe(false);
       expect(result.error).toContain('Score must be between 0 and 100');

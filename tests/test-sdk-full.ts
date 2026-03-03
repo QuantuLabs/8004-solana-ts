@@ -168,16 +168,15 @@ async function main() {
   // 3.2 Register Agent (in new collection if created, otherwise base)
   console.log('\n3.2 registerAgent():');
   if (newCollection) {
-    console.log('  Using collection:', newCollection.toBase58());
+    console.log('  Created collection:', newCollection.toBase58(), '(registration still uses base collection)');
   } else {
-    console.log('  Using: base collection (default)');
+    console.log('  Using: base collection (auto-resolved)');
   }
   let newAgentAsset: PublicKey | null = null;
   try {
-    // SDK signature: registerAgent(tokenUri?, collection?, options?)
+    // SDK signature: registerAgent(tokenUri?, options?)
     const result = await sdk.registerAgent(
       `ipfs://QmTest${Date.now()}`,  // tokenUri
-      newCollection || undefined,  // use new collection if available
     );
     console.log('  Success:', result.success);
     console.log('  Signature:', result.signature);
@@ -227,7 +226,7 @@ async function main() {
         tag2: 'sdk',
         endpoint: '/api/test',
         feedbackUri: `ipfs://QmFeedback${Date.now()}`,
-        feedbackHash: Buffer.alloc(32, 1),
+        feedbackFileHash: Buffer.alloc(32, 1),
       }) as any;
       console.log('  Success:', result.success);
       console.log('  Signature:', result.signature);

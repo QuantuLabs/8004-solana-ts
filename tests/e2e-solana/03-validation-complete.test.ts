@@ -68,7 +68,7 @@ describe('Validation Module - Complete Coverage (3 Instructions)', () => {
     expect(collection).toBeDefined();
 
     const agentUri = `ipfs://agent_${Date.now()}`;
-    const registerResult = await sdk.registerAgent(agentUri, collection);
+    const registerResult = await sdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agent = registerResult.asset!;
 

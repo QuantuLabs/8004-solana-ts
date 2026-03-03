@@ -72,7 +72,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
     expect(collection).toBeDefined();
 
     const agentUri = `ipfs://agent_${Date.now()}`;
-    const registerResult = await sdk.registerAgent(agentUri, collection);
+    const registerResult = await sdk.registerAgent(agentUri);
     expect(registerResult.success).toBe(true);
     agent = registerResult.asset!;
 
@@ -108,7 +108,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 85,
             tag1: 'integration-test',
             feedbackUri,
-            feedbackHash: createFeedbackHash(feedbackUri),
+            feedbackFileHash: createFeedbackHash(feedbackUri),
           },
           { feedbackIndex: currentIndex }
         );
@@ -145,7 +145,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 75,
             tag1: 'atom-test',
             feedbackUri: atomFeedbackUri,
-            feedbackHash: createFeedbackHash(atomFeedbackUri),
+            feedbackFileHash: createFeedbackHash(atomFeedbackUri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -180,7 +180,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 90,
             tag1: 'noatom-test',
             feedbackUri: noAtomFeedbackUri,
-            feedbackHash: createFeedbackHash(noAtomFeedbackUri),
+            feedbackFileHash: createFeedbackHash(noAtomFeedbackUri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -204,7 +204,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 0,
             tag1: 'score-min',
             feedbackUri: uri0,
-            feedbackHash: createFeedbackHash(uri0),
+            feedbackFileHash: createFeedbackHash(uri0),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -220,7 +220,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 100,
             tag1: 'score-max',
             feedbackUri: uri100,
-            feedbackHash: createFeedbackHash(uri100),
+            feedbackFileHash: createFeedbackHash(uri100),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -236,7 +236,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 101,
             tag1: 'score-invalid',
             feedbackUri: uri101,
-            feedbackHash: createFeedbackHash(uri101),
+            feedbackFileHash: createFeedbackHash(uri101),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -256,7 +256,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 80,
             tag1: tag32,
             feedbackUri: uriTag32,
-            feedbackHash: createFeedbackHash(uriTag32),
+            feedbackFileHash: createFeedbackHash(uriTag32),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -273,7 +273,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 80,
             tag1: tag33,
             feedbackUri: uriTag33,
-            feedbackHash: createFeedbackHash(uriTag33),
+            feedbackFileHash: createFeedbackHash(uriTag33),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -292,7 +292,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 80,
             tag1: 'uri-max',
             feedbackUri: uri250,
-            feedbackHash: createFeedbackHash(uri250),
+            feedbackFileHash: createFeedbackHash(uri250),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -308,7 +308,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 80,
             tag1: 'uri-toolong',
             feedbackUri: uri251,
-            feedbackHash: createFeedbackHash(uri251),
+            feedbackFileHash: createFeedbackHash(uri251),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -327,7 +327,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 95,
             tag1: 'self-feedback',
             feedbackUri: selfUri,
-            feedbackHash: createFeedbackHash(selfUri),
+            feedbackFileHash: createFeedbackHash(selfUri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -345,7 +345,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 80,
             tag1: 'fake-agent',
             feedbackUri: fakeUri,
-            feedbackHash: createFeedbackHash(fakeUri),
+            feedbackFileHash: createFeedbackHash(fakeUri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -364,7 +364,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
             score: 88,
             tag1: 'event-test',
             feedbackUri,
-            feedbackHash: createFeedbackHash(feedbackUri),
+            feedbackFileHash: createFeedbackHash(feedbackUri),
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -409,7 +409,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 70,
           tag1: 'revoke-test',
           feedbackUri: revUri,
-          feedbackHash: revokableFeedbackHash,
+          feedbackFileHash: revokableFeedbackHash,
         },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -453,7 +453,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 65,
             tag1: 'atom-revoke',
             feedbackUri: atomRevokeUri,
-            feedbackHash: atomRevokeHash,
+            feedbackFileHash: atomRevokeHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -501,7 +501,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 60,
             tag1: 'double-revoke',
             feedbackUri: doubleRevokeUri,
-            feedbackHash: doubleRevokeHash,
+            feedbackFileHash: doubleRevokeHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -533,7 +533,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 55,
             tag1: 'unauthorized-revoke',
             feedbackUri: unauthUri,
-            feedbackHash: unauthHash,
+            feedbackFileHash: unauthHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -587,7 +587,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 92,
           tag1: 'response-test',
           feedbackUri: responseTestUri,
-          feedbackHash: responseFeedbackHash,
+          feedbackFileHash: responseFeedbackHash,
         },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -636,7 +636,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 78,
             tag1: 'multi-response',
             feedbackUri: multiRespUri,
-            feedbackHash: multiRespHash,
+            feedbackFileHash: multiRespHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );
@@ -752,7 +752,7 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
           score: 82,
             tag1: 'public-response',
             feedbackUri: publicRespUri,
-            feedbackHash: publicRespHash,
+            feedbackFileHash: publicRespHash,
           },
           { feedbackIndex: getNextFeedbackIndex() }
         );

@@ -38,7 +38,7 @@ describe('E2E: Full Agent Lifecycle on Localnet', () => {
   let collection: PublicKey;
   let feedbackIndex: bigint;
   let feedbackUri: string;
-  let feedbackHash: Buffer;
+  let feedbackFileHash: Buffer;
   let validationNonce: number;
 
   const rpcUrl = process.env.SOLANA_RPC_URL || 'http://127.0.0.1:8899';
@@ -122,7 +122,7 @@ describe('E2E: Full Agent Lifecycle on Localnet', () => {
     it('should register agent without ATOM (atomEnabled: false)', async () => {
       const tokenUri = `ipfs://QmNoAtom${Date.now()}`;
 
-      const result = await sdk.registerAgent(tokenUri, undefined, {
+      const result = await sdk.registerAgent(tokenUri, {
         atomEnabled: false,
       });
 
