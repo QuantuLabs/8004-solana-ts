@@ -227,12 +227,21 @@ describe('E2E: Error Scenarios', () => {
     }, 60000);
 
     it('should handle empty URI', async () => {
-      // Note: Empty URI may be accepted by SDK but rejected by program
-      // The test verifies at least one failure path exists
       const result = await sdk.registerAgent('');
-      // Either throws or returns success=false, or creates empty-uri agent (depends on validation)
-      // We accept any outcome - this is more of a documentation test
-      expect(result).toBeDefined();
+      if (result.success) {
+        expect(result.asset).toBeDefined();
+        if (!result.asset) {
+          throw new Error('Missing asset on successful empty-URI registration');
+        }
+        const loaded = await sdk.loadAgent(result.asset);
+        expect(loaded).not.toBeNull();
+        if (loaded) {
+          expect(loaded.agent_uri).toBe('');
+        }
+      } else {
+        expect(result.error).toBeDefined();
+        expect((result.error ?? '').length).toBeGreaterThan(0);
+      }
     }, 60000);
 
     it('should handle invalid hash size', async () => {

@@ -118,13 +118,16 @@ const upload = await sdk.createCollection(collectionInput);
 // upload.uri      -> ipfs://<cid>
 // upload.pointer  -> canonical c1:b... pointer
 
-// 3) Register agent (ATOM is off by default)
-const result = await sdk.registerAgent('ipfs://QmAgentMetadata...');
+// 3) Register agent and attach collection pointer atomically (recommended)
+const result = await sdk.registerAgent('ipfs://QmAgentMetadata...', {
+  collectionPointer: upload.pointer!,
+});
 // Optional ATOM opt-in at registration:
 // const result = await sdk.registerAgent('ipfs://QmAgentMetadata...', { atomEnabled: true });
 
-// 4) Advanced: set canonical pointer on the agent account
-await sdk.setCollectionPointer(result.asset, upload.pointer!); // lock=true by default
+// 4) Alternative flow: register first, then attach pointer later
+const noPointer = await sdk.registerAgent('ipfs://QmAgentMetadata...');
+await sdk.setCollectionPointer(noPointer.asset, upload.pointer!); // lock=true by default
 
 // 5) Advanced: parent link (hierarchy)
 await sdk.setParentAsset(result.asset, parentAssetPubkey, { lock: false });
@@ -191,6 +194,7 @@ agent.getAgentWalletPublicKey();        // operational wallet or null
 | `enableAtom` | `(asset) => Promise<TransactionResult>` | Enable ATOM one-way for an existing agent |
 | `transferAgent` | `(asset, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership (base registry auto-resolved; standard token wallet transfer also works) |
 | `transferAgent` (legacy) | `(asset, collection, newOwner, options?) => Promise<TransactionResult \| PreparedTransaction>` | Transfer ownership with explicit base registry pubkey |
+| `burnAgent` | `(asset, options?) => Promise<TransactionResult \| PreparedTransaction>` | Burn agent Core asset (irreversible) |
 | `syncOwner` | `(asset, options?) => Promise<TransactionResult \| PreparedTransaction>` | Sync cached owner with live Core owner |
 | `setAgentUri` | `(asset, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update agent URI (base registry auto-resolved) |
 | `setAgentUri` (legacy) | `(asset, collection, newUri, options?) => Promise<TransactionResult \| PreparedTransaction>` | Update URI with explicit base registry pubkey |
@@ -213,6 +217,18 @@ Legacy overload removed: `registerAgent(tokenUri?, collection?, options?)` is no
 
 ATOM can also be enabled later via `enableAtom(asset)` + `initializeAtomStats(asset)`.  
 `enableAtom()` is one-way/irreversible for that agent.
+
+### `burnAgent()` Notes
+
+`burnAgent(asset, options?)` burns the Core asset and is irreversible.
+It does not close the registry `AgentAccount` PDA (no on-chain unregister instruction yet).
+If `feePayer` is provided, it must match `signer`.
+
+```typescript
+await sdk.burnAgent(asset);
+```
+
+`burnAgent()` uses standard `WriteOptions` (`skipSend`, `signer`, `feePayer`, `computeUnits`).
 
 ### On-chain Metadata
 

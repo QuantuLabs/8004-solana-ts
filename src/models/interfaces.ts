@@ -135,8 +135,8 @@ export interface GiveFeedbackParams {
   tag2?: string;
   /** Endpoint used (max 250 UTF-8 bytes) */
   endpoint?: string;
-  /** URI to detailed feedback file (max 250 UTF-8 bytes) */
-  feedbackUri: string;
+  /** URI to detailed feedback file (max 250 UTF-8 bytes, optional) */
+  feedbackUri?: string;
   /**
    * SEAL v1: Optional hash of the feedback file content (32 bytes).
    * Used for external file integrity verification.

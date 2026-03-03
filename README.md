@@ -77,7 +77,7 @@ const agentMeta = buildRegistrationFileJson({
     { type: ServiceType.A2A, value: 'https://api.example.com/a2a' },
     { type: ServiceType.OASF, value: 'https://api.example.com/oasf' },
   ],
-  skills: ['natural_language_processing/text_generation/text_generation'],
+  skills: ['natural_language_processing/natural_language_generation/text_completion'],
   domains: ['technology/software_engineering/software_engineering'],
 });
 
@@ -280,11 +280,10 @@ const indexedLegacy = await sdk.getAgentByIndexerId(42);
 The feedback system supports rich metrics with 8004 standardized tags. `value` is required, `score` is optional.
 
 ```typescript
-// Basic feedback (value + feedbackUri required)
+// Basic feedback (feedbackUri optional, defaults to '')
 await sdk.giveFeedback(agent.asset, {
   value: '85',
   tag1: 'starred',
-  feedbackUri: 'ipfs://QmFeedback...',
 });
 
 // Revenue tracking with decimals
@@ -369,6 +368,14 @@ await sdk.initializeAtomStats(asset);
 ```
 
 `enableAtom()` is one-way/irreversible for that agent (cannot be disabled later).
+
+To permanently remove an agent Core asset:
+
+```typescript
+await sdk.burnAgent(asset); // irreversible burn
+```
+
+`burnAgent()` burns the Core asset only (it does not close the on-chain `AgentAccount` PDA).
 
 SEAL helper methods and examples are documented in [`docs/METHODS.md#seal-v1-methods`](./docs/METHODS.md#seal-v1-methods).
 

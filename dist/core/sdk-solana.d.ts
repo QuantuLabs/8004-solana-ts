@@ -954,6 +954,13 @@ export declare class SolanaSDK {
      */
     transferAgent(asset: PublicKey, collection: PublicKey, newOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
+     * Burn agent Core asset (write operation)
+     * Note: This burns the Core asset only. The AgentAccount PDA is not closed by this call.
+     * @param asset - Agent Core asset pubkey
+     * @param options - Write options (skipSend, signer)
+     */
+    burnAgent(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
      * Sync agent owner after external NFT transfer (write operation)
      * Call this after the Core NFT was transferred outside of the SDK
      * to update the AgentAccount's owner field

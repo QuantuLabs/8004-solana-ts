@@ -165,7 +165,6 @@ describe('Reputation Module - Complete Coverage (3 Instructions)', () => {
         const agentUri = `ipfs://noatom_${Date.now()}`;
         const registerResult = await sdk.registerAgent(
           agentUri,
-          collection,
           { atomEnabled: false }
         );
         expect(registerResult.success).toBe(true);

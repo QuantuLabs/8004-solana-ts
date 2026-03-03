@@ -138,6 +138,7 @@ jest.unstable_mockModule('../../src/core/transaction-builder.js', () => ({
     setMetadata: jest.fn().mockResolvedValue(mockTxResult),
     deleteMetadata: jest.fn().mockResolvedValue(mockTxResult),
     transferAgent: jest.fn().mockResolvedValue(mockTxResult),
+    burnAgent: jest.fn().mockResolvedValue(mockTxResult),
     syncOwner: jest.fn().mockResolvedValue(mockTxResult),
     enableAtom: jest.fn().mockResolvedValue(mockTxResult),
     setAgentWallet: jest.fn().mockResolvedValue(mockTxResult),

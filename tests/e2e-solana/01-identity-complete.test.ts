@@ -18,9 +18,7 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
   let ownerKeypair: Keypair;
   let wallet2Keypair: Keypair;
   let collection: PublicKey;
-  let userCollection: PublicKey;
   let agent: PublicKey;
-  let agent2: PublicKey;
 
   beforeAll(async () => {
     connection = new Connection(RPC_URL, 'confirmed');
@@ -114,47 +112,11 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
   // ========================================
   describe('5. update_user_registry_metadata', () => {
     it('should update user registry metadata URI', async () => {
-      if (!userCollection) {
-        console.log('[SKIP] No user registry created');
-        return;
-      }
-
-      const newUri = `ipfs://QmUserRegistryUpdated_${Date.now()}`;
-      const result = await sdk.updateCollectionUri(userCollection, newUri);
-
-      expect(result.success).toBe(true);
-
-      // Wait for indexer
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Verify collection URI updated via on-chain query
-      const collectionInfo = await sdk.getCollection(userCollection);
-      if (collectionInfo) {
-        // Collection info should reflect the update
-        expect(collectionInfo.collection.toBase58()).toBe(userCollection.toBase58());
-        console.log('[OK] User registry URI update verified');
-      }
-
-      console.log('[OK] User registry metadata updated');
-      console.log('     Signature:', result.signature);
+      console.log('[SKIP] user registry metadata flow removed in v0.6.0 (single-collection architecture)');
     }, 30000);
 
     it('should reject update from non-owner', async () => {
-      if (!userCollection) {
-        console.log('[SKIP] No user registry created');
-        return;
-      }
-
-      const sdk2 = new SolanaSDK({
-        rpcUrl: RPC_URL,
-        programIds: { agentRegistry: PROGRAM_ID, atomEngine: ATOM_ENGINE_ID, mplCore: MPL_CORE_ID },
-        signer: wallet2Keypair,
-      });
-
-      const result = await sdk2.updateCollectionUri(userCollection, 'ipfs://QmUnauthorized');
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Unauthorized');
-      console.log('[OK] Unauthorized update rejected');
+      console.log('[SKIP] user registry metadata flow removed in v0.6.0 (single-collection architecture)');
     }, 30000);
   });
 
@@ -166,7 +128,6 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       const baseCollection = await sdk.getBaseCollection();
       const result = await sdk.registerAgent(
         'ipfs://QmTestAgent',
-        baseCollection!,
         { atomEnabled: false }
       );
 
@@ -175,18 +136,19 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       collection = baseCollection!;
       agent = result.asset!;
 
-      // Wait for indexer
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Verify agent indexed
-      const agentData = await sdk.loadAgent(agent);
-      if (agentData) {
-        expect(agentData.agent_uri).toBe('ipfs://QmTestAgent');
-        expect(new PublicKey(agentData.collection).toBase58()).toBe(collection.toBase58());
-        console.log('[OK] Agent verified in indexer');
-      } else {
-        console.log('⚠️  Agent registered on-chain, indexer not synced');
+      // Verify on-chain agent visibility with retry for RPC propagation.
+      let agentData = await sdk.loadAgent(agent);
+      for (let i = 0; i < 5 && !agentData; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        agentData = await sdk.loadAgent(agent);
       }
+      expect(agentData).not.toBeNull();
+      if (!agentData) {
+        throw new Error('Agent not readable on-chain after registration');
+      }
+      expect(agentData.agent_uri).toBe('ipfs://QmTestAgent');
+      expect(new PublicKey(agentData.collection).toBase58()).toBe(collection.toBase58());
+      console.log('[OK] Agent verified on-chain');
 
       console.log('[OK] Agent registered in base collection');
       console.log('     Asset:', agent.toBase58());
@@ -194,36 +156,7 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
     }, 30000);
 
     it('should register agent in user registry', async () => {
-      if (!userCollection) {
-        console.log('[SKIP] No user registry created');
-        return;
-      }
-
-      const result = await sdk.registerAgent(
-        'ipfs://QmUserRegistryAgent',
-        userCollection,
-        { atomEnabled: false }
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.asset).toBeDefined();
-      agent2 = result.asset!;
-
-      // Wait for indexer
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Verify agent indexed in user registry
-      const agentData = await sdk.loadAgent(agent2);
-      if (agentData) {
-        expect(agentData.agent_uri).toBe('ipfs://QmUserRegistryAgent');
-        expect(new PublicKey(agentData.collection).toBase58()).toBe(userCollection.toBase58());
-        console.log('[OK] Agent verified in user registry via indexer');
-      } else {
-        console.log('⚠️  Agent registered on-chain, indexer not synced');
-      }
-
-      console.log('[OK] Agent registered in user registry');
-      console.log('     Asset:', agent2.toBase58());
+      console.log('[SKIP] user registry flow removed in v0.6.0 (single-collection architecture)');
     }, 30000);
   });
 
@@ -234,7 +167,6 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
     it('should register agent with ATOM explicitly disabled', async () => {
       const result = await sdk.registerAgent(
         'ipfs://QmAgentNoAtom',
-        collection,
         { atomEnabled: false }
       );
 
@@ -251,7 +183,6 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
     it('should register agent with ATOM explicitly enabled', async () => {
       const result = await sdk.registerAgent(
         'ipfs://QmAgentWithAtom',
-        collection,
         { atomEnabled: true }
       );
 
@@ -276,7 +207,6 @@ describe('Identity Module - Complete Coverage (15 Instructions)', () => {
       // Create agent with ATOM disabled
       const result = await sdk.registerAgent(
         'ipfs://QmAgentForAtomEnable',
-        collection,
         { atomEnabled: false }
       );
       agentNoAtom = result.asset!;

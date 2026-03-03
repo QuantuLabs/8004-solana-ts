@@ -2,13 +2,15 @@
  * Tests for transaction-builder.ts send-mode (non-skipSend) paths.
  * Covers: sendWithRetry, normal-mode branches for all builders.
  *
- * Strategy: We can't mock sendAndConfirmTransaction (ESM + huge module OOM).
- * Instead, we mock Connection.sendRawTransaction & Connection.confirmTransaction
- * which are what sendAndConfirmTransaction calls internally.
+ * Strategy: We can't mock sendAndConfirmTransaction directly (ESM + huge module OOM).
+ * Instead, we mock Connection RPC calls used internally:
+ * - sendRawTransaction
+ * - getSignatureStatus
+ * - getBlockHeight
  */
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { PublicKey, Connection, Keypair, TransactionExpiredBlockheightExceededError } from '@solana/web3.js';
+import { PublicKey, Connection, Keypair } from '@solana/web3.js';
 
 const MOCK_BLOCKHASH = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi';
 const MOCK_SIG = '5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQU';
@@ -72,10 +74,14 @@ function createMockConnection(): Connection {
   } as any);
   // Mock what sendAndConfirmTransaction calls internally
   jest.spyOn(conn, 'sendRawTransaction').mockResolvedValue(MOCK_SIG);
-  jest.spyOn(conn, 'confirmTransaction').mockResolvedValue({
+  jest.spyOn(conn, 'getSignatureStatus').mockResolvedValue({
     context: { slot: 0 },
-    value: { err: null },
+    value: {
+      confirmationStatus: 'confirmed',
+      err: null,
+    },
   } as any);
+  jest.spyOn(conn, 'getBlockHeight').mockResolvedValue(900);
   return conn;
 }
 
@@ -99,6 +105,30 @@ describe('IdentityTransactionBuilder - send mode', () => {
     if ('asset' in result) {
       expect(result.asset).toBeDefined();
     }
+  });
+
+  it('registerAgent - mismatched signer in send mode returns error', async () => {
+    const result = await builder.registerAgent('ipfs://test', {
+      signer: PublicKey.unique(),
+    });
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.signer must match');
+  });
+
+  it('registerAgent - mismatched feePayer in send mode returns error', async () => {
+    const result = await builder.registerAgent('ipfs://test', {
+      feePayer: PublicKey.unique(),
+    });
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.feePayer must match signer');
   });
 
   it('registerAgent - normal mode no-payer after root config check returns error', async () => {
@@ -128,6 +158,62 @@ describe('IdentityTransactionBuilder - send mode', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('read-only');
     }
+  });
+
+  it('setCollectionPointer - mismatched signer in send mode returns error', async () => {
+    const result = await builder.setCollectionPointer(
+      PublicKey.unique(),
+      'c1:abc123',
+      { signer: PublicKey.unique() }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.signer must match');
+  });
+
+  it('setCollectionPointer - mismatched feePayer in send mode returns error', async () => {
+    const result = await builder.setCollectionPointer(
+      PublicKey.unique(),
+      'c1:abc123',
+      { feePayer: PublicKey.unique() }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.feePayer must match signer');
+  });
+
+  it('setParentAsset - mismatched signer in send mode returns error', async () => {
+    const result = await builder.setParentAsset(
+      PublicKey.unique(),
+      PublicKey.unique(),
+      { signer: PublicKey.unique() }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.signer must match');
+  });
+
+  it('setParentAsset - mismatched feePayer in send mode returns error', async () => {
+    const result = await builder.setParentAsset(
+      PublicKey.unique(),
+      PublicKey.unique(),
+      { feePayer: PublicKey.unique() }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.feePayer must match signer');
   });
 
   it('setMetadata - normal mode sends transaction', async () => {
@@ -200,6 +286,56 @@ describe('IdentityTransactionBuilder - send mode', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('read-only');
     }
+  });
+
+  it('burnAgent - normal mode sends transaction', async () => {
+    const result = await builder.burnAgent(PublicKey.unique());
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(true);
+    expect(result.signature).toBeTruthy();
+  });
+
+  it('burnAgent - no payer in send mode returns error', async () => {
+    const readOnly = new IdentityTransactionBuilder(conn);
+    const result = await readOnly.burnAgent(
+      PublicKey.unique(),
+      { signer: payer.publicKey }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('read-only');
+  });
+
+  it('burnAgent - mismatched signer in send mode returns error', async () => {
+    const result = await builder.burnAgent(
+      PublicKey.unique(),
+      { signer: PublicKey.unique() }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.signer must match');
+  });
+
+  it('burnAgent - mismatched feePayer in send mode returns error', async () => {
+    const result = await builder.burnAgent(
+      PublicKey.unique(),
+      { feePayer: PublicKey.unique() }
+    );
+    expect('success' in result).toBe(true);
+    if (!('success' in result)) {
+      throw new Error('Expected TransactionResult in send mode');
+    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('options.feePayer must match signer');
   });
 
   it('syncOwner - normal mode sends transaction', async () => {
@@ -383,20 +519,23 @@ describe('IdentityTransactionBuilder - sendWithRetry', () => {
       .mockResolvedValueOnce({
         blockhash: Keypair.generate().publicKey.toBase58(),
         lastValidBlockHeight: 999,
-      } as any)
-      .mockResolvedValueOnce({
-        blockhash: Keypair.generate().publicKey.toBase58(),
-        lastValidBlockHeight: 1000,
       } as any);
 
     const sendSpy = jest.spyOn(conn, 'sendRawTransaction');
     sendSpy.mockResolvedValueOnce('sig-expired');
     sendSpy.mockRejectedValueOnce(new Error('already in use'));
 
-    const confirmSpy = jest.spyOn(conn, 'confirmTransaction');
-    confirmSpy.mockRejectedValueOnce(
-      new TransactionExpiredBlockheightExceededError('sig-expired')
-    );
+    const signatureStatusSpy = jest.spyOn(conn, 'getSignatureStatus');
+    signatureStatusSpy
+      .mockResolvedValueOnce({ context: { slot: 0 }, value: null } as any)
+      .mockResolvedValue({
+        context: { slot: 0 },
+        value: {
+          confirmationStatus: 'confirmed',
+          err: null,
+        },
+      } as any);
+    jest.spyOn(conn, 'getBlockHeight').mockResolvedValue(1001);
 
     jest.spyOn(conn, 'getAccountInfo').mockResolvedValue({
       data: Buffer.alloc(300),
@@ -411,6 +550,7 @@ describe('IdentityTransactionBuilder - sendWithRetry', () => {
 
     expect('success' in result && result.success).toBe(true);
     expect(sendSpy.mock.calls.length).toBe(2);
+    expect(latestBlockhashSpy).toHaveBeenCalled();
   });
 
   it('should fail register when first attempt expires, retry gets already in use, and agent account is absent', async () => {
@@ -419,20 +559,23 @@ describe('IdentityTransactionBuilder - sendWithRetry', () => {
       .mockResolvedValueOnce({
         blockhash: Keypair.generate().publicKey.toBase58(),
         lastValidBlockHeight: 999,
-      } as any)
-      .mockResolvedValueOnce({
-        blockhash: Keypair.generate().publicKey.toBase58(),
-        lastValidBlockHeight: 1000,
       } as any);
 
     const sendSpy = jest.spyOn(conn, 'sendRawTransaction');
     sendSpy.mockResolvedValueOnce('sig-expired');
     sendSpy.mockRejectedValueOnce(new Error('already in use'));
 
-    const confirmSpy = jest.spyOn(conn, 'confirmTransaction');
-    confirmSpy.mockRejectedValueOnce(
-      new TransactionExpiredBlockheightExceededError('sig-expired')
-    );
+    const signatureStatusSpy = jest.spyOn(conn, 'getSignatureStatus');
+    signatureStatusSpy
+      .mockResolvedValueOnce({ context: { slot: 0 }, value: null } as any)
+      .mockResolvedValue({
+        context: { slot: 0 },
+        value: {
+          confirmationStatus: 'confirmed',
+          err: null,
+        },
+      } as any);
+    jest.spyOn(conn, 'getBlockHeight').mockResolvedValue(1001);
 
     jest.spyOn(conn, 'getAccountInfo').mockResolvedValue(null);
 
@@ -444,6 +587,7 @@ describe('IdentityTransactionBuilder - sendWithRetry', () => {
       expect(result.error).toContain('already in use');
     }
     expect(sendSpy.mock.calls.length).toBe(2);
+    expect(latestBlockhashSpy).toHaveBeenCalled();
   });
 });
 

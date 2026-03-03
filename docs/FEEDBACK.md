@@ -28,7 +28,7 @@ await sdk.giveFeedback(agent.asset, {
 | `tag1` | `string` | Primary category tag (max 32 bytes) |
 | `tag2` | `string` | Secondary qualifier (max 32 bytes) |
 | `endpoint` | `string` | Agent endpoint that was called (max 250 bytes) |
-| `feedbackUri` | `string` | IPFS/HTTP link to detailed feedback |
+| `feedbackUri` | `string` | Optional IPFS/HTTP link to detailed feedback (defaults to empty string) |
 
 ## Tag Helper
 

@@ -518,7 +518,6 @@ describe('ATOM Engine Module - Complete Coverage (6 Instructions)', () => {
         const agentUri = `ipfs://nostats_${Date.now()}`;
         const registerResult = await sdk.registerAgent(
           agentUri,
-          collection,
           { atomEnabled: false }
         );
         expect(registerResult.success).toBe(true);

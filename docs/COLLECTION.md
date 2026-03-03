@@ -38,13 +38,14 @@ Two supported flows:
 
 ```typescript
 // A) Register + attach in one high-level flow
-const result = await sdk.registerAgent(agentUri, {
+const resultInline = await sdk.registerAgent(agentUri, {
   collectionPointer: upload.pointer!,
   collectionLock: true, // optional, defaults to true
 });
 
 // B) Attach after registration
-await sdk.setCollectionPointer(result.asset!, upload.pointer!); // lock=true by default
+const resultNoPointer = await sdk.registerAgent(agentUri);
+await sdk.setCollectionPointer(resultNoPointer.asset!, upload.pointer!); // lock=true by default
 ```
 
 ## 3. Editable Then Finalize (Lock)
@@ -92,3 +93,13 @@ const pointers = await sdk.getCollectionPointers({ creator: creatorPubkey });
 const count = await sdk.getCollectionAssetCount(upload.pointer!);
 const assets = await sdk.getCollectionAssets(upload.pointer!, { limit: 50 });
 ```
+
+## 7. Decommission an Agent
+
+If an agent must be retired, you can burn the Core asset:
+
+```typescript
+await sdk.burnAgent(asset); // irreversible
+```
+
+This burns the Core asset only; it does not close the registry `AgentAccount` PDA.

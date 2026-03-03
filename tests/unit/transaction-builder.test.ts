@@ -96,6 +96,8 @@ describe('serializeTransaction', () => {
     expect(result.blockhash).toBe(MOCK_BLOCKHASH);
     expect(result.lastValidBlockHeight).toBe(100);
     expect(result.signer).toBe(signer.publicKey.toBase58());
+    expect(result.feePayer).toBe(signer.publicKey.toBase58());
+    expect(result.requiredSigners).toEqual([signer.publicKey.toBase58()]);
     expect(result.signed).toBe(false);
     expect(typeof result.transaction).toBe('string');
     expect(() => Buffer.from(result.transaction, 'base64')).not.toThrow();
@@ -124,8 +126,13 @@ describe('serializeTransaction', () => {
       data: Buffer.alloc(0),
     });
 
-    serializeTransaction(tx, signer.publicKey, MOCK_BLOCKHASH, 100, feePayer.publicKey);
+    const result = serializeTransaction(tx, signer.publicKey, MOCK_BLOCKHASH, 100, feePayer.publicKey);
     expect(tx.feePayer).toEqual(feePayer.publicKey);
+    expect(result.feePayer).toBe(feePayer.publicKey.toBase58());
+    expect(result.requiredSigners).toEqual([
+      signer.publicKey.toBase58(),
+      feePayer.publicKey.toBase58(),
+    ]);
   });
 });
 
@@ -231,6 +238,21 @@ describe('IdentityTransactionBuilder', () => {
       }
     });
 
+    it('should honor explicit feePayer in skipSend mode', async () => {
+      const feePayer = PublicKey.unique();
+      const result = await builder.registerAgent('ipfs://test', {
+        skipSend: true,
+        assetPubkey: PublicKey.unique(),
+        signer: payer.publicKey,
+        feePayer,
+      });
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.feePayer?.toBase58()).toBe(feePayer.toBase58());
+      }
+    });
+
     it('should resolve base collection from root config', async () => {
       const result = await builder.registerAgent('ipfs://test', {
         skipSend: true,
@@ -329,6 +351,21 @@ describe('IdentityTransactionBuilder', () => {
 
       expect('transaction' in result).toBe(true);
     });
+
+    it('should honor explicit feePayer in skipSend mode', async () => {
+      const feePayer = PublicKey.unique();
+      const result = await builder.setCollectionPointer(
+        PublicKey.unique(),
+        'c1:abc123',
+        { skipSend: true, signer: payer.publicKey, feePayer }
+      );
+
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.feePayer?.toBase58()).toBe(feePayer.toBase58());
+      }
+    });
   });
 
   describe('setCollectionPointerWithOptions', () => {
@@ -358,6 +395,21 @@ describe('IdentityTransactionBuilder', () => {
       );
 
       expect('transaction' in result).toBe(true);
+    });
+
+    it('should honor explicit feePayer in skipSend mode', async () => {
+      const feePayer = PublicKey.unique();
+      const result = await builder.setParentAsset(
+        PublicKey.unique(),
+        PublicKey.unique(),
+        { skipSend: true, signer: payer.publicKey, feePayer }
+      );
+
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.feePayer?.toBase58()).toBe(feePayer.toBase58());
+      }
     });
   });
 
@@ -455,6 +507,72 @@ describe('IdentityTransactionBuilder', () => {
       if ('success' in result) {
         expect(result.success).toBe(false);
       }
+    });
+  });
+
+  describe('burnAgent', () => {
+    it('should return PreparedTransaction when skipSend', async () => {
+      const asset = PublicKey.unique();
+      const result = await builder.burnAgent(asset, {
+        skipSend: true,
+        signer: payer.publicKey,
+      });
+
+      expect('transaction' in result).toBe(true);
+      if ('transaction' in result) {
+        const tx = Transaction.from(Buffer.from(result.transaction, 'base64'));
+        expect(tx.instructions).toHaveLength(2); // compute budget + burnV1
+        const burnIx = tx.instructions[1];
+        expect(burnIx.programId.toBase58()).toBe('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+        expect(burnIx.keys).toHaveLength(6);
+        expect(burnIx.keys[0]?.pubkey).toEqual(asset);
+        expect(burnIx.keys[1]?.pubkey).toEqual(mockCollection);
+        expect(burnIx.keys[2]?.pubkey).toEqual(payer.publicKey);
+        expect(burnIx.keys[2]?.isSigner).toBe(true);
+        expect(burnIx.keys[2]?.isWritable).toBe(true);
+        expect(burnIx.keys[3]?.pubkey).toEqual(payer.publicKey);
+        expect(burnIx.keys[3]?.isSigner).toBe(true);
+        expect(burnIx.data).toEqual(Buffer.from([12, 0]));
+      }
+    });
+
+    it('should fail without signer in read-only mode', async () => {
+      const readOnlyBuilder = new IdentityTransactionBuilder(conn);
+      const result = await readOnlyBuilder.burnAgent(PublicKey.unique());
+      expect('success' in result).toBe(true);
+      if (!('success' in result)) {
+        throw new Error('Expected TransactionResult');
+      }
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('signer');
+    });
+
+    it('should fail when agent account is missing', async () => {
+      jest.spyOn(conn, 'getAccountInfo').mockResolvedValueOnce(null);
+      const result = await builder.burnAgent(PublicKey.unique(), {
+        skipSend: true,
+        signer: payer.publicKey,
+      });
+      expect('success' in result).toBe(true);
+      if (!('success' in result)) {
+        throw new Error('Expected TransactionResult');
+      }
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Agent not found');
+    });
+
+    it('should fail in skipSend mode when feePayer differs from signer', async () => {
+      const result = await builder.burnAgent(PublicKey.unique(), {
+        skipSend: true,
+        signer: payer.publicKey,
+        feePayer: PublicKey.unique(),
+      });
+      expect('success' in result).toBe(true);
+      if (!('success' in result)) {
+        throw new Error('Expected TransactionResult');
+      }
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('options.feePayer must match signer');
     });
   });
 

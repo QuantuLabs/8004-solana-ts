@@ -186,6 +186,7 @@ const mockIdentityTxBuilder = {
   setMetadata: jest.fn().mockResolvedValue(mockTxResult),
   deleteMetadata: jest.fn().mockResolvedValue(mockTxResult),
   transferAgent: jest.fn().mockResolvedValue(mockTxResult),
+  burnAgent: jest.fn().mockResolvedValue(mockTxResult),
   syncOwner: jest.fn().mockResolvedValue(mockTxResult),
   enableAtom: jest.fn().mockResolvedValue(mockTxResult),
   setAgentWallet: jest.fn().mockResolvedValue(mockTxResult),
@@ -1112,6 +1113,10 @@ describe('SolanaSDK', () => {
       await expect(sdk.deleteMetadata(PublicKey.unique(), 'key')).rejects.toThrow('read-only');
     });
 
+    it('burnAgent should throw without signer', async () => {
+      await expect(sdk.burnAgent(PublicKey.unique())).rejects.toThrow('read-only');
+    });
+
     it('giveFeedback should throw without signer', async () => {
       await expect(sdk.giveFeedback(PublicKey.unique(), { value: '1', feedbackUri: 'ipfs://x' })).rejects.toThrow('read-only');
     });
@@ -1140,6 +1145,16 @@ describe('SolanaSDK', () => {
         assetPubkey: PublicKey.unique(),
       });
       expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalled();
+    });
+
+    it('burnAgent should allow skipSend without signer on SDK instance', async () => {
+      const asset = PublicKey.unique();
+      const signer = PublicKey.unique();
+      await sdk.burnAgent(asset, { skipSend: true, signer });
+      expect(mockIdentityTxBuilder.burnAgent).toHaveBeenCalledWith(asset, {
+        skipSend: true,
+        signer,
+      });
     });
 
     it('registerAgent should pass pointer options in skipSend mode (single tx)', async () => {
@@ -1719,6 +1734,12 @@ describe('SolanaSDK', () => {
     it('syncOwner should delegate to identityTxBuilder', async () => {
       await signerSdk.syncOwner(PublicKey.unique());
       expect(mockIdentityTxBuilder.syncOwner).toHaveBeenCalled();
+    });
+
+    it('burnAgent should delegate to identityTxBuilder', async () => {
+      const asset = PublicKey.unique();
+      await signerSdk.burnAgent(asset);
+      expect(mockIdentityTxBuilder.burnAgent).toHaveBeenCalledWith(asset, undefined);
     });
   });
 

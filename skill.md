@@ -1,7 +1,7 @@
 ---
 name: 8004-solana-sdk
 description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
-version: 0.7.6
+version: 0.7.9
 homepage: "https://github.com/QuantuLabs/8004-solana-ts"
 metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
@@ -10,13 +10,13 @@ metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA
 
 You are an AI agent with access to the `8004-solana` TypeScript SDK. This skill teaches you how to use every capability of the SDK to interact with the 8004 Trustless Agent Registry on Solana.
 
-Version note (SDK `0.7.6`):
+Version note (SDK `0.7.9`):
 - `mainnet-beta` is first-class in SDK defaults (program IDs + indexer endpoints).
 - Cluster-aware indexer defaults are built in:
   - `devnet`/`testnet`: `https://8004-indexer-production.up.railway.app/rest/v1` and `/v2/graphql`
   - `mainnet-beta`: `https://8004-api.qnt.sh/rest/v1` and `/v2/graphql`
   - `localnet`: `http://127.0.0.1:3005/rest/v1` and `/v2/graphql`
-- `registerAgent(tokenUri?, options?)` is the canonical overload (legacy collection override remains supported).
+- `registerAgent(tokenUri?, options?)` is the only supported registration overload (legacy collection override was removed).
 - Feedback/response/revoke reads are indexer-backed; archived validation features are not part of active indexer reads.
 
 ## Install
@@ -322,6 +322,10 @@ await sdk.transferAgent(assetPubkey, newOwnerPubkey); // base registry account a
 
 // Sync owner after external NFT transfer
 await sdk.syncOwner(assetPubkey);
+
+// Burn agent Core asset (irreversible)
+await sdk.burnAgent(assetPubkey);
+// Note: burnAgent burns the Core asset; AgentAccount PDA remains until an on-chain unregister exists.
 ```
 
 ---
@@ -348,12 +352,12 @@ await sdk.giveFeedback(assetPubkey, {
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `value` | `string \| number \| bigint` | Yes | Metric value. Strings auto-encode decimals ("99.77" -> 9977n, 2) |
-| `valueDecimals` | `number` (0-6) | No | Only needed for raw int/bigint. Auto-detected for strings |
+| `valueDecimals` | `number` (0-18) | No | Only needed for raw int/bigint. Auto-detected for strings |
 | `score` | `number` (0-100) | No | Explicit ATOM score. If omitted, inferred from tag1 |
 | `tag1` | `string` | No | Category tag (max 32 UTF-8 bytes) |
 | `tag2` | `string` | No | Period/network tag (max 32 UTF-8 bytes) |
 | `endpoint` | `string` | No | Endpoint used (max 250 UTF-8 bytes) |
-| `feedbackUri` | `string` | Yes | URI to detailed feedback file (IPFS/HTTPS, max 250 bytes) |
+| `feedbackUri` | `string` | No | URI to detailed feedback file (IPFS/HTTPS, max 250 bytes) |
 | `feedbackFileHash` | `Buffer` | No | SHA-256 of feedback file content (32 bytes). Binds file to on-chain SEAL |
 
 ### Value encoding patterns
@@ -596,7 +600,7 @@ SEAL provides client-side hash computation matching on-chain Keccak256. Required
 // Build params (with optional feedbackFileHash)
 const fileHash = await SolanaSDK.computeHash(JSON.stringify(feedbackFile));
 const params = createSealParams(
-  9977n,                        // value (i64)
+  9977n,                        // value (i128)
   2,                            // decimals
   85,                           // score (or null)
   'uptime',                     // tag1
@@ -881,7 +885,7 @@ decodeToDecimalString(9977n, 2);   // '99.77'
 decodeToDecimalString(-155n, 1);   // '-15.5'
 decodeToNumber(9977n, 2);          // 99.77
 
-// Limits: max 6 decimal places, clamped to i64 range
+// Limits: max 18 decimal places, clamped to i128 range
 ```
 
 ---
@@ -1043,7 +1047,7 @@ Indexer-backed reads (`readAllFeedback()`, `getClients()`, `getLastIndex()`, `re
 | Operation | Cost | Notes |
 |-----------|------|-------|
 | `registerAgent()` | ~0.00651 SOL | Base registration (without ATOM init) |
-| `registerAgent(..., { atomEnabled: true })` | higher than base | Includes extra ATOM stats init transaction |
+| `registerAgent(..., { atomEnabled: true })` | higher than base | Includes ATOM stats initialization in the same transaction |
 | `giveFeedback()` (1st for agent) | ~0.00332 SOL | Creates reputation PDA |
 | `giveFeedback()` (subsequent) | ~0.00209 SOL | Feedback PDA only |
 | `setMetadata()` (1st key) | ~0.00319 SOL | PDA rent |

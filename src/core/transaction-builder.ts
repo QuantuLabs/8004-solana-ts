@@ -18,6 +18,7 @@ import {
   TransactionSignature,
   Signer,
   ComputeBudgetProgram,
+  SystemProgram,
 } from '@solana/web3.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { sha256 } from '../utils/crypto-utils.js';
@@ -114,6 +115,8 @@ export interface TransactionResult {
  */
 /** Default compute unit limit for complex transactions */
 const DEFAULT_COMPUTE_UNITS = 400_000;
+const MPL_CORE_BURN_V1_DISCRIMINATOR = 12;
+const MPL_CORE_OPTION_NONE = 0;
 const COLLECTION_POINTER_PREFIX = 'c1:';
 const COLLECTION_POINTER_MAX_BYTES = 128;
 const COLLECTION_POINTER_PAYLOAD_RE = /^[a-z0-9]+$/;
@@ -226,6 +229,10 @@ export interface PreparedTransaction {
   lastValidBlockHeight: number;
   /** Public key (base58) of the account that must sign */
   signer: string;
+  /** Fee payer public key (base58). May differ from signer when explicitly set. */
+  feePayer?: string;
+  /** All required signer public keys (base58) for the prepared transaction. */
+  requiredSigners?: string[];
   /** Security: Transaction is NOT signed - must be signed externally before sending */
   signed: false;
 }
@@ -247,7 +254,8 @@ export function serializeTransaction(
   feePayer?: PublicKey
 ): PreparedTransaction {
   // Security: Use explicit feePayer if provided, otherwise default to signer
-  transaction.feePayer = feePayer || signer;
+  const resolvedFeePayer = feePayer || signer;
+  transaction.feePayer = resolvedFeePayer;
   transaction.recentBlockhash = blockhash;
 
   const serialized = transaction.serialize({
@@ -260,6 +268,10 @@ export function serializeTransaction(
     blockhash,
     lastValidBlockHeight,
     signer: signer.toBase58(),
+    feePayer: resolvedFeePayer.toBase58(),
+    requiredSigners: resolvedFeePayer.equals(signer)
+      ? [signer.toBase58()]
+      : [signer.toBase58(), resolvedFeePayer.toBase58()],
     signed: false,  // Security: Explicitly indicate transaction is unsigned
   };
 }
@@ -407,7 +419,13 @@ export class IdentityTransactionBuilder {
       // If skipSend, return serialized transaction
       if (options?.skipSend) {
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        const prepared = serializeTransaction(registerTransaction, signerPubkey, blockhash, lastValidBlockHeight);
+        const prepared = serializeTransaction(
+          registerTransaction,
+          signerPubkey,
+          blockhash,
+          lastValidBlockHeight,
+          options?.feePayer
+        );
         return {
           ...prepared,
           asset: assetPubkey,
@@ -417,6 +435,18 @@ export class IdentityTransactionBuilder {
       // Normal mode: send transaction
       if (!this.payer || !assetKeypair) {
         throw new Error('No signer configured - SDK is read-only');
+      }
+      if (
+        options?.signer &&
+        !options.signer.equals(this.payer.publicKey)
+      ) {
+        throw new Error('options.signer must match the configured SDK signer in send mode');
+      }
+      if (
+        options?.feePayer &&
+        !options.feePayer.equals(signerPubkey)
+      ) {
+        throw new Error('options.feePayer must match signer for registerAgent');
       }
 
       // Send register transaction with retry.
@@ -559,11 +589,23 @@ export class IdentityTransactionBuilder {
 
       if (options?.skipSend) {
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight, options?.feePayer);
       }
 
       if (!this.payer) {
         throw new Error('No signer configured - SDK is read-only');
+      }
+      if (
+        options?.signer &&
+        !options.signer.equals(this.payer.publicKey)
+      ) {
+        throw new Error('options.signer must match the configured SDK signer in send mode');
+      }
+      if (
+        options?.feePayer &&
+        !options.feePayer.equals(signerPubkey)
+      ) {
+        throw new Error('options.feePayer must match signer for setCollectionPointer');
       }
 
       const signature = await sendAndConfirmTransaction(
@@ -620,11 +662,23 @@ export class IdentityTransactionBuilder {
 
       if (options?.skipSend) {
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight, options?.feePayer);
       }
 
       if (!this.payer) {
         throw new Error('No signer configured - SDK is read-only');
+      }
+      if (
+        options?.signer &&
+        !options.signer.equals(this.payer.publicKey)
+      ) {
+        throw new Error('options.signer must match the configured SDK signer in send mode');
+      }
+      if (
+        options?.feePayer &&
+        !options.feePayer.equals(signerPubkey)
+      ) {
+        throw new Error('options.feePayer must match signer for setCollectionPointer');
       }
 
       const signature = await sendAndConfirmTransaction(
@@ -675,11 +729,23 @@ export class IdentityTransactionBuilder {
 
       if (options?.skipSend) {
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight, options?.feePayer);
       }
 
       if (!this.payer) {
         throw new Error('No signer configured - SDK is read-only');
+      }
+      if (
+        options?.signer &&
+        !options.signer.equals(this.payer.publicKey)
+      ) {
+        throw new Error('options.signer must match the configured SDK signer in send mode');
+      }
+      if (
+        options?.feePayer &&
+        !options.feePayer.equals(signerPubkey)
+      ) {
+        throw new Error('options.feePayer must match signer for setParentAsset');
       }
 
       const signature = await sendAndConfirmTransaction(
@@ -737,11 +803,23 @@ export class IdentityTransactionBuilder {
 
       if (options?.skipSend) {
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
+        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight, options?.feePayer);
       }
 
       if (!this.payer) {
         throw new Error('No signer configured - SDK is read-only');
+      }
+      if (
+        options?.signer &&
+        !options.signer.equals(this.payer.publicKey)
+      ) {
+        throw new Error('options.signer must match the configured SDK signer in send mode');
+      }
+      if (
+        options?.feePayer &&
+        !options.feePayer.equals(signerPubkey)
+      ) {
+        throw new Error('options.feePayer must match signer for setParentAsset');
       }
 
       const signature = await sendAndConfirmTransaction(
@@ -942,6 +1020,95 @@ export class IdentityTransactionBuilder {
       }
 
       // Normal mode: send transaction
+      if (!this.payer) {
+        throw new Error('No signer configured - SDK is read-only');
+      }
+
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [this.payer]
+      );
+
+      return { signature, success: true };
+    } catch (error) {
+      return {
+        signature: '',
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Burn an agent Core asset (Metaplex Core) - v0.7.x
+   * Note: This burns the Core asset only. The AgentAccount PDA is not closed by this call.
+   * @param asset - Agent Core asset
+   * @param options - Write options (skipSend, signer)
+   */
+  async burnAgent(
+    asset: PublicKey,
+    options?: WriteOptions
+  ): Promise<TransactionResult | PreparedTransaction> {
+    try {
+      const signerPubkey = options?.signer || this.payer?.publicKey;
+      if (!signerPubkey) {
+        throw new Error('signer required when SDK has no signer configured');
+      }
+      if (
+        !options?.skipSend &&
+        this.payer &&
+        options?.signer &&
+        !options.signer.equals(this.payer.publicKey)
+      ) {
+        throw new Error('options.signer must match the configured SDK signer in send mode');
+      }
+      if (
+        options?.feePayer &&
+        !options.feePayer.equals(signerPubkey)
+      ) {
+        throw new Error('options.feePayer must match signer for burnAgent');
+      }
+
+      const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
+      const agentInfo = await this.connection.getAccountInfo(agentPda);
+      if (!agentInfo) {
+        throw new Error('Agent not found');
+      }
+      const agentAccount = AgentAccount.deserialize(agentInfo.data);
+      const collection = agentAccount.getCollectionPublicKey();
+
+      const burnInstruction = new TransactionInstruction({
+        programId: this.programIds.mplCore,
+        keys: [
+          { pubkey: asset, isSigner: false, isWritable: true },
+          { pubkey: collection, isSigner: false, isWritable: true },
+          { pubkey: signerPubkey, isSigner: true, isWritable: true },
+          { pubkey: signerPubkey, isSigner: true, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          // logWrapper optional account: use mplCore program-id sentinel (same as mpl-core generated client)
+          { pubkey: this.programIds.mplCore, isSigner: false, isWritable: false },
+        ],
+        // burnV1: discriminator u8 + Option<compressionProof>::None
+        data: Buffer.from([MPL_CORE_BURN_V1_DISCRIMINATOR, MPL_CORE_OPTION_NONE]),
+      });
+
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: options?.computeUnits ?? DEFAULT_COMPUTE_UNITS,
+      });
+      const transaction = new Transaction().add(computeBudgetIx).add(burnInstruction);
+
+      if (options?.skipSend) {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        return serializeTransaction(
+          transaction,
+          signerPubkey,
+          blockhash,
+          lastValidBlockHeight,
+          options.feePayer
+        );
+      }
+
       if (!this.payer) {
         throw new Error('No signer configured - SDK is read-only');
       }
@@ -1263,6 +1430,11 @@ export class IdentityTransactionBuilder {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.lastValidBlockHeight = lastValidBlockHeight;
+        transaction.signatures = [];
+
         const signature = await sendAndConfirmTransaction(
           this.connection,
           transaction,
@@ -1333,6 +1505,11 @@ export class ReputationTransactionBuilder {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.lastValidBlockHeight = lastValidBlockHeight;
+        transaction.signatures = [];
+
         const signature = await sendAndConfirmTransaction(
           this.connection,
           transaction,

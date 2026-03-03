@@ -77,6 +77,10 @@ export interface PreparedTransaction {
     lastValidBlockHeight: number;
     /** Public key (base58) of the account that must sign */
     signer: string;
+    /** Fee payer public key (base58). May differ from signer when explicitly set. */
+    feePayer?: string;
+    /** All required signer public keys (base58) for the prepared transaction. */
+    requiredSigners?: string[];
     /** Security: Transaction is NOT signed - must be signed externally before sending */
     signed: false;
 }
@@ -176,6 +180,13 @@ export declare class IdentityTransactionBuilder {
      * @param options - Write options (skipSend, signer)
      */
     transferAgent(asset: PublicKey, collection: PublicKey, toOwner: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    /**
+     * Burn an agent Core asset (Metaplex Core) - v0.7.x
+     * Note: This burns the Core asset only. The AgentAccount PDA is not closed by this call.
+     * @param asset - Agent Core asset
+     * @param options - Write options (skipSend, signer)
+     */
+    burnAgent(asset: PublicKey, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Sync agent owner from Core asset after external transfer - v0.3.0
      * Use this when an agent NFT was transferred outside the protocol (e.g., on a marketplace)

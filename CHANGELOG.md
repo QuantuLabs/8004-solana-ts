@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-03-03
+### Added
+- Added `burnAgent(asset, options?)` in the SDK to burn agent Core assets with standard `WriteOptions` (`skipSend`, `signer`, `feePayer`, `computeUnits`).
+
+### Changed
+- `GiveFeedbackParams.feedbackUri` is now optional across source/dist types and docs.
+- Removed legacy `registerAgent(tokenUri, collection, options)` compatibility overload; only `registerAgent(tokenUri?, options?)` is supported.
+
+### Documentation
+- Added `burnAgent` usage notes/examples in README, METHODS, QUICKSTART, and COLLECTION docs.
+
 ## [0.7.8] - 2026-03-02
 ### Changed
 - Switched `mainnet-beta` SDK default indexer host to `https://8004-api.qnt.sh` for both REST (`/rest/v1`) and GraphQL (`/v2/graphql`).

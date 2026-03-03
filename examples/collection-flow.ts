@@ -4,8 +4,8 @@
  * Flow:
  * 1) Create one collection metadata document.
  * 2) Create 20 distinct agent metadata files.
- * 3) Register each asset with `collectionPointer` directly in `registerAgent(...)`.
- * 4) Also show explicit `setCollectionPointer(...)` flow on the first asset.
+ * 3) Register most assets with `collectionPointer` directly in `registerAgent(...)`.
+ * 4) Demonstrate explicit `setCollectionPointer(...)` flow on the first asset.
  *
  * Defaults:
  * - AGENT_COUNT=20
@@ -168,28 +168,25 @@ async function main() {
 
     const shouldRunExplicitSetPointer = i === 1;
     const shouldSetPointerInline = !shouldRunExplicitSetPointer;
-    const registerResult = await sdk.registerAgent(
-      agentUri,
-      undefined,
-      dryRun
-        ? {
-            skipSend: true,
-            signer: signer.publicKey,
-            assetPubkey: Keypair.generate().publicKey,
-            ...(shouldSetPointerInline
-              ? {
-                  collectionPointer,
-                  collectionLock: true,
-                }
-              : {}),
-          }
-        : (shouldSetPointerInline
+    const registerOptions = dryRun
+      ? {
+          skipSend: true,
+          signer: signer.publicKey,
+          assetPubkey: Keypair.generate().publicKey,
+          ...(shouldSetPointerInline
             ? {
                 collectionPointer,
                 collectionLock: true,
               }
-            : undefined)
-    );
+            : {}),
+        }
+      : (shouldSetPointerInline
+          ? {
+              collectionPointer,
+              collectionLock: true,
+            }
+          : undefined);
+    const registerResult = await sdk.registerAgent(agentUri, registerOptions);
 
     if ('success' in registerResult && !registerResult.success) {
       throw new Error(`registerAgent failed for #${i}: ${registerResult.error ?? 'unknown error'}`);

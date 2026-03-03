@@ -91,7 +91,11 @@ describe('E2E: Full Agent Lifecycle on Devnet', () => {
       expect(result.asset).toBeInstanceOf(PublicKey);
 
       agentAsset = result.asset!;
-      collection = result.collection || agentAsset; // Fallback if no collection
+      const baseCollection = await sdk.getBaseCollection();
+      if (!baseCollection) {
+        throw new Error('Base collection not found');
+      }
+      collection = baseCollection;
       console.log(`✅ Agent registered with asset: ${agentAsset.toBase58()}`);
       console.log(`📋 Transaction: ${result.signature}`);
     }, 60000);

@@ -131,8 +131,8 @@ const metadata = buildRegistrationFileJson({
 
   // Skills (OASF taxonomy)
   skills: [
-    'natural_language_processing/text_generation/text_generation',
-    'natural_language_processing/conversational_ai/conversational_ai',
+    'natural_language_processing/natural_language_generation/text_completion',
+    'natural_language_processing/natural_language_generation/dialogue_generation',
   ],
 
   // Domains (OASF taxonomy)
@@ -211,6 +211,9 @@ console.log(`Score: ${summary.averageScore}, Feedbacks: ${summary.totalFeedbacks
 
 // Update URI
 await sdk.setAgentUri(agentAsset, 'ipfs://newCid'); // registry auto-resolved
+
+// Burn agent (irreversible)
+// await sdk.burnAgent(agentAsset);
 
 // Sign data with agent's operational wallet
 const signed = sdk.sign(agentAsset, { action: 'authorize', user: 'alice' });

@@ -31,6 +31,20 @@ function sha256(data: string): Buffer {
   return createHash('sha256').update(data).digest();
 }
 
+function isTransientWriteError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('429') ||
+    lower.includes('timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('fetch failed') ||
+    lower.includes('network') ||
+    lower.includes('node is behind') ||
+    lower.includes('service unavailable') ||
+    lower.includes('too many requests')
+  );
+}
+
 describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
   let connection: Connection;
   let wallets: DevnetTestWallets;
@@ -524,5 +538,64 @@ describe('E2E Devnet Tests (Pre-funded Wallets)', () => {
       console.log(`Main Wallet: ${wallets.main.publicKey.toBase58()}`);
       console.log('========================================\n');
     });
+  });
+
+  describe('10. Burn Agent', () => {
+    it('should burn a freshly registered agent Core asset', async () => {
+      const tokenUri = `ipfs://devnet_burn_test_${Date.now()}`;
+      const registerResult = await sdk.registerAgent(tokenUri);
+
+      if (!registerResult.success || !registerResult.asset) {
+        throw new Error(`registerAgent failed before burn test: ${registerResult.error ?? 'unknown error'}`);
+      }
+
+      const burnAsset = registerResult.asset;
+      let beforeBurn = await connection.getAccountInfo(burnAsset);
+      for (let i = 0; i < 5 && !beforeBurn; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        beforeBurn = await connection.getAccountInfo(burnAsset);
+      }
+      expect(beforeBurn).not.toBeNull();
+
+      const burnResult = await sdk.burnAgent(burnAsset);
+      if (!burnResult.success) {
+        throw new Error(`burnAgent failed: ${burnResult.error ?? 'unknown error'}`);
+      }
+      console.log(`✅ Burned asset: ${burnAsset.toBase58()}`);
+      console.log(`📋 Burn tx: ${burnResult.signature}`);
+      const afterBurnAccount = await connection.getAccountInfo(burnAsset);
+      console.log(
+        afterBurnAccount
+          ? 'ℹ️  Burned asset account still present on RPC backend'
+          : 'ℹ️  Burned asset account no longer exists on RPC backend'
+      );
+
+      // Burn should not be repeatable on the same asset.
+      // Retry if we hit transient RPC/network failures to avoid false positives.
+      let secondBurn = await sdk.burnAgent(burnAsset);
+      for (let i = 0; i < 8; i++) {
+        if (secondBurn.success) {
+          throw new Error('Second burn unexpectedly succeeded');
+        }
+        if (
+          !secondBurn.success &&
+          secondBurn.error &&
+          !isTransientWriteError(secondBurn.error)
+        ) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        secondBurn = await sdk.burnAgent(burnAsset);
+      }
+
+      if (!secondBurn.success && isTransientWriteError(secondBurn.error ?? '')) {
+        throw new Error(`Second burn kept failing with transient errors: ${secondBurn.error ?? 'unknown'}`);
+      }
+
+      expect(secondBurn.success).toBe(false);
+      expect(typeof secondBurn.error).toBe('string');
+      expect(isTransientWriteError(secondBurn.error ?? '')).toBe(false);
+      expect(secondBurn.error ?? '').toMatch(/burn|already|not found|missing|does not exist|custom program error|account/i);
+    }, 120000);
   });
 });

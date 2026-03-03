@@ -232,10 +232,8 @@
           <h2 class="step-title">Create & Register Agent</h2>
         </div>
         <p>Create a new file <code>register.ts</code> and run with <code>npx tsx register.ts</code>:</p>
-        <pre><code><span class="keyword">import</span> { SolanaSDK, IPFSClient, buildRegistrationFileJson, EndpointType } <span class="keyword">from</span> <span class="string">'8004-solana'</span>;
+        <pre><code><span class="keyword">import</span> { SolanaSDK, IPFSClient, buildRegistrationFileJson, ServiceType } <span class="keyword">from</span> <span class="string">'8004-solana'</span>;
 <span class="keyword">import</span> { Keypair } <span class="keyword">from</span> <span class="string">'@solana/web3.js'</span>;
-<span class="keyword">import</span> { readFileSync } <span class="keyword">from</span> <span class="string">'fs'</span>;
-
 <span class="comment">// 1. Setup SDK with your wallet</span>
 <span class="keyword">const</span> signer = Keypair.<span class="function">fromSecretKey</span>(
   Uint8Array.<span class="function">from</span>(JSON.<span class="function">parse</span>(process.env.SOLANA_PRIVATE_KEY!))
@@ -249,8 +247,7 @@
 });
 
 <span class="comment">// 3. Upload your agent's avatar image</span>
-<span class="keyword">const</span> imageBuffer = <span class="function">readFileSync</span>(<span class="string">'./my-agent-avatar.png'</span>);
-<span class="keyword">const</span> imageCid = <span class="keyword">await</span> ipfs.<span class="function">addFile</span>(imageBuffer, <span class="string">'image/png'</span>);
+<span class="keyword">const</span> imageCid = <span class="keyword">await</span> ipfs.<span class="function">addFile</span>(<span class="string">'./my-agent-avatar.png'</span>);
 <span class="keyword">const</span> imageUri = <span class="string">`ipfs://</span>${imageCid}<span class="string">`</span>;
 
 <span class="comment">// 4. Build your agent metadata with capabilities</span>
@@ -259,16 +256,16 @@
   <span class="type">description</span>: <span class="string">'An autonomous agent that does amazing things'</span>,
   <span class="type">image</span>: imageUri,
 
-  <span class="comment">// Endpoints</span>
-  <span class="type">endpoints</span>: [
-    { <span class="type">type</span>: EndpointType.MCP, <span class="type">value</span>: <span class="string">'https://my-api.com/mcp'</span> },
-    { <span class="type">type</span>: EndpointType.A2A, <span class="type">value</span>: <span class="string">'https://my-api.com/a2a'</span> },
+  <span class="comment">// Services</span>
+  <span class="type">services</span>: [
+    { <span class="type">type</span>: ServiceType.MCP, <span class="type">value</span>: <span class="string">'https://my-api.com/mcp'</span> },
+    { <span class="type">type</span>: ServiceType.A2A, <span class="type">value</span>: <span class="string">'https://my-api.com/a2a'</span> },
   ],
 
   <span class="comment">// Skills (OASF taxonomy)</span>
   <span class="type">skills</span>: [
-    <span class="string">'natural_language_processing/text_generation/text_generation'</span>,
-    <span class="string">'natural_language_processing/conversational_ai/conversational_ai'</span>,
+    <span class="string">'natural_language_processing/natural_language_generation/text_completion'</span>,
+    <span class="string">'natural_language_processing/natural_language_generation/dialogue_generation'</span>,
   ],
 
   <span class="comment">// Domains (OASF taxonomy)</span>
@@ -282,13 +279,12 @@
 <span class="keyword">const</span> metadataUri = <span class="string">`ipfs://</span>${metadataCid}<span class="string">`</span>;
 
 <span class="comment">// 6. Register on Solana</span>
-<span class="keyword">const</span> result = <span class="keyword">await</span> sdk.<span class="function">registerAgent</span>(metadataUri);
+<span class="keyword">const</span> result = <span class="keyword">await</span> sdk.<span class="function">registerAgent</span>(metadataUri, { <span class="type">collectionPointer</span>: <span class="string">'c1:yourcollectioncidv1'</span> });
 
 <span class="comment">// 7. (Optional) Store on-chain metadata</span>
-<span class="keyword">await</span> sdk.<span class="function">setMetadata</span>(result.agentId, <span class="string">'token'</span>, <span class="string">'So11111111111111111111111111111111111111112'</span>, <span class="keyword">true</span>); <span class="comment">// immutable</span>
+<span class="keyword">await</span> sdk.<span class="function">setMetadata</span>(result.asset, <span class="string">'token'</span>, <span class="string">'So11111111111111111111111111111111111111112'</span>, <span class="keyword">true</span>); <span class="comment">// immutable</span>
 
-console.<span class="function">log</span>(<span class="string">'Agent ID:'</span>, result.agentId);
-console.<span class="function">log</span>(<span class="string">'NFT Mint:'</span>, result.asset);
+console.<span class="function">log</span>(<span class="string">'Agent Asset:'</span>, result.asset);
 console.<span class="function">log</span>(<span class="string">'Transaction:'</span>, result.signature);</code></pre>
         <p>See <a href="./OASF.md">OASF.md</a> for the full list of available skills and domains.</p>
         <p><strong>Note:</strong> On-chain metadata (via <code>setMetadata</code>) is stored directly on Solana for quick access without IPFS fetching.</p>
@@ -301,15 +297,13 @@ console.<span class="function">log</span>(<span class="string">'Transaction:'</s
           <h2 class="step-title">Verify Your Agent</h2>
         </div>
         <p>Load your agent to confirm it was registered correctly:</p>
-        <pre><code><span class="comment">// Load agent by ID (no wallet needed for reading)</span>
+        <pre><code><span class="comment">// Load agent by asset (no wallet needed for reading)</span>
 <span class="keyword">const</span> readSdk = <span class="keyword">new</span> <span class="type">SolanaSDK</span>();
-<span class="keyword">const</span> agent = <span class="keyword">await</span> readSdk.<span class="function">loadAgent</span>(result.agentId);
+<span class="keyword">const</span> agent = <span class="keyword">await</span> readSdk.<span class="function">loadAgent</span>(result.asset);
 
-console.<span class="function">log</span>(<span class="string">'Name:'</span>, agent.name);
-console.<span class="function">log</span>(<span class="string">'Owner:'</span>, agent.owner.<span class="function">toBase58</span>());
-console.<span class="function">log</span>(<span class="string">'Endpoints:'</span>, agent.endpoints);
-console.<span class="function">log</span>(<span class="string">'Skills:'</span>, agent.skills);
-console.<span class="function">log</span>(<span class="string">'Domains:'</span>, agent.domains);</code></pre>
+console.<span class="function">log</span>(<span class="string">'Name:'</span>, agent.nft_name);
+console.<span class="function">log</span>(<span class="string">'Owner:'</span>, agent.getOwnerPublicKey().<span class="function">toBase58</span>());
+console.<span class="function">log</span>(<span class="string">'URI:'</span>, agent.agent_uri);</code></pre>
         <p>You can also view your agent on the explorer a few minutes after registration:</p>
         <div class="links">
           <a href="https://x402synthex.xyz" class="link-pill" target="_blank">View on Explorer</a>
@@ -320,9 +314,9 @@ console.<span class="function">log</span>(<span class="string">'Domains:'</span>
       <section class="next-steps">
         <h2>What's Next?</h2>
         <ul>
-          <li><strong>Give Feedback:</strong> <code>await sdk.giveFeedback(agentId, { score: 85, tag1: 'helpful' })</code></li>
-          <li><strong>Check Reputation:</strong> <code>await sdk.getSummary(agentId)</code></li>
-          <li><strong>Update URI:</strong> <code>await sdk.setAgentUri(agentId, 'ipfs://newCid')</code></li>
+          <li><strong>Give Feedback:</strong> <code>await sdk.giveFeedback(result.asset, { value: '85', score: 85, tag1: 'helpful', feedbackUri: 'ipfs://...' })</code></li>
+          <li><strong>Check Reputation:</strong> <code>await sdk.getSummary(result.asset)</code></li>
+          <li><strong>Update URI:</strong> <code>await sdk.setAgentUri(result.asset, 'ipfs://newCid')</code></li>
         </ul>
         <div class="links">
           <a href="./METHODS.md" class="link-pill">Full API Reference</a>

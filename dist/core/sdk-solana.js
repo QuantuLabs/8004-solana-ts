@@ -1868,6 +1868,18 @@ export class SolanaSDK {
         return await this.identityTxBuilder.transferAgent(asset, collection, newOwner, options);
     }
     /**
+     * Burn agent Core asset (write operation)
+     * Note: This burns the Core asset only. The AgentAccount PDA is not closed by this call.
+     * @param asset - Agent Core asset pubkey
+     * @param options - Write options (skipSend, signer)
+     */
+    async burnAgent(asset, options) {
+        if (!options?.skipSend && !this.signer) {
+            throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
+        }
+        return await this.identityTxBuilder.burnAgent(asset, options);
+    }
+    /**
      * Sync agent owner after external NFT transfer (write operation)
      * Call this after the Core NFT was transferred outside of the SDK
      * to update the AgentAccount's owner field

@@ -8,6 +8,7 @@
 - Standardized registry terminology across docs.
 - Updated quickstart registration examples to use `registerAgent(..., { collectionPointer })`.
 - Consolidated collection pointer and parent/child rules into `docs/COLLECTION.md`.
+- Added `burnAgent(asset, options?)` documentation in methods/quickstart/collection references.
 - Removed the README SEAL block.
 - Removed references to the deprecated `basic-indexer` example.
 
@@ -27,7 +28,7 @@
 - Added collection read-method docs (`getCollection`, `getCollections`, `getCollectionAgents`) for advanced RPC setups.
 - Updated examples and quickstart flow for easier collection onboarding.
 
-## v0.4.0 (Current)
+## v0.4.0 (Historical)
 
 **New Features:**
 - ATOM Engine integration (Agent Trust On-chain Model)
