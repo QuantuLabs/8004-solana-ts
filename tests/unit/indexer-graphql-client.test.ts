@@ -145,6 +145,14 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     });
   });
 
+  it('getCollectionPointers should reject empty collection filter', async () => {
+    const client = createClient();
+    await expect(client.getCollectionPointers({ col: '' })).rejects.toThrow(
+      'Collection pointer cannot be empty',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it('getCollectionAssetCount should use modern collection argument', async () => {
     const client = createClient();
     mockFetch.mockResolvedValue(mockGraphQLResponse({
@@ -153,8 +161,10 @@ describe('IndexerGraphQLClient collection compatibility', () => {
 
     const count = await client.getCollectionAssetCount('c1:abc', 'creator1');
     const body = getBody(0);
+    expect(body.query).toContain('query($collection: String!, $creator: String!)');
     expect(body.query).toContain('collectionAssetCount(collection: $collection');
     expect(body.variables?.collection).toBe('c1:abc');
+    expect(body.variables?.creator).toBe('creator1');
     expect(count).toBe(12);
   });
 
@@ -168,12 +178,44 @@ describe('IndexerGraphQLClient collection compatibility', () => {
         data: { collectionAssetCount: '9' },
       }));
 
-    const count = await client.getCollectionAssetCount('c1:legacy');
+    const count = await client.getCollectionAssetCount('c1:legacy', 'creator1');
     expect(mockFetch).toHaveBeenCalledTimes(2);
     const secondBody = getBody(1);
     expect(secondBody.query).toContain('collectionAssetCount(col: $col');
     expect(secondBody.variables?.col).toBe('c1:legacy');
+    expect(secondBody.variables?.creator).toBe('creator1');
     expect(count).toBe(9);
+  });
+
+  it('getCollectionAssetCount should fallback when primary schema rejects creator argument', async () => {
+    const client = createClient();
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQLResponse({
+        errors: [{ message: 'Unknown argument "creator" on field "Query.collectionAssetCount".' }],
+      }))
+      .mockResolvedValueOnce(mockGraphQLResponse({
+        data: { collectionAssetCount: '7' },
+      }));
+
+    const count = await client.getCollectionAssetCount('c1:legacy', 'creator1');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const secondBody = getBody(1);
+    expect(secondBody.query).toContain('collectionAssetCount(col: $col');
+    expect(secondBody.variables?.creator).toBe('creator1');
+    expect(count).toBe(7);
+  });
+
+  it('getCollectionAssetCount should normalize bare CID input to c1 pointer', async () => {
+    const client = createClient();
+    const bareCid = 'bafkreihvfphhye3jom6ewfrlvy4wx7itxmkjc6bjtzrlgfnmfs7dwxc7km';
+    mockFetch.mockResolvedValue(mockGraphQLResponse({
+      data: { collectionAssetCount: '22' },
+    }));
+
+    const count = await client.getCollectionAssetCount(bareCid, 'creator1');
+    const body = getBody(0);
+    expect(body.variables?.collection).toBe(`c1:${bareCid}`);
+    expect(count).toBe(22);
   });
 
   it('getCollectionAssets should fallback to legacy col argument when needed', async () => {
@@ -211,7 +253,7 @@ describe('IndexerGraphQLClient collection compatibility', () => {
         data: { collectionAssets: [node] },
       }));
 
-    const rows = await client.getCollectionAssets('c1:legacy');
+    const rows = await client.getCollectionAssets('c1:legacy', { creator: 'creator1' });
     expect(mockFetch).toHaveBeenCalledTimes(2);
     const firstBody = getBody(0);
     const secondBody = getBody(1);
@@ -254,12 +296,52 @@ describe('IndexerGraphQLClient collection compatibility', () => {
       }),
     );
 
-    await expect(client.getCollectionAssets('c1:abc')).rejects.toThrow(
+    await expect(client.getCollectionAssets('c1:abc', { creator: 'creator1' })).rejects.toThrow(
       'Unknown argument "creatorAddress" on field "Query.collectionAssets".',
     );
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const body = getBody(0);
     expect(body.query).toContain('collection: $collection');
+  });
+
+  it('collection-scoped reads should infer creator when unique', async () => {
+    const client = createClient();
+    mockFetch
+      .mockResolvedValueOnce(mockGraphQLResponse({
+        data: { collections: [{ collection: 'c1:abc', creator: 'creator1' }] },
+      }))
+      .mockResolvedValueOnce(mockGraphQLResponse({
+        data: { collectionAssetCount: '4' },
+      }))
+      .mockResolvedValueOnce(mockGraphQLResponse({
+        data: { collections: [{ collection: 'c1:abc', creator: 'creator1' }] },
+      }))
+      .mockResolvedValueOnce(mockGraphQLResponse({
+        data: { collectionAssets: [] },
+      }));
+
+    const count = await (client as any).getCollectionAssetCount('c1:abc');
+    await (client as any).getCollectionAssets('c1:abc');
+    expect(count).toBe(4);
+    expect((getBody(1).variables as any)?.creator).toBe('creator1');
+    expect((getBody(3).variables as any)?.creator).toBe('creator1');
+  });
+
+  it('collection-scoped reads should throw without creator when scope is ambiguous', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          collections: [
+            { collection: 'c1:abc', creator: 'creator1' },
+            { collection: 'c1:abc', creator: 'creator2' },
+          ],
+        },
+      }),
+    );
+    await expect((client as any).getCollectionAssetCount('c1:abc')).rejects.toThrow(
+      'multiple creators found for c1:abc',
+    );
   });
 
   it('getAgent should query by raw asset id', async () => {

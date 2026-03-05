@@ -351,7 +351,7 @@ export interface ReplayEventData {
     responder?: string;
     response_hash?: string | null;
     response_count?: number | null;
-    revoke_count?: number | null;
+    revoke_count?: number | string | null;
 }
 export interface ReplayDataPage {
     events: ReplayEventData[];
@@ -403,6 +403,7 @@ export declare class IndexerClient implements IndexerReadClient {
      */
     private buildQuery;
     private parseCountValue;
+    private resolveCollectionCreatorScope;
     private shouldUseLegacyCollectionRead;
     private normalizeCollectionRecord;
     /**
@@ -546,11 +547,11 @@ export declare class IndexerClient implements IndexerReadClient {
      */
     getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]>;
     /**
-     * Count assets attached to a collection pointer (optionally scoped by creator).
+     * Count assets attached to a collection pointer (scoped by creator).
      */
     getCollectionAssetCount(col: string, creator?: string): Promise<number>;
     /**
-     * Get assets by collection pointer (optionally scoped by creator).
+     * Get assets by collection pointer (scoped by creator).
      */
     getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]>;
     /**

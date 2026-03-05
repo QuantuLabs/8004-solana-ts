@@ -46,6 +46,17 @@ type AgentIdFieldName = 'agentId' | 'agentid';
 type AgentIdVariableType = 'String' | 'BigInt';
 const VALIDATION_ARCHIVED_ERROR =
   'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
+const CID_V1_BASE32_PATTERN = /^b[a-z2-7]{20,}$/;
+
+function normalizeCollectionPointerForRead(pointer: string): string {
+  const trimmed = pointer.trim();
+  if (!trimmed) {
+    throw new IndexerError('Collection pointer cannot be empty', IndexerErrorCode.INVALID_RESPONSE);
+  }
+  if (trimmed.startsWith('c1:')) return trimmed;
+  if (CID_V1_BASE32_PATTERN.test(trimmed)) return `c1:${trimmed}`;
+  return trimmed;
+}
 
 function toIsoFromUnixSeconds(unix: unknown): string {
   if (typeof unix === 'string') {
@@ -433,6 +444,48 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       /Cannot query field ['"]collections['"] on type ['"]Query['"]/.test(msg)
       || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
       || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssets['"]/.test(msg)
+      || /Unknown argument ['"]creator['"] on field ['"]Query\.collections['"]/.test(msg)
+      || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
+      || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssets['"]/.test(msg)
+    );
+  }
+
+  private async resolveCollectionCreatorScope(
+    normalizedCollection: string,
+    creator: string | undefined,
+    methodName: 'getCollectionAssetCount' | 'getCollectionAssets',
+  ): Promise<string> {
+    const direct = creator?.trim();
+    if (direct) return direct;
+
+    const pointers = await this.getCollectionPointers({
+      collection: normalizedCollection,
+      col: normalizedCollection,
+      limit: 2,
+      offset: 0,
+    });
+    const uniqueCreators = Array.from(
+      new Set(
+        pointers
+          .map((p) => p.creator?.trim())
+          .filter((v): v is string => !!v),
+      ),
+    );
+
+    if (uniqueCreators.length === 1) {
+      return uniqueCreators[0];
+    }
+
+    if (uniqueCreators.length > 1) {
+      throw new IndexerError(
+        `${methodName} requires creator (scope is creator+collection): multiple creators found for ${normalizedCollection}.`,
+        IndexerErrorCode.INVALID_RESPONSE,
+      );
+    }
+
+    throw new IndexerError(
+      `${methodName} requires creator (scope is creator+collection).`,
+      IndexerErrorCode.INVALID_RESPONSE,
     );
   }
 
@@ -893,7 +946,10 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   async getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]> {
     const first = clampInt(options?.limit ?? 100, 0, 500);
     const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
-    const collection = options?.collection ?? options?.col;
+    const hasCollectionFilter = options?.collection !== undefined || options?.col !== undefined;
+    const collection = hasCollectionFilter
+      ? normalizeCollectionPointerForRead(options?.collection ?? options?.col ?? '')
+      : undefined;
     try {
       const data = await this.request<{ collections: any[] }>(
         `query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
@@ -963,14 +1019,21 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   }
 
   async getCollectionAssetCount(col: string, creator?: string): Promise<number> {
+    const normalizedCollection = normalizeCollectionPointerForRead(col);
+    const creatorScope = await this.resolveCollectionCreatorScope(
+      normalizedCollection,
+      creator,
+      'getCollectionAssetCount',
+    );
+
     try {
       const data = await this.request<{ collectionAssetCount: string | number }>(
-        `query($collection: String!, $creator: String) {
+        `query($collection: String!, $creator: String!) {
           collectionAssetCount(collection: $collection, creator: $creator)
         }`,
         {
-          collection: col,
-          creator: creator ?? null,
+          collection: normalizedCollection,
+          creator: creatorScope,
         }
       );
       return toIntSafe(data.collectionAssetCount, 0);
@@ -980,12 +1043,12 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       }
 
       const data = await this.request<{ collectionAssetCount: string | number }>(
-        `query($col: String!, $creator: String) {
+        `query($col: String!, $creator: String!) {
           collectionAssetCount(col: $col, creator: $creator)
         }`,
         {
-          col,
-          creator: creator ?? null,
+          col: normalizedCollection,
+          creator: creatorScope,
         }
       );
       return toIntSafe(data.collectionAssetCount, 0);
@@ -993,6 +1056,12 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   }
 
   async getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]> {
+    const normalizedCollection = normalizeCollectionPointerForRead(col);
+    const creatorScope = await this.resolveCollectionCreatorScope(
+      normalizedCollection,
+      options?.creator,
+      'getCollectionAssets',
+    );
     const first = clampInt(options?.limit ?? 100, 0, 500);
     const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
     const order = options?.order ?? 'created_at.desc';
@@ -1011,7 +1080,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
       const agentIdSelection = agentIdField ? `\n            ${agentIdField}` : '';
       try {
         const data = await this.request<{ collectionAssets: any[] }>(
-          `query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+          `query($collection: String!, $creator: String!, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
             collectionAssets(
               collection: $collection,
               creator: $creator,
@@ -1037,8 +1106,8 @@ export class IndexerGraphQLClient implements IndexerReadClient {
             }
           }`,
           {
-            collection: col,
-            creator: options?.creator ?? null,
+            collection: normalizedCollection,
+            creator: creatorScope,
             first,
             skip,
             orderBy,
@@ -1052,7 +1121,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         }
 
         const data = await this.request<{ collectionAssets: any[] }>(
-          `query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+          `query($col: String!, $creator: String!, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
             collectionAssets(
               col: $col,
               creator: $creator,
@@ -1078,8 +1147,8 @@ export class IndexerGraphQLClient implements IndexerReadClient {
             }
           }`,
           {
-            col,
-            creator: options?.creator ?? null,
+            col: normalizedCollection,
+            creator: creatorScope,
             first,
             skip,
             orderBy,

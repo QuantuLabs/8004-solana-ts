@@ -15,6 +15,17 @@ import { decompressBase64Value } from '../utils/compression.js';
 
 const VALIDATION_ARCHIVED_ERROR =
   'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
+const CID_V1_BASE32_PATTERN = /^b[a-z2-7]{20,}$/;
+
+function normalizeCollectionPointerForRead(pointer: string): string {
+  const trimmed = pointer.trim();
+  if (!trimmed) {
+    throw new IndexerError('Collection pointer cannot be empty', IndexerErrorCode.INVALID_RESPONSE);
+  }
+  if (trimmed.startsWith('c1:')) return trimmed;
+  if (CID_V1_BASE32_PATTERN.test(trimmed)) return `c1:${trimmed}`;
+  return trimmed;
+}
 
 /**
  * Configuration for IndexerClient
@@ -446,13 +457,19 @@ export interface ReplayEventData {
   responder?: string;
   response_hash?: string | null;
   response_count?: number | null;
-  revoke_count?: number | null;
+  revoke_count?: number | string | null;
 }
 
 export interface ReplayDataPage {
   events: ReplayEventData[];
   hasMore: boolean;
   nextFromCount: number;
+}
+
+interface ReplayDataResponseEnvelope {
+  events?: ReplayEventData[];
+  hasMore?: boolean;
+  nextFromCount?: number | string;
 }
 
 export interface CheckpointData {
@@ -645,6 +662,45 @@ export class IndexerClient implements IndexerReadClient {
       }
     }
     return fallback;
+  }
+
+  private async resolveCollectionCreatorScope(
+    normalizedCollection: string,
+    creator: string | undefined,
+    methodName: 'getCollectionAssetCount' | 'getCollectionAssets',
+  ): Promise<string> {
+    const direct = creator?.trim();
+    if (direct) return direct;
+
+    const pointers = await this.getCollectionPointers({
+      collection: normalizedCollection,
+      col: normalizedCollection,
+      limit: 2,
+      offset: 0,
+    });
+    const uniqueCreators = Array.from(
+      new Set(
+        pointers
+          .map((p) => p.creator?.trim())
+          .filter((v): v is string => !!v),
+      ),
+    );
+
+    if (uniqueCreators.length === 1) {
+      return uniqueCreators[0];
+    }
+
+    if (uniqueCreators.length > 1) {
+      throw new IndexerError(
+        `${methodName} requires creator (scope is creator+collection): multiple creators found for ${normalizedCollection}.`,
+        IndexerErrorCode.INVALID_RESPONSE,
+      );
+    }
+
+    throw new IndexerError(
+      `${methodName} requires creator (scope is creator+collection).`,
+      IndexerErrorCode.INVALID_RESPONSE,
+    );
   }
 
   private shouldUseLegacyCollectionRead(error: unknown): boolean {
@@ -1150,7 +1206,10 @@ export class IndexerClient implements IndexerReadClient {
    * Get canonical collection pointer rows.
    */
   async getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]> {
-    const collection = options?.collection ?? options?.col;
+    const hasCollectionFilter = options?.collection !== undefined || options?.col !== undefined;
+    const collection = hasCollectionFilter
+      ? normalizeCollectionPointerForRead(options?.collection ?? options?.col ?? '')
+      : undefined;
     const primaryQuery = this.buildQuery({
       collection: collection ? `eq.${collection}` : undefined,
       creator: options?.creator ? `eq.${options.creator}` : undefined,
@@ -1180,12 +1239,18 @@ export class IndexerClient implements IndexerReadClient {
   }
 
   /**
-   * Count assets attached to a collection pointer (optionally scoped by creator).
+   * Count assets attached to a collection pointer (scoped by creator).
    */
   async getCollectionAssetCount(col: string, creator?: string): Promise<number> {
+    const normalizedCollection = normalizeCollectionPointerForRead(col);
+    const creatorScope = await this.resolveCollectionCreatorScope(
+      normalizedCollection,
+      creator,
+      'getCollectionAssetCount',
+    );
     const primaryQuery = this.buildQuery({
-      collection: `eq.${col}`,
-      creator: creator ? `eq.${creator}` : undefined,
+      collection: `eq.${normalizedCollection}`,
+      creator: `eq.${creatorScope}`,
     });
 
     try {
@@ -1197,8 +1262,8 @@ export class IndexerClient implements IndexerReadClient {
       }
 
       const legacyQuery = this.buildQuery({
-        col: `eq.${col}`,
-        creator: creator ? `eq.${creator}` : undefined,
+        col: `eq.${normalizedCollection}`,
+        creator: `eq.${creatorScope}`,
       });
       const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${legacyQuery}`);
       return this.parseCountValue(row?.asset_count, 0);
@@ -1206,12 +1271,18 @@ export class IndexerClient implements IndexerReadClient {
   }
 
   /**
-   * Get assets by collection pointer (optionally scoped by creator).
+   * Get assets by collection pointer (scoped by creator).
    */
   async getCollectionAssets(col: string, options?: CollectionAssetsQueryOptions): Promise<IndexedAgent[]> {
+    const normalizedCollection = normalizeCollectionPointerForRead(col);
+    const creatorScope = await this.resolveCollectionCreatorScope(
+      normalizedCollection,
+      options?.creator,
+      'getCollectionAssets',
+    );
     const primaryQuery = this.buildQuery({
-      collection: `eq.${col}`,
-      creator: options?.creator ? `eq.${options.creator}` : undefined,
+      collection: `eq.${normalizedCollection}`,
+      creator: `eq.${creatorScope}`,
       limit: options?.limit,
       offset: options?.offset,
       order: options?.order,
@@ -1225,8 +1296,8 @@ export class IndexerClient implements IndexerReadClient {
       }
 
       const legacyQuery = this.buildQuery({
-        col: `eq.${col}`,
-        creator: options?.creator ? `eq.${options.creator}` : undefined,
+        col: `eq.${normalizedCollection}`,
+        creator: `eq.${creatorScope}`,
         limit: options?.limit,
         offset: options?.offset,
         order: options?.order,
@@ -1565,11 +1636,28 @@ export class IndexerClient implements IndexerReadClient {
       toCount,
       limit,
     });
-    const events = await this.request<ReplayEventData[]>(`/events/${asset}/replay-data${query}`);
+    const payload = await this.request<ReplayDataResponseEnvelope | ReplayEventData[]>(
+      `/events/${asset}/replay-data${query}`
+    );
+    const events = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.events)
+        ? payload.events
+        : [];
+    const hasMore = Array.isArray(payload)
+      ? events.length === limit
+      : typeof payload?.hasMore === 'boolean'
+        ? payload.hasMore
+        : events.length === limit;
+    const nextFromCount = Array.isArray(payload)
+      ? (events.length > 0 ? fromCount + events.length : fromCount)
+      : payload?.nextFromCount !== undefined
+        ? this.parseCountValue(payload.nextFromCount, fromCount)
+        : (events.length > 0 ? fromCount + events.length : fromCount);
     return {
       events,
-      hasMore: events.length === limit,
-      nextFromCount: events.length > 0 ? fromCount + events.length : fromCount,
+      hasMore,
+      nextFromCount,
     };
   }
 

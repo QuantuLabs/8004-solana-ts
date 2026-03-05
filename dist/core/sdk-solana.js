@@ -121,6 +121,30 @@ function toCollectionPointer(cidOrUri) {
     }
     return pointer;
 }
+function normalizeCollectionPointerInput(pointerOrCid) {
+    if (typeof pointerOrCid !== 'string') {
+        throw new Error('col must be a string');
+    }
+    // Backward-compatible: if caller already passes c1:<payload>, preserve existing validation behavior.
+    if (pointerOrCid.startsWith(COLLECTION_POINTER_PREFIX)) {
+        validateCollectionPointer(pointerOrCid);
+        return pointerOrCid;
+    }
+    // DX: for CID/IPFS input, normalize to canonical c1:<cidv1-base32>.
+    // Keep legacy error behavior for other invalid values by delegating to validateCollectionPointer.
+    const trimmed = pointerOrCid.trim();
+    try {
+        const candidate = extractCidCandidate(trimmed);
+        if (CID_V0_PATTERN.test(candidate) || CID_V1_BASE32_PATTERN.test(candidate.toLowerCase())) {
+            return toCollectionPointer(trimmed);
+        }
+    }
+    catch {
+        // keep existing validateCollectionPointer error contract below
+    }
+    validateCollectionPointer(pointerOrCid);
+    return pointerOrCid;
+}
 /**
  * Main SDK class for Solana 8004 implementation
  * v0.4.0 - ATOM Engine + Indexer support
@@ -1162,10 +1186,15 @@ export class SolanaSDK {
         if (!method) {
             throw new Error('getCollectionPointers is not available on current indexer client');
         }
-        return method.call(this.indexerClient, options);
+        const normalizedCol = options?.col !== undefined ? normalizeCollectionPointerInput(options.col) : undefined;
+        return method.call(this.indexerClient, {
+            ...(options ?? {}),
+            ...(normalizedCol !== undefined ? { col: normalizedCol } : {}),
+            ...(normalizedCol !== undefined ? { collection: normalizedCol } : {}),
+        });
     }
     /**
-     * Count assets associated with a collection pointer (and optional creator scope).
+     * Count assets associated with a collection pointer (creator+pointer scope).
      */
     async getCollectionAssetCount(col, creator) {
         this.requireIndexer('getCollectionAssetCount');
@@ -1173,7 +1202,9 @@ export class SolanaSDK {
         if (!method) {
             throw new Error('getCollectionAssetCount is not available on current indexer client');
         }
-        return method.call(this.indexerClient, col, creator);
+        const normalizedCol = normalizeCollectionPointerInput(col);
+        const creatorScope = creator?.trim();
+        return method.call(this.indexerClient, normalizedCol, creatorScope);
     }
     /**
      * Get assets associated with a collection pointer.
@@ -1184,7 +1215,12 @@ export class SolanaSDK {
         if (!method) {
             throw new Error('getCollectionAssets is not available on current indexer client');
         }
-        return method.call(this.indexerClient, col, options);
+        const normalizedCol = normalizeCollectionPointerInput(col);
+        const creatorScope = options?.creator?.trim();
+        return method.call(this.indexerClient, normalizedCol, {
+            ...(options ?? {}),
+            ...(creatorScope ? { creator: creatorScope } : {}),
+        });
     }
     /**
      * Get leaderboard (top agents by sort_key) - indexer only
@@ -1412,9 +1448,9 @@ export class SolanaSDK {
                 || (Object.getPrototypeOf(options) !== Object.prototype && Object.getPrototypeOf(options) !== null))) {
             throw new Error('Invalid registerAgent options argument: expected options object.');
         }
-        if (options?.collectionPointer !== undefined) {
-            validateCollectionPointer(options.collectionPointer);
-        }
+        const normalizedCollectionPointer = options?.collectionPointer !== undefined
+            ? normalizeCollectionPointerInput(options.collectionPointer)
+            : undefined;
         if (options?.collectionLock !== undefined && typeof options.collectionLock !== 'boolean') {
             throw new Error('collectionLock must be a boolean');
         }
@@ -1424,6 +1460,9 @@ export class SolanaSDK {
         }
         const registerOptions = {
             ...(options ?? {}),
+            ...(normalizedCollectionPointer !== undefined
+                ? { collectionPointer: normalizedCollectionPointer }
+                : {}),
             atomEnabled: options?.atomEnabled ?? false,
         };
         return await this.identityTxBuilder.registerAgent(tokenUri, registerOptions);
@@ -1457,13 +1496,14 @@ export class SolanaSDK {
     /**
      * Set collection pointer (write operation)
      * @param asset - Agent Core asset pubkey
-     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param col - Collection pointer input (c1:<payload>, CIDv0/CIDv1, or ipfs://...)
      * @param options - Write options (skipSend, signer, lock)
      */
     async setCollectionPointer(asset, col, options) {
         if (!options?.skipSend && !this.signer) {
             throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
         }
+        const normalizedCol = normalizeCollectionPointerInput(col);
         const lock = options?.lock ?? true;
         if (typeof lock !== 'boolean') {
             throw new Error('lock must be a boolean');
@@ -1479,9 +1519,9 @@ export class SolanaSDK {
             txOptions.computeUnits = options.computeUnits;
         const writeOptions = Object.keys(txOptions).length > 0 ? txOptions : undefined;
         if (lock) {
-            return this.identityTxBuilder.setCollectionPointer(asset, col, writeOptions);
+            return this.identityTxBuilder.setCollectionPointer(asset, normalizedCol, writeOptions);
         }
-        return this.identityTxBuilder.setCollectionPointerWithOptions(asset, col, false, writeOptions);
+        return this.identityTxBuilder.setCollectionPointerWithOptions(asset, normalizedCol, false, writeOptions);
     }
     /**
      * Set parent asset (write operation)
@@ -1622,7 +1662,6 @@ export class SolanaSDK {
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
      * @param sealHash - Optional SEAL hash from original feedback.
      * If omitted, SDK attempts to auto-resolve from indexed feedback by using signer as feedback client.
-     * Legacy fallback remains supported (all-zero hash) when auto-resolution is unavailable.
      * @param options - Write options (skipSend, signer)
      */
     async revokeFeedback(asset, feedbackIndex, sealHash, options) {
@@ -2124,19 +2163,17 @@ export class SolanaSDK {
                 continue;
             }
             const record = entry;
-            if (typeof record.type === 'string' && typeof record.value === 'string') {
-                services.push({
-                    type: record.type,
-                    value: record.value,
-                    meta: typeof record.meta === 'object' && record.meta !== null ? record.meta : undefined,
-                });
+            const valueField = typeof record.value === 'string' ? record.value : '';
+            const endpointField = typeof record.endpoint === 'string' ? record.endpoint : '';
+            const endpointValue = valueField.length > 0 ? valueField : endpointField;
+            if (!endpointValue) {
                 continue;
             }
-            const name = typeof record.name === 'string' ? record.name : '';
-            const value = typeof record.endpoint === 'string' ? record.endpoint : '';
-            if (!value) {
-                continue;
-            }
+            const typeCandidate = typeof record.type === 'string'
+                ? record.type
+                : typeof record.name === 'string'
+                    ? record.name
+                    : '';
             const typeMap = {
                 mcp: ServiceType.MCP,
                 a2a: ServiceType.A2A,
@@ -2146,17 +2183,20 @@ export class SolanaSDK {
                 agentwallet: ServiceType.WALLET,
                 oasf: ServiceType.OASF,
             };
-            const normalizedType = typeMap[name.toLowerCase()] ?? (name || 'UNKNOWN');
+            const normalizedType = typeMap[typeCandidate.toLowerCase()] ?? (typeCandidate || 'UNKNOWN');
             const meta = {};
+            if (typeof record.meta === 'object' && record.meta !== null && !Array.isArray(record.meta)) {
+                Object.assign(meta, record.meta);
+            }
             for (const [key, valueEntry] of Object.entries(record)) {
-                if (key === 'name' || key === 'endpoint') {
+                if (key === 'name' || key === 'type' || key === 'value' || key === 'endpoint' || key === 'meta') {
                     continue;
                 }
                 meta[key] = valueEntry;
             }
             services.push({
                 type: normalizedType,
-                value,
+                value: endpointValue,
                 meta: Object.keys(meta).length ? meta : undefined,
             });
         }

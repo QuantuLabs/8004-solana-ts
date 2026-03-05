@@ -629,7 +629,7 @@ export declare class SolanaSDK {
         offset?: number;
     }): Promise<CollectionPointerRecord[]>;
     /**
-     * Count assets associated with a collection pointer (and optional creator scope).
+     * Count assets associated with a collection pointer (creator+pointer scope).
      */
     getCollectionAssetCount(col: string, creator?: string): Promise<number>;
     /**
@@ -778,7 +778,8 @@ export declare class SolanaSDK {
      *   - `assetPubkey`: Asset keypair pubkey (required with skipSend, client generates locally)
      *   - `atomEnabled`: Set to true to enable ATOM + initialize stats atomically at creation (default false)
      *     (use enableAtom() to turn it on later, one-way/irreversible)
-     *   - `collectionPointer`: Optional pointer (c1:<payload>) attached atomically in the same tx
+     *   - `collectionPointer`: Optional pointer input attached atomically in the same tx
+     *     (accepts c1:<payload>, CIDv0 Qm..., CIDv1 b..., or ipfs://... URI)
      *   - `collectionLock`: Optional lock flag for collectionPointer attach (default: true)
      *     If pointer attach fails, register also fails (single atomic transaction).
      * @returns Transaction result with asset, or PreparedTransaction if skipSend
@@ -806,7 +807,7 @@ export declare class SolanaSDK {
     /**
      * Set collection pointer (write operation)
      * @param asset - Agent Core asset pubkey
-     * @param col - Canonical collection pointer (c1:<payload>)
+     * @param col - Collection pointer input (c1:<payload>, CIDv0/CIDv1, or ipfs://...)
      * @param options - Write options (skipSend, signer, lock)
      */
     setCollectionPointer(asset: PublicKey, col: string, options?: SetCollectionPointerOptions): Promise<TransactionResult | PreparedTransaction>;
@@ -872,7 +873,6 @@ export declare class SolanaSDK {
      * @param feedbackIndex - Feedback index to revoke (number or bigint)
      * @param sealHash - Optional SEAL hash from original feedback.
      * If omitted, SDK attempts to auto-resolve from indexed feedback by using signer as feedback client.
-     * Legacy fallback remains supported (all-zero hash) when auto-resolution is unavailable.
      * @param options - Write options (skipSend, signer)
      */
     revokeFeedback(asset: PublicKey, feedbackIndex: number | bigint, sealHash?: Buffer, options?: RevokeFeedbackOptions): Promise<TransactionResult | PreparedTransaction>;

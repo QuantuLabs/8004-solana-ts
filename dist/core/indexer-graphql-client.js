@@ -4,6 +4,18 @@
  */
 import { IndexerError, IndexerErrorCode, IndexerRateLimitError, IndexerTimeoutError, IndexerUnauthorizedError, IndexerUnavailableError, } from './indexer-errors.js';
 const VALIDATION_ARCHIVED_ERROR = 'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
+const CID_V1_BASE32_PATTERN = /^b[a-z2-7]{20,}$/;
+function normalizeCollectionPointerForRead(pointer) {
+    const trimmed = pointer.trim();
+    if (!trimmed) {
+        throw new IndexerError('Collection pointer cannot be empty', IndexerErrorCode.INVALID_RESPONSE);
+    }
+    if (trimmed.startsWith('c1:'))
+        return trimmed;
+    if (CID_V1_BASE32_PATTERN.test(trimmed))
+        return `c1:${trimmed}`;
+    return trimmed;
+}
 function toIsoFromUnixSeconds(unix) {
     if (typeof unix === 'string') {
         const trimmed = unix.trim();
@@ -344,7 +356,31 @@ export class IndexerGraphQLClient {
         const msg = error.message;
         return (/Cannot query field ['"]collections['"] on type ['"]Query['"]/.test(msg)
             || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
-            || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssets['"]/.test(msg));
+            || /Unknown argument ['"]collection['"] on field ['"]Query\.collectionAssets['"]/.test(msg)
+            || /Unknown argument ['"]creator['"] on field ['"]Query\.collections['"]/.test(msg)
+            || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
+            || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssets['"]/.test(msg));
+    }
+    async resolveCollectionCreatorScope(normalizedCollection, creator, methodName) {
+        const direct = creator?.trim();
+        if (direct)
+            return direct;
+        const pointers = await this.getCollectionPointers({
+            collection: normalizedCollection,
+            col: normalizedCollection,
+            limit: 2,
+            offset: 0,
+        });
+        const uniqueCreators = Array.from(new Set(pointers
+            .map((p) => p.creator?.trim())
+            .filter((v) => !!v)));
+        if (uniqueCreators.length === 1) {
+            return uniqueCreators[0];
+        }
+        if (uniqueCreators.length > 1) {
+            throw new IndexerError(`${methodName} requires creator (scope is creator+collection): multiple creators found for ${normalizedCollection}.`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        throw new IndexerError(`${methodName} requires creator (scope is creator+collection).`, IndexerErrorCode.INVALID_RESPONSE);
     }
     shouldFallbackAgentIdField(error, field) {
         if (!(error instanceof IndexerError))
@@ -711,7 +747,10 @@ export class IndexerGraphQLClient {
     async getCollectionPointers(options) {
         const first = clampInt(options?.limit ?? 100, 0, 500);
         const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
-        const collection = options?.collection ?? options?.col;
+        const hasCollectionFilter = options?.collection !== undefined || options?.col !== undefined;
+        const collection = hasCollectionFilter
+            ? normalizeCollectionPointerForRead(options?.collection ?? options?.col ?? '')
+            : undefined;
         try {
             const data = await this.request(`query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
           collections(first: $first, skip: $skip, collection: $collection, creator: $creator) {
@@ -774,12 +813,14 @@ export class IndexerGraphQLClient {
         }
     }
     async getCollectionAssetCount(col, creator) {
+        const normalizedCollection = normalizeCollectionPointerForRead(col);
+        const creatorScope = await this.resolveCollectionCreatorScope(normalizedCollection, creator, 'getCollectionAssetCount');
         try {
-            const data = await this.request(`query($collection: String!, $creator: String) {
+            const data = await this.request(`query($collection: String!, $creator: String!) {
           collectionAssetCount(collection: $collection, creator: $creator)
         }`, {
-                collection: col,
-                creator: creator ?? null,
+                collection: normalizedCollection,
+                creator: creatorScope,
             });
             return toIntSafe(data.collectionAssetCount, 0);
         }
@@ -787,16 +828,18 @@ export class IndexerGraphQLClient {
             if (!this.shouldUseLegacyCollectionRead(error)) {
                 throw error;
             }
-            const data = await this.request(`query($col: String!, $creator: String) {
+            const data = await this.request(`query($col: String!, $creator: String!) {
           collectionAssetCount(col: $col, creator: $creator)
         }`, {
-                col,
-                creator: creator ?? null,
+                col: normalizedCollection,
+                creator: creatorScope,
             });
             return toIntSafe(data.collectionAssetCount, 0);
         }
     }
     async getCollectionAssets(col, options) {
+        const normalizedCollection = normalizeCollectionPointerForRead(col);
+        const creatorScope = await this.resolveCollectionCreatorScope(normalizedCollection, options?.creator, 'getCollectionAssets');
         const first = clampInt(options?.limit ?? 100, 0, 500);
         const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
         const order = options?.order ?? 'created_at.desc';
@@ -813,7 +856,7 @@ export class IndexerGraphQLClient {
         return this.requestWithAgentIdField(async (agentIdField) => {
             const agentIdSelection = agentIdField ? `\n            ${agentIdField}` : '';
             try {
-                const data = await this.request(`query($collection: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+                const data = await this.request(`query($collection: String!, $creator: String!, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
             collectionAssets(
               collection: $collection,
               creator: $creator,
@@ -838,8 +881,8 @@ export class IndexerGraphQLClient {
               solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
             }
           }`, {
-                    collection: col,
-                    creator: options?.creator ?? null,
+                    collection: normalizedCollection,
+                    creator: creatorScope,
                     first,
                     skip,
                     orderBy,
@@ -851,7 +894,7 @@ export class IndexerGraphQLClient {
                 if (!this.shouldUseLegacyCollectionRead(error)) {
                     throw error;
                 }
-                const data = await this.request(`query($col: String!, $creator: String, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
+                const data = await this.request(`query($col: String!, $creator: String!, $first: Int!, $skip: Int!, $orderBy: AgentOrderBy!, $dir: OrderDirection!) {
             collectionAssets(
               col: $col,
               creator: $creator,
@@ -876,8 +919,8 @@ export class IndexerGraphQLClient {
               solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
             }
           }`, {
-                    col,
-                    creator: options?.creator ?? null,
+                    col: normalizedCollection,
+                    creator: creatorScope,
                     first,
                     skip,
                     orderBy,

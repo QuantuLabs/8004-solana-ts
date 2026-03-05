@@ -682,6 +682,14 @@ describe('IndexerClient', () => {
       expect(rows[0]).toMatchObject({ collection: 'c1:legacy', col: 'c1:legacy', creator: 'legacyCreator' });
     });
 
+    it('getCollectionPointers should reject empty collection filter', async () => {
+      const client = createClient();
+      await expect(client.getCollectionPointers({ col: '' })).rejects.toThrow(
+        'Collection pointer cannot be empty',
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('getCollectionAssetCount should use collection query param', async () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse({ collection: 'c1:abc', asset_count: 12 }));
@@ -698,21 +706,23 @@ describe('IndexerClient', () => {
         .mockResolvedValueOnce(mockJsonResponse({}, 400))
         .mockResolvedValueOnce(mockJsonResponse({ col: 'c1:legacy', asset_count: '9' }));
 
-      const count = await client.getCollectionAssetCount('c1:legacy');
+      const count = await client.getCollectionAssetCount('c1:legacy', 'creator1');
       expect(mockFetch).toHaveBeenCalledTimes(2);
       const secondUrl = (mockFetch.mock.calls[1][0] as string);
       expect(secondUrl).toContain('/collection_asset_count?');
       expect(secondUrl).toContain('col=eq.c1%3Alegacy');
+      expect(secondUrl).toContain('creator=eq.creator1');
       expect(count).toBe(9);
     });
 
     it('getCollectionAssets should use collection query param', async () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse([{ asset: 'agent1' }]));
-      const rows = await client.getCollectionAssets('c1:abc', { limit: 5, offset: 2 });
+      const rows = await client.getCollectionAssets('c1:abc', { creator: 'creator1', limit: 5, offset: 2 });
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('/collection_assets?');
       expect(url).toContain('collection=eq.c1%3Aabc');
+      expect(url).toContain('creator=eq.creator1');
       expect(rows).toEqual([{ asset: 'agent1' }]);
     });
 
@@ -722,12 +732,56 @@ describe('IndexerClient', () => {
         .mockResolvedValueOnce(mockJsonResponse({}, 400))
         .mockResolvedValueOnce(mockJsonResponse([{ asset: 'agentLegacy' }]));
 
-      const rows = await client.getCollectionAssets('c1:legacy');
+      const rows = await client.getCollectionAssets('c1:legacy', { creator: 'creator1' });
       expect(mockFetch).toHaveBeenCalledTimes(2);
       const secondUrl = (mockFetch.mock.calls[1][0] as string);
       expect(secondUrl).toContain('/collection_assets?');
       expect(secondUrl).toContain('col=eq.c1%3Alegacy');
+      expect(secondUrl).toContain('creator=eq.creator1');
       expect(rows).toEqual([{ asset: 'agentLegacy' }]);
+    });
+
+    it('collection-scoped reads should normalize bare CID to c1 pointer', async () => {
+      const client = createClient();
+      const bareCid = 'bafkreihvfphhye3jom6ewfrlvy4wx7itxmkjc6bjtzrlgfnmfs7dwxc7km';
+      mockFetch.mockResolvedValue(mockJsonResponse({ collection: `c1:${bareCid}`, asset_count: 3 }));
+
+      await client.getCollectionAssetCount(bareCid, 'creator1');
+      const countUrl = (mockFetch.mock.calls[0][0] as string);
+      expect(countUrl).toContain(`collection=eq.c1%3A${bareCid}`);
+    });
+
+    it('collection-scoped reads should infer creator when unique', async () => {
+      const client = createClient();
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse([{ collection: 'c1:abc', creator: 'creator1' }]))
+        .mockResolvedValueOnce(mockJsonResponse({ collection: 'c1:abc', asset_count: 4 }))
+        .mockResolvedValueOnce(mockJsonResponse([{ collection: 'c1:abc', creator: 'creator1' }]))
+        .mockResolvedValueOnce(mockJsonResponse([{ asset: 'agent1' }]));
+
+      const count = await (client as any).getCollectionAssetCount('c1:abc');
+      const rows = await (client as any).getCollectionAssets('c1:abc');
+
+      expect(count).toBe(4);
+      expect(rows).toEqual([{ asset: 'agent1' }]);
+      const countUrl = (mockFetch.mock.calls[1][0] as string);
+      const rowsUrl = (mockFetch.mock.calls[3][0] as string);
+      expect(countUrl).toContain('creator=eq.creator1');
+      expect(rowsUrl).toContain('creator=eq.creator1');
+    });
+
+    it('collection-scoped reads should throw without creator when scope is ambiguous', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(
+        mockJsonResponse([
+          { collection: 'c1:abc', creator: 'creator1' },
+          { collection: 'c1:abc', creator: 'creator2' },
+        ]),
+      );
+
+      await expect((client as any).getCollectionAssetCount('c1:abc')).rejects.toThrow(
+        'multiple creators found for c1:abc',
+      );
     });
   });
 
@@ -953,13 +1007,48 @@ describe('IndexerClient', () => {
   });
 
   describe('getReplayData', () => {
-    it('should fetch replay data', async () => {
+    it('should fetch replay data envelope', async () => {
+      const client = createClient();
+      const events = [{ asset: 'a', client: 'c', feedback_index: '0', slot: 100 }];
+      mockFetch.mockResolvedValue(mockJsonResponse({
+        events,
+        hasMore: false,
+        nextFromCount: 1,
+      }));
+      const result = await client.getReplayData('asset', 'feedback');
+      expect(result.events.length).toBe(1);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextFromCount).toBe(1);
+    });
+
+    it('should accept string revoke_count values from REST replay payload', async () => {
+      const client = createClient();
+      const events = [
+        {
+          asset: 'a',
+          client: 'c',
+          feedback_index: '0',
+          slot: 100,
+          revoke_count: '1',
+        },
+      ];
+      mockFetch.mockResolvedValue(mockJsonResponse({
+        events,
+        hasMore: false,
+        nextFromCount: 2,
+      }));
+      const result = await client.getReplayData('asset', 'revoke');
+      expect(result.events[0]?.revoke_count).toBe('1');
+      expect(result.nextFromCount).toBe(2);
+    });
+
+    it('should support legacy array replay payload', async () => {
       const client = createClient();
       const events = [{ asset: 'a', client: 'c', feedback_index: '0', slot: 100 }];
       mockFetch.mockResolvedValue(mockJsonResponse(events));
       const result = await client.getReplayData('asset', 'feedback');
-      expect(result.events.length).toBe(1);
-      expect(result.hasMore).toBe(false);
+      expect(result.events).toEqual(events);
+      expect(result.nextFromCount).toBe(1);
     });
   });
 

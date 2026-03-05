@@ -918,7 +918,7 @@ describe('SolanaSDK', () => {
   describe('collection pointer indexer helpers', () => {
     it('should delegate getCollectionPointers to indexer client', async () => {
       await sdk.getCollectionPointers({ col: 'c1:abc' });
-      expect(mockIndexerClient.getCollectionPointers).toHaveBeenCalledWith({ col: 'c1:abc' });
+      expect(mockIndexerClient.getCollectionPointers).toHaveBeenCalledWith({ col: 'c1:abc', collection: 'c1:abc' });
     });
 
     it('should delegate getCollectionAssetCount to indexer client', async () => {
@@ -927,8 +927,28 @@ describe('SolanaSDK', () => {
     });
 
     it('should delegate getCollectionAssets to indexer client', async () => {
-      await sdk.getCollectionAssets('c1:abc', { limit: 10 });
-      expect(mockIndexerClient.getCollectionAssets).toHaveBeenCalledWith('c1:abc', { limit: 10 });
+      await sdk.getCollectionAssets('c1:abc', { creator: 'creator', limit: 10 });
+      expect(mockIndexerClient.getCollectionAssets).toHaveBeenCalledWith('c1:abc', { creator: 'creator', limit: 10 });
+    });
+
+    it('should normalize bare CID for collection-scoped reads', async () => {
+      const bareCid = 'bafkreihvfphhye3jom6ewfrlvy4wx7itxmkjc6bjtzrlgfnmfs7dwxc7km';
+      await sdk.getCollectionAssetCount(bareCid, 'creator');
+      expect(mockIndexerClient.getCollectionAssetCount).toHaveBeenCalledWith(`c1:${bareCid}`, 'creator');
+    });
+
+    it('should delegate collection-scoped reads without creator to indexer client resolver', async () => {
+      await (sdk as any).getCollectionAssetCount('c1:abc');
+      await (sdk as any).getCollectionAssets('c1:abc');
+      expect(mockIndexerClient.getCollectionAssetCount).toHaveBeenCalledWith('c1:abc', undefined);
+      expect(mockIndexerClient.getCollectionAssets).toHaveBeenCalledWith('c1:abc', {});
+    });
+
+    it('should reject empty collection pointer in getCollectionPointers filter', async () => {
+      await expect(sdk.getCollectionPointers({ col: '' })).rejects.toThrow(
+        'col must start with "c1:"',
+      );
+      expect(mockIndexerClient.getCollectionPointers).not.toHaveBeenCalled();
     });
   });
 
@@ -1558,6 +1578,23 @@ describe('SolanaSDK', () => {
       }
     });
 
+    it('registerAgent should accept raw CIDv0 collectionPointer and normalize at SDK boundary', async () => {
+      const rawCidV0 = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+      const canonicalPointer = 'c1:bafybeie5nqv6kd3qnfjupgvz34woh3oksc3iau6abmyajn7qvtf6d2ho34';
+
+      await signerSdk.registerAgent('ipfs://test', {
+        collectionPointer: rawCidV0,
+      });
+
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledWith(
+        'ipfs://test',
+        expect.objectContaining({
+          collectionPointer: canonicalPointer,
+        })
+      );
+      expect(mockIdentityTxBuilder.registerAgent).toHaveBeenCalledTimes(1);
+    });
+
     it('registerAgent should validate collection pointer before register', async () => {
       await expect(
         signerSdk.registerAgent('ipfs://test', {
@@ -1663,6 +1700,39 @@ describe('SolanaSDK', () => {
         signerSdk.setAgentUri(PublicKey.unique(), 'ipfs://auto')
       ).rejects.toThrow('Base collection not found');
       spy.mockRestore();
+    });
+
+    it('setCollectionPointer should accept raw CIDv0 and normalize at SDK boundary', async () => {
+      const rawCidV0 = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+      const canonicalPointer = 'c1:bafybeie5nqv6kd3qnfjupgvz34woh3oksc3iau6abmyajn7qvtf6d2ho34';
+      const asset = PublicKey.unique();
+
+      await signerSdk.setCollectionPointer(asset, rawCidV0);
+
+      expect(mockIdentityTxBuilder.setCollectionPointer).toHaveBeenCalledWith(
+        asset,
+        canonicalPointer,
+        undefined
+      );
+      expect(mockIdentityTxBuilder.setCollectionPointer).toHaveBeenCalledTimes(1);
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).not.toHaveBeenCalled();
+    });
+
+    it('setCollectionPointer should normalize raw CIDv0 with lock=false path', async () => {
+      const rawCidV0 = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+      const canonicalPointer = 'c1:bafybeie5nqv6kd3qnfjupgvz34woh3oksc3iau6abmyajn7qvtf6d2ho34';
+      const asset = PublicKey.unique();
+
+      await signerSdk.setCollectionPointer(asset, rawCidV0, { lock: false });
+
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).toHaveBeenCalledWith(
+        asset,
+        canonicalPointer,
+        false,
+        undefined
+      );
+      expect(mockIdentityTxBuilder.setCollectionPointerWithOptions).toHaveBeenCalledTimes(1);
+      expect(mockIdentityTxBuilder.setCollectionPointer).not.toHaveBeenCalled();
     });
 
     it('enableAtom should delegate to identityTxBuilder', async () => {

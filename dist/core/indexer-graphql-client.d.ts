@@ -22,6 +22,7 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     constructor(config: IndexerGraphQLClientConfig);
     getBaseUrl(): string;
     private shouldUseLegacyCollectionRead;
+    private resolveCollectionCreatorScope;
     private shouldFallbackAgentIdField;
     private shouldFallbackAgentIdVariableType;
     private shouldRetryBigIntAgentIdAsNumber;
