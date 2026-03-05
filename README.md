@@ -231,6 +231,10 @@ const sdk = new SolanaSDK({
   indexerGraphqlUrl: 'http://127.0.0.1:3000/v2/graphql',
 });
 
+// If you upgrade an existing self-hosted indexer DB, run this in the indexer repo:
+// npx prisma migrate deploy
+// Do not use `prisma db push` for upgrade flows.
+
 // Custom GraphQL indexer override (recommended)
 const sdk = new SolanaSDK({
   cluster: 'mainnet-beta',

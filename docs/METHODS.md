@@ -406,13 +406,13 @@ These methods query the indexer for aggregated data.
 | `getFeedbackById` | `(feedbackId: string) => Promise<IndexedFeedback \| null>` | Read one feedback by sequential id (`feedbacks.feedback_id`) |
 | `getFeedbackResponsesByFeedbackId` | `(feedbackId: string, limit?: number) => Promise<IndexedFeedbackResponse[]>` | Read responses by backend feedback id using REST-safe lookup (`feedbacks.feedback_id -> asset`, then `feedback_responses.asset + feedback_id`); fails closed on ambiguous id-to-asset mappings |
 | `getCollectionPointers` | `(options?) => Promise<CollectionPointerRecord[]>` | Read canonical `c1:` collection-pointer rows |
-| `getCollectionAssetCount` | `(col: string, creator?) => Promise<number>` | Count assets attached to one pointer |
-| `getCollectionAssets` | `(col: string, options?) => Promise<IndexedAgent[]>` | List assets attached to one pointer |
+| `getCollectionAssetCount` | `(col: string, creator: string) => Promise<number>` | Count assets for one creator+pointer scope |
+| `getCollectionAssets` | `(col: string, options: { creator: string, ... }) => Promise<IndexedAgent[]>` | List assets for one creator+pointer scope |
 | `getLeaderboard` | `(options?) => Promise<LeaderboardEntry[]>` | Get top agents by reputation |
 | `getGlobalStats` | `() => Promise<GlobalStats>` | Get global registry statistics |
 | `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
 
-`getFeedbackById()` and `getFeedbackResponsesByFeedbackId()` accept only sequential numeric backend IDs (for example `"123"`). Canonical IDs like `"<asset>:<client>:<index>"` are rejected (return `null` / `[]`) and are not auto-converted. For REST indexers where response ids are asset-scoped, `getFeedbackResponsesByFeedbackId()` internally resolves the feedback asset first, then filters responses by `asset + feedback_id`. If one `feedback_id` maps to multiple distinct assets, the method fails closed and throws `IndexerError` (`INVALID_RESPONSE`) instead of returning potentially incorrect responses.
+`getFeedbackById()` and `getFeedbackResponsesByFeedbackId()` accept only sequential numeric backend IDs (for example `"123"`). Canonical IDs like `"<asset>:<client>:<index>"` are rejected (return `null` / `[]`) and are not auto-converted. For low-level REST filter calls, `feedback_id` supports only `eq.<integer>` semantics (for example `feedback_id=eq.123`); operators like `neq`, `in`, and `not.in` are rejected by the latest indexer. For REST indexers where response ids are asset-scoped, `getFeedbackResponsesByFeedbackId()` internally resolves the feedback asset first, then filters responses by `asset + feedback_id`. If one `feedback_id` maps to multiple distinct assets, the method fails closed and throws `IndexerError` (`INVALID_RESPONSE`) instead of returning potentially incorrect responses.
 Indexer validation reads are archived (`v0.5.0+`): `getValidations`, `getValidationsByValidator`, `getPendingValidations`, and `getValidation` are intentionally not exposed by current indexer clients.
 
 ```typescript
@@ -442,7 +442,7 @@ const pointers = await sdk.getCollectionPointers({ creator: 'CreatorPubkey...' }
 
 // Count + list assets for one pointer
 const count = await sdk.getCollectionAssetCount('c1:bafybeigdyr...', 'CreatorPubkey...');
-const assets = await sdk.getCollectionAssets('c1:bafybeigdyr...', { limit: 50 });
+const assets = await sdk.getCollectionAssets('c1:bafybeigdyr...', { creator: 'CreatorPubkey...', limit: 50 });
 
 // Get leaderboard
 const top = await sdk.getLeaderboard({ minTier: 2, limit: 50 });
@@ -455,6 +455,7 @@ console.log(`Total agents: ${stats.totalAgents}, Platinum: ${stats.platinumAgent
 Compatibility notes:
 - SDK now targets modern indexer collection APIs (`/collections`, `collection=...`, GraphQL `collections(...)`).
 - Legacy indexers are still supported via automatic fallback (`/collection_pointers`, `col=...`, GraphQL `collectionPointers(...)` / `col` args).
+- A collection is unique only when the minting creator is the same and the collection pointer is the same.
 - `getAgentByAgentId()` is backend-specific: REST resolves `agent_id`; GraphQL resolves sequential `agentId` / `agentid` when exposed.
 - Use `getAgent(asset)` when you need asset pubkey lookups.
 - `getAgentByIndexerId()` remains available as an alias to `getAgentByAgentId()`.
