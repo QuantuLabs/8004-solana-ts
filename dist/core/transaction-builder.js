@@ -1080,7 +1080,7 @@ export class ReputationTransactionBuilder {
      * Revoke feedback - v0.6.0 (SEAL v1)
      * @param asset - Agent Core asset
      * @param feedbackIndex - Feedback index to revoke
-     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
+     * @param sealHash - Required SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param options - Write options (skipSend, signer)
      *
      * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
@@ -1091,13 +1091,11 @@ export class ReputationTransactionBuilder {
             if (!signerPubkey) {
                 throw new Error('signer required when SDK has no signer configured');
             }
-            // Backward compatibility: legacy callers may omit sealHash.
-            const resolvedSealHash = sealHash ?? Buffer.alloc(32);
-            if (resolvedSealHash.length !== 32) {
-                throw new Error('sealHash must be 32 bytes');
-            }
             if (!sealHash) {
-                logger.warn('revokeFeedback called without sealHash; defaulting to all-zero hash for legacy compatibility');
+                throw new Error('sealHash is required');
+            }
+            if (sealHash.length !== 32) {
+                throw new Error('sealHash must be 32 bytes');
             }
             // Derive PDAs
             const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
@@ -1112,7 +1110,7 @@ export class ReputationTransactionBuilder {
             const atomConfig = getAtomConfigPDA(this.programIds.atomEngine)[0];
             const atomStats = getAtomStatsPDA(asset, this.programIds.atomEngine)[0];
             const registryAuthority = PDAHelpers.getAtomCpiAuthorityPDA(this.programIds.agentRegistry)[0];
-            const instruction = this.instructionBuilder.buildRevokeFeedback(signerPubkey, agentPda, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, resolvedSealHash);
+            const instruction = this.instructionBuilder.buildRevokeFeedback(signerPubkey, agentPda, asset, atomConfig, atomStats, registryAuthority, feedbackIndex, sealHash);
             const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
                 units: this.nextComputeUnitLimit(options?.computeUnits ?? DEFAULT_COMPUTE_UNITS),
             });

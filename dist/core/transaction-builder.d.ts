@@ -272,12 +272,12 @@ export declare class ReputationTransactionBuilder {
      * Revoke feedback - v0.6.0 (SEAL v1)
      * @param asset - Agent Core asset
      * @param feedbackIndex - Feedback index to revoke
-     * @param sealHash - SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
+     * @param sealHash - Required SEAL hash from the original feedback (from NewFeedback event or computeSealHash)
      * @param options - Write options (skipSend, signer)
      *
      * SEAL v1: Uses sealHash (computed on-chain during giveFeedback) instead of feedbackHash.
      */
-    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, sealHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
+    revokeFeedback(asset: PublicKey, feedbackIndex: bigint, sealHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
      * Append response to feedback - v0.6.0 (SEAL v1)
      * @param asset - Agent Core asset

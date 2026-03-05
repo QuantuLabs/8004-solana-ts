@@ -870,6 +870,17 @@ describe('ReputationTransactionBuilder', () => {
         expect(result.error).toContain('Agent not found');
       }
     });
+
+    it('should require sealHash', async () => {
+      const result = await (builder as any).revokeFeedback(
+        PublicKey.unique(),
+        0n
+      );
+      if ('success' in result) {
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('sealHash is required');
+      }
+    });
   });
 
   describe('appendResponse', () => {
