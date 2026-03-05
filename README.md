@@ -189,7 +189,7 @@ const summary = await sdk.getSummary(assetPubkey);
 ## Indexer
 
 The SDK uses an indexer by default for search and query operations (feedbacks, collections/pointers, agent listings). This provides fast off-chain queries without scanning the blockchain.
-Indexer validation reads are archived (`v0.5.0+`) and intentionally not exposed by current indexer clients.
+Indexer validation reads are archived (`v0.5.0+`). Legacy validation read methods remain available for compatibility but intentionally throw archived-feature errors.
 
 Default backend is **GraphQL v2** (public read-only reference deployment).
 
