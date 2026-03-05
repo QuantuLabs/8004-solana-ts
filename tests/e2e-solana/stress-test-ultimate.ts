@@ -862,7 +862,6 @@ class UltimateStressTest {
 
     let agentsIndexed = 0;
     let feedbacksIndexed = 0;
-    let validationsIndexed = 0;
 
     // Check agents
     for (const agent of this.agents.slice(0, 10)) {
@@ -896,26 +895,10 @@ class UltimateStressTest {
       }
     }
 
-    // Check validations
-    for (const agent of this.agents.slice(0, 5)) {
-      try {
-        const response = await fetch(
-          `${CONFIG.INDEXER_URL}/validations?asset=eq.${agent.toBase58()}&limit=50`,
-          { headers }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          validationsIndexed += data.length;
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }
-
     console.log(`\n📊 Indexer Verification (sampled):`);
     console.log(`  Agents: ${agentsIndexed}/10 sampled`);
     console.log(`  Feedbacks: ${feedbacksIndexed} (from 5 agents)`);
-    console.log(`  Validations: ${validationsIndexed} (from 5 agents)`);
+    console.log('  Validations: archived on indexer (read checks skipped)');
   }
 
   private async cleanup(): Promise<void> {

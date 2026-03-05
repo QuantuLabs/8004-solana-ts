@@ -660,7 +660,6 @@ function generateRevocationTasks(
 interface IndexerVerificationResult {
   agentsFound: number;
   feedbacksFound: number;
-  validationsFound: number;
   errors: string[];
   details: {
     agents: Array<{ id: string; name?: string; feedbackCount?: number }>;
@@ -676,7 +675,6 @@ async function verifyIndexerData(
   const result: IndexerVerificationResult = {
     agentsFound: 0,
     feedbacksFound: 0,
-    validationsFound: 0,
     errors: [],
     details: { agents: [], recentFeedbacks: [] },
   };
@@ -734,23 +732,6 @@ async function verifyIndexerData(
       }
     } catch (e: any) {
       result.errors.push(`Feedback check failed: ${e.message}`);
-    }
-  }
-
-  // Check validations
-  for (const agent of agents) {
-    try {
-      const agentId = agent.toBase58();
-      const response = await fetch(
-        `${CONFIG.INDEXER_URL}/validations?asset=eq.${agentId}&limit=50`,
-        { headers }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        result.validationsFound += data.length;
-      }
-    } catch (e: any) {
-      result.errors.push(`Validation check failed: ${e.message}`);
     }
   }
 
@@ -1040,7 +1021,7 @@ async function runMassiveStressTest(): Promise<StressReport> {
   console.log(`  Agents indexed: ${indexerVerification.agentsFound}/${agents.length}`);
   console.log(`  Feedbacks indexed: ${indexerVerification.feedbacksFound}`);
   console.log(`  Expected feedbacks: ~${CONFIG.FEEDBACKS}`);
-  console.log(`  Validation requests: ${indexerVerification.validationsFound}`);
+  console.log('  Validation requests: archived on indexer (read checks skipped)');
 
   if (indexerVerification.errors.length > 0) {
     console.log(`  ⚠️ Verification issues:`);
