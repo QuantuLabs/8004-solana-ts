@@ -1,5 +1,18 @@
 import { ServiceType } from '../models/enums.js';
 import { validateSkill, validateDomain } from '../core/oasf-validator.js';
+const CANONICAL_SERVICE_TYPES = {
+    [ServiceType.MCP.toLowerCase()]: ServiceType.MCP,
+    [ServiceType.A2A.toLowerCase()]: ServiceType.A2A,
+    [ServiceType.OASF.toLowerCase()]: ServiceType.OASF,
+    [ServiceType.ENS.toLowerCase()]: ServiceType.ENS,
+    [ServiceType.SNS.toLowerCase()]: ServiceType.SNS,
+    [ServiceType.DID.toLowerCase()]: ServiceType.DID,
+    [ServiceType.WALLET.toLowerCase()]: ServiceType.WALLET,
+    agentwallet: 'agentWallet',
+};
+function normalizeServiceType(type) {
+    return CANONICAL_SERVICE_TYPES[type.toLowerCase()] ?? type;
+}
 /**
  * Build 8004 compliant JSON from RegistrationFile
  * Validates OASF skills/domains if provided
@@ -24,15 +37,16 @@ export function buildRegistrationFileJson(registrationFile, options) {
     // Convert from internal format { type, value, meta } to ERC-8004 services format
     const services = [];
     for (const svc of registrationFile.services) {
+        const normalizedType = normalizeServiceType(svc.type);
         const serviceDict = {
-            name: svc.type,
+            name: normalizedType,
             endpoint: svc.value,
         };
         if (svc.meta) {
             Object.assign(serviceDict, svc.meta);
         }
         // Add skills/domains to OASF service type
-        if (svc.type === ServiceType.OASF) {
+        if (normalizedType === ServiceType.OASF) {
             if (registrationFile.skills?.length) {
                 serviceDict.skills = registrationFile.skills;
             }

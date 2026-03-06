@@ -89,10 +89,22 @@ console.log(agent.isCollectionPointerLocked());
 Indexer reads:
 
 ```typescript
-const pointers = await sdk.getCollectionPointers({ creator: creatorPubkey });
-const count = await sdk.getCollectionAssetCount(upload.pointer!);
-const assets = await sdk.getCollectionAssets(upload.pointer!, { limit: 50 });
+const creator = creatorPubkey.toBase58();
+const pointers = await sdk.getCollectionPointers({ creator });
+const count = await sdk.getCollectionAssetCount(upload.pointer!, creator);
+const assets = await sdk.getCollectionAssets(upload.pointer!, {
+  creator,
+  limit: 50,
+});
+
+// If you already have indexer sequential collection_id:
+const byId = await sdk.getCollectionPointerById(7);
+const countById = await sdk.getCollectionAssetCountById(7);
+const assetsById = await sdk.getCollectionAssetsById(7, { limit: 50 });
 ```
+
+A collection is unique only when the minting creator is the same and the collection pointer is the same.
+`collection_id` helpers are fail-closed: invalid IDs throw, legacy schemas without `collection_id` support throw, and ambiguous ID resolution throws.
 
 ## 7. Decommission an Agent
 

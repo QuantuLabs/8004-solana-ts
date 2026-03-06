@@ -38,6 +38,38 @@ describe('registration-file-builder', () => {
       expect(services[0].endpoint).toBe('https://example.com/mcp');
     });
 
+    it('should preserve ENS and SNS service names explicitly', () => {
+      const file: RegistrationFile = {
+        ...minimalFile,
+        services: [
+          { type: ServiceType.ENS, value: 'caster.eth' },
+          { type: ServiceType.SNS, value: 'caster.sol' },
+        ],
+      };
+      const result = buildJson(file);
+      const services = result.services as Array<Record<string, unknown>>;
+      expect(services).toEqual([
+        { name: ServiceType.ENS, endpoint: 'caster.eth' },
+        { name: ServiceType.SNS, endpoint: 'caster.sol' },
+      ]);
+    });
+
+    it('should normalize ENS and SNS service names case-insensitively on write', () => {
+      const file: RegistrationFile = {
+        ...minimalFile,
+        services: [
+          { type: 'ens' as ServiceType, value: 'caster.eth' },
+          { type: 'SnS' as ServiceType, value: 'caster.sol' },
+        ],
+      };
+      const result = buildJson(file);
+      const services = result.services as Array<Record<string, unknown>>;
+      expect(services).toEqual([
+        { name: ServiceType.ENS, endpoint: 'caster.eth' },
+        { name: ServiceType.SNS, endpoint: 'caster.sol' },
+      ]);
+    });
+
     it('should include service meta fields', () => {
       const file: RegistrationFile = {
         ...minimalFile,
@@ -151,6 +183,20 @@ describe('registration-file-builder', () => {
       };
       const result = buildJson(file);
       const services = result.services as Array<Record<string, unknown>>;
+      expect(services[0].skills).toEqual(['valid/skill1']);
+      expect(services[0].domains).toEqual(['valid/domain1']);
+    });
+
+    it('should attach skills/domains to mixed-case OASF service names', () => {
+      const file: RegistrationFile = {
+        ...minimalFile,
+        services: [{ type: 'oAsF' as ServiceType, value: 'https://oasf.example.com' }],
+        skills: ['valid/skill1'],
+        domains: ['valid/domain1'],
+      };
+      const result = buildJson(file);
+      const services = result.services as Array<Record<string, unknown>>;
+      expect(services[0].name).toBe(ServiceType.OASF);
       expect(services[0].skills).toEqual(['valid/skill1']);
       expect(services[0].domains).toEqual(['valid/domain1']);
     });

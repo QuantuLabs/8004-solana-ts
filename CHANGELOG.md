@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-06
+### Fixed
+- Hardened GraphQL seal-hash reads by chunking feedback lookup pagination so live `appendResponseBySealHash(...)` works against the indexer’s complexity limits.
+- The strict DB-integrity tooling no longer treats all-zero required hashes as equivalent to `null`, matching the current indexer/runtime contract.
+
+### Changed
+- `mainnet-beta` is now treated as a first-class default across SDK examples, quickstart flows, and skill docs, with the production indexer host set to `https://8004-api.qnt.sh`.
+- Collection read docs now include the sequential `collection_id` helpers and explicit creator+pointer uniqueness guidance.
+
+### Documentation
+- Added SNS examples to the registration-file builder docs/examples/skill so ENS/SNS service registration is explicit in the public surface.
+
 ## [0.7.9] - 2026-03-03
 ### Added
 - Added `burnAgent(asset, options?)` in the SDK to burn agent Core assets with standard `WriteOptions` (`skipSend`, `signer`, `feePayer`, `computeUnits`).

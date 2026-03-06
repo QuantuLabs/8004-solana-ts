@@ -53,7 +53,7 @@
 
 **New Features:**
 - Multi-collection support
-- User-created collections (only creator can register agents)
+- Collection uniqueness scoped by same minting creator + same collection pointer
 - On-chain metadata via `setMetadata()` / `getMetadata()`
 
 ## v0.2.1

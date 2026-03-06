@@ -17,6 +17,58 @@ function normalizeCollectionPointerForRead(pointer) {
         return `c1:${trimmed}`;
     return trimmed;
 }
+function normalizeSequentialIdForRead(value, fieldName) {
+    let parsed;
+    if (typeof value === 'bigint') {
+        parsed = value;
+    }
+    else if (typeof value === 'number') {
+        if (!Number.isSafeInteger(value)) {
+            throw new IndexerError(`${fieldName} must be an integer (use string/bigint for large values)`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(value);
+    }
+    else if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!/^-?\d+$/.test(trimmed)) {
+            throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(trimmed);
+    }
+    else {
+        throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    if (parsed < 0n) {
+        throw new IndexerError(`${fieldName} must be >= 0`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    return parsed.toString();
+}
+function normalizePositiveSequentialIdFromResponse(value, fieldName) {
+    let parsed;
+    if (typeof value === 'bigint') {
+        parsed = value;
+    }
+    else if (typeof value === 'number') {
+        if (!Number.isSafeInteger(value)) {
+            throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(value);
+    }
+    else if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!/^-?\d+$/.test(trimmed)) {
+            throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(trimmed);
+    }
+    else {
+        throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    if (parsed <= 0n) {
+        throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    return parsed.toString();
+}
 export function encodeCanonicalFeedbackId(asset, client, index) {
     return `${asset}:${client}:${index.toString()}`;
 }
@@ -223,7 +275,11 @@ export class IndexerClient {
     normalizeCollectionRecord(row) {
         const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
         const col = typeof row?.col === 'string' ? row.col : collection;
+        const collectionId = row?.collection_id ?? row?.collectionId;
         return {
+            collection_id: collectionId !== undefined && collectionId !== null
+                ? normalizePositiveSequentialIdFromResponse(collectionId, 'collection_id')
+                : null,
             collection: collection ?? col ?? '',
             col: col ?? collection ?? '',
             creator: row?.creator ?? '',
@@ -640,11 +696,15 @@ export class IndexerClient {
      * Get canonical collection pointer rows.
      */
     async getCollectionPointers(options) {
+        const collectionId = options?.collectionId !== undefined
+            ? normalizeSequentialIdForRead(options.collectionId, 'collectionId')
+            : undefined;
         const hasCollectionFilter = options?.collection !== undefined || options?.col !== undefined;
         const collection = hasCollectionFilter
             ? normalizeCollectionPointerForRead(options?.collection ?? options?.col ?? '')
             : undefined;
         const primaryQuery = this.buildQuery({
+            collection_id: collectionId ? `eq.${collectionId}` : undefined,
             collection: collection ? `eq.${collection}` : undefined,
             creator: options?.creator ? `eq.${options.creator}` : undefined,
             first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
@@ -656,6 +716,9 @@ export class IndexerClient {
             return rows.map((row) => this.normalizeCollectionRecord(row));
         }
         catch (error) {
+            if (collectionId !== undefined) {
+                throw error;
+            }
             if (!this.shouldUseLegacyCollectionRead(error)) {
                 throw error;
             }

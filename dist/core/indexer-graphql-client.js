@@ -16,6 +16,58 @@ function normalizeCollectionPointerForRead(pointer) {
         return `c1:${trimmed}`;
     return trimmed;
 }
+function normalizeSequentialIdForRead(value, fieldName) {
+    let parsed;
+    if (typeof value === 'bigint') {
+        parsed = value;
+    }
+    else if (typeof value === 'number') {
+        if (!Number.isSafeInteger(value)) {
+            throw new IndexerError(`${fieldName} must be an integer (use string/bigint for large values)`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(value);
+    }
+    else if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!/^-?\d+$/.test(trimmed)) {
+            throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(trimmed);
+    }
+    else {
+        throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    if (parsed < 0n) {
+        throw new IndexerError(`${fieldName} must be >= 0`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    return parsed.toString();
+}
+function normalizePositiveSequentialIdFromResponse(value, fieldName) {
+    let parsed;
+    if (typeof value === 'bigint') {
+        parsed = value;
+    }
+    else if (typeof value === 'number') {
+        if (!Number.isSafeInteger(value)) {
+            throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(value);
+    }
+    else if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!/^-?\d+$/.test(trimmed)) {
+            throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        parsed = BigInt(trimmed);
+    }
+    else {
+        throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    if (parsed <= 0n) {
+        throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    return parsed.toString();
+}
 function toIsoFromUnixSeconds(unix) {
     if (typeof unix === 'string') {
         const trimmed = unix.trim();
@@ -187,7 +239,11 @@ function mapGqlCollectionPointer(row) {
     const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
     const col = typeof row?.col === 'string' ? row.col : collection;
     const metadataUpdatedAt = row?.metadataUpdatedAt ?? row?.metadata_updated_at;
+    const collectionId = row?.collectionId ?? row?.collection_id;
     return {
+        collection_id: collectionId !== undefined && collectionId !== null
+            ? normalizePositiveSequentialIdFromResponse(collectionId, 'collection_id')
+            : null,
         collection: collection ?? col ?? '',
         col: col ?? collection ?? '',
         creator: row?.creator ?? '',
@@ -310,7 +366,7 @@ function mapGqlFeedback(row, fallbackAsset = '') {
         endpoint: row.endpoint ?? null,
         feedback_uri: row.feedbackURI ?? null,
         running_digest: null,
-        feedback_hash: row.feedbackHash ?? null,
+        feedback_hash: normalizeHexDigest(row.feedbackHash),
         is_revoked: Boolean(row.isRevoked),
         revoked_at: row.revokedAt ? toIsoFromUnixSeconds(row.revokedAt) : null,
         block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
@@ -326,7 +382,7 @@ function mapGqlFeedbackResponse(row, asset, client, feedbackIndex) {
         feedback_index: toNumberSafe(feedbackIndex, 0),
         responder: row.responder,
         response_uri: row.responseUri ?? null,
-        response_hash: row.responseHash ?? null,
+        response_hash: normalizeHexDigest(row.responseHash),
         running_digest: null,
         block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
         tx_signature: row?.solana?.txSignature ?? '',
@@ -747,12 +803,45 @@ export class IndexerGraphQLClient {
     async getCollectionPointers(options) {
         const first = clampInt(options?.limit ?? 100, 0, 500);
         const skip = clampInt(options?.offset ?? 0, 0, 1_000_000);
+        const collectionId = options?.collectionId !== undefined
+            ? normalizeSequentialIdForRead(options.collectionId, 'collectionId')
+            : undefined;
+        const includeCollectionId = collectionId !== undefined;
         const hasCollectionFilter = options?.collection !== undefined || options?.col !== undefined;
         const collection = hasCollectionFilter
             ? normalizeCollectionPointerForRead(options?.collection ?? options?.col ?? '')
             : undefined;
         try {
-            const data = await this.request(`query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
+            const query = includeCollectionId
+                ? `query($first: Int!, $skip: Int!, $collectionId: BigInt, $collection: String, $creator: String) {
+          collections(first: $first, skip: $skip, collectionId: $collectionId, collection: $collection, creator: $creator) {
+            collectionId
+            collection
+            creator
+            firstSeenAsset
+            firstSeenAt
+            firstSeenSlot
+            firstSeenTxSignature
+            lastSeenAt
+            lastSeenSlot
+            lastSeenTxSignature
+            assetCount
+            version
+            name
+            symbol
+            description
+            image
+            bannerImage
+            socialWebsite
+            socialX
+            socialDiscord
+            metadataStatus
+            metadataHash
+            metadataBytes
+            metadataUpdatedAt
+          }
+        }`
+                : `query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
           collections(first: $first, skip: $skip, collection: $collection, creator: $creator) {
             collection
             creator
@@ -778,15 +867,20 @@ export class IndexerGraphQLClient {
             metadataBytes
             metadataUpdatedAt
           }
-        }`, {
+        }`;
+            const data = await this.request(query, {
                 first,
                 skip,
+                ...(includeCollectionId ? { collectionId } : {}),
                 collection: collection ?? null,
                 creator: options?.creator ?? null,
             });
             return data.collections.map((p) => mapGqlCollectionPointer(p));
         }
         catch (error) {
+            if (collectionId !== undefined) {
+                throw error;
+            }
             if (!this.shouldUseLegacyCollectionRead(error)) {
                 throw error;
             }
@@ -993,24 +1087,38 @@ export class IndexerGraphQLClient {
         return mapGqlFeedback(data.feedback, asset);
     }
     async getFeedbacksByClient(client) {
-        const data = await this.request(`query($client: String!) {
-        feedbacks(first: 250, where: { clientAddress: $client }, orderBy: createdAt, orderDirection: desc) {
-          id
-          agent { id }
-          clientAddress
-          feedbackIndex
-          tag1
-          tag2
-          endpoint
-          feedbackURI
-          feedbackHash
-          isRevoked
-          createdAt
-          revokedAt
-          solana { valueRaw valueDecimals score txSignature blockSlot }
+        const pageSize = 100;
+        const maxRows = 5000;
+        const rows = [];
+        let skip = 0;
+        while (rows.length < maxRows) {
+            const first = Math.min(pageSize, maxRows - rows.length);
+            const data = await this.request(`query($client: String!) {
+          feedbacks(first: ${first}, skip: ${skip}, where: { clientAddress: $client }, orderBy: createdAt, orderDirection: desc) {
+            id
+            agent { id }
+            clientAddress
+            feedbackIndex
+            tag1
+            tag2
+            endpoint
+            feedbackURI
+            feedbackHash
+            isRevoked
+            createdAt
+            revokedAt
+            solana { valueRaw valueDecimals score txSignature blockSlot }
+          }
+        }`, { client });
+            const page = data.feedbacks ?? [];
+            if (page.length === 0)
+                break;
+            rows.push(...page);
+            if (page.length < first)
+                break;
+            skip += page.length;
         }
-      }`, { client });
-        return data.feedbacks.map((f) => mapGqlFeedback(f));
+        return rows.map((f) => mapGqlFeedback(f));
     }
     async getFeedbacksByTag(tag) {
         // GraphQL filter doesn't support OR on tag1/tag2, so query both and merge.
@@ -1330,9 +1438,9 @@ export class IndexerGraphQLClient {
             feedback_index: String(e.feedbackIndex),
             slot: toNumberSafe(e.slot, 0),
             running_digest: normalizeHexDigest(e.runningDigest) ?? null,
-            feedback_hash: e.feedbackHash ?? null,
+            feedback_hash: normalizeHexDigest(e.feedbackHash),
             responder: e.responder ?? undefined,
-            response_hash: e.responseHash ?? null,
+            response_hash: normalizeHexDigest(e.responseHash),
             response_count: e.responseCount != null ? toNumberSafe(e.responseCount, 0) : null,
             revoke_count: e.revokeCount != null ? toNumberSafe(e.revokeCount, 0) : null,
         }));

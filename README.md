@@ -76,6 +76,7 @@ const agentMeta = buildRegistrationFileJson({
     { type: ServiceType.MCP, value: 'https://api.example.com/mcp' },
     { type: ServiceType.A2A, value: 'https://api.example.com/a2a' },
     { type: ServiceType.OASF, value: 'https://api.example.com/oasf' },
+    { type: ServiceType.SNS, value: 'castercorp.sol' },
   ],
   skills: ['natural_language_processing/natural_language_generation/text_completion'],
   domains: ['technology/software_engineering/software_engineering'],
@@ -228,12 +229,13 @@ const sdk = new SolanaSDK({
     atomEngine: 'YourAtomProgramId',
     // mplCore is optional (defaults to canonical Metaplex Core ID)
   },
-  indexerGraphqlUrl: 'http://127.0.0.1:3000/v2/graphql',
+  indexerGraphqlUrl: 'http://127.0.0.1:3005/v2/graphql',
 });
 
-// If you upgrade an existing self-hosted indexer DB, run this in the indexer repo:
-// npx prisma migrate deploy
-// Do not use `prisma db push` for upgrade flows.
+// If you upgrade an existing self-hosted indexer DB:
+// - PostgreSQL / Supabase: apply the pending SQL files in 8004-solana-indexer/supabase/migrations/
+// - local SQLite: run `npx prisma migrate deploy` in the indexer repo against the same persisted DB file
+// - do not use `prisma db push` for upgrade flows
 
 // Custom GraphQL indexer override (recommended)
 const sdk = new SolanaSDK({

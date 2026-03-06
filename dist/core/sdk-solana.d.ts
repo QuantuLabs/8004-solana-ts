@@ -622,6 +622,7 @@ export declare class SolanaSDK {
      * Get canonical collection pointer rows from indexer.
      */
     getCollectionPointers(options?: {
+        collectionId?: string | number | bigint;
         col?: string;
         creator?: string;
         firstSeenAsset?: string;
@@ -637,6 +638,22 @@ export declare class SolanaSDK {
      */
     getCollectionAssets(col: string, options?: {
         creator?: string;
+        limit?: number;
+        offset?: number;
+        order?: string;
+    }): Promise<IndexedAgent[]>;
+    /**
+     * Resolve one canonical collection scope from sequential collection id.
+     */
+    getCollectionPointerById(collectionId: string | number | bigint): Promise<CollectionPointerRecord | null>;
+    /**
+     * Count assets associated with a sequential collection id.
+     */
+    getCollectionAssetCountById(collectionId: string | number | bigint): Promise<number>;
+    /**
+     * Get assets associated with a sequential collection id.
+     */
+    getCollectionAssetsById(collectionId: string | number | bigint, options?: {
         limit?: number;
         offset?: number;
         order?: string;

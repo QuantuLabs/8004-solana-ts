@@ -40,6 +40,7 @@ export interface AgentQueryOptions {
  * Query options for canonical collection pointer reads.
  */
 export interface CollectionPointerQueryOptions {
+    collectionId?: string | number | bigint;
     collection?: string;
     col?: string;
     creator?: string;
@@ -274,6 +275,7 @@ export interface CollectionStats {
  * Canonical collection pointer record from `/collection_pointers`.
  */
 export interface CollectionPointerRecord {
+    collection_id?: string | null;
     collection?: string;
     col: string;
     creator: string;

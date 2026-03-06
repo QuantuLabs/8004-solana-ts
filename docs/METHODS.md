@@ -408,6 +408,9 @@ These methods query the indexer for aggregated data.
 | `getCollectionPointers` | `(options?) => Promise<CollectionPointerRecord[]>` | Read canonical `c1:` collection-pointer rows |
 | `getCollectionAssetCount` | `(col: string, creator?: string) => Promise<number>` | Count assets for one creator+pointer scope (creator strongly recommended) |
 | `getCollectionAssets` | `(col: string, options?: { creator?: string, ... }) => Promise<IndexedAgent[]>` | List assets for one creator+pointer scope (creator strongly recommended) |
+| `getCollectionPointerById` | `(collectionId: string \| number \| bigint) => Promise<CollectionPointerRecord \| null>` | Resolve one collection scope from sequential `collection_id` |
+| `getCollectionAssetCountById` | `(collectionId: string \| number \| bigint) => Promise<number>` | Count assets using sequential `collection_id` (no creator needed) |
+| `getCollectionAssetsById` | `(collectionId: string \| number \| bigint, options?) => Promise<IndexedAgent[]>` | List assets using sequential `collection_id` (no creator needed) |
 | `getLeaderboard` | `(options?) => Promise<LeaderboardEntry[]>` | Get top agents by reputation |
 | `getGlobalStats` | `() => Promise<GlobalStats>` | Get global registry statistics |
 | `isIndexerAvailable` | `() => Promise<boolean>` | Check if indexer is reachable |
@@ -444,6 +447,11 @@ const pointers = await sdk.getCollectionPointers({ creator: 'CreatorPubkey...' }
 const count = await sdk.getCollectionAssetCount('c1:bafybeigdyr...', 'CreatorPubkey...');
 const assets = await sdk.getCollectionAssets('c1:bafybeigdyr...', { creator: 'CreatorPubkey...', limit: 50 });
 
+// Collection-id based reads (simpler when you already have collection_id)
+const pointer = await sdk.getCollectionPointerById(7);
+const countById = await sdk.getCollectionAssetCountById(7);
+const assetsById = await sdk.getCollectionAssetsById(7, { limit: 50 });
+
 // Get leaderboard
 const top = await sdk.getLeaderboard({ minTier: 2, limit: 50 });
 
@@ -457,6 +465,8 @@ Compatibility notes:
 - Legacy indexers are still supported via automatic fallback (`/collection_pointers`, `col=...`, GraphQL `collectionPointers(...)` / `col` args).
 - A collection is unique only when the minting creator is the same and the collection pointer is the same.
 - If `creator` is omitted on collection reads, SDK auto-resolves only when the pointer maps to a single creator; ambiguous pointers fail closed.
+- `collection_id` reads (`getCollection*ById`) use `/collections` / GraphQL `collections(collectionId: ...)` and intentionally fail closed on legacy schemas that do not expose `collection_id`.
+- For large `collection_id` values, pass a `string` or `bigint` (avoid JS `number` precision limits).
 - `getAgentByAgentId()` is backend-specific: REST resolves `agent_id`; GraphQL resolves sequential `agentId` / `agentid` when exposed.
 - Use `getAgent(asset)` when you need asset pubkey lookups.
 - `getAgentByIndexerId()` remains available as an alias to `getAgentByAgentId()`.
@@ -590,6 +600,7 @@ const metadata = buildRegistrationFileJson({
   image: imageUri,
   services: [
     { type: ServiceType.MCP, value: 'https://api.example.com/mcp' },
+    { type: ServiceType.SNS, value: 'castercorp.sol' },
   ],
 });
 

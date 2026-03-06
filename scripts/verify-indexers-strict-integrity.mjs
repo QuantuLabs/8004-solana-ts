@@ -10,8 +10,6 @@ const DEFAULT_INDEXERS = [
   "http://127.0.0.1:3202/rest/v1",
   "http://127.0.0.1:3203/rest/v1",
   "http://127.0.0.1:3204/rest/v1",
-  "http://127.0.0.1:3205/rest/v1",
-  "http://127.0.0.1:3206/rest/v1",
 ];
 
 const ENTITY_TABLES = [
@@ -1364,7 +1362,8 @@ async function main() {
   const timeoutMs = Number.parseInt(args["timeout-ms"] || "20000", 10);
   const pageSize = Number.parseInt(args["page-size"] || "2000", 10);
   const maxPages = Number.parseInt(args["max-pages"] || "300", 10);
-  const enforceSix = args["allow-non-six"] !== "true";
+  const expectedCount = Number.parseInt(args["expected-count"] || "4", 10);
+  const enforceExpectedCount = args["allow-non-six"] !== "true" && args["allow-non-count"] !== "true";
 
   const indexers = (args.indexers || DEFAULT_INDEXERS.join(","))
     .split(",")
@@ -1374,8 +1373,11 @@ async function main() {
   if (indexers.length === 0) {
     throw new Error("Missing --indexers (comma-separated REST base URLs)");
   }
-  if (enforceSix && indexers.length !== 6) {
-    throw new Error(`Strict parity requires 6 indexers (got ${indexers.length}). Use --allow-non-six=true to override.`);
+  if (enforceExpectedCount && indexers.length !== expectedCount) {
+    throw new Error(
+      `Strict parity requires ${expectedCount} indexers (got ${indexers.length}). ` +
+      "Use --allow-non-count=true to override."
+    );
   }
 
   const outputPath = resolve(
@@ -1398,7 +1400,8 @@ async function main() {
       timeoutMs,
       pageSize,
       maxPages,
-      enforceSix,
+      expectedCount,
+      enforceExpectedCount,
       requiredTables: REQUIRED_TABLES,
     },
     coverage: coverageSummary,

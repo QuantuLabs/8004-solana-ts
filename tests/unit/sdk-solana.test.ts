@@ -320,6 +320,7 @@ jest.unstable_mockModule('../../src/core/hash-chain-replay.js', () => ({
 
 // Import SolanaSDK after mocks
 const { SolanaSDK } = await import('../../src/core/sdk-solana.js');
+const { IndexerErrorCode } = await import('../../src/core/indexer-errors.js');
 
 // ==================== Tests ====================
 
@@ -950,6 +951,120 @@ describe('SolanaSDK', () => {
       );
       expect(mockIndexerClient.getCollectionPointers).not.toHaveBeenCalled();
     });
+
+    it('should resolve collection scope by sequential collection id', async () => {
+      mockIndexerClient.getCollectionPointers.mockResolvedValueOnce([
+        {
+          collection_id: '7',
+          collection: 'c1:abc',
+          col: 'c1:abc',
+          creator: 'creator',
+        },
+      ]);
+
+      const pointer = await sdk.getCollectionPointerById(7);
+
+      expect(mockIndexerClient.getCollectionPointers).toHaveBeenCalledWith({
+        collectionId: '7',
+        limit: 2,
+        offset: 0,
+      });
+      expect(pointer).toMatchObject({
+        collection_id: '7',
+        col: 'c1:abc',
+        creator: 'creator',
+      });
+    });
+
+    it('should fail closed when resolved collection_id does not match requested id', async () => {
+      mockIndexerClient.getCollectionPointers.mockResolvedValueOnce([
+        {
+          collection_id: '8',
+          collection: 'c1:abc',
+          col: 'c1:abc',
+          creator: 'creator',
+        },
+      ]);
+
+      await expect(sdk.getCollectionPointerById('7')).rejects.toMatchObject({
+        code: IndexerErrorCode.INVALID_RESPONSE,
+      });
+    });
+
+    it('should delegate collection count by id through resolved scope', async () => {
+      mockIndexerClient.getCollectionPointers.mockResolvedValueOnce([
+        {
+          collection_id: '7',
+          collection: 'c1:abc',
+          col: 'c1:abc',
+          creator: 'creator',
+        },
+      ]);
+      mockIndexerClient.getCollectionAssetCount.mockResolvedValueOnce(22);
+
+      const count = await sdk.getCollectionAssetCountById('7');
+
+      expect(count).toBe(22);
+      expect(mockIndexerClient.getCollectionAssetCount).toHaveBeenCalledWith('c1:abc', 'creator');
+    });
+
+    it('should delegate collection assets by id through resolved scope', async () => {
+      mockIndexerClient.getCollectionPointers.mockResolvedValueOnce([
+        {
+          collection_id: '7',
+          collection: 'c1:abc',
+          col: 'c1:abc',
+          creator: 'creator',
+        },
+      ]);
+      mockIndexerClient.getCollectionAssets.mockResolvedValueOnce([{ asset: 'agent1' }]);
+
+      const assets = await sdk.getCollectionAssetsById('7', { limit: 10, offset: 2 });
+
+      expect(assets).toEqual([{ asset: 'agent1' }]);
+      expect(mockIndexerClient.getCollectionAssets).toHaveBeenCalledWith('c1:abc', {
+        creator: 'creator',
+        limit: 10,
+        offset: 2,
+      });
+    });
+
+    it('should return null/0/[] when collection id is unknown', async () => {
+      mockIndexerClient.getCollectionPointers.mockResolvedValue([]);
+
+      await expect(sdk.getCollectionPointerById('8')).resolves.toBeNull();
+      await expect(sdk.getCollectionAssetCountById('8')).resolves.toBe(0);
+      await expect(sdk.getCollectionAssetsById('8')).resolves.toEqual([]);
+    });
+
+    it('should reject unsafe numeric collection id in SDK helpers', async () => {
+      const unsafe = Number.MAX_SAFE_INTEGER + 1;
+      await expect(sdk.getCollectionPointerById(unsafe)).rejects.toThrow(
+        'use string/bigint for large values',
+      );
+      expect(mockIndexerClient.getCollectionPointers).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid collection id format in SDK helpers', async () => {
+      await expect(sdk.getCollectionPointerById('abc')).rejects.toThrow(
+        'collectionId must be an integer',
+      );
+      await expect(sdk.getCollectionPointerById('-1')).rejects.toThrow(
+        'collectionId must be >= 0',
+      );
+      expect(mockIndexerClient.getCollectionPointers).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed when one collection id resolves to multiple scopes', async () => {
+      mockIndexerClient.getCollectionPointers.mockResolvedValueOnce([
+        { collection_id: '7', col: 'c1:abc', creator: 'creator1' },
+        { collection_id: '7', col: 'c1:def', creator: 'creator2' },
+      ]);
+
+      await expect(sdk.getCollectionPointerById('7')).rejects.toThrow(
+        'Ambiguous collectionId 7',
+      );
+    });
   });
 
   describe('getLeaderboard', () => {
@@ -1400,6 +1515,41 @@ describe('SolanaSDK', () => {
       );
     });
 
+    it('appendResponseBySealHash should accept all-zero sealHash from indexer reads', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x00);
+      mockIndexerClient.getFeedbacksByClient.mockResolvedValueOnce([
+        {
+          asset: asset.toBase58(),
+          client_address: client.toBase58(),
+          feedbackIndex: 8,
+          feedback_index: '8',
+          feedback_hash: sealHash.toString('hex'),
+        },
+      ]);
+
+      await sdk.appendResponseBySealHash(
+        asset,
+        client,
+        sealHash,
+        'ipfs://response-zero',
+        undefined,
+        { skipSend: true, signer }
+      );
+
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalledWith(
+        asset,
+        client,
+        8n,
+        sealHash,
+        'ipfs://response-zero',
+        undefined,
+        expect.anything()
+      );
+    });
+
     it('appendResponseBySealHash should resolve via asset-level fallback when client query misses', async () => {
       const asset = PublicKey.unique();
       const client = PublicKey.unique();
@@ -1431,6 +1581,62 @@ describe('SolanaSDK', () => {
         9n,
         sealHash,
         'ipfs://response-fallback',
+        undefined,
+        expect.anything()
+      );
+    });
+
+    it('appendResponseBySealHash should paginate asset-level fallback until it finds the seal hash', async () => {
+      const asset = PublicKey.unique();
+      const client = PublicKey.unique();
+      const signer = PublicKey.unique();
+      const sealHash = Buffer.alloc(32, 0x45);
+      mockIndexerClient.getFeedbacksByClient.mockResolvedValueOnce([]);
+      mockIndexerClient.getFeedbacks
+        .mockResolvedValueOnce(
+          Array.from({ length: 5000 }, (_, i) => ({
+            asset: asset.toBase58(),
+            client_address: client.toBase58(),
+            feedbackIndex: i + 1,
+            feedback_index: String(i + 1),
+            feedback_hash: 'aa'.repeat(32),
+          })),
+        )
+        .mockResolvedValueOnce([
+          {
+            asset: asset.toBase58(),
+            client_address: client.toBase58(),
+            feedbackIndex: 5009,
+            feedback_index: '5009',
+            feedback_hash: sealHash.toString('hex'),
+          },
+        ]);
+
+      await sdk.appendResponseBySealHash(
+        asset,
+        client,
+        sealHash,
+        'ipfs://response-paged-fallback',
+        undefined,
+        { skipSend: true, signer }
+      );
+
+      expect(mockIndexerClient.getFeedbacks).toHaveBeenNthCalledWith(
+        1,
+        asset.toBase58(),
+        expect.objectContaining({ includeRevoked: true, limit: 5000, offset: 0 })
+      );
+      expect(mockIndexerClient.getFeedbacks).toHaveBeenNthCalledWith(
+        2,
+        asset.toBase58(),
+        expect.objectContaining({ includeRevoked: true, limit: 5000, offset: 5000 })
+      );
+      expect(mockReputationTxBuilder.appendResponse).toHaveBeenCalledWith(
+        asset,
+        client,
+        5009n,
+        sealHash,
+        'ipfs://response-paged-fallback',
         undefined,
         expect.anything()
       );
@@ -1986,6 +2192,22 @@ describe('SolanaSDK', () => {
       expect(result).toBe('indexer');
       expect(indexerFn).toHaveBeenCalled();
       spy.mockRestore();
+    });
+  });
+
+  describe('normalizeRegistrationServices (private)', () => {
+    it('should map ENS and SNS services to first-class ServiceType values', () => {
+      const services = (sdk as any).normalizeRegistrationServices({
+        services: [
+          { name: 'ens', endpoint: 'caster.eth' },
+          { type: 'sns', endpoint: 'caster.sol' },
+        ],
+      });
+
+      expect(services).toEqual([
+        { type: 'ENS', value: 'caster.eth', meta: undefined },
+        { type: 'SNS', value: 'caster.sol', meta: undefined },
+      ]);
     });
   });
 

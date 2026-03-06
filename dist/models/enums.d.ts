@@ -8,6 +8,7 @@ export declare enum ServiceType {
     MCP = "MCP",
     A2A = "A2A",
     ENS = "ENS",
+    SNS = "SNS",
     DID = "DID",
     WALLET = "wallet",
     OASF = "OASF"

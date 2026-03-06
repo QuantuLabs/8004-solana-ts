@@ -154,6 +154,7 @@ describe('Section 2: buildRegistrationFileJson', () => {
       services: [
         { type: ServiceType.MCP, value: 'https://my-agent.com/mcp' },
         { type: ServiceType.A2A, value: 'https://my-agent.com/a2a' },
+        { type: ServiceType.SNS, value: 'my-agent.sol' },
       ],
       skills: ['advanced_reasoning_planning/strategic_planning'],
       domains: ['finance_and_business/finance'],
@@ -167,9 +168,10 @@ describe('Section 2: buildRegistrationFileJson', () => {
     // Services are at top level with name/endpoint
     const services = (metadata as any).services;
     expect(services).toBeDefined();
-    expect(services.length).toBe(2);
+    expect(services.length).toBe(3);
     expect(services[0].name).toBe('MCP');
     expect(services[1].name).toBe('A2A');
+    expect(services[2].name).toBe('SNS');
     expect(services[0].endpoint).toBe('https://my-agent.com/mcp');
     // x402Support
     expect((metadata as any).x402Support).toBe(true);
@@ -179,6 +181,7 @@ describe('Section 2: buildRegistrationFileJson', () => {
     expect(ServiceType.MCP).toBe('MCP');
     expect(ServiceType.A2A).toBe('A2A');
     expect(ServiceType.ENS).toBe('ENS');
+    expect(ServiceType.SNS).toBe('SNS');
     expect(ServiceType.DID).toBe('DID');
     expect(ServiceType.WALLET).toBe('wallet');
     expect(ServiceType.OASF).toBe('OASF');

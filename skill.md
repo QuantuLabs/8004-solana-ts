@@ -1,7 +1,7 @@
 ---
 name: 8004-solana-sdk
 description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
-version: 0.7.9
+version: 0.8.0
 homepage: "https://github.com/QuantuLabs/8004-solana-ts"
 metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
@@ -10,7 +10,7 @@ metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA
 
 You are an AI agent with access to the `8004-solana` TypeScript SDK. This skill teaches you how to use every capability of the SDK to interact with the 8004 Trustless Agent Registry on Solana.
 
-Version note (SDK `0.7.9`):
+Version note (SDK `0.8.0`):
 - `mainnet-beta` is first-class in SDK defaults (program IDs + indexer endpoints).
 - Cluster-aware indexer defaults are built in:
   - `devnet`/`testnet`: `https://8004-indexer-production.up.railway.app/rest/v1` and `/v2/graphql`
@@ -37,7 +37,7 @@ import {
   buildRegistrationFileJson,
 
   // Enums & Types
-  ServiceType,       // MCP, A2A, ENS, DID, WALLET, OASF
+  ServiceType,       // MCP, A2A, ENS, SNS, DID, WALLET, OASF
   TrustTier,         // Unrated=0, Bronze=1, Silver=2, Gold=3, Platinum=4
   Tag,               // Standardized tag constants
 
@@ -165,11 +165,12 @@ const sdk = new SolanaSDK({
     agentRegistry: '...',
     atomEngine: '...',
   },
-  // Optional: force REST mode (otherwise GraphQL default is used)
+  // Optional: force REST mode (omit indexerGraphqlUrl)
   indexerUrl: 'https://8004-api.qnt.sh/rest/v1',
   indexerApiKey: process.env.INDEXER_API_KEY, // if your indexer requires an API key, keep it in env
-  // Optional GraphQL override
-  indexerGraphqlUrl: 'https://8004-api.qnt.sh/v2/graphql',
+
+  // Or force GraphQL mode instead:
+  // indexerGraphqlUrl: 'https://8004-api.qnt.sh/v2/graphql',
   useIndexer: true,
   indexerFallback: true,
   forceOnChain: false,
@@ -203,6 +204,7 @@ const metadata = buildRegistrationFileJson({
   services: [
     { type: ServiceType.MCP, value: 'https://my-agent.com/mcp' },
     { type: ServiceType.A2A, value: 'https://my-agent.com/a2a' },
+    { type: ServiceType.SNS, value: 'my-agent.sol' },
   ],
   skills: ['advanced_reasoning_planning/strategic_planning'],
   domains: ['finance_and_business/finance'],
@@ -239,6 +241,8 @@ await sdk.setAgentWallet(result.asset, opWallet);
 ### Collection + Parent Association (CID-first)
 
 All agents register into the base collection automatically. Collection metadata now follows an off-chain CID-first flow:
+A collection is unique only when the minting creator is the same and the collection pointer is the same.
+For indexer reads, you can also use sequential `collection_id` helpers (`getCollectionPointerById`, `getCollectionAssetCountById`, `getCollectionAssetsById`).
 
 ```typescript
 const { asset } = result; // from registerAgent(...)

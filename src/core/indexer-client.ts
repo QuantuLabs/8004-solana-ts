@@ -27,6 +27,65 @@ function normalizeCollectionPointerForRead(pointer: string): string {
   return trimmed;
 }
 
+function normalizeSequentialIdForRead(
+  value: string | number | bigint,
+  fieldName: string,
+): string {
+  let parsed: bigint;
+  if (typeof value === 'bigint') {
+    parsed = value;
+  } else if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) {
+      throw new IndexerError(
+        `${fieldName} must be an integer (use string/bigint for large values)`,
+        IndexerErrorCode.INVALID_RESPONSE,
+      );
+    }
+    parsed = BigInt(value);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+      throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    parsed = BigInt(trimmed);
+  } else {
+    throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+  }
+
+  if (parsed < 0n) {
+    throw new IndexerError(`${fieldName} must be >= 0`, IndexerErrorCode.INVALID_RESPONSE);
+  }
+  return parsed.toString();
+}
+
+function normalizePositiveSequentialIdFromResponse(
+  value: unknown,
+  fieldName: string,
+): string {
+  let parsed: bigint;
+  if (typeof value === 'bigint') {
+    parsed = value;
+  } else if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) {
+      throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    parsed = BigInt(value);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+      throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    parsed = BigInt(trimmed);
+  } else {
+    throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+  }
+
+  if (parsed <= 0n) {
+    throw new IndexerError(`${fieldName} must be a positive integer string`, IndexerErrorCode.INVALID_RESPONSE);
+  }
+  return parsed.toString();
+}
+
 /**
  * Configuration for IndexerClient
  */
@@ -67,6 +126,7 @@ export interface AgentQueryOptions {
  * Query options for canonical collection pointer reads.
  */
 export interface CollectionPointerQueryOptions {
+  collectionId?: string | number | bigint;
   collection?: string;
   col?: string;
   creator?: string;
@@ -372,6 +432,7 @@ export interface CollectionStats {
  * Canonical collection pointer record from `/collection_pointers`.
  */
 export interface CollectionPointerRecord {
+  collection_id?: string | null;
   collection?: string;
   col: string;
   creator: string;
@@ -714,7 +775,12 @@ export class IndexerClient implements IndexerReadClient {
   private normalizeCollectionRecord(row: any): CollectionPointerRecord {
     const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
     const col = typeof row?.col === 'string' ? row.col : collection;
+    const collectionId = row?.collection_id ?? row?.collectionId;
     return {
+      collection_id:
+        collectionId !== undefined && collectionId !== null
+          ? normalizePositiveSequentialIdFromResponse(collectionId, 'collection_id')
+          : null,
       collection: collection ?? col ?? '',
       col: col ?? collection ?? '',
       creator: row?.creator ?? '',
@@ -1206,11 +1272,15 @@ export class IndexerClient implements IndexerReadClient {
    * Get canonical collection pointer rows.
    */
   async getCollectionPointers(options?: CollectionPointerQueryOptions): Promise<CollectionPointerRecord[]> {
+    const collectionId = options?.collectionId !== undefined
+      ? normalizeSequentialIdForRead(options.collectionId, 'collectionId')
+      : undefined;
     const hasCollectionFilter = options?.collection !== undefined || options?.col !== undefined;
     const collection = hasCollectionFilter
       ? normalizeCollectionPointerForRead(options?.collection ?? options?.col ?? '')
       : undefined;
     const primaryQuery = this.buildQuery({
+      collection_id: collectionId ? `eq.${collectionId}` : undefined,
       collection: collection ? `eq.${collection}` : undefined,
       creator: options?.creator ? `eq.${options.creator}` : undefined,
       first_seen_asset: options?.firstSeenAsset ? `eq.${options.firstSeenAsset}` : undefined,
@@ -1222,6 +1292,9 @@ export class IndexerClient implements IndexerReadClient {
       const rows = await this.request<any[]>(`/collections${primaryQuery}`);
       return rows.map((row) => this.normalizeCollectionRecord(row));
     } catch (error) {
+      if (collectionId !== undefined) {
+        throw error;
+      }
       if (!this.shouldUseLegacyCollectionRead(error)) {
         throw error;
       }

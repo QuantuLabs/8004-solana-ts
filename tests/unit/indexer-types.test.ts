@@ -119,6 +119,30 @@ describe('indexer-types', () => {
       expect(result.sealHash).toBeUndefined();
     });
 
+    it('should preserve all-zero feedback_hash as a real 32-byte sealHash', () => {
+      const indexed = {
+        asset: mockAsset,
+        client_address: mockClient,
+        feedback_index: '9',
+        value: '1',
+        value_decimals: 0,
+        score: 50,
+        tag1: '',
+        tag2: '',
+        is_revoked: false,
+        endpoint: '',
+        feedback_uri: '',
+        feedback_hash: '0'.repeat(64),
+        block_slot: '9',
+        tx_signature: 'sig-zero',
+      };
+
+      const result = indexedFeedbackToSolanaFeedback(indexed as any);
+      expect(result.sealHash).toBeDefined();
+      expect(result.sealHash!.length).toBe(32);
+      expect(result.sealHash!.equals(Buffer.alloc(32, 0x00))).toBe(true);
+    });
+
     it('should handle null/undefined value', () => {
       const indexed = {
         asset: mockAsset,

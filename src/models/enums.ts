@@ -9,6 +9,7 @@ export enum ServiceType {
   MCP = 'MCP',
   A2A = 'A2A',
   ENS = 'ENS',
+  SNS = 'SNS',
   DID = 'DID',
   WALLET = 'wallet',
   OASF = 'OASF',
@@ -27,4 +28,3 @@ export enum TrustModel {
   CRYPTO_ECONOMIC = 'crypto-economic',
   TEE_ATTESTATION = 'tee-attestation',
 }
-

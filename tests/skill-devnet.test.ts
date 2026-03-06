@@ -164,6 +164,7 @@ describe('Section 2: Register an Agent', () => {
       services: [
         { type: ServiceType.MCP, value: 'https://my-agent.com/mcp' },
         { type: ServiceType.A2A, value: 'https://my-agent.com/a2a' },
+        { type: ServiceType.SNS, value: 'my-agent.sol' },
       ],
       skills: ['advanced_reasoning_planning/strategic_planning'],
       domains: ['finance_and_business/finance'],

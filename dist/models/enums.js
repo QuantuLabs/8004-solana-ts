@@ -9,6 +9,7 @@ export var ServiceType;
     ServiceType["MCP"] = "MCP";
     ServiceType["A2A"] = "A2A";
     ServiceType["ENS"] = "ENS";
+    ServiceType["SNS"] = "SNS";
     ServiceType["DID"] = "DID";
     ServiceType["WALLET"] = "wallet";
     ServiceType["OASF"] = "OASF";

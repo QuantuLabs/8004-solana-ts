@@ -58,6 +58,49 @@ describe('Liveness Checks', () => {
     await expect(sdk.isItAlive(asset)).rejects.toThrow('Agent has no agent URI');
   });
 
+  it('should preserve meta object shape for services entries', () => {
+    const sdk = new SolanaSDK();
+    const services = (sdk as any).normalizeRegistrationServices({
+      services: [
+        {
+          type: 'mcp',
+          value: 'https://mcp.example.com',
+          meta: { auth: 'bearer' },
+          priority: 1,
+        },
+      ],
+    });
+
+    expect(services).toEqual([
+      {
+        type: ServiceType.MCP,
+        value: 'https://mcp.example.com',
+        meta: { auth: 'bearer', priority: 1 },
+      },
+    ]);
+  });
+
+  it('should fallback to endpoint when value is empty string', () => {
+    const sdk = new SolanaSDK();
+    const services = (sdk as any).normalizeRegistrationServices({
+      services: [
+        {
+          type: 'mcp',
+          value: '',
+          endpoint: 'https://mcp.example.com',
+        },
+      ],
+    });
+
+    expect(services).toEqual([
+      {
+        type: ServiceType.MCP,
+        value: 'https://mcp.example.com',
+        meta: undefined,
+      },
+    ]);
+  });
+
   it('should report partially live with formatted endpoint lists', async () => {
     const sdk = new SolanaSDK();
     const asset = Keypair.generate().publicKey;
@@ -118,6 +161,45 @@ describe('Liveness Checks', () => {
     expect(report.liveServices.some((entry) => entry.endpoint === 'https://mcp.example.com')).toBe(true);
     expect(report.liveServices.some((entry) => entry.endpoint === 'https://auth.example.com')).toBe(true);
     expect(report.deadServices[0].endpoint).toBe('https://a2a.example.com');
+  });
+
+  it('should parse services payload using type+endpoint and skip non-http wallet endpoints', async () => {
+    const sdk = new SolanaSDK();
+    const asset = Keypair.generate().publicKey;
+    const agent = createAgent(asset, 'https://registry.example.com/agent.json');
+    jest.spyOn(sdk, 'loadAgent').mockResolvedValue(agent);
+
+    global.fetch = (async (url: string, init?: RequestInit) => {
+      const method = (init?.method || 'GET').toUpperCase();
+
+      if (url === 'https://registry.example.com/agent.json') {
+        return createResponse(200, {
+          services: [
+            { type: 'mcp', endpoint: 'https://mcp.example.com' },
+            { type: 'wallet', endpoint: 'eip155:1:0x1234' },
+          ],
+        });
+      }
+      if (url === 'https://mcp.example.com' && method === 'POST') {
+        const body = init?.body ? JSON.parse(init.body.toString()) : {};
+        if (body.method === 'tools/list') {
+          return createResponse(200, { result: { tools: [{ name: 'ping' }] } });
+        }
+        if (body.method === 'resources/list') {
+          return createResponse(200, { result: { resources: [] } });
+        }
+        if (body.method === 'prompts/list') {
+          return createResponse(200, { result: { prompts: [] } });
+        }
+        return createResponse(200, { result: {} });
+      }
+      return createResponse(404);
+    }) as typeof fetch;
+
+    const report = await sdk.isItAlive(asset);
+    expect(report.liveServices.some((entry) => entry.endpoint === 'https://mcp.example.com')).toBe(true);
+    expect(report.skippedCount).toBe(1);
+    expect(report.totalPinged).toBe(1);
   });
 
   it('should treat auth-required endpoints as not live when disabled', async () => {

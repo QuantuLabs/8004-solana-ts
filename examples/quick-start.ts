@@ -91,6 +91,7 @@ async function main() {
     description: 'A helpful AI agent for task automation',
     services: [
       { type: ServiceType.MCP, value: 'https://api.example.com/mcp' },
+      { type: ServiceType.SNS, value: 'myagent.sol' },
     ],
     // OASF taxonomies (optional) - see docs/OASF.md for valid slugs
     skills: ['natural_language_processing/natural_language_generation/summarization'],

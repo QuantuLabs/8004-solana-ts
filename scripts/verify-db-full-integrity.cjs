@@ -25,6 +25,27 @@ const SQLITE_BOOL_TEXT = (expr) => {
 };
 const PG_TEXT = (expr) => `${expr}::text`;
 const SQLITE_TEXT = (expr) => `CAST(${expr} AS TEXT)`;
+const PG_TIMESTAMP_MS_TEXT =
+  (expr) => `CASE WHEN ${expr} IS NULL THEN NULL ELSE CAST((extract(epoch from ${expr}) * 1000)::bigint AS text) END`;
+const SQLITE_TIMESTAMP_MS_TEXT = (expr) => {
+  const normalized = `trim(CAST(${expr} AS TEXT))`;
+  const isSignedInteger = `((${normalized} NOT GLOB '*[^0-9]*')
+    OR (
+      substr(${normalized}, 1, 1) IN ('+', '-')
+      AND length(${normalized}) > 1
+      AND substr(${normalized}, 2) NOT GLOB '*[^0-9]*'
+    ))`;
+  return `CASE
+    WHEN ${expr} IS NULL THEN NULL
+    WHEN ${normalized} = '' THEN NULL
+    WHEN ${isSignedInteger}
+      THEN CASE
+        WHEN abs(CAST(${normalized} AS INTEGER)) >= 100000000000 THEN CAST(CAST(${normalized} AS INTEGER) AS TEXT)
+        ELSE CAST(CAST(${normalized} AS INTEGER) * 1000 AS TEXT)
+      END
+    ELSE CAST(CAST(ROUND((julianday(${expr}) - 2440587.5) * 86400000.0) AS INTEGER) AS TEXT)
+  END`;
+};
 const PG_BYTEA_HEX = (expr) => `CASE WHEN ${expr} IS NULL THEN NULL ELSE lower(encode(${expr}::bytea, 'hex')) END`;
 const SQLITE_BLOB_HEX = (expr) => `CASE WHEN ${expr} IS NULL THEN NULL ELSE lower(hex(${expr})) END`;
 const PG_HASH_TEXT =
@@ -32,8 +53,10 @@ const PG_HASH_TEXT =
 const PG_EMPTY_TO_NULL = (expr) => `NULLIF(${expr}, '')`;
 const SQLITE_EMPTY_TO_NULL = (expr) => `NULLIF(${expr}, '')`;
 const ZERO_32_HEX = "0000000000000000000000000000000000000000000000000000000000000000";
-const PG_HASH_TEXT_NORMALIZED = (expr) => `NULLIF(${PG_HASH_TEXT(expr)}, '${ZERO_32_HEX}')`;
-const SQLITE_BLOB_HEX_NORMALIZED = (expr) => `NULLIF(${SQLITE_BLOB_HEX(expr)}, '${ZERO_32_HEX}')`;
+const PG_REQUIRED_HASH_TEXT = (expr) => PG_HASH_TEXT(expr);
+const SQLITE_REQUIRED_BLOB_HEX = (expr) => SQLITE_BLOB_HEX(expr);
+const PG_OPTIONAL_HASH_TEXT = (expr) => `NULLIF(${PG_HASH_TEXT(expr)}, '${ZERO_32_HEX}')`;
+const SQLITE_OPTIONAL_BLOB_HEX = (expr) => `NULLIF(${SQLITE_BLOB_HEX(expr)}, '${ZERO_32_HEX}')`;
 
 const TABLE_SPECS = [
   {
@@ -64,13 +87,17 @@ const TABLE_SPECS = [
       { name: "feedback_count", pg: PG_TEXT("a.feedback_count"), sqlite: SQLITE_TEXT("a.feedbackCount") },
       { name: "raw_avg_score", pg: PG_TEXT("a.raw_avg_score"), sqlite: SQLITE_TEXT("a.rawAvgScore") },
       { name: "agent_id", pg: PG_TEXT("a.agent_id"), sqlite: SQLITE_TEXT("a.agent_id") },
-      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("a.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("a.createdTxSignature") },
+      { name: "block_slot", pg: PG_TEXT("a.block_slot"), sqlite: SQLITE_TEXT("a.createdSlot") },
       { name: "tx_index", pg: PG_TEXT("a.tx_index"), sqlite: SQLITE_TEXT("a.txIndex") },
       { name: "event_ordinal", pg: PG_TEXT("a.event_ordinal"), sqlite: SQLITE_TEXT("a.eventOrdinal") },
+      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("a.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("a.createdTxSignature") },
+      { name: "created_at", pg: PG_TIMESTAMP_MS_TEXT("a.created_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("a.createdAt") },
+      { name: "updated_at", pg: PG_TIMESTAMP_MS_TEXT("a.updated_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("a.updatedAt") },
       { name: "status", pg: "a.status", sqlite: "a.status" },
+      { name: "verified_at", pg: PG_TIMESTAMP_MS_TEXT("a.verified_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("a.verifiedAt") },
       { name: "verified_slot", pg: PG_TEXT("a.verified_slot"), sqlite: SQLITE_TEXT("a.verifiedSlot") },
     ],
-    orderBy: ["tx_signature", "tx_index", "event_ordinal", "asset"],
+    orderBy: ["block_slot", "tx_index", "event_ordinal", "tx_signature", "asset"],
   },
   {
     canonical: "Collection",
@@ -96,12 +123,14 @@ const TABLE_SPECS = [
       { name: "col", pg: "cp.col", sqlite: "cp.col" },
       { name: "creator", pg: "cp.creator", sqlite: "cp.creator" },
       { name: "first_seen_asset", pg: PG_EMPTY_TO_NULL("cp.first_seen_asset"), sqlite: SQLITE_EMPTY_TO_NULL("cp.firstSeenAsset") },
+      { name: "first_seen_at", pg: PG_TIMESTAMP_MS_TEXT("cp.first_seen_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("cp.firstSeenAt") },
       { name: "first_seen_slot", pg: PG_TEXT("cp.first_seen_slot"), sqlite: SQLITE_TEXT("cp.firstSeenSlot") },
       {
         name: "first_seen_tx_signature",
         pg: PG_EMPTY_TO_NULL("cp.first_seen_tx_signature"),
         sqlite: SQLITE_EMPTY_TO_NULL("cp.firstSeenTxSignature"),
       },
+      { name: "last_seen_at", pg: PG_TIMESTAMP_MS_TEXT("cp.last_seen_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("cp.lastSeenAt") },
       { name: "last_seen_slot", pg: PG_TEXT("cp.last_seen_slot"), sqlite: SQLITE_TEXT("cp.lastSeenSlot") },
       { name: "last_seen_tx_signature", pg: PG_EMPTY_TO_NULL("cp.last_seen_tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("cp.lastSeenTxSignature") },
       { name: "asset_count", pg: PG_TEXT("cp.asset_count"), sqlite: SQLITE_TEXT("cp.assetCount") },
@@ -117,6 +146,7 @@ const TABLE_SPECS = [
       { name: "metadata_status", pg: PG_EMPTY_TO_NULL("cp.metadata_status"), sqlite: SQLITE_EMPTY_TO_NULL("cp.metadataStatus") },
       { name: "metadata_hash", pg: PG_EMPTY_TO_NULL("cp.metadata_hash"), sqlite: SQLITE_EMPTY_TO_NULL("cp.metadataHash") },
       { name: "metadata_bytes", pg: PG_TEXT("cp.metadata_bytes"), sqlite: SQLITE_TEXT("cp.metadataBytes") },
+      { name: "metadata_updated_at", pg: PG_TIMESTAMP_MS_TEXT("cp.metadata_updated_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("cp.metadataUpdatedAt") },
     ],
     orderBy: ["col", "creator"],
   },
@@ -132,12 +162,13 @@ const TABLE_SPECS = [
       { name: "value_hex", pg: PG_BYTEA_HEX("m.value"), sqlite: SQLITE_BLOB_HEX("m.value") },
       { name: "immutable", pg: PG_BOOL_TEXT("m.immutable"), sqlite: SQLITE_BOOL_TEXT("m.immutable") },
       { name: "block_slot", pg: PG_TEXT("m.block_slot"), sqlite: SQLITE_TEXT("m.slot") },
-      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("m.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("m.txSignature") },
       { name: "tx_index", pg: PG_TEXT("m.tx_index"), sqlite: SQLITE_TEXT("m.txIndex") },
       { name: "event_ordinal", pg: PG_TEXT("m.event_ordinal"), sqlite: SQLITE_TEXT("m.eventOrdinal") },
+      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("m.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("m.txSignature") },
       { name: "status", pg: "m.status", sqlite: "m.status" },
+      { name: "verified_at", pg: PG_TIMESTAMP_MS_TEXT("m.verified_at"), sqlite: SQLITE_TIMESTAMP_MS_TEXT("m.verifiedAt") },
     ],
-    orderBy: ["asset", "key", "block_slot", "tx_signature", "tx_index", "event_ordinal"],
+    orderBy: ["asset", "key", "block_slot", "tx_index", "event_ordinal", "tx_signature"],
   },
   {
     canonical: "Feedback",
@@ -157,13 +188,13 @@ const TABLE_SPECS = [
       { name: "tag2", pg: PG_EMPTY_TO_NULL("f.tag2"), sqlite: SQLITE_EMPTY_TO_NULL("f.tag2") },
       { name: "endpoint", pg: PG_EMPTY_TO_NULL("f.endpoint"), sqlite: SQLITE_EMPTY_TO_NULL("f.endpoint") },
       { name: "feedback_uri", pg: PG_EMPTY_TO_NULL("f.feedback_uri"), sqlite: SQLITE_EMPTY_TO_NULL("f.feedbackUri") },
-      { name: "feedback_hash", pg: PG_HASH_TEXT_NORMALIZED("f.feedback_hash"), sqlite: SQLITE_BLOB_HEX_NORMALIZED("f.feedbackHash") },
+      { name: "feedback_hash", pg: PG_REQUIRED_HASH_TEXT("f.feedback_hash"), sqlite: SQLITE_REQUIRED_BLOB_HEX("f.feedbackHash") },
       { name: "running_digest", pg: PG_BYTEA_HEX("f.running_digest"), sqlite: SQLITE_BLOB_HEX("f.runningDigest") },
       { name: "is_revoked", pg: PG_BOOL_TEXT("f.is_revoked"), sqlite: SQLITE_BOOL_TEXT("f.revoked") },
       { name: "block_slot", pg: PG_TEXT("f.block_slot"), sqlite: SQLITE_TEXT("f.createdSlot") },
-      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("f.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("f.createdTxSignature") },
       { name: "tx_index", pg: PG_TEXT("f.tx_index"), sqlite: SQLITE_TEXT("f.txIndex") },
       { name: "event_ordinal", pg: PG_TEXT("f.event_ordinal"), sqlite: SQLITE_TEXT("f.eventOrdinal") },
+      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("f.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("f.createdTxSignature") },
       { name: "status", pg: "f.status", sqlite: "f.status" },
     ],
     orderBy: [
@@ -171,9 +202,9 @@ const TABLE_SPECS = [
       "client_address",
       "feedback_index",
       "block_slot",
-      "tx_signature",
       "tx_index",
       "event_ordinal",
+      "tx_signature",
     ],
   },
   {
@@ -190,13 +221,13 @@ const TABLE_SPECS = [
       { name: "feedback_index", pg: PG_TEXT("fr.feedback_index"), sqlite: SQLITE_TEXT("f.feedbackIndex") },
       { name: "responder", pg: "fr.responder", sqlite: "fr.responder" },
       { name: "response_uri", pg: PG_EMPTY_TO_NULL("fr.response_uri"), sqlite: SQLITE_EMPTY_TO_NULL("fr.responseUri") },
-      { name: "response_hash", pg: PG_HASH_TEXT_NORMALIZED("fr.response_hash"), sqlite: SQLITE_BLOB_HEX_NORMALIZED("fr.responseHash") },
+      { name: "response_hash", pg: PG_REQUIRED_HASH_TEXT("fr.response_hash"), sqlite: SQLITE_REQUIRED_BLOB_HEX("fr.responseHash") },
       { name: "running_digest", pg: PG_BYTEA_HEX("fr.running_digest"), sqlite: SQLITE_BLOB_HEX("fr.runningDigest") },
       { name: "response_count", pg: PG_TEXT("fr.response_count"), sqlite: SQLITE_TEXT("fr.responseCount") },
       { name: "block_slot", pg: PG_TEXT("fr.block_slot"), sqlite: SQLITE_TEXT("fr.slot") },
-      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("fr.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("fr.txSignature") },
       { name: "tx_index", pg: PG_TEXT("fr.tx_index"), sqlite: SQLITE_TEXT("fr.txIndex") },
       { name: "event_ordinal", pg: PG_TEXT("fr.event_ordinal"), sqlite: SQLITE_TEXT("fr.eventOrdinal") },
+      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("fr.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("fr.txSignature") },
       { name: "status", pg: "fr.status", sqlite: "fr.status" },
     ],
     orderBy: [
@@ -205,9 +236,9 @@ const TABLE_SPECS = [
       "feedback_index",
       "responder",
       "block_slot",
-      "tx_signature",
       "tx_index",
       "event_ordinal",
+      "tx_signature",
     ],
   },
   {
@@ -221,19 +252,19 @@ const TABLE_SPECS = [
       { name: "asset", pg: "r.asset", sqlite: "r.agentId" },
       { name: "client_address", pg: "r.client_address", sqlite: "r.client" },
       { name: "feedback_index", pg: PG_TEXT("r.feedback_index"), sqlite: SQLITE_TEXT("r.feedbackIndex") },
-      { name: "feedback_hash", pg: PG_HASH_TEXT_NORMALIZED("r.feedback_hash"), sqlite: SQLITE_BLOB_HEX_NORMALIZED("r.feedbackHash") },
+      { name: "feedback_hash", pg: PG_REQUIRED_HASH_TEXT("r.feedback_hash"), sqlite: SQLITE_REQUIRED_BLOB_HEX("r.feedbackHash") },
       { name: "slot", pg: PG_TEXT("r.slot"), sqlite: SQLITE_TEXT("r.slot") },
       { name: "original_score", pg: PG_TEXT("r.original_score"), sqlite: SQLITE_TEXT("r.originalScore") },
       { name: "atom_enabled", pg: PG_BOOL_TEXT("r.atom_enabled"), sqlite: SQLITE_BOOL_TEXT("r.atomEnabled") },
       { name: "had_impact", pg: PG_BOOL_TEXT("r.had_impact"), sqlite: SQLITE_BOOL_TEXT("r.hadImpact") },
       { name: "running_digest", pg: PG_BYTEA_HEX("r.running_digest"), sqlite: SQLITE_BLOB_HEX("r.runningDigest") },
       { name: "revoke_count", pg: PG_TEXT("r.revoke_count"), sqlite: SQLITE_TEXT("r.revokeCount") },
-      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("r.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("r.txSignature") },
       { name: "tx_index", pg: PG_TEXT("r.tx_index"), sqlite: SQLITE_TEXT("r.txIndex") },
       { name: "event_ordinal", pg: PG_TEXT("r.event_ordinal"), sqlite: SQLITE_TEXT("r.eventOrdinal") },
+      { name: "tx_signature", pg: PG_EMPTY_TO_NULL("r.tx_signature"), sqlite: SQLITE_EMPTY_TO_NULL("r.txSignature") },
       { name: "status", pg: "r.status", sqlite: "r.status" },
     ],
-    orderBy: ["asset", "client_address", "feedback_index", "slot", "tx_signature", "tx_index", "event_ordinal"],
+    orderBy: ["asset", "client_address", "feedback_index", "slot", "tx_index", "event_ordinal", "tx_signature"],
   },
   {
     canonical: "Validation",
@@ -247,10 +278,10 @@ const TABLE_SPECS = [
       { name: "nonce", pg: PG_TEXT("v.nonce"), sqlite: SQLITE_TEXT("v.nonce") },
       { name: "requester", pg: "v.requester", sqlite: "v.requester" },
       { name: "request_uri", pg: PG_EMPTY_TO_NULL("v.request_uri"), sqlite: SQLITE_EMPTY_TO_NULL("v.requestUri") },
-      { name: "request_hash", pg: PG_HASH_TEXT_NORMALIZED("v.request_hash"), sqlite: SQLITE_BLOB_HEX_NORMALIZED("v.requestHash") },
+      { name: "request_hash", pg: PG_REQUIRED_HASH_TEXT("v.request_hash"), sqlite: SQLITE_REQUIRED_BLOB_HEX("v.requestHash") },
       { name: "response", pg: PG_TEXT("v.response"), sqlite: SQLITE_TEXT("v.response") },
       { name: "response_uri", pg: PG_EMPTY_TO_NULL("v.response_uri"), sqlite: SQLITE_EMPTY_TO_NULL("v.responseUri") },
-      { name: "response_hash", pg: PG_HASH_TEXT_NORMALIZED("v.response_hash"), sqlite: SQLITE_BLOB_HEX_NORMALIZED("v.responseHash") },
+      { name: "response_hash", pg: PG_REQUIRED_HASH_TEXT("v.response_hash"), sqlite: SQLITE_REQUIRED_BLOB_HEX("v.responseHash") },
       { name: "tag", pg: PG_EMPTY_TO_NULL("v.tag"), sqlite: SQLITE_EMPTY_TO_NULL("v.tag") },
       { name: "chain_status", pg: "v.chain_status", sqlite: "v.chainStatus" },
     ],
@@ -266,6 +297,7 @@ const TABLE_SPECS = [
       { name: "id", pg: "s.id", sqlite: "s.id" },
       { name: "last_signature", pg: "s.last_signature", sqlite: "s.lastSignature" },
       { name: "last_slot", pg: PG_TEXT("s.last_slot"), sqlite: SQLITE_TEXT("s.lastSlot") },
+      { name: "last_tx_index", pg: PG_TEXT("s.last_tx_index"), sqlite: SQLITE_TEXT("s.lastTxIndex") },
       { name: "source", pg: "s.source", sqlite: "s.source" },
     ],
     orderBy: ["id"],
@@ -292,7 +324,7 @@ const TABLE_SPECS = [
   },
 ];
 
-const REQUIRED_PORTS = [3201, 3202, 3203, 3204, 3205, 3206];
+const DEFAULT_EXPECTED_SOURCES = 6;
 const DEFAULT_PG_PORTS = [3201, 3202, 3203, 3205, 3206];
 const DEFAULT_PG_DBS = [
   "indexer_devnet_3201",
@@ -301,9 +333,10 @@ const DEFAULT_PG_DBS = [
   "indexer_devnet_3205",
   "indexer_devnet_3206",
 ];
-const DEFAULT_SQLITE_PORT = 3204;
-const DEFAULT_SQLITE_DB =
-  "/Users/true/Documents/Pipeline/CasterCorp/8004-solana-indexer/prisma/data/devnet-integrity-3204.db";
+const DEFAULT_SQLITE_PORTS = [3204];
+const DEFAULT_SQLITE_DBS = [
+  "/Users/true/Documents/Pipeline/CasterCorp/8004-solana-indexer/prisma/data/devnet-integrity-3204.db",
+];
 const DEFAULT_OUTPUT_DIR = "artifacts/e2e-indexers";
 const DEFAULT_SAMPLE_LIMIT = 5;
 const DEFAULT_SOURCE_CONCURRENCY = 6;
@@ -809,9 +842,22 @@ function parseSources(args) {
   const pgPassword = args["pg-password"] || "indexer";
   const pgPorts = splitCsv(args["pg-ports"] || DEFAULT_PG_PORTS.join(","));
   const pgDbs = splitCsv(args["pg-dbs"] || DEFAULT_PG_DBS.join(","));
-  const sqlitePort = asPositiveInt(args["sqlite-port"] || DEFAULT_SQLITE_PORT);
-  const sqliteDb = args["sqlite-db"] || DEFAULT_SQLITE_DB;
-  const sqliteLabel = args["sqlite-label"] || (sqlitePort ? `indexer_${sqlitePort}` : "indexer_sqlite");
+  const sqlitePortsRaw =
+    args["sqlite-ports"] ||
+    (args["sqlite-port"] ? String(args["sqlite-port"]) : DEFAULT_SQLITE_PORTS.join(","));
+  const sqliteDbsRaw =
+    args["sqlite-dbs"] ||
+    (args["sqlite-db"] ? String(args["sqlite-db"]) : DEFAULT_SQLITE_DBS.join(","));
+  const sqliteLabelsRaw =
+    args["sqlite-labels"] ||
+    (args["sqlite-label"] ? String(args["sqlite-label"]) : "");
+  const sqlitePorts = splitCsv(sqlitePortsRaw);
+  const sqliteDbs = splitCsv(sqliteDbsRaw);
+  const sqliteLabels = splitCsv(sqliteLabelsRaw);
+  const expectedSources = asPositiveInt(args["expected-sources"]) || DEFAULT_EXPECTED_SOURCES;
+  const requiredPorts = splitCsv(args["required-ports"])
+    .map((value) => asPositiveInt(value))
+    .filter((value) => value !== null);
   const configErrors = [];
   const sources = [];
 
@@ -831,17 +877,20 @@ function parseSources(args) {
     });
   }
 
-  if (!sqlitePort) {
-    configErrors.push(`invalid_sqlite_port:${args["sqlite-port"] || ""}`);
-  }
-  if (!sqliteDb) {
-    configErrors.push("missing_sqlite_db");
-  } else {
+  const sqliteCount = Math.max(sqlitePorts.length, sqliteDbs.length, sqliteLabels.length);
+  for (let i = 0; i < sqliteCount; i += 1) {
+    const port = asPositiveInt(sqlitePorts[i]);
+    const dbPath = sqliteDbs[i];
+    const label = sqliteLabels[i] || (port ? `indexer_${port}` : `indexer_sqlite_${i + 1}`);
+    if (!port || !dbPath) {
+      configErrors.push(`invalid_sqlite_source_mapping:index=${i}:port=${sqlitePorts[i] || ""}:db=${dbPath || ""}`);
+      continue;
+    }
     sources.push({
-      label: sqliteLabel,
-      port: sqlitePort || DEFAULT_SQLITE_PORT,
+      label,
+      port,
       engine: "sqlite",
-      dbPath: sqliteDb,
+      dbPath,
     });
   }
 
@@ -851,22 +900,35 @@ function parseSources(args) {
       compareStrings(a.label, b.label)
   );
 
-  if (sources.length !== 6) {
-    configErrors.push(`expected_exactly_6_sources:found_${sources.length}`);
+  if (sources.length !== expectedSources) {
+    configErrors.push(`expected_exactly_${expectedSources}_sources:found_${sources.length}`);
   }
 
-  const seenPorts = new Set(sources.map((s) => s.port));
-  const missingRequiredPorts = REQUIRED_PORTS.filter((p) => !seenPorts.has(p));
-  if (missingRequiredPorts.length > 0) {
-    configErrors.push(`missing_required_ports:${missingRequiredPorts.join(",")}`);
+  const duplicatePorts = [];
+  const seenPorts = new Set();
+  for (const source of sources) {
+    if (seenPorts.has(source.port)) duplicatePorts.push(source.port);
+    seenPorts.add(source.port);
+  }
+  if (duplicatePorts.length > 0) {
+    configErrors.push(`duplicate_source_ports:${duplicatePorts.join(",")}`);
+  }
+
+  if (requiredPorts.length > 0) {
+    const missingRequiredPorts = requiredPorts.filter((p) => !seenPorts.has(p));
+    if (missingRequiredPorts.length > 0) {
+      configErrors.push(`missing_required_ports:${missingRequiredPorts.join(",")}`);
+    }
   }
 
   return {
     pgContainer,
     pgUser,
     pgPassword,
-    sqliteDb,
-    sqliteLabel,
+    sqliteDbs,
+    sqliteLabels,
+    requiredPorts,
+    expectedSources,
     sources,
     configErrors,
   };
@@ -1022,10 +1084,14 @@ async function main() {
       pgUser: parsed.pgUser,
       pgDbs: parsed.sources.filter((s) => s.engine === "pg").map((s) => s.db),
       pgPorts: parsed.sources.filter((s) => s.engine === "pg").map((s) => s.port),
-      sqliteDb: parsed.sqliteDb,
-      sqliteLabel: parsed.sqliteLabel,
+      sqliteDbs: parsed.sources.filter((s) => s.engine === "sqlite").map((s) => s.dbPath),
+      sqliteLabels: parsed.sources.filter((s) => s.engine === "sqlite").map((s) => s.label),
+      sqlitePorts: parsed.sources.filter((s) => s.engine === "sqlite").map((s) => s.port),
+      sqliteDb: parsed.sources.find((s) => s.engine === "sqlite")?.dbPath || null,
+      sqliteLabel: parsed.sources.find((s) => s.engine === "sqlite")?.label || null,
       sqlitePort: parsed.sources.find((s) => s.engine === "sqlite")?.port || null,
-      requiredPorts: REQUIRED_PORTS,
+      expectedSources: parsed.expectedSources,
+      requiredPorts: parsed.requiredPorts,
       sampleLimit,
       sourceConcurrency,
       tableConcurrency,
@@ -1079,19 +1145,25 @@ async function main() {
   if (!pass) process.exitCode = 2;
 }
 
-main().catch((error) => {
-  const outputPath = resolve(`${DEFAULT_OUTPUT_DIR}/db-full-integrity-${nowId()}-fatal.json`);
-  const report = {
-    generatedAt: new Date().toISOString(),
-    pass: false,
-    status: "fail",
-    fatalError: {
-      message: error && error.message ? error.message : String(error),
-      stack: error && error.stack ? error.stack : null,
-    },
-  };
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  console.error(JSON.stringify({ report: outputPath, pass: false, status: "fail", fatal: true }, null, 2));
-  process.exitCode = 2;
-});
+module.exports = {
+  TABLE_SPECS,
+};
+
+if (require.main === module) {
+  main().catch((error) => {
+    const outputPath = resolve(`${DEFAULT_OUTPUT_DIR}/db-full-integrity-${nowId()}-fatal.json`);
+    const report = {
+      generatedAt: new Date().toISOString(),
+      pass: false,
+      status: "fail",
+      fatalError: {
+        message: error && error.message ? error.message : String(error),
+        stack: error && error.stack ? error.stack : null,
+      },
+    };
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    console.error(JSON.stringify({ report: outputPath, pass: false, status: "fail", fatal: true }, null, 2));
+    process.exitCode = 2;
+  });
+}

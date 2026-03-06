@@ -682,11 +682,85 @@ describe('IndexerClient', () => {
       expect(rows[0]).toMatchObject({ collection: 'c1:legacy', col: 'c1:legacy', creator: 'legacyCreator' });
     });
 
+    it('getCollectionPointers should pass collection_id filter when provided', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([
+        {
+          collection_id: '7',
+          collection: 'c1:abc',
+          creator: 'creator1',
+          first_seen_asset: 'asset1',
+          first_seen_at: '2026-01-01T00:00:00.000Z',
+          first_seen_slot: '10',
+          first_seen_tx_signature: null,
+          last_seen_at: '2026-01-02T00:00:00.000Z',
+          last_seen_slot: '11',
+          last_seen_tx_signature: null,
+          asset_count: '1',
+        },
+      ]));
+
+      const rows = await client.getCollectionPointers({ collectionId: '7' });
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/collections?');
+      expect(url).toContain('collection_id=eq.7');
+      expect(rows[0]).toMatchObject({ collection_id: '7', col: 'c1:abc', creator: 'creator1' });
+    });
+
+    it('getCollectionPointers should reject non-positive collection_id in response', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([
+        {
+          collection_id: '0',
+          collection: 'c1:abc',
+          creator: 'creator1',
+          first_seen_asset: 'asset1',
+          first_seen_at: '2026-01-01T00:00:00.000Z',
+          first_seen_slot: '10',
+          first_seen_tx_signature: null,
+          last_seen_at: '2026-01-02T00:00:00.000Z',
+          last_seen_slot: '11',
+          last_seen_tx_signature: null,
+          asset_count: '1',
+        },
+      ]));
+
+      await expect(client.getCollectionPointers({ collectionId: '7' })).rejects.toMatchObject({
+        code: IndexerErrorCode.INVALID_RESPONSE,
+      });
+    });
+
+    it('getCollectionPointers should not fallback to legacy endpoint when collectionId is requested', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({}, 404));
+
+      await expect(client.getCollectionPointers({ collectionId: '7' })).rejects.toThrow('HTTP 404');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/collections?');
+    });
+
     it('getCollectionPointers should reject empty collection filter', async () => {
       const client = createClient();
       await expect(client.getCollectionPointers({ col: '' })).rejects.toThrow(
         'Collection pointer cannot be empty',
       );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('getCollectionPointers should reject invalid collection id filter', async () => {
+      const client = createClient();
+      await expect(client.getCollectionPointers({ collectionId: 'abc' })).rejects.toThrow(
+        'collectionId must be an integer',
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('getCollectionPointers should reject unsafe numeric collection id filter', async () => {
+      const client = createClient();
+      await expect(
+        client.getCollectionPointers({ collectionId: Number.MAX_SAFE_INTEGER + 1 }),
+      ).rejects.toThrow('use string/bigint for large values');
       expect(mockFetch).not.toHaveBeenCalled();
     });
 

@@ -96,6 +96,7 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     const rows = await client.getCollectionPointers({ collection: 'c1:abc', creator: 'creator1' });
     const body = getBody(0);
     expect(body.query).toContain('collections(');
+    expect(body.query).not.toContain('collectionId');
     expect(body.variables?.collection).toBe('c1:abc');
     expect(rows[0]).toMatchObject({
       collection: 'c1:abc',
@@ -145,11 +146,108 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     });
   });
 
+  it('getCollectionPointers should pass collectionId in modern query', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(mockGraphQLResponse({
+      data: {
+        collections: [
+          {
+            collectionId: '7',
+            collection: 'c1:abc',
+            creator: 'creator1',
+            firstSeenAsset: 'asset1',
+            firstSeenAt: '1770000000',
+            firstSeenSlot: '10',
+            firstSeenTxSignature: null,
+            lastSeenAt: '1770000100',
+            lastSeenSlot: '11',
+            lastSeenTxSignature: null,
+            assetCount: '1',
+          },
+        ],
+      },
+    }));
+
+    const rows = await client.getCollectionPointers({ collectionId: '7' });
+    const body = getBody(0);
+    expect(body.query).toContain('$collectionId: BigInt');
+    expect(body.query).toContain('collectionId: $collectionId');
+    expect(body.variables?.collectionId).toBe('7');
+    expect(rows[0]).toMatchObject({ collection_id: '7', col: 'c1:abc', creator: 'creator1' });
+  });
+
+  it('getCollectionPointers should reject non-positive collectionId in response', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(mockGraphQLResponse({
+      data: {
+        collections: [
+          {
+            collectionId: '0',
+            collection: 'c1:abc',
+            creator: 'creator1',
+            firstSeenAsset: 'asset1',
+            firstSeenAt: '1770000000',
+            firstSeenSlot: '10',
+            firstSeenTxSignature: null,
+            lastSeenAt: '1770000100',
+            lastSeenSlot: '11',
+            lastSeenTxSignature: null,
+            assetCount: '1',
+          },
+        ],
+      },
+    }));
+
+    await expect(client.getCollectionPointers({ collectionId: '7' })).rejects.toMatchObject({
+      code: IndexerErrorCode.INVALID_RESPONSE,
+    });
+  });
+
+  it('getCollectionPointers should not fallback to legacy query when collectionId is requested', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValueOnce(mockGraphQLResponse({
+      errors: [{ message: 'Cannot query field "collections" on type "Query".' }],
+    }));
+
+    await expect(client.getCollectionPointers({ collectionId: '7' })).rejects.toThrow(
+      'Cannot query field "collections" on type "Query".',
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('getCollectionPointers should fail closed when collectionId argument is unsupported', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValueOnce(mockGraphQLResponse({
+      errors: [{ message: 'Unknown argument "collectionId" on field "Query.collections".' }],
+    }));
+
+    await expect(client.getCollectionPointers({ collectionId: '7' })).rejects.toThrow(
+      'Unknown argument "collectionId" on field "Query.collections".',
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it('getCollectionPointers should reject empty collection filter', async () => {
     const client = createClient();
     await expect(client.getCollectionPointers({ col: '' })).rejects.toThrow(
       'Collection pointer cannot be empty',
     );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('getCollectionPointers should reject invalid collection id filter', async () => {
+    const client = createClient();
+    await expect(client.getCollectionPointers({ collectionId: 'abc' })).rejects.toThrow(
+      'collectionId must be an integer',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('getCollectionPointers should reject unsafe numeric collection id filter', async () => {
+    const client = createClient();
+    await expect(
+      client.getCollectionPointers({ collectionId: Number.MAX_SAFE_INTEGER + 1 }),
+    ).rejects.toThrow('use string/bigint for large values');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -966,6 +1064,75 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect(body.query).toContain('agent { id }');
   });
 
+  it('getFeedbacksByClient should paginate in complexity-safe chunks', async () => {
+    const client = createClient();
+    mockFetch
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          data: {
+            feedbacks: Array.from({ length: 100 }, (_, i) => ({
+              id: `${i + 1}`,
+              clientAddress: 'ClientFeedback111',
+              feedbackIndex: `${i}`,
+              tag1: 'quality',
+              tag2: null,
+              endpoint: '/chat',
+              feedbackURI: 'ipfs://feedback',
+              feedbackHash: 'ab'.repeat(32),
+              isRevoked: false,
+              createdAt: `${1773000000 + i}`,
+              revokedAt: null,
+              agent: { id: `Asset${i}` },
+              solana: {
+                valueRaw: '100',
+                valueDecimals: 0,
+                score: 95,
+                txSignature: `sig${i}`,
+                blockSlot: `${100 + i}`,
+              },
+            })),
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          data: {
+            feedbacks: [
+              {
+                id: '101',
+                clientAddress: 'ClientFeedback111',
+                feedbackIndex: '100',
+                tag1: 'quality',
+                tag2: null,
+                endpoint: '/chat',
+                feedbackURI: 'ipfs://feedback',
+                feedbackHash: 'cd'.repeat(32),
+                isRevoked: false,
+                createdAt: '1773000101',
+                revokedAt: null,
+                agent: { id: 'Asset100' },
+                solana: {
+                  valueRaw: '100',
+                  valueDecimals: 0,
+                  score: 95,
+                  txSignature: 'sig100',
+                  blockSlot: '200',
+                },
+              },
+            ],
+          },
+        }),
+      );
+
+    const rows = await client.getFeedbacksByClient('ClientFeedback111');
+    expect(rows).toHaveLength(101);
+
+    const firstBody = getBody(0);
+    expect(firstBody.query).toContain('feedbacks(first: 100, skip: 0');
+    const secondBody = getBody(1);
+    expect(secondBody.query).toContain('feedbacks(first: 100, skip: 100');
+  });
+
   it('getAgentReputation should map agent totals and feedback scores', async () => {
     const client = createClient();
     mockFetch
@@ -1415,6 +1582,22 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
+  it('getFeedbacks should normalize prefixed feedback hashes from GraphQL', async () => {
+    const client = createClient();
+    const row = mockFeedbackRows(1, 0)[0] as Record<string, unknown>;
+    row.feedbackHash = '0x' + 'ab'.repeat(32);
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbacks: [row],
+        },
+      }),
+    );
+
+    const rows = await client.getFeedbacks('AssetFeedback222', { includeRevoked: true, limit: 1, offset: 0 });
+    expect(rows[0]?.feedback_hash).toBe('ab'.repeat(32));
+  });
+
   it('getAllFeedbacks should exclude revoked by default and include when requested', async () => {
     const client = createClient();
     mockFetch
@@ -1507,9 +1690,9 @@ describe('IndexerGraphQLClient collection compatibility', () => {
                 feedbackIndex: '2',
                 slot: '999',
                 runningDigest: '0xEEFF',
-                feedbackHash: '11'.repeat(32),
+                feedbackHash: '\\x' + '11'.repeat(32),
                 responder: 'ResponderR',
-                responseHash: '22'.repeat(32),
+                responseHash: '0x' + '22'.repeat(32),
                 responseCount: '4',
                 revokeCount: '1',
               },
@@ -1528,6 +1711,8 @@ describe('IndexerGraphQLClient collection compatibility', () => {
       feedback_index: '2',
       slot: 999,
       running_digest: 'eeff',
+      feedback_hash: '11'.repeat(32),
+      response_hash: '22'.repeat(32),
       response_count: 4,
       revoke_count: 1,
     });
@@ -1535,6 +1720,40 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect((body.variables as any)?.chainType).toBe('RESPONSE');
     expect((body.variables as any)?.fromCount).toBe('10');
     expect((body.variables as any)?.toCount).toBe('20');
+  });
+
+  it('getReplayData should preserve explicit all-zero hash strings', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          hashChainReplayData: {
+            hasMore: false,
+            nextFromCount: '1',
+            events: [
+              {
+                asset: 'AssetReplay',
+                client: 'ClientReplay',
+                feedbackIndex: '0',
+                slot: '1000',
+                runningDigest: '0xAA',
+                feedbackHash: '0'.repeat(64),
+                responder: 'ResponderR',
+                responseHash: '0'.repeat(64),
+                responseCount: '1',
+                revokeCount: '1',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const page = await client.getReplayData('AssetReplay', 'response', 0, 1, 1);
+    expect(page.events[0]).toMatchObject({
+      feedback_hash: '0'.repeat(64),
+      response_hash: '0'.repeat(64),
+    });
   });
 
   it('hash-chain event convenience methods should map replay rows to response objects', async () => {

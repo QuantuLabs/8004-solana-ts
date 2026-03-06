@@ -37,6 +37,7 @@ import { replayFeedbackChain, replayResponseChain, replayRevokeChain, } from './
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import { getDefaultIndexerUrl, getDefaultIndexerGraphqlUrl, getDefaultIndexerApiKey, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
+import { IndexerError, IndexerErrorCode } from './indexer-errors.js';
 function getEnv(key) {
     if (typeof process !== 'undefined' && process.env) {
         return process.env[key];
@@ -144,6 +145,32 @@ function normalizeCollectionPointerInput(pointerOrCid) {
     }
     validateCollectionPointer(pointerOrCid);
     return pointerOrCid;
+}
+function normalizeCollectionIdInput(collectionId) {
+    let parsed;
+    if (typeof collectionId === 'bigint') {
+        parsed = collectionId;
+    }
+    else if (typeof collectionId === 'number') {
+        if (!Number.isSafeInteger(collectionId)) {
+            throw new Error('collectionId must be an integer (use string/bigint for large values)');
+        }
+        parsed = BigInt(collectionId);
+    }
+    else if (typeof collectionId === 'string') {
+        const trimmed = collectionId.trim();
+        if (!/^-?\d+$/.test(trimmed)) {
+            throw new Error('collectionId must be an integer');
+        }
+        parsed = BigInt(trimmed);
+    }
+    else {
+        throw new Error('collectionId must be an integer');
+    }
+    if (parsed < 0n) {
+        throw new Error('collectionId must be >= 0');
+    }
+    return parsed.toString();
 }
 /**
  * Main SDK class for Solana 8004 implementation
@@ -771,18 +798,25 @@ export class SolanaSDK {
         const sealHex = sealHash.toString('hex').toLowerCase();
         const matchesSealHash = (hash) => typeof hash === 'string' && hash.toLowerCase() === sealHex;
         const tryReadOnce = async () => {
+            const assetPageSize = 5000;
             const byClient = await this.indexerClient.getFeedbacksByClient(clientStr);
             const fromClient = byClient.find((row) => row.asset === assetStr && matchesSealHash(row.feedback_hash));
             if (fromClient) {
                 return indexedFeedbackToSolanaFeedback(fromClient);
             }
-            const byAsset = await this.indexerClient.getFeedbacks(assetStr, {
-                includeRevoked: true,
-                limit: 5000,
-            });
-            const fromAsset = byAsset.find((row) => row.client_address === clientStr && matchesSealHash(row.feedback_hash));
-            if (fromAsset) {
-                return indexedFeedbackToSolanaFeedback(fromAsset);
+            for (let offset = 0;; offset += assetPageSize) {
+                const byAsset = await this.indexerClient.getFeedbacks(assetStr, {
+                    includeRevoked: true,
+                    limit: assetPageSize,
+                    offset,
+                });
+                const fromAsset = byAsset.find((row) => row.client_address === clientStr && matchesSealHash(row.feedback_hash));
+                if (fromAsset) {
+                    return indexedFeedbackToSolanaFeedback(fromAsset);
+                }
+                if (byAsset.length < assetPageSize) {
+                    break;
+                }
             }
             return null;
         };
@@ -1187,8 +1221,12 @@ export class SolanaSDK {
             throw new Error('getCollectionPointers is not available on current indexer client');
         }
         const normalizedCol = options?.col !== undefined ? normalizeCollectionPointerInput(options.col) : undefined;
+        const normalizedCollectionId = options?.collectionId !== undefined
+            ? normalizeCollectionIdInput(options.collectionId)
+            : undefined;
         return method.call(this.indexerClient, {
             ...(options ?? {}),
+            ...(normalizedCollectionId !== undefined ? { collectionId: normalizedCollectionId } : {}),
             ...(normalizedCol !== undefined ? { col: normalizedCol } : {}),
             ...(normalizedCol !== undefined ? { collection: normalizedCol } : {}),
         });
@@ -1220,6 +1258,48 @@ export class SolanaSDK {
         return method.call(this.indexerClient, normalizedCol, {
             ...(options ?? {}),
             ...(creatorScope ? { creator: creatorScope } : {}),
+        });
+    }
+    /**
+     * Resolve one canonical collection scope from sequential collection id.
+     */
+    async getCollectionPointerById(collectionId) {
+        const normalizedCollectionId = normalizeCollectionIdInput(collectionId);
+        const rows = await this.getCollectionPointers({
+            collectionId: normalizedCollectionId,
+            limit: 2,
+            offset: 0,
+        });
+        if (rows.length === 0)
+            return null;
+        if (rows.length > 1) {
+            throw new Error(`Ambiguous collectionId ${normalizedCollectionId}: multiple collection scopes found`);
+        }
+        const resolved = rows[0];
+        if (resolved.collection_id !== normalizedCollectionId) {
+            throw new IndexerError(`Expected collection_id ${normalizedCollectionId} but got ${resolved.collection_id ?? 'null'}`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        return resolved;
+    }
+    /**
+     * Count assets associated with a sequential collection id.
+     */
+    async getCollectionAssetCountById(collectionId) {
+        const scope = await this.getCollectionPointerById(collectionId);
+        if (!scope)
+            return 0;
+        return this.getCollectionAssetCount(scope.col, scope.creator);
+    }
+    /**
+     * Get assets associated with a sequential collection id.
+     */
+    async getCollectionAssetsById(collectionId, options) {
+        const scope = await this.getCollectionPointerById(collectionId);
+        if (!scope)
+            return [];
+        return this.getCollectionAssets(scope.col, {
+            ...(options ?? {}),
+            creator: scope.creator,
         });
     }
     /**
@@ -2178,6 +2258,7 @@ export class SolanaSDK {
                 mcp: ServiceType.MCP,
                 a2a: ServiceType.A2A,
                 ens: ServiceType.ENS,
+                sns: ServiceType.SNS,
                 did: ServiceType.DID,
                 wallet: ServiceType.WALLET,
                 agentwallet: ServiceType.WALLET,

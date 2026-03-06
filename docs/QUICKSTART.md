@@ -44,7 +44,7 @@ const sdk = new SolanaSDK({
     atomEngine: 'YourAtomProgramId',
     // mplCore is optional (defaults to canonical Metaplex Core ID)
   },
-  indexerGraphqlUrl: 'http://127.0.0.1:3000/v2/graphql',
+  indexerGraphqlUrl: 'http://127.0.0.1:3005/v2/graphql',
 });
 ```
 
@@ -127,6 +127,7 @@ const metadata = buildRegistrationFileJson({
   services: [
     { type: ServiceType.MCP, value: 'https://my-api.com/mcp' },
     { type: ServiceType.A2A, value: 'https://my-api.com/a2a' },
+    { type: ServiceType.SNS, value: 'myagent.sol' },
   ],
 
   // Skills (OASF taxonomy)
