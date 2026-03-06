@@ -96,7 +96,7 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     const rows = await client.getCollectionPointers({ collection: 'c1:abc', creator: 'creator1' });
     const body = getBody(0);
     expect(body.query).toContain('collections(');
-    expect(body.query).not.toContain('collectionId');
+    expect(body.query).toContain('collectionId');
     expect(body.variables?.collection).toBe('c1:abc');
     expect(rows[0]).toMatchObject({
       collection: 'c1:abc',
@@ -1759,9 +1759,32 @@ describe('IndexerGraphQLClient collection compatibility', () => {
       revoke_count: 1,
     });
     const body = getBody(0);
+    expect(body.query).toContain('first: 5');
+    expect(body.query).not.toContain('$first');
     expect((body.variables as any)?.chainType).toBe('RESPONSE');
     expect((body.variables as any)?.fromCount).toBe('10');
     expect((body.variables as any)?.toCount).toBe('20');
+    expect((body.variables as any)?.first).toBeUndefined();
+  });
+
+  it('getReplayData should cap GraphQL replay page size to the public complexity-safe limit', async () => {
+    const client = createClient();
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          hashChainReplayData: {
+            hasMore: false,
+            nextFromCount: '0',
+            events: [],
+          },
+        },
+      }),
+    );
+
+    await client.getReplayData('AssetReplay', 'feedback', 0, 1000, 1000);
+    const body = getBody(0);
+    expect(body.query).toContain('first: 250');
+    expect(body.query).not.toContain('$first');
   });
 
   it('getReplayData should preserve explicit all-zero hash strings', async () => {

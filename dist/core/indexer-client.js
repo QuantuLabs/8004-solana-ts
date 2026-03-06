@@ -300,6 +300,11 @@ export class IndexerClient {
             && error.code === IndexerErrorCode.INVALID_RESPONSE
             && /HTTP 400|HTTP 404/.test(error.message));
     }
+    shouldUsePublicRestReadFallback(error) {
+        return (error instanceof IndexerError
+            && error.code === IndexerErrorCode.INVALID_RESPONSE
+            && /HTTP 403|HTTP 404|HTTP 405/.test(error.message));
+    }
     normalizeCollectionRecord(row) {
         const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
         const col = typeof row?.col === 'string' ? row.col : collection;

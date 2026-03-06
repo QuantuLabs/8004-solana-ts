@@ -875,6 +875,7 @@ export class IndexerGraphQLClient {
         }`
                 : `query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
           collections(first: $first, skip: $skip, collection: $collection, creator: $creator) {
+            collectionId
             collection
             creator
             firstSeenAsset
@@ -1432,14 +1433,14 @@ export class IndexerGraphQLClient {
         };
     }
     async getReplayData(asset, chainType, fromCount = 0, toCount = 1000, limit = 1000) {
-        const first = clampInt(limit, 1, 1000);
-        const data = await this.request(`query($agent: ID!, $chainType: HashChainType!, $fromCount: BigInt!, $toCount: BigInt, $first: Int!) {
+        const first = clampInt(limit, 1, 250);
+        const data = await this.request(`query($agent: ID!, $chainType: HashChainType!, $fromCount: BigInt!, $toCount: BigInt) {
         hashChainReplayData(
           agent: $agent,
           chainType: $chainType,
           fromCount: $fromCount,
           toCount: $toCount,
-          first: $first
+          first: ${first}
         ) {
           hasMore
           nextFromCount
@@ -1461,7 +1462,6 @@ export class IndexerGraphQLClient {
             chainType: chainType.toUpperCase(),
             fromCount: String(fromCount),
             toCount: toCount != null ? String(toCount) : null,
-            first,
         });
         const page = data.hashChainReplayData;
         const events = page.events.map((e) => ({

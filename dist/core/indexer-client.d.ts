@@ -410,6 +410,7 @@ export declare class IndexerClient implements IndexerReadClient {
     private parseCountValue;
     private resolveCollectionCreatorScope;
     private shouldUseLegacyCollectionRead;
+    private shouldUsePublicRestReadFallback;
     private normalizeCollectionRecord;
     /**
      * Check if indexer is available

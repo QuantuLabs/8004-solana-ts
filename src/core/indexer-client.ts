@@ -804,6 +804,14 @@ export class IndexerClient implements IndexerReadClient {
     );
   }
 
+  private shouldUsePublicRestReadFallback(error: unknown): boolean {
+    return (
+      error instanceof IndexerError
+      && error.code === IndexerErrorCode.INVALID_RESPONSE
+      && /HTTP 403|HTTP 404|HTTP 405/.test(error.message)
+    );
+  }
+
   private normalizeCollectionRecord(row: any): CollectionPointerRecord {
     const collection = typeof row?.collection === 'string' ? row.collection : row?.col;
     const col = typeof row?.col === 'string' ? row.col : collection;

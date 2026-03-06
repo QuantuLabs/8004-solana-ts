@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Hardened GraphQL seal-hash reads by chunking feedback lookup pagination so live `appendResponseBySealHash(...)` works against the indexer’s complexity limits.
 - The strict DB-integrity tooling no longer treats all-zero required hashes as equivalent to `null`, matching the current indexer/runtime contract.
+- GraphQL collection listings now request and return `collection_id` consistently, even without a `collectionId` filter.
+- REST/GraphQL read clients no longer synthesize incorrect fallback results for unsupported public compatibility paths; `getLeaderboardRPC()` now surfaces the upstream error instead of degrading to a non-leaderboard `/agents` query.
 
 ### Changed
 - `mainnet-beta` is now treated as a first-class default across SDK examples, quickstart flows, and skill docs, with the production indexer host set to `https://8004-indexer-main.qnt.sh`.

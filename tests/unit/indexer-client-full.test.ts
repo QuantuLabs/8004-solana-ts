@@ -278,6 +278,15 @@ describe('IndexerClient', () => {
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       expect(await client.getAgentReputation('missing')).toBeNull();
     });
+
+    it('should surface /agent_reputation errors instead of inventing reputation fields', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({ error: 'forbidden' }, 403));
+
+      await expect(client.getAgentReputation('asset1')).rejects.toThrow(/HTTP 403/i);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect((mockFetch.mock.calls[0][0] as string)).toContain('/agent_reputation?');
+    });
   });
 
   describe('getLeaderboard', () => {
@@ -307,6 +316,16 @@ describe('IndexerClient', () => {
       await client.getLeaderboardRPC({ collection: 'c1', minTier: 1, limit: 10 });
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('/rpc/get_leaderboard');
+    });
+
+    it('should surface an error when RPC endpoint is not exposed', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({ error: 'method not allowed' }, 405));
+
+      await expect(client.getLeaderboardRPC({ collection: 'c1', minTier: 1, limit: 10 })).rejects.toThrow(
+        /HTTP 405/i
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -927,6 +946,15 @@ describe('IndexerClient', () => {
       await client.getCollectionAgents('coll1', 20, 0);
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('rpc/get_collection_agents');
+    });
+
+    it('should surface collection agents endpoint errors instead of inventing reputation fields', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({ error: 'forbidden' }, 403));
+
+      await expect(client.getCollectionAgents('38', 20, 0)).rejects.toThrow(/HTTP 403/i);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect((mockFetch.mock.calls[0][0] as string)).toContain('/rpc/get_collection_agents');
     });
   });
 

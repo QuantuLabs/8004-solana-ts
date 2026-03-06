@@ -1086,6 +1086,7 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         }`
         : `query($first: Int!, $skip: Int!, $collection: String, $creator: String) {
           collections(first: $first, skip: $skip, collection: $collection, creator: $creator) {
+            collectionId
             collection
             creator
             firstSeenAsset
@@ -1762,16 +1763,16 @@ export class IndexerGraphQLClient implements IndexerReadClient {
     toCount: number = 1000,
     limit: number = 1000,
   ): Promise<ReplayDataPage> {
-    const first = clampInt(limit, 1, 1000);
+    const first = clampInt(limit, 1, 250);
 
     const data = await this.request<{ hashChainReplayData: GqlHashChainReplayPage }>(
-      `query($agent: ID!, $chainType: HashChainType!, $fromCount: BigInt!, $toCount: BigInt, $first: Int!) {
+      `query($agent: ID!, $chainType: HashChainType!, $fromCount: BigInt!, $toCount: BigInt) {
         hashChainReplayData(
           agent: $agent,
           chainType: $chainType,
           fromCount: $fromCount,
           toCount: $toCount,
-          first: $first
+          first: ${first}
         ) {
           hasMore
           nextFromCount
@@ -1794,7 +1795,6 @@ export class IndexerGraphQLClient implements IndexerReadClient {
         chainType: chainType.toUpperCase(),
         fromCount: String(fromCount),
         toCount: toCount != null ? String(toCount) : null,
-        first,
       }
     );
 
