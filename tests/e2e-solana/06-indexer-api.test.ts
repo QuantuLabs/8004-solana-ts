@@ -136,7 +136,7 @@ describe('Indexer API - Complete Coverage (10 Methods)', () => {
     const indexerUrl = process.env.INDEXER_URL || '';
     const indexerApiKey = process.env.INDEXER_API_KEY || '';
     const indexerGraphqlUrl = process.env.INDEXER_GRAPHQL_URL
-      || 'https://8004-indexer-production.up.railway.app/v2/graphql';
+      || 'https://8004-indexer-dev.qnt.sh/v2/graphql';
     const isLocalRpc = rpcUrl.includes('127.0.0.1') || rpcUrl.includes('localhost');
 
     // Create wallets

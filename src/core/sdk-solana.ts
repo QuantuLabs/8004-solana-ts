@@ -84,7 +84,9 @@ import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import {
   getDefaultIndexerUrl,
+  getDefaultIndexerUrls,
   getDefaultIndexerGraphqlUrl,
+  getDefaultIndexerGraphqlUrls,
   getDefaultIndexerApiKey,
   DEFAULT_FORCE_ON_CHAIN,
   SMALL_QUERY_OPERATIONS,
@@ -254,7 +256,7 @@ export interface SolanaSDKConfig {
   // Storage configuration
   ipfsClient?: IPFSClient;
   // Indexer configuration (v0.4.0) - all optional with sensible defaults
-  /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or hardcoded Railway deployment) */
+  /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or cluster primary public endpoint) */
   indexerGraphqlUrl?: string;
   /**
    * @deprecated Legacy Supabase REST API URL (override via INDEXER_URL env)
@@ -572,7 +574,7 @@ export class SolanaSDK {
     this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient, undefined, this.programIds.atomEngine);
 
     // Initialize indexer client first (v0.7.0)
-    // Default: GraphQL v2 (Railway reference deployment)
+    // Default: GraphQL v2 (cluster primary public endpoint)
     // Legacy: REST v1 (only if explicitly configured via config or env)
     const envRestUrl = getEnv('INDEXER_URL');
     const envRestKey = getEnv('INDEXER_API_KEY');
@@ -580,18 +582,18 @@ export class SolanaSDK {
 
     const restBaseUrl = config.indexerUrl ?? envRestUrl;
     const restApiKey = config.indexerApiKey ?? envRestKey;
-    const defaultRestUrlForCluster = getDefaultIndexerUrl(this.cluster);
-    const defaultGraphqlUrlForCluster = getDefaultIndexerGraphqlUrl(this.cluster);
+    const defaultRestUrlsForCluster = getDefaultIndexerUrls(this.cluster);
+    const defaultGraphqlUrlsForCluster = getDefaultIndexerGraphqlUrls(this.cluster);
     const defaultApiKey = getDefaultIndexerApiKey();
 
     if (restBaseUrl || restApiKey) {
       this.indexerClient = new IndexerClient({
-        baseUrl: restBaseUrl ?? defaultRestUrlForCluster,
+        baseUrl: restBaseUrl ?? defaultRestUrlsForCluster,
         apiKey: restApiKey ?? defaultApiKey,
       });
     } else {
       this.indexerClient = new IndexerGraphQLClient({
-        graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? defaultGraphqlUrlForCluster,
+        graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? defaultGraphqlUrlsForCluster,
       });
     }
 

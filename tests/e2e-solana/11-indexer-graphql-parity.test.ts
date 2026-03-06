@@ -49,7 +49,8 @@ function getRestApiKey(restUrl: string): string {
 
   // Railway/Supabase public read key used across local scripts for remote parity checks.
   if (
-    restUrl.includes('8004-indexer-production.up.railway.app/rest/v1')
+    restUrl.includes('8004-indexer-dev.qnt.sh/rest/v1')
+    || restUrl.includes('8004-indexer-production.up.railway.app/rest/v1')
     || restUrl.includes('uhjytdjxvfbppgjicfly.supabase.co/rest/v1')
   ) {
     return RAILWAY_REST_PUBLISHABLE_KEY;
@@ -204,7 +205,7 @@ describe('Indexer GraphQL Parity (devnet remote, read mode)', () => {
 
   beforeAll(async () => {
     const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
-    const restUrl = process.env.INDEXER_URL || 'https://8004-indexer-production.up.railway.app/rest/v1';
+    const restUrl = process.env.INDEXER_URL || 'https://8004-indexer-dev.qnt.sh/rest/v1';
     const restApiKey = getRestApiKey(restUrl);
     const graphqlUrl = process.env.INDEXER_GRAPHQL_URL || toGraphqlUrl(restUrl);
 

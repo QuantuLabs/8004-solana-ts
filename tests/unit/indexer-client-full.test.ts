@@ -132,6 +132,19 @@ describe('IndexerClient', () => {
       mockFetch.mockRejectedValue(new Error('fail'));
       expect(await client.isAvailable()).toBe(false);
     });
+
+    it('should fallback to the next REST endpoint on server failure', async () => {
+      const client = createClient({
+        baseUrl: ['https://primary.example.com/rest/v1', 'https://secondary.example.com/rest/v1'],
+      });
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse({ error: 'down' }, 503))
+        .mockResolvedValueOnce(mockJsonResponse([]));
+
+      expect(await client.isAvailable()).toBe(true);
+      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://primary.example.com/rest/v1/agents?limit=1');
+      expect(mockFetch.mock.calls[1]?.[0]).toBe('https://secondary.example.com/rest/v1/agents?limit=1');
+    });
   });
 
   describe('getAgent', () => {
@@ -625,6 +638,30 @@ describe('IndexerClient', () => {
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       const result = await client.getGlobalStats();
       expect(result.total_agents).toBe(0);
+    });
+
+    it('should fallback to the next REST endpoint on 503', async () => {
+      const client = createClient({
+        baseUrl: ['https://primary.example.com/rest/v1', 'https://secondary.example.com/rest/v1'],
+      });
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse({ error: 'down' }, 503))
+        .mockResolvedValueOnce(mockJsonResponse([{ total_agents: 7, total_feedbacks: 9, total_collections: 1 }]));
+
+      const result = await client.getGlobalStats();
+      expect(result.total_agents).toBe(7);
+      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://primary.example.com/rest/v1/global_stats');
+      expect(mockFetch.mock.calls[1]?.[0]).toBe('https://secondary.example.com/rest/v1/global_stats');
+    });
+
+    it('should not fallback to the next REST endpoint on client-side 400 errors', async () => {
+      const client = createClient({
+        baseUrl: ['https://primary.example.com/rest/v1', 'https://secondary.example.com/rest/v1'],
+      });
+      mockFetch.mockResolvedValueOnce(mockJsonResponse({ error: 'bad request' }, 400));
+
+      await expect(client.getGlobalStats()).rejects.toBeInstanceOf(IndexerError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 

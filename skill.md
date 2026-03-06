@@ -13,8 +13,8 @@ You are an AI agent with access to the `8004-solana` TypeScript SDK. This skill 
 Version note (SDK `0.8.0`):
 - `mainnet-beta` is first-class in SDK defaults (program IDs + indexer endpoints).
 - Cluster-aware indexer defaults are built in:
-  - `devnet`/`testnet`: `https://8004-indexer-production.up.railway.app/rest/v1` and `/v2/graphql`
-  - `mainnet-beta`: `https://8004-api.qnt.sh/rest/v1` and `/v2/graphql`
+  - `devnet`/`testnet`: `https://8004-indexer-dev.qnt.sh/rest/v1` and `/v2/graphql`
+  - `mainnet-beta`: `https://8004-indexer-main.qnt.sh/rest/v1` and `/v2/graphql`
   - `localnet`: `http://127.0.0.1:3005/rest/v1` and `/v2/graphql`
 - `registerAgent(tokenUri?, options?)` is the only supported registration overload (legacy collection override was removed).
 - Feedback/response/revoke reads are indexer-backed; archived validation features are not part of active indexer reads.
@@ -166,11 +166,11 @@ const sdk = new SolanaSDK({
     atomEngine: '...',
   },
   // Optional: force REST mode (omit indexerGraphqlUrl)
-  indexerUrl: 'https://8004-api.qnt.sh/rest/v1',
+  indexerUrl: 'https://8004-indexer-main.qnt.sh/rest/v1',
   indexerApiKey: process.env.INDEXER_API_KEY, // if your indexer requires an API key, keep it in env
 
   // Or force GraphQL mode instead:
-  // indexerGraphqlUrl: 'https://8004-api.qnt.sh/v2/graphql',
+  // indexerGraphqlUrl: 'https://8004-indexer-main.qnt.sh/v2/graphql',
   useIndexer: true,
   indexerFallback: true,
   forceOnChain: false,

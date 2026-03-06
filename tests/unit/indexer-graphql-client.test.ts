@@ -1239,6 +1239,48 @@ describe('IndexerGraphQLClient collection compatibility', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('should fallback to the next GraphQL endpoint on network failure', async () => {
+    const client = createClient({
+      graphqlUrl: ['https://primary.example.com/v2/graphql', 'https://secondary.example.com/v2/graphql'],
+    });
+    mockFetch
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          data: {
+            globalStats: {
+              totalAgents: '11',
+              totalFeedback: '22',
+              totalCollections: '4',
+              tags: [],
+            },
+          },
+        }),
+      );
+
+    const stats = await client.getGlobalStats();
+    expect(stats.total_agents).toBe(11);
+    expect(mockFetch.mock.calls[0]?.[0]).toBe('https://primary.example.com/v2/graphql');
+    expect(mockFetch.mock.calls[1]?.[0]).toBe('https://secondary.example.com/v2/graphql');
+  });
+
+  it('should not fallback to the next GraphQL endpoint on client-side query errors', async () => {
+    const client = createClient({
+      graphqlUrl: ['https://primary.example.com/v2/graphql', 'https://secondary.example.com/v2/graphql'],
+    });
+    mockFetch.mockResolvedValueOnce(
+      mockGraphQLResponse(
+        {
+          errors: [{ message: 'Bad query' }],
+        },
+        400,
+      ),
+    );
+
+    await expect(client.getGlobalStats()).rejects.toBeInstanceOf(IndexerError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it('getAgents should map filter params into GraphQL where clause', async () => {
     const client = createClient();
     mockFetch.mockResolvedValue(

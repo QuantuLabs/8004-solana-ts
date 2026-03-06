@@ -30,7 +30,7 @@ const HELIUS_DEVNET_RPC =
 const PINATA_JWT = process.env.PINATA_JWT;
 
 const CONFIG = {
-  INDEXER_URL: 'https://8004-indexer-production.up.railway.app/rest/v1',
+  INDEXER_URL: 'https://8004-indexer-dev.qnt.sh/rest/v1',
   SUPABASE_ANON_KEY: process.env.INDEXER_API_KEY || '',
 };
 

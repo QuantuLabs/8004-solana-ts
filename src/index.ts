@@ -182,8 +182,10 @@ export {
   DEFAULT_INDEXER_API_KEY,
   DEFAULT_INDEXER_GRAPHQL_URL,
   getDefaultIndexerUrl,
+  getDefaultIndexerUrls,
   getDefaultIndexerApiKey,
   getDefaultIndexerGraphqlUrl,
+  getDefaultIndexerGraphqlUrls,
   DEFAULT_FORCE_ON_CHAIN,
   SMALL_QUERY_OPERATIONS,
 } from './core/indexer-defaults.js';

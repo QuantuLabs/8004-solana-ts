@@ -10,7 +10,9 @@ All notable changes to this project will be documented in this file.
 - The strict DB-integrity tooling no longer treats all-zero required hashes as equivalent to `null`, matching the current indexer/runtime contract.
 
 ### Changed
-- `mainnet-beta` is now treated as a first-class default across SDK examples, quickstart flows, and skill docs, with the production indexer host set to `https://8004-api.qnt.sh`.
+- `mainnet-beta` is now treated as a first-class default across SDK examples, quickstart flows, and skill docs, with the production indexer host set to `https://8004-indexer-main.qnt.sh`.
+- `devnet`/`testnet` SDK defaults now point to `https://8004-indexer-dev.qnt.sh`.
+- SDK default public endpoints no longer fall back implicitly to legacy public hosts.
 - Collection read docs now include the sequential `collection_id` helpers and explicit creator+pointer uniqueness guidance.
 
 ### Documentation

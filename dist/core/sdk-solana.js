@@ -36,7 +36,7 @@ import { IndexerGraphQLClient } from './indexer-graphql-client.js';
 import { replayFeedbackChain, replayResponseChain, replayRevokeChain, } from './hash-chain-replay.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
-import { getDefaultIndexerUrl, getDefaultIndexerGraphqlUrl, getDefaultIndexerApiKey, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
+import { getDefaultIndexerUrls, getDefaultIndexerGraphqlUrls, getDefaultIndexerApiKey, DEFAULT_FORCE_ON_CHAIN, SMALL_QUERY_OPERATIONS, } from './indexer-defaults.js';
 import { IndexerError, IndexerErrorCode } from './indexer-errors.js';
 function getEnv(key) {
     if (typeof process !== 'undefined' && process.env) {
@@ -208,25 +208,25 @@ export class SolanaSDK {
         // Initialize feedback manager
         this.feedbackManager = new SolanaFeedbackManager(this.client, config.ipfsClient, undefined, this.programIds.atomEngine);
         // Initialize indexer client first (v0.7.0)
-        // Default: GraphQL v2 (Railway reference deployment)
+        // Default: GraphQL v2 (cluster primary public endpoint)
         // Legacy: REST v1 (only if explicitly configured via config or env)
         const envRestUrl = getEnv('INDEXER_URL');
         const envRestKey = getEnv('INDEXER_API_KEY');
         const envGraphqlUrl = getEnv('INDEXER_GRAPHQL_URL');
         const restBaseUrl = config.indexerUrl ?? envRestUrl;
         const restApiKey = config.indexerApiKey ?? envRestKey;
-        const defaultRestUrlForCluster = getDefaultIndexerUrl(this.cluster);
-        const defaultGraphqlUrlForCluster = getDefaultIndexerGraphqlUrl(this.cluster);
+        const defaultRestUrlsForCluster = getDefaultIndexerUrls(this.cluster);
+        const defaultGraphqlUrlsForCluster = getDefaultIndexerGraphqlUrls(this.cluster);
         const defaultApiKey = getDefaultIndexerApiKey();
         if (restBaseUrl || restApiKey) {
             this.indexerClient = new IndexerClient({
-                baseUrl: restBaseUrl ?? defaultRestUrlForCluster,
+                baseUrl: restBaseUrl ?? defaultRestUrlsForCluster,
                 apiKey: restApiKey ?? defaultApiKey,
             });
         }
         else {
             this.indexerClient = new IndexerGraphQLClient({
-                graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? defaultGraphqlUrlForCluster,
+                graphqlUrl: config.indexerGraphqlUrl ?? envGraphqlUrl ?? defaultGraphqlUrlsForCluster,
             });
         }
         // Initialize transaction builders (v0.4.0)

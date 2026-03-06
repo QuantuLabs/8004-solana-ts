@@ -194,6 +194,12 @@ Indexer validation reads are archived (`v0.5.0+`). Legacy validation read method
 
 Default backend is **GraphQL v2** (public read-only reference deployment).
 
+Built-in public endpoints:
+- `mainnet-beta`: `https://8004-indexer-main.qnt.sh`
+- `devnet`/`testnet`: `https://8004-indexer-dev.qnt.sh`
+
+Legacy public endpoints may still exist for migration/debugging, but SDK defaults do not fall back to them implicitly.
+
 You can self-host your own indexer: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
 
 ### Network + Program Configuration

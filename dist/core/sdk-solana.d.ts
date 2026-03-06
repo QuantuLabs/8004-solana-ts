@@ -27,7 +27,7 @@ export interface SolanaSDKConfig {
     rpcUrl?: string;
     signer?: Keypair;
     ipfsClient?: IPFSClient;
-    /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or hardcoded Railway deployment) */
+    /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or cluster primary public endpoint) */
     indexerGraphqlUrl?: string;
     /**
      * @deprecated Legacy Supabase REST API URL (override via INDEXER_URL env)

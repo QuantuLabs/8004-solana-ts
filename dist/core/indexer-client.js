@@ -119,12 +119,18 @@ export function decodeCanonicalResponseId(id) {
  */
 export class IndexerClient {
     baseUrl;
+    baseUrls;
     apiKey;
     timeout;
     retries;
     constructor(config) {
-        // Remove trailing slash from baseUrl
-        this.baseUrl = config.baseUrl.replace(/\/$/, '');
+        this.baseUrls = (Array.isArray(config.baseUrl) ? config.baseUrl : [config.baseUrl])
+            .map((url) => url.trim().replace(/\/$/, ''))
+            .filter((url, index, list) => url.length > 0 && list.indexOf(url) === index);
+        if (this.baseUrls.length === 0) {
+            throw new IndexerError('At least one REST baseUrl is required', IndexerErrorCode.INVALID_RESPONSE);
+        }
+        this.baseUrl = this.baseUrls[0];
         this.apiKey = config.apiKey || '';
         this.timeout = config.timeout || 10000;
         this.retries = config.retries ?? 2;
@@ -132,14 +138,19 @@ export class IndexerClient {
     getBaseUrl() {
         return this.baseUrl;
     }
-    // ============================================================================
-    // HTTP Helpers
-    // ============================================================================
-    /**
-     * Execute HTTP request with retries and error handling
-     */
-    async request(endpoint, options = {}) {
-        const url = `${this.baseUrl}${endpoint}`;
+    shouldFallbackEndpoint(error) {
+        if (error instanceof IndexerRateLimitError)
+            return true;
+        if (error instanceof IndexerTimeoutError)
+            return true;
+        if (error instanceof IndexerUnavailableError)
+            return true;
+        if (error instanceof IndexerError && error.code === IndexerErrorCode.SERVER_ERROR)
+            return true;
+        return false;
+    }
+    async requestAgainstBaseUrl(baseUrl, endpoint, options = {}) {
+        const url = `${baseUrl}${endpoint}`;
         const headers = {
             'Content-Type': 'application/json',
         };
@@ -172,7 +183,6 @@ export class IndexerClient {
                     redirect: 'error',
                 });
                 clearTimeout(timeoutId);
-                // Handle HTTP errors
                 if (!response.ok) {
                     if (response.status === 401) {
                         throw new IndexerUnauthorizedError();
@@ -191,24 +201,42 @@ export class IndexerClient {
             catch (error) {
                 lastError = error;
                 if (error instanceof IndexerError) {
-                    // Don't retry on client errors (4xx)
                     if (error.code === IndexerErrorCode.UNAUTHORIZED ||
-                        error.code === IndexerErrorCode.RATE_LIMITED ||
                         error.code === IndexerErrorCode.INVALID_RESPONSE) {
                         throw error;
                     }
                 }
-                // Check for abort (timeout)
                 if (error instanceof Error && error.name === 'AbortError') {
                     lastError = new IndexerTimeoutError();
                 }
-                // Check for network errors
                 if (error instanceof TypeError && error.message.includes('fetch')) {
                     lastError = new IndexerUnavailableError(error.message);
                 }
-                // Wait before retry (exponential backoff)
-                if (attempt < this.retries) {
+                if (attempt < this.retries && this.shouldFallbackEndpoint(lastError)) {
                     await new Promise((resolve) => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+                    continue;
+                }
+                throw lastError || new IndexerUnavailableError();
+            }
+        }
+        throw new IndexerUnavailableError();
+    }
+    // ============================================================================
+    // HTTP Helpers
+    // ============================================================================
+    /**
+     * Execute HTTP request with retries and error handling
+     */
+    async request(endpoint, options = {}) {
+        let lastError = null;
+        for (const baseUrl of this.baseUrls) {
+            try {
+                return await this.requestAgainstBaseUrl(baseUrl, endpoint, options);
+            }
+            catch (error) {
+                lastError = error;
+                if (!this.shouldFallbackEndpoint(error)) {
+                    throw error;
                 }
             }
         }
@@ -327,55 +355,68 @@ export class IndexerClient {
      */
     async getCount(resource, filters) {
         const query = this.buildQuery({ ...filters, limit: 1 });
-        const url = `${this.baseUrl}/${resource}${query}`;
-        for (let attempt = 0; attempt <= this.retries; attempt++) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-                const countHeaders = {
-                    Prefer: 'count=exact',
-                };
-                if (this.apiKey) {
-                    countHeaders.apikey = this.apiKey;
-                    countHeaders.Authorization = `Bearer ${this.apiKey}`;
+        let lastError = null;
+        for (const baseUrl of this.baseUrls) {
+            const url = `${baseUrl}/${resource}${query}`;
+            for (let attempt = 0; attempt <= this.retries; attempt++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+                    const countHeaders = {
+                        Prefer: 'count=exact',
+                    };
+                    if (this.apiKey) {
+                        countHeaders.apikey = this.apiKey;
+                        countHeaders.Authorization = `Bearer ${this.apiKey}`;
+                    }
+                    const response = await fetch(url, {
+                        headers: countHeaders,
+                        signal: controller.signal,
+                        redirect: 'error',
+                    });
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        if (response.status === 401) {
+                            throw new IndexerUnauthorizedError();
+                        }
+                        if (response.status === 429) {
+                            const retryAfter = response.headers.get('Retry-After');
+                            throw new IndexerRateLimitError('Rate limited', retryAfter ? parseInt(retryAfter, 10) : undefined);
+                        }
+                        throw new IndexerError(`getCount failed: HTTP ${response.status}`, response.status >= 500 ? IndexerErrorCode.SERVER_ERROR : IndexerErrorCode.INVALID_RESPONSE);
+                    }
+                    const contentRange = response.headers.get('Content-Range');
+                    if (contentRange) {
+                        const match = contentRange.match(/\/(\d+)$/);
+                        if (match) {
+                            return parseInt(match[1], 10);
+                        }
+                    }
+                    const data = await response.json();
+                    return Array.isArray(data) ? data.length : 0;
                 }
-                const response = await fetch(url, {
-                    headers: countHeaders,
-                    signal: controller.signal,
-                    redirect: 'error',
-                });
-                clearTimeout(timeoutId);
-                if (!response.ok) {
-                    if (attempt < this.retries) {
+                catch (error) {
+                    lastError = error instanceof Error ? error : new Error(String(error));
+                    if (error instanceof Error && error.name === 'AbortError') {
+                        lastError = new IndexerTimeoutError();
+                    }
+                    else if (error instanceof TypeError && error.message.includes('fetch')) {
+                        lastError = new IndexerUnavailableError(error.message);
+                    }
+                    if (error instanceof IndexerError && !this.shouldFallbackEndpoint(error)) {
+                        throw error;
+                    }
+                    if (attempt < this.retries && this.shouldFallbackEndpoint(lastError)) {
                         await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
                         continue;
                     }
-                    throw new IndexerError(`getCount failed: HTTP ${response.status}`, IndexerErrorCode.SERVER_ERROR);
-                }
-                // Parse Content-Range header: "0-0/1234" or "items 0-0/1234" -> 1234
-                const contentRange = response.headers.get('Content-Range');
-                if (contentRange) {
-                    const match = contentRange.match(/\/(\d+)$/);
-                    if (match) {
-                        return parseInt(match[1], 10);
-                    }
-                }
-                // Fallback: count items in response (won't be accurate if paginated)
-                const data = await response.json();
-                return Array.isArray(data) ? data.length : 0;
-            }
-            catch (error) {
-                if (attempt < this.retries) {
-                    await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
-                }
-                else {
-                    throw error instanceof IndexerError
-                        ? error
-                        : new IndexerUnavailableError(error instanceof Error ? error.message : 'getCount failed after retries');
+                    break;
                 }
             }
         }
-        throw new IndexerUnavailableError('getCount failed after retries');
+        throw lastError instanceof IndexerError
+            ? lastError
+            : new IndexerUnavailableError(lastError?.message ?? 'getCount failed after retries');
     }
     // ============================================================================
     // Agents

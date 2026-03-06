@@ -31,8 +31,8 @@ import type {
 } from './indexer-client.js';
 
 export interface IndexerGraphQLClientConfig {
-  /** GraphQL endpoint (e.g., https://host/v2/graphql) */
-  graphqlUrl: string;
+  /** GraphQL endpoint(s) in priority order (e.g., https://host/v2/graphql) */
+  graphqlUrl: string | string[];
   /** Optional headers (for self-hosted auth gateways, etc.) */
   headers?: Record<string, string>;
   /** Request timeout in milliseconds (default: 10000) */
@@ -484,13 +484,20 @@ type GqlHashChainReplayPage = {
 
 export class IndexerGraphQLClient implements IndexerReadClient {
   private readonly graphqlUrl: string;
+  private readonly graphqlUrls: string[];
   private readonly headers: Record<string, string>;
   private readonly timeout: number;
   private readonly retries: number;
   private readonly hashChainHeadsInFlight = new Map<string, Promise<GqlHashChainHeads>>();
 
   constructor(config: IndexerGraphQLClientConfig) {
-    this.graphqlUrl = config.graphqlUrl.replace(/\/$/, '');
+    this.graphqlUrls = (Array.isArray(config.graphqlUrl) ? config.graphqlUrl : [config.graphqlUrl])
+      .map((url) => url.trim().replace(/\/$/, ''))
+      .filter((url, index, list) => url.length > 0 && list.indexOf(url) === index);
+    if (this.graphqlUrls.length === 0) {
+      throw new IndexerError('At least one GraphQL URL is required', IndexerErrorCode.INVALID_RESPONSE);
+    }
+    this.graphqlUrl = this.graphqlUrls[0];
     this.headers = config.headers ?? {};
     this.timeout = config.timeout ?? 10000;
     this.retries = config.retries ?? 2;
@@ -498,6 +505,115 @@ export class IndexerGraphQLClient implements IndexerReadClient {
 
   getBaseUrl(): string {
     return this.graphqlUrl;
+  }
+
+  private shouldFallbackEndpoint(error: unknown): boolean {
+    if (error instanceof IndexerRateLimitError) return true;
+    if (error instanceof IndexerTimeoutError) return true;
+    if (error instanceof IndexerUnavailableError) return true;
+    if (error instanceof IndexerError && error.code === IndexerErrorCode.SERVER_ERROR) return true;
+    return false;
+  }
+
+  private async requestAgainstEndpoint<TData>(
+    endpoint: string,
+    query: string,
+    variables?: Record<string, unknown>
+  ): Promise<TData> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.retries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...this.headers,
+          },
+          body: JSON.stringify({ query, variables }),
+          signal: controller.signal,
+          redirect: 'error',
+        });
+
+        if (!response.ok) {
+          let details = '';
+          try {
+            const contentType = response.headers.get('content-type') ?? '';
+            const text = await response.text();
+            if (contentType.includes('application/json')) {
+              const parsed = JSON.parse(text) as { errors?: GraphQLErrorShape[] };
+              const msg = parsed?.errors?.map(e => e?.message).filter(Boolean).join('; ');
+              if (msg) details = msg;
+            } else if (text) {
+              details = text.slice(0, 200).replace(/\s+/g, ' ').trim();
+            }
+          } catch {
+            // Ignore body parsing issues for non-OK responses.
+          }
+
+          if (response.status === 401 || response.status === 403) {
+            throw new IndexerUnauthorizedError();
+          }
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            throw new IndexerRateLimitError(
+              'Rate limited',
+              retryAfter ? parseInt(retryAfter, 10) : undefined
+            );
+          }
+
+          if (attempt < this.retries && response.status >= 500) {
+            await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
+            continue;
+          }
+
+          throw new IndexerError(
+            `GraphQL request failed: HTTP ${response.status}${details ? ` (${details})` : ''}`,
+            response.status >= 500 ? IndexerErrorCode.SERVER_ERROR : IndexerErrorCode.INVALID_RESPONSE
+          );
+        }
+
+        const json = (await response.json()) as { data?: TData; errors?: GraphQLErrorShape[] };
+
+        if (json.errors && json.errors.length > 0) {
+          const msg = json.errors.map(e => e?.message).filter(Boolean).join('; ') || 'GraphQL error';
+          throw new IndexerError(msg, IndexerErrorCode.INVALID_RESPONSE);
+        }
+
+        if (!json.data) {
+          throw new IndexerError('GraphQL response missing data', IndexerErrorCode.INVALID_RESPONSE);
+        }
+
+        return json.data;
+      } catch (err) {
+        const e = err as any;
+        lastError = err instanceof Error ? err : new Error(String(err));
+
+        if (e?.name === 'AbortError') {
+          lastError = new IndexerTimeoutError();
+        } else if (!(err instanceof IndexerError)) {
+          if (err instanceof TypeError) {
+            lastError = new IndexerUnavailableError(err.message);
+          }
+        }
+
+        if (attempt < this.retries && this.shouldFallbackEndpoint(lastError)) {
+          await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
+          continue;
+        }
+
+        throw lastError instanceof IndexerError ? lastError : new IndexerUnavailableError(lastError.message);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    throw lastError instanceof IndexerError
+      ? lastError
+      : new IndexerUnavailableError(lastError?.message ?? 'GraphQL request failed');
   }
 
   private shouldUseLegacyCollectionRead(error: unknown): boolean {
@@ -670,94 +786,14 @@ export class IndexerGraphQLClient implements IndexerReadClient {
   ): Promise<TData> {
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt <= this.retries; attempt++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
+    for (const endpoint of this.graphqlUrls) {
       try {
-        const response = await fetch(this.graphqlUrl, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            ...this.headers,
-          },
-          body: JSON.stringify({ query, variables }),
-          signal: controller.signal,
-          redirect: 'error',
-        });
-
-        if (!response.ok) {
-          // Many GraphQL servers (including ours) can return JSON error bodies with HTTP 400.
-          // Surface those messages to help diagnose query complexity/validation issues.
-          let details = '';
-          try {
-            const contentType = response.headers.get('content-type') ?? '';
-            const text = await response.text();
-            if (contentType.includes('application/json')) {
-              const parsed = JSON.parse(text) as { errors?: GraphQLErrorShape[] };
-              const msg = parsed?.errors?.map(e => e?.message).filter(Boolean).join('; ');
-              if (msg) details = msg;
-            } else if (text) {
-              details = text.slice(0, 200).replace(/\s+/g, ' ').trim();
-            }
-          } catch {
-            // Ignore body parsing issues for non-OK responses.
-          }
-
-          if (response.status === 401 || response.status === 403) {
-            throw new IndexerUnauthorizedError();
-          }
-          if (response.status === 429) {
-            const retryAfter = response.headers.get('Retry-After');
-            throw new IndexerRateLimitError(
-              'Rate limited',
-              retryAfter ? parseInt(retryAfter, 10) : undefined
-            );
-          }
-
-          if (attempt < this.retries) {
-            await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
-            continue;
-          }
-          throw new IndexerError(
-            `GraphQL request failed: HTTP ${response.status}${details ? ` (${details})` : ''}`,
-            IndexerErrorCode.SERVER_ERROR
-          );
-        }
-
-        const json = (await response.json()) as { data?: TData; errors?: GraphQLErrorShape[] };
-
-        if (json.errors && json.errors.length > 0) {
-          const msg = json.errors.map(e => e?.message).filter(Boolean).join('; ') || 'GraphQL error';
-          throw new IndexerError(msg, IndexerErrorCode.INVALID_RESPONSE);
-        }
-
-        if (!json.data) {
-          throw new IndexerError('GraphQL response missing data', IndexerErrorCode.INVALID_RESPONSE);
-        }
-
-        return json.data;
+        return await this.requestAgainstEndpoint(endpoint, query, variables);
       } catch (err) {
-        const e = err as any;
         lastError = err instanceof Error ? err : new Error(String(err));
-
-        if (e?.name === 'AbortError') {
-          lastError = new IndexerTimeoutError();
-        } else if (!(err instanceof IndexerError)) {
-          // Network / fetch errors
-          if (err instanceof TypeError) {
-            lastError = new IndexerUnavailableError(err.message);
-          }
+        if (!this.shouldFallbackEndpoint(lastError)) {
+          throw lastError instanceof IndexerError ? lastError : new IndexerUnavailableError(lastError.message);
         }
-
-        if (attempt < this.retries) {
-          await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
-          continue;
-        }
-
-        throw lastError instanceof IndexerError ? lastError : new IndexerUnavailableError(lastError.message);
-      } finally {
-        clearTimeout(timeoutId);
       }
     }
 

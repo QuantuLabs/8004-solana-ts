@@ -11,7 +11,7 @@ import { SolanaSDK } from '../../src/index.js';
 const INDEXER_URL = process.env.INDEXER_URL || '';
 const INDEXER_API_KEY = process.env.INDEXER_API_KEY || '';
 const INDEXER_GRAPHQL_URL = process.env.INDEXER_GRAPHQL_URL
-  || 'https://8004-indexer-production.up.railway.app/v2/graphql';
+  || 'https://8004-indexer-dev.qnt.sh/v2/graphql';
 const USING_REST = Boolean(INDEXER_URL);
 
 const runIntegration = Boolean(INDEXER_URL || INDEXER_GRAPHQL_URL);

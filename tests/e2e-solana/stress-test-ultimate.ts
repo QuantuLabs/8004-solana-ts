@@ -85,7 +85,7 @@ const CONFIG = {
   FUNDING_PER_CLIENT: 0.08 * 1e9,  // 0.08 SOL per client
 
   // INDEXER
-  INDEXER_URL: 'https://8004-indexer-production.up.railway.app/rest/v1',
+  INDEXER_URL: 'https://8004-indexer-dev.qnt.sh/rest/v1',
   SUPABASE_ANON_KEY: process.env.INDEXER_API_KEY || '',
 
   // MOCK SERVER FOR OFF-CHAIN METADATA

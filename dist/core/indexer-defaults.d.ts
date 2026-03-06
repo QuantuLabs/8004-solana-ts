@@ -13,6 +13,8 @@
 import type { Cluster } from './client.js';
 export declare function getDefaultIndexerUrl(cluster: Cluster): string;
 export declare function getDefaultIndexerGraphqlUrl(cluster: Cluster): string;
+export declare function getDefaultIndexerUrls(cluster: Cluster): string[];
+export declare function getDefaultIndexerGraphqlUrls(cluster: Cluster): string[];
 export declare function getDefaultIndexerApiKey(): string;
 export declare const DEFAULT_INDEXER_URL: string;
 export declare const DEFAULT_INDEXER_API_KEY: string;

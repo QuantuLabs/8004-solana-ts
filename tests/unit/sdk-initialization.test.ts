@@ -92,7 +92,16 @@ describe('SolanaSDK Initialization', () => {
         indexerUrl: '',
         indexerApiKey: '',
       });
-      expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://8004-api.qnt.sh/v2/graphql');
+      expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://8004-indexer-main.qnt.sh/v2/graphql');
+    });
+
+    it('should use devnet GraphQL indexer default for devnet cluster', () => {
+      const sdk = new SolanaSDK({
+        cluster: 'devnet',
+        indexerUrl: '',
+        indexerApiKey: '',
+      });
+      expect(sdk.getIndexerClient().getBaseUrl()).toBe('https://8004-indexer-dev.qnt.sh/v2/graphql');
     });
 
     it('should use localnet GraphQL indexer default for localnet cluster', () => {

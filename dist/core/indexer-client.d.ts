@@ -6,8 +6,8 @@
  * Configuration for IndexerClient
  */
 export interface IndexerClientConfig {
-    /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
-    baseUrl: string;
+    /** Base URL(s) for REST API in priority order (e.g., https://host/rest/v1) */
+    baseUrl: string | string[];
     /** Optional API key/bearer token for REST indexers that require auth */
     apiKey?: string;
     /** Request timeout in milliseconds (default: 10000) */
@@ -391,11 +391,14 @@ export interface ServerReplayResult {
  */
 export declare class IndexerClient implements IndexerReadClient {
     private readonly baseUrl;
+    private readonly baseUrls;
     private readonly apiKey;
     private readonly timeout;
     private readonly retries;
     constructor(config: IndexerClientConfig);
     getBaseUrl(): string;
+    private shouldFallbackEndpoint;
+    private requestAgainstBaseUrl;
     /**
      * Execute HTTP request with retries and error handling
      */

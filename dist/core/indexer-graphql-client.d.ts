@@ -4,8 +4,8 @@
  */
 import type { AgentQueryOptions, CheckpointSet, CollectionAssetsQueryOptions, CollectionPointerQueryOptions, CollectionPointerRecord, GlobalStats, IndexedAgent, IndexedAgentReputation, IndexedFeedback, IndexedFeedbackResponse, IndexedRevocation, IndexedValidation, IndexerReadClient, ReplayDataPage } from './indexer-client.js';
 export interface IndexerGraphQLClientConfig {
-    /** GraphQL endpoint (e.g., https://host/v2/graphql) */
-    graphqlUrl: string;
+    /** GraphQL endpoint(s) in priority order (e.g., https://host/v2/graphql) */
+    graphqlUrl: string | string[];
     /** Optional headers (for self-hosted auth gateways, etc.) */
     headers?: Record<string, string>;
     /** Request timeout in milliseconds (default: 10000) */
@@ -15,12 +15,15 @@ export interface IndexerGraphQLClientConfig {
 }
 export declare class IndexerGraphQLClient implements IndexerReadClient {
     private readonly graphqlUrl;
+    private readonly graphqlUrls;
     private readonly headers;
     private readonly timeout;
     private readonly retries;
     private readonly hashChainHeadsInFlight;
     constructor(config: IndexerGraphQLClientConfig);
     getBaseUrl(): string;
+    private shouldFallbackEndpoint;
+    private requestAgainstEndpoint;
     private shouldUseLegacyCollectionRead;
     private resolveCollectionCreatorScope;
     private shouldFallbackAgentIdField;

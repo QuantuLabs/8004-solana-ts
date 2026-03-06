@@ -90,8 +90,8 @@ function normalizePositiveSequentialIdFromResponse(
  * Configuration for IndexerClient
  */
 export interface IndexerClientConfig {
-  /** Base URL for Supabase REST API (e.g., https://xxx.supabase.co/rest/v1) */
-  baseUrl: string;
+  /** Base URL(s) for REST API in priority order (e.g., https://host/rest/v1) */
+  baseUrl: string | string[];
   /** Optional API key/bearer token for REST indexers that require auth */
   apiKey?: string;
   /** Request timeout in milliseconds (default: 10000) */
@@ -572,13 +572,19 @@ export interface ServerReplayResult {
  */
 export class IndexerClient implements IndexerReadClient {
   private readonly baseUrl: string;
+  private readonly baseUrls: string[];
   private readonly apiKey: string;
   private readonly timeout: number;
   private readonly retries: number;
 
   constructor(config: IndexerClientConfig) {
-    // Remove trailing slash from baseUrl
-    this.baseUrl = config.baseUrl.replace(/\/$/, '');
+    this.baseUrls = (Array.isArray(config.baseUrl) ? config.baseUrl : [config.baseUrl])
+      .map((url) => url.trim().replace(/\/$/, ''))
+      .filter((url, index, list) => url.length > 0 && list.indexOf(url) === index);
+    if (this.baseUrls.length === 0) {
+      throw new IndexerError('At least one REST baseUrl is required', IndexerErrorCode.INVALID_RESPONSE);
+    }
+    this.baseUrl = this.baseUrls[0];
     this.apiKey = config.apiKey || '';
     this.timeout = config.timeout || 10000;
     this.retries = config.retries ?? 2;
@@ -588,18 +594,20 @@ export class IndexerClient implements IndexerReadClient {
     return this.baseUrl;
   }
 
-  // ============================================================================
-  // HTTP Helpers
-  // ============================================================================
+  private shouldFallbackEndpoint(error: unknown): boolean {
+    if (error instanceof IndexerRateLimitError) return true;
+    if (error instanceof IndexerTimeoutError) return true;
+    if (error instanceof IndexerUnavailableError) return true;
+    if (error instanceof IndexerError && error.code === IndexerErrorCode.SERVER_ERROR) return true;
+    return false;
+  }
 
-  /**
-   * Execute HTTP request with retries and error handling
-   */
-  private async request<T>(
+  private async requestAgainstBaseUrl<T>(
+    baseUrl: string,
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${baseUrl}${endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -635,7 +643,6 @@ export class IndexerClient implements IndexerReadClient {
 
         clearTimeout(timeoutId);
 
-        // Handle HTTP errors
         if (!response.ok) {
           if (response.status === 401) {
             throw new IndexerUnauthorizedError();
@@ -664,29 +671,54 @@ export class IndexerClient implements IndexerReadClient {
         lastError = error as Error;
 
         if (error instanceof IndexerError) {
-          // Don't retry on client errors (4xx)
           if (
             error.code === IndexerErrorCode.UNAUTHORIZED ||
-            error.code === IndexerErrorCode.RATE_LIMITED ||
             error.code === IndexerErrorCode.INVALID_RESPONSE
           ) {
             throw error;
           }
         }
 
-        // Check for abort (timeout)
         if (error instanceof Error && error.name === 'AbortError') {
           lastError = new IndexerTimeoutError();
         }
 
-        // Check for network errors
         if (error instanceof TypeError && error.message.includes('fetch')) {
           lastError = new IndexerUnavailableError(error.message);
         }
 
-        // Wait before retry (exponential backoff)
-        if (attempt < this.retries) {
+        if (attempt < this.retries && this.shouldFallbackEndpoint(lastError)) {
           await new Promise((resolve) => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+          continue;
+        }
+
+        throw lastError || new IndexerUnavailableError();
+      }
+    }
+
+    throw new IndexerUnavailableError();
+  }
+
+  // ============================================================================
+  // HTTP Helpers
+  // ============================================================================
+
+  /**
+   * Execute HTTP request with retries and error handling
+   */
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (const baseUrl of this.baseUrls) {
+      try {
+        return await this.requestAgainstBaseUrl(baseUrl, endpoint, options);
+      } catch (error) {
+        lastError = error as Error;
+        if (!this.shouldFallbackEndpoint(error)) {
+          throw error;
         }
       }
     }
@@ -830,66 +862,83 @@ export class IndexerClient implements IndexerReadClient {
    */
   async getCount(resource: string, filters: Record<string, string>): Promise<number> {
     const query = this.buildQuery({ ...filters, limit: 1 });
-    const url = `${this.baseUrl}/${resource}${query}`;
+    let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt <= this.retries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    for (const baseUrl of this.baseUrls) {
+      const url = `${baseUrl}/${resource}${query}`;
 
-        const countHeaders: Record<string, string> = {
-          Prefer: 'count=exact',
-        };
-        if (this.apiKey) {
-          countHeaders.apikey = this.apiKey;
-          countHeaders.Authorization = `Bearer ${this.apiKey}`;
-        }
+      for (let attempt = 0; attempt <= this.retries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        const response = await fetch(url, {
-          headers: countHeaders,
-          signal: controller.signal,
-          redirect: 'error',
-        });
+          const countHeaders: Record<string, string> = {
+            Prefer: 'count=exact',
+          };
+          if (this.apiKey) {
+            countHeaders.apikey = this.apiKey;
+            countHeaders.Authorization = `Bearer ${this.apiKey}`;
+          }
 
-        clearTimeout(timeoutId);
+          const response = await fetch(url, {
+            headers: countHeaders,
+            signal: controller.signal,
+            redirect: 'error',
+          });
 
-        if (!response.ok) {
-          if (attempt < this.retries) {
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            if (response.status === 401) {
+              throw new IndexerUnauthorizedError();
+            }
+            if (response.status === 429) {
+              const retryAfter = response.headers.get('Retry-After');
+              throw new IndexerRateLimitError(
+                'Rate limited',
+                retryAfter ? parseInt(retryAfter, 10) : undefined
+              );
+            }
+            throw new IndexerError(
+              `getCount failed: HTTP ${response.status}`,
+              response.status >= 500 ? IndexerErrorCode.SERVER_ERROR : IndexerErrorCode.INVALID_RESPONSE
+            );
+          }
+
+          const contentRange = response.headers.get('Content-Range');
+          if (contentRange) {
+            const match = contentRange.match(/\/(\d+)$/);
+            if (match) {
+              return parseInt(match[1], 10);
+            }
+          }
+
+          const data = await response.json();
+          return Array.isArray(data) ? data.length : 0;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (error instanceof Error && error.name === 'AbortError') {
+            lastError = new IndexerTimeoutError();
+          } else if (error instanceof TypeError && error.message.includes('fetch')) {
+            lastError = new IndexerUnavailableError(error.message);
+          }
+
+          if (error instanceof IndexerError && !this.shouldFallbackEndpoint(error)) {
+            throw error;
+          }
+
+          if (attempt < this.retries && this.shouldFallbackEndpoint(lastError)) {
             await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
             continue;
           }
-          throw new IndexerError(
-            `getCount failed: HTTP ${response.status}`,
-            IndexerErrorCode.SERVER_ERROR
-          );
-        }
-
-        // Parse Content-Range header: "0-0/1234" or "items 0-0/1234" -> 1234
-        const contentRange = response.headers.get('Content-Range');
-        if (contentRange) {
-          const match = contentRange.match(/\/(\d+)$/);
-          if (match) {
-            return parseInt(match[1], 10);
-          }
-        }
-
-        // Fallback: count items in response (won't be accurate if paginated)
-        const data = await response.json();
-        return Array.isArray(data) ? data.length : 0;
-      } catch (error) {
-        if (attempt < this.retries) {
-          await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
-        } else {
-          throw error instanceof IndexerError
-            ? error
-            : new IndexerUnavailableError(
-                error instanceof Error ? error.message : 'getCount failed after retries'
-              );
+          break;
         }
       }
     }
 
-    throw new IndexerUnavailableError('getCount failed after retries');
+    throw lastError instanceof IndexerError
+      ? lastError
+      : new IndexerUnavailableError(lastError?.message ?? 'getCount failed after retries');
   }
 
   // ============================================================================

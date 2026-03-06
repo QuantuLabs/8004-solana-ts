@@ -12,20 +12,32 @@
  */
 const INDEXER_DEFAULTS_BY_CLUSTER = {
     devnet: {
-        graphqlUrl: 'https://8004-indexer-production.up.railway.app/v2/graphql',
-        restUrl: 'https://8004-indexer-production.up.railway.app/rest/v1',
+        graphqlUrls: [
+            'https://8004-indexer-dev.qnt.sh/v2/graphql',
+        ],
+        restUrls: [
+            'https://8004-indexer-dev.qnt.sh/rest/v1',
+        ],
     },
     testnet: {
-        graphqlUrl: 'https://8004-indexer-production.up.railway.app/v2/graphql',
-        restUrl: 'https://8004-indexer-production.up.railway.app/rest/v1',
+        graphqlUrls: [
+            'https://8004-indexer-dev.qnt.sh/v2/graphql',
+        ],
+        restUrls: [
+            'https://8004-indexer-dev.qnt.sh/rest/v1',
+        ],
     },
     'mainnet-beta': {
-        graphqlUrl: 'https://8004-api.qnt.sh/v2/graphql',
-        restUrl: 'https://8004-api.qnt.sh/rest/v1',
+        graphqlUrls: [
+            'https://8004-indexer-main.qnt.sh/v2/graphql',
+        ],
+        restUrls: [
+            'https://8004-indexer-main.qnt.sh/rest/v1',
+        ],
     },
     localnet: {
-        graphqlUrl: 'http://127.0.0.1:3005/v2/graphql',
-        restUrl: 'http://127.0.0.1:3005/rest/v1',
+        graphqlUrls: ['http://127.0.0.1:3005/v2/graphql'],
+        restUrls: ['http://127.0.0.1:3005/rest/v1'],
     },
 };
 /**
@@ -38,10 +50,18 @@ function getEnv(key) {
     return undefined;
 }
 export function getDefaultIndexerUrl(cluster) {
-    return getEnv('INDEXER_URL') || INDEXER_DEFAULTS_BY_CLUSTER[cluster].restUrl;
+    return getEnv('INDEXER_URL') || INDEXER_DEFAULTS_BY_CLUSTER[cluster].restUrls[0];
 }
 export function getDefaultIndexerGraphqlUrl(cluster) {
-    return getEnv('INDEXER_GRAPHQL_URL') || INDEXER_DEFAULTS_BY_CLUSTER[cluster].graphqlUrl;
+    return getEnv('INDEXER_GRAPHQL_URL') || INDEXER_DEFAULTS_BY_CLUSTER[cluster].graphqlUrls[0];
+}
+export function getDefaultIndexerUrls(cluster) {
+    const override = getEnv('INDEXER_URL');
+    return override ? [override] : [...INDEXER_DEFAULTS_BY_CLUSTER[cluster].restUrls];
+}
+export function getDefaultIndexerGraphqlUrls(cluster) {
+    const override = getEnv('INDEXER_GRAPHQL_URL');
+    return override ? [override] : [...INDEXER_DEFAULTS_BY_CLUSTER[cluster].graphqlUrls];
 }
 export function getDefaultIndexerApiKey() {
     return getEnv('INDEXER_API_KEY') || '';
