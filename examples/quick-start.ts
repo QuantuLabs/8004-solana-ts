@@ -1,5 +1,5 @@
 /**
- * Quick Start Example - Solana SDK v0.5.0+
+ * Quick Start Example - Solana SDK v0.8.0+
  *
  * Demonstrates basic read and write operations using 8004-solana SDK
  */

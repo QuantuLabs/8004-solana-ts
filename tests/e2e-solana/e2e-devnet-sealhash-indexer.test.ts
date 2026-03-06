@@ -291,6 +291,72 @@ describe('E2E Devnet sealHash with local indexer', () => {
     expect(revokeRow.feedback_hash).toBe(expectedSealHash.toString('hex'));
   }, 120000);
 
+  it('accepts an explicit correct sealHash for appendResponse', async () => {
+    const feedbackUri = `ipfs://seal_explicit_response_${Date.now()}`;
+    const feedbackResult = await client1Sdk.giveFeedback(agentAsset, {
+      value: 555n,
+      score: 71,
+      tag1: 'seal-explicit-response',
+      feedbackUri,
+    });
+    expect(feedbackResult.success).toBe(true);
+    expect(feedbackResult.feedbackIndex).toBe(4n);
+
+    const indexed = await waitFor(ownerSdk, async () => (
+      ownerSdk.readFeedback(agentAsset, wallets.client1.publicKey, 4n)
+    ));
+    expect(indexed.sealHash).toBeDefined();
+
+    const responseUri = `ipfs://seal_explicit_response_write_${Date.now()}`;
+    const responseResult = await ownerSdk.appendResponse(
+      agentAsset,
+      wallets.client1.publicKey,
+      4n,
+      indexed.sealHash!,
+      responseUri
+    );
+    expect(responseResult.success).toBe(true);
+
+    const row = await waitFor(ownerSdk, async () => {
+      const data = await fetchJson<Array<Record<string, string | null>>>(`/responses?asset=${agentAsset.toBase58()}&client_address=${wallets.client1.publicKey.toBase58()}&feedback_index=eq.4&limit=5`);
+      return data.find((entry) => entry.response_uri === responseUri) ?? null;
+    });
+
+    expect(row.status).toBe('PENDING');
+    expect(row.response_count).toBe('4');
+  }, 120000);
+
+  it('accepts an explicit correct sealHash for revokeFeedback', async () => {
+    const feedbackUri = `ipfs://seal_explicit_revoke_${Date.now()}`;
+    const feedbackResult = await client2Sdk.giveFeedback(agentAsset, {
+      value: 666n,
+      score: 59,
+      tag1: 'seal-explicit-revoke',
+      feedbackUri,
+    });
+    expect(feedbackResult.success).toBe(true);
+    expect(feedbackResult.feedbackIndex).toBe(5n);
+
+    const indexed = await waitFor(ownerSdk, async () => (
+      ownerSdk.readFeedback(agentAsset, wallets.client2.publicKey, 5n)
+    ));
+    expect(indexed.sealHash).toBeDefined();
+
+    const revokeResult = await client2Sdk.revokeFeedback(
+      agentAsset,
+      5n,
+      indexed.sealHash!
+    );
+    expect(revokeResult.success).toBe(true);
+
+    const revokeRow = await waitFor(ownerSdk, async () => {
+      const data = await fetchJson<Array<Record<string, string | null>>>(`/revocations?asset=${agentAsset.toBase58()}&client_address=${wallets.client2.publicKey.toBase58()}&feedback_index=eq.5&limit=5`);
+      return data[0] ?? null;
+    });
+    expect(revokeRow.status).toBe('PENDING');
+    expect(revokeRow.feedback_hash).toBe(indexed.sealHash!.toString('hex'));
+  }, 120000);
+
   it('rejects explicit wrong sealHash once indexer is synced', async () => {
     const badSealHash = Buffer.alloc(32, 0xff);
     await expect(
