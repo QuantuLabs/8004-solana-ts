@@ -83,9 +83,7 @@ import type { AgentSearchParams } from './indexer-types.js';
 import { indexedFeedbackToSolanaFeedback } from './indexer-types.js';
 // Indexer defaults (v0.4.1)
 import {
-  getDefaultIndexerUrl,
   getDefaultIndexerUrls,
-  getDefaultIndexerGraphqlUrl,
   getDefaultIndexerGraphqlUrls,
   getDefaultIndexerApiKey,
   DEFAULT_FORCE_ON_CHAIN,
