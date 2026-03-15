@@ -121,16 +121,27 @@ describe('IndexerClient', () => {
   });
 
   describe('isAvailable', () => {
-    it('should return true when accessible', async () => {
+    it('should return true when /ready reports ready', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      mockFetch.mockResolvedValue(mockJsonResponse({ status: 'ready' }));
       expect(await client.isAvailable()).toBe(true);
     });
 
-    it('should return false when unavailable', async () => {
+    it('should return false when /ready reports starting', async () => {
       const client = createClient();
-      mockFetch.mockRejectedValue(new Error('fail'));
+      mockFetch.mockResolvedValue(mockJsonResponse({ status: 'starting' }, 503));
       expect(await client.isAvailable()).toBe(false);
+    });
+
+    it('should fallback to legacy REST accessibility when /ready is missing', async () => {
+      const client = createClient();
+      mockFetch
+        .mockResolvedValueOnce(mockJsonResponse({ error: 'missing' }, 404))
+        .mockResolvedValueOnce(mockJsonResponse([]));
+
+      expect(await client.isAvailable()).toBe(true);
+      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://test.supabase.co/ready');
+      expect(mockFetch.mock.calls[1]?.[0]).toBe('https://test.supabase.co/rest/v1/agents?limit=1');
     });
 
     it('should fallback to the next REST endpoint on server failure', async () => {
@@ -138,12 +149,12 @@ describe('IndexerClient', () => {
         baseUrl: ['https://primary.example.com/rest/v1', 'https://secondary.example.com/rest/v1'],
       });
       mockFetch
-        .mockResolvedValueOnce(mockJsonResponse({ error: 'down' }, 503))
-        .mockResolvedValueOnce(mockJsonResponse([]));
+        .mockResolvedValueOnce(mockJsonResponse({ status: 'starting' }, 503))
+        .mockResolvedValueOnce(mockJsonResponse({ status: 'ready' }));
 
       expect(await client.isAvailable()).toBe(true);
-      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://primary.example.com/rest/v1/agents?limit=1');
-      expect(mockFetch.mock.calls[1]?.[0]).toBe('https://secondary.example.com/rest/v1/agents?limit=1');
+      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://primary.example.com/ready');
+      expect(mockFetch.mock.calls[1]?.[0]).toBe('https://secondary.example.com/ready');
     });
   });
 
@@ -290,22 +301,51 @@ describe('IndexerClient', () => {
   });
 
   describe('getLeaderboard', () => {
-    it('should order by sort_key desc', async () => {
+    it('should call the public leaderboard endpoint by default', async () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       await client.getLeaderboard();
       const url = (mockFetch.mock.calls[0][0] as string);
-      expect(url).toContain('order=sort_key.desc');
+      expect(url).toContain('/leaderboard?');
+      expect(url).not.toContain('/rpc/get_leaderboard');
     });
 
-    it('should apply filters', async () => {
+    it('should apply collection as a public leaderboard query filter', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      await client.getLeaderboard({ collection: 'c1', minTier: 2 });
+      const url = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(url.pathname).toContain('/leaderboard');
+      expect(url.searchParams.get('collection')).toBe('eq.c1');
+      expect(url.searchParams.get('limit')).toBe('50');
+    });
+
+    it('should fall back to the leaderboard RPC when cursorSortKey is requested', async () => {
       const client = createClient();
       mockFetch.mockResolvedValue(mockJsonResponse([]));
       await client.getLeaderboard({ collection: 'c1', minTier: 2, cursorSortKey: '999' });
-      const url = (mockFetch.mock.calls[0][0] as string);
-      expect(url).toContain('collection=eq.c1');
-      expect(url).toContain('trust_tier=gte.2');
-      expect(url).toContain('sort_key=lt.999');
+      const url = String(mockFetch.mock.calls[0][0]);
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/rpc/get_leaderboard');
+      expect(JSON.parse(String(init.body))).toEqual({
+        p_collection: 'c1',
+        p_min_tier: 2,
+        p_limit: 50,
+        p_cursor_sort_key: '999',
+      });
+    });
+
+    it('should filter public leaderboard rows client-side when minTier is stricter than the endpoint default', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(
+        mockJsonResponse([
+          { asset: 'a', trust_tier: 2 },
+          { asset: 'b', trust_tier: 3 },
+        ]),
+      );
+
+      const rows = await client.getLeaderboard({ minTier: 3 });
+      expect(rows.map((row) => row.asset)).toEqual(['b']);
     });
   });
 
@@ -406,18 +446,31 @@ describe('IndexerClient', () => {
   describe('feedback id reads', () => {
     it('getFeedbackById should resolve sequential ids via direct feedback_id lookup', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([{ id: '123' }]));
+      mockFetch.mockResolvedValue(mockJsonResponse([{
+        id: '123',
+        asset: 'asset1',
+        client_address: 'client1',
+        feedback_index: '7',
+      }]));
       const result = await client.getFeedbackById('123');
       expect(result).not.toBeNull();
+      expect(result?.id).toBe('asset1:client1:7');
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('feedback_id=eq.123');
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    it('getFeedbackById should reject canonical input ids', async () => {
+    it('getFeedbackById should resolve canonical input ids via scoped feedback lookup', async () => {
       const client = createClient();
-      expect(await client.getFeedbackById('asset1:client1:7')).toBeNull();
-      expect(mockFetch).toHaveBeenCalledTimes(0);
+      mockFetch.mockResolvedValue(mockJsonResponse([{ id: 'asset1:client1:7' }]));
+      const result = await client.getFeedbackById('asset1:client1:7');
+      expect(result).not.toBeNull();
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('asset=eq.asset1');
+      expect(url).toContain('client_address=eq.client1');
+      expect(url).toContain('feedback_index=eq.7');
+      expect(url).toContain('limit=1');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('getFeedbackById should return null for non-numeric ids', async () => {
@@ -430,8 +483,16 @@ describe('IndexerClient', () => {
       const client = createClient();
       mockFetch
         .mockResolvedValueOnce(mockJsonResponse([{ asset: 'asset1' }]))
-        .mockResolvedValueOnce(mockJsonResponse([]));
-      await client.getFeedbackResponsesByFeedbackId('123', 10);
+        .mockResolvedValueOnce(mockJsonResponse([{
+          id: '1',
+          asset: 'asset1',
+          client_address: 'client1',
+          feedback_index: '7',
+          responder: 'responder1',
+          tx_signature: 'sig1',
+        }]));
+      const rows = await client.getFeedbackResponsesByFeedbackId('123', 10);
+      expect(rows[0]?.id).toBe('asset1:client1:7:responder1:sig1');
       const feedbackLookupUrl = (mockFetch.mock.calls[0][0] as string);
       expect(feedbackLookupUrl).toContain('/feedbacks?');
       expect(feedbackLookupUrl).toContain('feedback_id=eq.123');
@@ -483,10 +544,18 @@ describe('IndexerClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
-    it('getFeedbackResponsesByFeedbackId should reject canonical input ids', async () => {
+    it('getFeedbackResponsesByFeedbackId should resolve canonical input ids via scoped response lookup', async () => {
       const client = createClient();
+      mockFetch.mockResolvedValueOnce(mockJsonResponse([]));
       await expect(client.getFeedbackResponsesByFeedbackId('asset1:client1:7', 10)).resolves.toEqual([]);
-      expect(mockFetch).toHaveBeenCalledTimes(0);
+      const url = (mockFetch.mock.calls[0][0] as string);
+      expect(url).toContain('/feedback_responses?');
+      expect(url).toContain('asset=eq.asset1');
+      expect(url).toContain('client_address=eq.client1');
+      expect(url).toContain('feedback_index=eq.7');
+      expect(url).toContain('order=response_id.asc');
+      expect(url).toContain('limit=10');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -628,7 +697,7 @@ describe('IndexerClient', () => {
       expect(result.total_agents).toBe(100);
     });
 
-    it('should default total_validations to 0 when omitted by archived indexers', async () => {
+    it('should map current global stats without archived validation count', async () => {
       const client = createClient();
       const stats = {
         total_agents: 100,
@@ -645,7 +714,6 @@ describe('IndexerClient', () => {
         total_agents: 100,
         total_collections: 12,
         total_feedbacks: 500,
-        total_validations: 0,
         platinum_agents: 1,
         gold_agents: 2,
         avg_quality: 81.5,
@@ -970,10 +1038,18 @@ describe('IndexerClient', () => {
   });
 
   describe('getFeedbackResponsesFor', () => {
-    it('should filter by asset, client, index', async () => {
+    it('should filter by asset, client, index and normalize canonical response ids', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
-      await client.getFeedbackResponsesFor('a', 'c', 0n);
+      mockFetch.mockResolvedValue(mockJsonResponse([{
+        id: '1',
+        asset: 'a',
+        client_address: 'c',
+        feedback_index: '0',
+        responder: 'responder1',
+        tx_signature: 'sig1',
+      }]));
+      const rows = await client.getFeedbackResponsesFor('a', 'c', 0n);
+      expect(rows[0]?.id).toBe('a:c:0:responder1:sig1');
       const url = (mockFetch.mock.calls[0][0] as string);
       expect(url).toContain('asset=eq.a');
       expect(url).toContain('client_address=eq.c');
@@ -996,38 +1072,53 @@ describe('IndexerClient', () => {
   describe('getLastFeedbackDigest', () => {
     it('should return null digest when no feedbacks', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      jest.spyOn(client, 'getReplayData').mockResolvedValue({ events: [], hasMore: false, nextFromCount: 0 });
       const result = await client.getLastFeedbackDigest('asset');
       expect(result.digest).toBeNull();
       expect(result.count).toBe(0);
     });
 
-    it('should return digest and count', async () => {
+    it('should derive digest and count from replay head', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValueOnce(
-        mockJsonResponse([{ running_digest: 'abc123', feedback_index: 41 }])
-      );
+      jest.spyOn(client, 'getReplayData').mockImplementation(async (_asset, _chainType, fromCount) => {
+        if (fromCount === 0) {
+          return {
+            events: [{ asset: 'asset', client: 'client', feedback_index: '0', slot: 1, running_digest: 'd0' }],
+            hasMore: false,
+            nextFromCount: 1,
+          };
+        }
+        if (fromCount === 1) {
+          return {
+            events: [{ asset: 'asset', client: 'client', feedback_index: '1', slot: 2, running_digest: 'd1' }],
+            hasMore: false,
+            nextFromCount: 2,
+          };
+        }
+        return { events: [], hasMore: false, nextFromCount: fromCount };
+      });
       const result = await client.getLastFeedbackDigest('asset');
-      expect(result.digest).toBe('abc123');
-      expect(result.count).toBe(42);
+      expect(result).toEqual({ digest: 'd1', count: 2 });
     });
   });
 
   describe('getLastResponseDigest', () => {
     it('should return null when no responses', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      jest.spyOn(client, 'getReplayData').mockResolvedValue({ events: [], hasMore: false, nextFromCount: 1 });
       const result = await client.getLastResponseDigest('asset');
       expect(result.digest).toBeNull();
+      expect(result.count).toBe(0);
     });
   });
 
   describe('getLastRevokeDigest', () => {
     it('should return null when no revocations', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      jest.spyOn(client, 'getReplayData').mockResolvedValue({ events: [], hasMore: false, nextFromCount: 1 });
       const result = await client.getLastRevokeDigest('asset');
       expect(result.digest).toBeNull();
+      expect(result.count).toBe(0);
     });
   });
 
@@ -1040,17 +1131,24 @@ describe('IndexerClient', () => {
 
     it('should return map with null for missing indices', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      jest.spyOn(client, 'getReplayData').mockResolvedValue({ events: [], hasMore: false, nextFromCount: 0 });
       const result = await client.getFeedbacksAtIndices('asset', [0, 5, 10]);
       expect(result.size).toBe(3);
       expect(result.get(0)).toBeNull();
     });
 
-    it('should populate found feedbacks', async () => {
+    it('should populate found feedbacks from replay data', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([
-        { feedback_index: 5, asset: 'a' },
-      ]));
+      jest.spyOn(client, 'getReplayData').mockImplementation(async (_asset, _chainType, fromCount) => {
+        if (fromCount === 5) {
+          return {
+            events: [{ asset: 'a', client: 'c', feedback_index: '5', slot: 99, running_digest: 'abc' }],
+            hasMore: false,
+            nextFromCount: 6,
+          };
+        }
+        return { events: [], hasMore: false, nextFromCount: fromCount };
+      });
       const result = await client.getFeedbacksAtIndices('asset', [0, 5]);
       expect(result.get(5)).not.toBeNull();
       expect(result.get(0)).toBeNull();
@@ -1073,15 +1171,16 @@ describe('IndexerClient', () => {
       expect(result.size).toBe(0);
     });
 
-    it('should fetch each offset', async () => {
+    it('should resolve offsets through replay counts', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([]));
+      const replaySpy = jest.spyOn(client, 'getReplayData').mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextFromCount: 0,
+      });
       const result = await client.getResponsesAtOffsets('asset', [0, 1]);
-      const urls = mockFetch.mock.calls.map(([requestUrl]) => requestUrl as string);
-      expect(urls).toHaveLength(2);
-      expect(urls.every((url) => url.includes('order=response_id.asc'))).toBe(true);
-      expect(urls.some((url) => url.includes('offset=0'))).toBe(true);
-      expect(urls.some((url) => url.includes('offset=1'))).toBe(true);
+      expect(replaySpy).toHaveBeenNthCalledWith(1, 'asset', 'response', 1, 2, 1);
+      expect(replaySpy).toHaveBeenNthCalledWith(2, 'asset', 'response', 2, 3, 1);
       expect(result.size).toBe(2);
     });
 
@@ -1094,33 +1193,19 @@ describe('IndexerClient', () => {
       expect(result.size).toBe(0);
     });
 
-    it('should use revoke_count IN filter and map rows by revoke_count', async () => {
+    it('should resolve revoke counts through replay data', async () => {
       const client = createClient();
-      mockFetch.mockResolvedValue(mockJsonResponse([
-        {
-          id: 'rev-3',
-          asset: 'asset',
-          client_address: 'client2',
-          feedback_index: 4,
-          feedback_hash: null,
-          slot: 250,
-          original_score: 80,
-          atom_enabled: true,
-          had_impact: false,
-          running_digest: null,
-          revoke_count: 3,
-          tx_signature: 'sig2',
-          created_at: '2025-01-02T00:00:00.000Z',
-        },
-      ]));
+      const replaySpy = jest.spyOn(client, 'getReplayData').mockResolvedValue({
+        events: [],
+        hasMore: false,
+        nextFromCount: 0,
+      });
 
       const result = await client.getRevocationsAtCounts('asset', [1, 3]);
-      const url = mockFetch.mock.calls[0][0] as string;
-
-      expect(url).toContain('revoke_count=in.%281%2C3%29');
-      expect(url).toContain('order=revoke_count.asc');
+      expect(replaySpy).toHaveBeenNthCalledWith(1, 'asset', 'revoke', 1, 2, 1);
+      expect(replaySpy).toHaveBeenNthCalledWith(2, 'asset', 'revoke', 3, 4, 1);
       expect(result.get(1)).toBeNull();
-      expect(result.get(3)?.id).toBe('rev-3');
+      expect(result.get(3)).toBeNull();
     });
   });
 
@@ -1188,6 +1273,19 @@ describe('IndexerClient', () => {
       const result = await client.getReplayData('asset', 'feedback');
       expect(result.events).toEqual(events);
       expect(result.nextFromCount).toBe(1);
+    });
+
+    it('should reject unsafe replay counters instead of clamping them', async () => {
+      const client = createClient();
+      mockFetch.mockResolvedValue(mockJsonResponse({
+        events: [],
+        hasMore: false,
+        nextFromCount: '9007199254740993',
+      }));
+
+      await expect(client.getReplayData('asset', 'feedback')).rejects.toThrow(
+        'nextFromCount exceeds JS safe integer range',
+      );
     });
   });
 

@@ -3,8 +3,11 @@
  * Implements the IndexerReadClient contract used by the SDK.
  */
 import { IndexerError, IndexerErrorCode, IndexerRateLimitError, IndexerTimeoutError, IndexerUnauthorizedError, IndexerUnavailableError, } from './indexer-errors.js';
+import { decodeCanonicalFeedbackId } from './indexer-client.js';
 const VALIDATION_ARCHIVED_ERROR = 'Validation feature is archived (v0.5.0+) and is not exposed by indexers.';
 const CID_V1_BASE32_PATTERN = /^b[a-z2-7]{20,}$/;
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE_INTEGER_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
 function normalizeCollectionPointerForRead(pointer) {
     const trimmed = pointer.trim();
     if (!trimmed) {
@@ -92,6 +95,49 @@ function toIntSafe(v, fallback = 0) {
     if (!Number.isFinite(n))
         return fallback;
     return Math.trunc(n);
+}
+function parseStrictInteger(value, fieldName) {
+    if (value === null || value === undefined)
+        return null;
+    if (typeof value === 'bigint')
+        return value;
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value) || !Number.isInteger(value)) {
+            throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        if (!Number.isSafeInteger(value)) {
+            throw new IndexerError(`${fieldName} exceeds JS safe integer range; use string-safe fields or REST fallback`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        return BigInt(value);
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed)
+            return null;
+        if (!/^-?\d+$/.test(trimmed)) {
+            throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+        }
+        return BigInt(trimmed);
+    }
+    throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
+}
+function toLosslessIntegerValue(value, fieldName, fallback = 0) {
+    const parsed = parseStrictInteger(value, fieldName);
+    if (parsed === null)
+        return fallback;
+    if (parsed <= MAX_SAFE_INTEGER_BIGINT && parsed >= MIN_SAFE_INTEGER_BIGINT) {
+        return Number(parsed);
+    }
+    return parsed.toString();
+}
+function toExactSafeInteger(value, fieldName, fallback = 0) {
+    const parsed = parseStrictInteger(value, fieldName);
+    if (parsed === null)
+        return fallback;
+    if (parsed > MAX_SAFE_INTEGER_BIGINT || parsed < MIN_SAFE_INTEGER_BIGINT) {
+        throw new IndexerError(`${fieldName} exceeds JS safe integer range; use REST fallback for exact values`, IndexerErrorCode.INVALID_RESPONSE);
+    }
+    return Number(parsed);
 }
 function normalizeHexDigest(v) {
     if (typeof v !== 'string')
@@ -203,6 +249,185 @@ function agentId(asset) {
     }
     return normalized;
 }
+function rot32(value, bits) {
+    return ((value << bits) | (value >>> (32 - bits))) >>> 0;
+}
+function mix32(a0, b0, c0) {
+    let a = a0 >>> 0;
+    let b = b0 >>> 0;
+    let c = c0 >>> 0;
+    a = (a - c) >>> 0;
+    a = (a ^ rot32(c, 4)) >>> 0;
+    c = (c + b) >>> 0;
+    b = (b - a) >>> 0;
+    b = (b ^ rot32(a, 6)) >>> 0;
+    a = (a + c) >>> 0;
+    c = (c - b) >>> 0;
+    c = (c ^ rot32(b, 8)) >>> 0;
+    b = (b + a) >>> 0;
+    a = (a - c) >>> 0;
+    a = (a ^ rot32(c, 16)) >>> 0;
+    c = (c + b) >>> 0;
+    b = (b - a) >>> 0;
+    b = (b ^ rot32(a, 19)) >>> 0;
+    a = (a + c) >>> 0;
+    c = (c - b) >>> 0;
+    c = (c ^ rot32(b, 4)) >>> 0;
+    b = (b + a) >>> 0;
+    return [a, b, c];
+}
+function final32(a0, b0, c0) {
+    let a = a0 >>> 0;
+    let b = b0 >>> 0;
+    let c = c0 >>> 0;
+    c = (c ^ b) >>> 0;
+    c = (c - rot32(b, 14)) >>> 0;
+    a = (a ^ c) >>> 0;
+    a = (a - rot32(c, 11)) >>> 0;
+    b = (b ^ a) >>> 0;
+    b = (b - rot32(a, 25)) >>> 0;
+    c = (c ^ b) >>> 0;
+    c = (c - rot32(b, 16)) >>> 0;
+    a = (a ^ c) >>> 0;
+    a = (a - rot32(c, 4)) >>> 0;
+    b = (b ^ a) >>> 0;
+    b = (b - rot32(a, 14)) >>> 0;
+    c = (c ^ b) >>> 0;
+    c = (c - rot32(b, 24)) >>> 0;
+    return [a, b, c];
+}
+function pgHashBytes(input) {
+    let len = input.length >>> 0;
+    let a = (0x9e3779b9 + len + 3923095) >>> 0;
+    let b = a;
+    let c = a;
+    let offset = 0;
+    while (len >= 12) {
+        a = (a + input[offset + 0] + (input[offset + 1] << 8) + (input[offset + 2] << 16) + (input[offset + 3] << 24)) >>> 0;
+        b = (b + input[offset + 4] + (input[offset + 5] << 8) + (input[offset + 6] << 16) + (input[offset + 7] << 24)) >>> 0;
+        c = (c + input[offset + 8] + (input[offset + 9] << 8) + (input[offset + 10] << 16) + (input[offset + 11] << 24)) >>> 0;
+        [a, b, c] = mix32(a, b, c);
+        offset += 12;
+        len -= 12;
+    }
+    switch (len) {
+        case 11:
+            c = (c + (input[offset + 10] << 24)) >>> 0;
+        // falls through
+        case 10:
+            c = (c + (input[offset + 9] << 16)) >>> 0;
+        // falls through
+        case 9:
+            c = (c + (input[offset + 8] << 8)) >>> 0;
+        // falls through
+        case 8:
+            b = (b + (input[offset + 7] << 24)) >>> 0;
+        // falls through
+        case 7:
+            b = (b + (input[offset + 6] << 16)) >>> 0;
+        // falls through
+        case 6:
+            b = (b + (input[offset + 5] << 8)) >>> 0;
+        // falls through
+        case 5:
+            b = (b + input[offset + 4]) >>> 0;
+        // falls through
+        case 4:
+            a = (a + (input[offset + 3] << 24)) >>> 0;
+        // falls through
+        case 3:
+            a = (a + (input[offset + 2] << 16)) >>> 0;
+        // falls through
+        case 2:
+            a = (a + (input[offset + 1] << 8)) >>> 0;
+        // falls through
+        case 1:
+            a = (a + input[offset + 0]) >>> 0;
+        // falls through
+        default:
+            break;
+    }
+    [, , c] = final32(a, b, c);
+    return c >>> 0;
+}
+function pgHashtextTieBreaker(input) {
+    const signed = pgHashBytes(Buffer.from(input, 'utf8')) | 0;
+    const abs = signed === -2147483648 ? 2147483648 : Math.abs(signed);
+    return abs % 10_000_000;
+}
+function computeGraphqlSortKey(asset, agent) {
+    const trustTier = BigInt(toExactSafeInteger(agent?.solana?.trustTier, 'agent.solana.trustTier', 0));
+    const qualityScore = BigInt(toExactSafeInteger(agent?.solana?.qualityScore, 'agent.solana.qualityScore', 0));
+    const confidence = BigInt(toExactSafeInteger(agent?.solana?.confidence, 'agent.solana.confidence', 0));
+    const tieBreaker = BigInt(pgHashtextTieBreaker(asset));
+    return (trustTier * 1000200010000000n
+        + qualityScore * 100010000000n
+        + confidence * 10000000n
+        + tieBreaker).toString();
+}
+function extractGraphqlNftName(agent) {
+    if (typeof agent?.nftName === 'string')
+        return agent.nftName.length > 0 ? agent.nftName : null;
+    const metadata = Array.isArray(agent?.metadata) ? agent.metadata : [];
+    for (const entry of metadata) {
+        const key = typeof entry?.key === 'string' ? entry.key.toLowerCase() : '';
+        if ((key === 'name' || key === 'nft_name') && typeof entry?.value === 'string') {
+            return entry.value.length > 0 ? entry.value : null;
+        }
+    }
+    return null;
+}
+function normalizeNullableText(value) {
+    if (typeof value !== 'string')
+        return value ?? null;
+    return value.length > 0 ? value : null;
+}
+function deriveReadyUrlFromGraphqlEndpoint(endpoint) {
+    try {
+        const url = new URL(endpoint);
+        let pathname = url.pathname.replace(/\/+$/, '');
+        if (pathname.endsWith('/v2/graphql')) {
+            pathname = pathname.slice(0, -'/v2/graphql'.length);
+        }
+        else if (pathname.endsWith('/graphql')) {
+            pathname = pathname.slice(0, -'/graphql'.length);
+        }
+        url.pathname = `${pathname || ''}/ready`;
+        url.search = '';
+        url.hash = '';
+        return url.toString();
+    }
+    catch {
+        return null;
+    }
+}
+function resolveGraphqlFeedbackCount(agent) {
+    if (agent?.totalFeedback !== undefined && agent?.totalFeedback !== null) {
+        return toExactSafeInteger(agent.totalFeedback, 'agent.totalFeedback', 0);
+    }
+    if (agent?.stats?.totalFeedback !== undefined && agent?.stats?.totalFeedback !== null) {
+        return toExactSafeInteger(agent.stats.totalFeedback, 'agent.stats.totalFeedback', 0);
+    }
+    return 0;
+}
+function detailedAgentSelection(agentIdSelection) {
+    return `id${agentIdSelection}
+              owner
+              creator
+              agentURI
+              agentWallet
+              collectionPointer
+              colLocked
+              parentAsset
+              parentCreator
+              parentLocked
+              createdAt
+              updatedAt
+              totalFeedback
+              metadata { key value }
+              stats { totalFeedback }
+              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }`;
+}
 function mapGqlAgent(agent, fallbackAsset = '') {
     const mappedAsset = agent?.solana?.assetPubkey ?? agent?.id ?? fallbackAsset;
     const mappedAgentId = agent?.agentid ?? agent?.agentId ?? agent?.globalId ?? agent?.global_id ?? null;
@@ -219,16 +444,16 @@ function mapGqlAgent(agent, fallbackAsset = '') {
         parent_asset: agent?.parentAsset ?? null,
         parent_creator: agent?.parentCreator ?? null,
         parent_locked: Boolean(agent?.parentLocked),
-        nft_name: null,
+        nft_name: extractGraphqlNftName(agent),
         atom_enabled: Boolean(agent?.solana?.atomEnabled),
-        trust_tier: toNumberSafe(agent?.solana?.trustTier, 0),
-        quality_score: toNumberSafe(agent?.solana?.qualityScore, 0),
-        confidence: toNumberSafe(agent?.solana?.confidence, 0),
-        risk_score: toNumberSafe(agent?.solana?.riskScore, 0),
-        diversity_ratio: toNumberSafe(agent?.solana?.diversityRatio, 0),
-        feedback_count: toNumberSafe(agent?.totalFeedback, 0),
+        trust_tier: toExactSafeInteger(agent?.solana?.trustTier, 'agent.solana.trustTier', 0),
+        quality_score: toExactSafeInteger(agent?.solana?.qualityScore, 'agent.solana.qualityScore', 0),
+        confidence: toExactSafeInteger(agent?.solana?.confidence, 'agent.solana.confidence', 0),
+        risk_score: toExactSafeInteger(agent?.solana?.riskScore, 'agent.solana.riskScore', 0),
+        diversity_ratio: toExactSafeInteger(agent?.solana?.diversityRatio, 'agent.solana.diversityRatio', 0),
+        feedback_count: resolveGraphqlFeedbackCount(agent),
         raw_avg_score: 0,
-        sort_key: '0',
+        sort_key: computeGraphqlSortKey(mappedAsset, agent),
         block_slot: 0,
         tx_signature: '',
         created_at: toIsoFromUnixSeconds(agent?.createdAt),
@@ -357,15 +582,15 @@ function mapGqlFeedback(row, fallbackAsset = '') {
         id: row.id,
         asset: resolveFeedbackAsset(row, fallbackAsset),
         client_address: row.clientAddress,
-        feedback_index: toNumberSafe(row.feedbackIndex, 0),
+        feedback_index: toLosslessIntegerValue(row.feedbackIndex, 'feedbackIndex', 0),
         value: row?.solana?.valueRaw ?? '0',
         value_decimals: toNumberSafe(row?.solana?.valueDecimals, 0),
         score: row?.solana?.score ?? null,
-        tag1: row.tag1 ?? '',
-        tag2: row.tag2 ?? '',
+        tag1: row.tag1 ?? null,
+        tag2: row.tag2 ?? null,
         endpoint: row.endpoint ?? null,
         feedback_uri: row.feedbackURI ?? null,
-        running_digest: null,
+        running_digest: normalizeHexDigest(row?.solana?.runningDigest),
         feedback_hash: normalizeHexDigest(row.feedbackHash),
         is_revoked: Boolean(row.isRevoked),
         revoked_at: row.revokedAt ? toIsoFromUnixSeconds(row.revokedAt) : null,
@@ -379,11 +604,14 @@ function mapGqlFeedbackResponse(row, asset, client, feedbackIndex) {
         id: row.id,
         asset,
         client_address: client,
-        feedback_index: toNumberSafe(feedbackIndex, 0),
+        feedback_index: toLosslessIntegerValue(feedbackIndex, 'feedbackIndex', 0),
         responder: row.responder,
         response_uri: row.responseUri ?? null,
         response_hash: normalizeHexDigest(row.responseHash),
-        running_digest: null,
+        running_digest: normalizeHexDigest(row?.solana?.runningDigest),
+        response_count: row?.solana?.responseCount != null
+            ? toLosslessIntegerValue(row.solana.responseCount, 'responseCount', 0)
+            : null,
         block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
         tx_signature: row?.solana?.txSignature ?? '',
         created_at: toIsoFromUnixSeconds(row.createdAt),
@@ -517,6 +745,16 @@ export class IndexerGraphQLClient {
             || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
             || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssets['"]/.test(msg));
     }
+    shouldFallbackGlobalStatsExtendedFields(error) {
+        if (!(error instanceof IndexerError))
+            return false;
+        if (error.code !== IndexerErrorCode.INVALID_RESPONSE)
+            return false;
+        const msg = error.message;
+        return (/Cannot query field ['"]platinumAgents['"] on type ['"]GlobalStats['"]/.test(msg)
+            || /Cannot query field ['"]goldAgents['"] on type ['"]GlobalStats['"]/.test(msg)
+            || /Cannot query field ['"]avgQuality['"] on type ['"]GlobalStats['"]/.test(msg));
+    }
     async resolveCollectionCreatorScope(normalizedCollection, creator, methodName) {
         const direct = creator?.trim();
         if (direct)
@@ -577,20 +815,7 @@ export class IndexerGraphQLClient {
         const requestByType = async (variableType, variableValue) => {
             const data = await this.request(`query($agentId: ${variableType}!) {
           agents(first: 1, where: { ${agentIdField}: $agentId }) {
-            id
-            owner
-            creator
-            agentURI
-            agentWallet
-            collectionPointer
-            colLocked
-            parentAsset
-            parentCreator
-            parentLocked
-            createdAt
-            updatedAt
-            totalFeedback
-            solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+            ${detailedAgentSelection('')}
           }
         }`, { agentId: variableValue });
             return data.agents[0] ?? null;
@@ -649,13 +874,38 @@ export class IndexerGraphQLClient {
         throw lastError ?? new IndexerUnavailableError();
     }
     async isAvailable() {
-        try {
-            await this.request('query { __typename }');
-            return true;
+        for (const endpoint of this.graphqlUrls) {
+            const readyUrl = deriveReadyUrlFromGraphqlEndpoint(endpoint);
+            if (readyUrl) {
+                try {
+                    const response = await fetch(readyUrl, { headers: this.headers, redirect: 'error' });
+                    if (response.ok || response.status === 503) {
+                        let payload = null;
+                        try {
+                            payload = await response.json();
+                        }
+                        catch {
+                            payload = null;
+                        }
+                        if (payload?.status === 'ready') {
+                            return true;
+                        }
+                        continue;
+                    }
+                }
+                catch {
+                    // Fall through to the legacy GraphQL availability probe for this endpoint.
+                }
+            }
+            try {
+                await this.requestAgainstEndpoint(endpoint, 'query { __typename }');
+                return true;
+            }
+            catch {
+                // Try next configured endpoint.
+            }
         }
-        catch {
-            return false;
-        }
+        return false;
     }
     loadHashChainHeads(asset) {
         const key = asset;
@@ -685,20 +935,7 @@ export class IndexerGraphQLClient {
             const agentIdSelection = agentIdField ? `\n          ${agentIdField}` : '';
             return this.request(`query($id: ID!) {
             agent(id: $id) {
-              id${agentIdSelection}
-              owner
-              creator
-              agentURI
-              agentWallet
-              collectionPointer
-              colLocked
-              parentAsset
-              parentCreator
-              parentLocked
-              createdAt
-              updatedAt
-              totalFeedback
-              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
+              ${detailedAgentSelection(agentIdSelection)}
             }
           }`, { id: normalizedAsset });
         });
@@ -708,30 +945,24 @@ export class IndexerGraphQLClient {
     }
     async getAgentByAgentId(agentId) {
         const normalizedAgentId = normalizeGraphqlAgentLookupId(agentId);
-        const agent = await this.requestWithAgentIdField(async (agentIdField) => {
-            if (agentIdField === null) {
-                const legacy = await this.request(`query($id: ID!) {
-              agent(id: $id) {
-                id
-                owner
-                creator
-                agentURI
-                agentWallet
-                collectionPointer
-                colLocked
-                parentAsset
-                parentCreator
-                parentLocked
-                createdAt
-                updatedAt
-                totalFeedback
-                solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-              }
-            }`, { id: normalizedAgentId });
-                return legacy.agent;
+        let agent;
+        try {
+            agent = await this.requestAgentBySequentialIdField('agentId', normalizedAgentId);
+        }
+        catch (error) {
+            if (!this.shouldFallbackAgentIdField(error, 'agentId')) {
+                throw error;
             }
-            return this.requestAgentBySequentialIdField(agentIdField, normalizedAgentId);
-        });
+            try {
+                agent = await this.requestAgentBySequentialIdField('agentid', normalizedAgentId);
+            }
+            catch (fallbackError) {
+                if (!this.shouldFallbackAgentIdField(fallbackError, 'agentid')) {
+                    throw fallbackError;
+                }
+                return null;
+            }
+        }
         if (!agent)
             return null;
         const mapped = mapGqlAgent(agent, normalizedAgentId);
@@ -789,48 +1020,98 @@ export class IndexerGraphQLClient {
         });
     }
     async getAgentByWallet(wallet) {
-        const agents = await this.getAgents({
-            wallet,
-            limit: 1,
-            order: 'created_at.desc',
+        const data = await this.requestWithAgentIdField((agentIdField) => {
+            const agentIdSelection = agentIdField ? `\n          ${agentIdField}` : '';
+            return this.request(`query($wallet: String!) {
+            agents(first: 1, skip: 0, where: { agentWallet: $wallet }, orderBy: createdAt, orderDirection: desc) {
+              ${detailedAgentSelection(agentIdSelection)}
+            }
+          }`, { wallet });
         });
-        return agents[0] ?? null;
+        return data.agents[0] ? mapGqlAgent(data.agents[0]) : null;
     }
     async getLeaderboard(options) {
         if (options?.cursorSortKey) {
             throw new Error('GraphQL backend does not support cursorSortKey keyset pagination; use REST indexer client.');
         }
         const limit = clampInt(options?.limit ?? 50, 0, 200);
-        const where = {};
-        if (options?.collection)
-            where.collection = options.collection;
-        if (options?.minTier !== undefined)
-            where.trustTier_gte = options.minTier;
-        const data = await this.requestWithAgentIdField((agentIdField) => {
-            const agentIdSelection = agentIdField ? `${agentIdField} ` : '';
-            return this.request(`query($where: AgentFilter) {
-            agents(first: ${limit}, where: $where, orderBy: qualityScore, orderDirection: desc) {
-              ${agentIdSelection}owner creator agentURI agentWallet collectionPointer colLocked parentAsset parentCreator parentLocked createdAt updatedAt totalFeedback
-              solana { assetPubkey collection atomEnabled trustTier qualityScore confidence riskScore diversityRatio }
-            }
-          }`, { where: Object.keys(where).length ? where : null });
+        const data = await this.request(`query($first: Int!, $collection: String) {
+        leaderboard(first: $first, collection: $collection) {
+          asset
+          owner
+          collection
+          nftName
+          agentUri
+          trustTier
+          qualityScore
+          confidence
+          riskScore
+          diversityRatio
+          feedbackCount
+          sortKey
+        }
+      }`, {
+            first: limit,
+            collection: options?.collection ?? null,
         });
-        return data.agents.map((a) => mapGqlAgent(a));
+        const rows = (data.leaderboard ?? []).filter((row) => options?.minTier === undefined
+            ? true
+            : toNumberSafe(row?.trustTier, 0) >= options.minTier);
+        return rows.map((row) => ({
+            agent_id: null,
+            asset: row?.asset ?? '',
+            owner: row?.owner ?? '',
+            creator: null,
+            agent_uri: row?.agentUri ?? null,
+            agent_wallet: null,
+            collection: row?.collection ?? '',
+            collection_pointer: null,
+            col_locked: false,
+            parent_asset: null,
+            parent_creator: null,
+            parent_locked: false,
+            nft_name: normalizeNullableText(row?.nftName ?? null),
+            atom_enabled: false,
+            trust_tier: toExactSafeInteger(row?.trustTier, 'leaderboard.trustTier', 0),
+            quality_score: toExactSafeInteger(row?.qualityScore, 'leaderboard.qualityScore', 0),
+            confidence: toExactSafeInteger(row?.confidence, 'leaderboard.confidence', 0),
+            risk_score: toExactSafeInteger(row?.riskScore, 'leaderboard.riskScore', 0),
+            diversity_ratio: toExactSafeInteger(row?.diversityRatio, 'leaderboard.diversityRatio', 0),
+            feedback_count: toExactSafeInteger(row?.feedbackCount, 'leaderboard.feedbackCount', 0),
+            raw_avg_score: 0,
+            sort_key: String(row?.sortKey ?? '0'),
+            block_slot: 0,
+            tx_signature: '',
+            created_at: new Date(0).toISOString(),
+            updated_at: new Date(0).toISOString(),
+        }));
     }
     async getGlobalStats() {
-        const data = await this.request(`query {
+        const mapStats = (stats) => ({
+            total_agents: toExactSafeInteger(stats?.totalAgents, 'globalStats.totalAgents', 0),
+            total_collections: toExactSafeInteger(stats?.totalCollections, 'globalStats.totalCollections', 0),
+            total_feedbacks: toExactSafeInteger(stats?.totalFeedback, 'globalStats.totalFeedback', 0),
+            platinum_agents: toExactSafeInteger(stats?.platinumAgents, 'globalStats.platinumAgents', 0),
+            gold_agents: toExactSafeInteger(stats?.goldAgents, 'globalStats.goldAgents', 0),
+            avg_quality: stats?.avgQuality === null || stats?.avgQuality === undefined
+                ? null
+                : toNumberSafe(stats.avgQuality, 0),
+        });
+        try {
+            const data = await this.request(`query {
+          globalStats { totalAgents totalFeedback totalCollections platinumAgents goldAgents avgQuality tags }
+        }`);
+            return mapStats(data.globalStats);
+        }
+        catch (error) {
+            if (!this.shouldFallbackGlobalStatsExtendedFields(error)) {
+                throw error;
+            }
+        }
+        const legacyData = await this.request(`query {
         globalStats { totalAgents totalFeedback totalCollections tags }
       }`);
-        const stats = data.globalStats;
-        return {
-            total_agents: toNumberSafe(stats?.totalAgents, 0),
-            total_collections: toNumberSafe(stats?.totalCollections, 0),
-            total_feedbacks: toNumberSafe(stats?.totalFeedback, 0),
-            total_validations: 0,
-            platinum_agents: 0,
-            gold_agents: 0,
-            avg_quality: null,
-        };
+        return mapStats(legacyData.globalStats);
     }
     async getCollectionPointers(options) {
         const first = clampInt(options?.limit ?? 100, 0, 500);
@@ -949,7 +1230,7 @@ export class IndexerGraphQLClient {
                 collection: normalizedCollection,
                 creator: creatorScope,
             });
-            return toIntSafe(data.collectionAssetCount, 0);
+            return toExactSafeInteger(data.collectionAssetCount, 'collectionAssetCount', 0);
         }
         catch (error) {
             if (!this.shouldUseLegacyCollectionRead(error)) {
@@ -961,7 +1242,7 @@ export class IndexerGraphQLClient {
                 col: normalizedCollection,
                 creator: creatorScope,
             });
-            return toIntSafe(data.collectionAssetCount, 0);
+            return toExactSafeInteger(data.collectionAssetCount, 'collectionAssetCount', 0);
         }
     }
     async getCollectionAssets(col, options) {
@@ -1087,7 +1368,7 @@ export class IndexerGraphQLClient {
             isRevoked
             createdAt
             revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot }
+            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
           }
         }`, { where });
             const page = data.feedbacks.map((f) => mapGqlFeedback(f, asset));
@@ -1112,12 +1393,41 @@ export class IndexerGraphQLClient {
       isRevoked
       createdAt
       revokedAt
-      solana { valueRaw valueDecimals score txSignature blockSlot }
+      solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
     }
   }`, { id: feedbackId(asset, client, feedbackIndex) });
         if (!data.feedback)
             return null;
         return mapGqlFeedback(data.feedback, asset);
+    }
+    async getFeedbackById(feedbackId) {
+        const normalizedId = feedbackId.trim();
+        const canonical = decodeCanonicalFeedbackId(normalizedId);
+        if (canonical) {
+            return this.getFeedback(canonical.asset, canonical.client, BigInt(canonical.index));
+        }
+        if (!/^\d+$/.test(normalizedId))
+            return null;
+        const data = await this.request(`query($id: ID!) {
+        feedback(id: $id) {
+          id
+          agent { id }
+          clientAddress
+          feedbackIndex
+          tag1
+          tag2
+          endpoint
+          feedbackURI
+          feedbackHash
+          isRevoked
+          createdAt
+          revokedAt
+          solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+        }
+      }`, { id: normalizedId });
+        if (!data.feedback)
+            return null;
+        return mapGqlFeedback(data.feedback);
     }
     async getFeedbacksByClient(client) {
         const pageSize = 100;
@@ -1140,7 +1450,7 @@ export class IndexerGraphQLClient {
             isRevoked
             createdAt
             revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot }
+            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
           }
         }`, { client });
             const page = data.feedbacks ?? [];
@@ -1183,7 +1493,7 @@ export class IndexerGraphQLClient {
               isRevoked
               createdAt
               revokedAt
-              solana { valueRaw valueDecimals score txSignature blockSlot }
+              solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
             }
           }`, { tag });
                 const page = data.feedbacks ?? [];
@@ -1233,7 +1543,7 @@ export class IndexerGraphQLClient {
             isRevoked
             createdAt
             revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot }
+            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
           }
         }`, { endpoint });
             const page = data.feedbacks ?? [];
@@ -1265,7 +1575,7 @@ export class IndexerGraphQLClient {
           isRevoked
           createdAt
           revokedAt
-          solana { valueRaw valueDecimals score txSignature blockSlot }
+          solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
         }
       }`, { where: Object.keys(where).length ? where : null });
         return data.feedbacks.map((f) => mapGqlFeedback(f));
@@ -1285,16 +1595,47 @@ export class IndexerGraphQLClient {
     // ============================================================================
     async getFeedbackResponsesFor(asset, client, feedbackIndex, limit = 100) {
         const data = await this.request(`query($feedback: ID!) {
-        feedbackResponses(first: ${clampInt(limit, 0, 1000)}, where: { feedback: $feedback }, orderBy: createdAt, orderDirection: asc) {
+        feedbackResponses(first: ${clampInt(limit, 0, 1000)}, where: { feedback: $feedback }, orderBy: responseId, orderDirection: asc) {
           id
           responder
           responseUri
           responseHash
           createdAt
-          solana { txSignature blockSlot }
+          solana { runningDigest responseCount txSignature blockSlot }
         }
       }`, { feedback: feedbackId(asset, client, feedbackIndex) });
         return (data.feedbackResponses ?? []).map((r) => mapGqlFeedbackResponse(r, asset, client, feedbackIndex));
+    }
+    async getFeedbackResponsesByFeedbackId(feedbackId, limit = 100) {
+        const normalizedId = feedbackId.trim();
+        const canonical = decodeCanonicalFeedbackId(normalizedId);
+        if (canonical) {
+            return this.getFeedbackResponsesFor(canonical.asset, canonical.client, BigInt(canonical.index), limit);
+        }
+        if (!/^\d+$/.test(normalizedId))
+            return [];
+        const data = await this.request(`query($id: ID!) {
+        feedback(id: $id) {
+          id
+          agent { id }
+          clientAddress
+          feedbackIndex
+          responses(first: ${clampInt(limit, 0, 1000)}, skip: 0) {
+            id
+            responder
+            responseUri
+            responseHash
+            createdAt
+            solana { runningDigest responseCount txSignature blockSlot }
+          }
+        }
+      }`, { id: normalizedId });
+        if (!data.feedback)
+            return [];
+        const asset = resolveFeedbackAsset(data.feedback);
+        const client = data.feedback.clientAddress;
+        const feedbackIndex = data.feedback.feedbackIndex;
+        return (data.feedback.responses ?? []).map((response) => mapGqlFeedbackResponse(response, asset, client, feedbackIndex));
     }
     // ============================================================================
     // Validations
@@ -1307,82 +1648,34 @@ export class IndexerGraphQLClient {
     // ============================================================================
     async getAgentReputation(asset) {
         const normalizedAsset = agentId(asset);
-        const data = await this.request(`query($id: ID!) {
-        agent(id: $id) {
-          id
+        const data = await this.request(`query($asset: ID!) {
+        agentReputation(asset: $asset) {
+          asset
           owner
-          agentURI
-          totalFeedback
-          solana { assetPubkey collection qualityScore }
+          collection
+          nftName
+          agentUri
+          feedbackCount
+          avgScore
+          positiveCount
+          negativeCount
+          validationCount
         }
-      }`, { id: normalizedAsset });
-        const row = data.agent;
+      }`, { asset: normalizedAsset });
+        const row = data.agentReputation;
         if (!row)
             return null;
-        const feedbackCount = Math.max(0, toIntSafe(row?.totalFeedback, 0));
-        const rawQualityScore = toNumberSafe(row?.solana?.qualityScore, 0);
-        const qualityAvg = Math.max(0, Math.min(100, rawQualityScore > 100 ? rawQualityScore / 100 : rawQualityScore));
-        const scores = [];
-        const maxRows = Math.min(feedbackCount, 5000);
-        const pageSize = 100;
-        let skip = 0;
-        while (skip < maxRows) {
-            const first = Math.min(pageSize, maxRows - skip);
-            const pageData = await this.request(`query($agent: ID!) {
-          feedbacks(
-            first: ${first},
-            skip: ${skip},
-            where: { agent: $agent },
-            orderBy: createdAt,
-            orderDirection: desc
-          ) {
-            solana { score }
-          }
-        }`, { agent: normalizedAsset });
-            const page = pageData.feedbacks ?? [];
-            if (page.length === 0)
-                break;
-            for (const feedback of page) {
-                const score = feedback?.solana?.score;
-                if (score === null || score === undefined)
-                    continue;
-                const parsed = toNumberSafe(score, Number.NaN);
-                if (Number.isFinite(parsed)) {
-                    scores.push(parsed);
-                }
-            }
-            skip += page.length;
-            if (page.length < first)
-                break;
-        }
-        let avgScore = feedbackCount > 0 ? qualityAvg : null;
-        let positiveCount = 0;
-        let negativeCount = 0;
-        if (scores.length > 0) {
-            const sum = scores.reduce((acc, score) => acc + score, 0);
-            avgScore = sum / scores.length;
-            positiveCount = scores.filter((score) => score >= 50).length;
-            negativeCount = scores.length - positiveCount;
-        }
-        const observedCount = positiveCount + negativeCount;
-        if (feedbackCount > observedCount) {
-            const remaining = feedbackCount - observedCount;
-            const ratio = avgScore === null ? 0 : Math.max(0, Math.min(1, avgScore / 100));
-            const estimatedPositive = Math.round(remaining * ratio);
-            positiveCount += estimatedPositive;
-            negativeCount += remaining - estimatedPositive;
-        }
         return {
-            asset: row?.solana?.assetPubkey ?? row?.id ?? normalizedAsset,
+            asset: row?.asset ?? normalizedAsset,
             owner: row?.owner ?? '',
-            collection: row?.solana?.collection ?? '',
-            nft_name: null,
-            agent_uri: row?.agentURI ?? null,
-            feedback_count: feedbackCount,
-            avg_score: feedbackCount > 0 ? avgScore : null,
-            positive_count: positiveCount,
-            negative_count: negativeCount,
-            validation_count: 0,
+            collection: row?.collection ?? '',
+            nft_name: normalizeNullableText(row?.nftName ?? null),
+            agent_uri: row?.agentUri ?? null,
+            feedback_count: toExactSafeInteger(row?.feedbackCount, 'agentReputation.feedbackCount', 0),
+            avg_score: row?.avgScore === null || row?.avgScore === undefined ? null : toNumberSafe(row.avgScore, 0),
+            positive_count: toExactSafeInteger(row?.positiveCount, 'agentReputation.positiveCount', 0),
+            negative_count: toExactSafeInteger(row?.negativeCount, 'agentReputation.negativeCount', 0),
+            validation_count: toExactSafeInteger(row?.validationCount, 'agentReputation.validationCount', 0),
         };
     }
     // ============================================================================
@@ -1392,21 +1685,21 @@ export class IndexerGraphQLClient {
         const heads = await this.loadHashChainHeads(asset);
         return {
             digest: normalizeHexDigest(heads.feedback.digest),
-            count: toIntSafe(heads.feedback.count, 0),
+            count: toExactSafeInteger(heads.feedback.count, 'feedback.count', 0),
         };
     }
     async getLastResponseDigest(asset) {
         const heads = await this.loadHashChainHeads(asset);
         return {
             digest: normalizeHexDigest(heads.response.digest),
-            count: toIntSafe(heads.response.count, 0),
+            count: toExactSafeInteger(heads.response.count, 'response.count', 0),
         };
     }
     async getLastRevokeDigest(asset) {
         const heads = await this.loadHashChainHeads(asset);
         return {
             digest: normalizeHexDigest(heads.revoke.digest),
-            count: toIntSafe(heads.revoke.count, 0),
+            count: toExactSafeInteger(heads.revoke.count, 'revoke.count', 0),
         };
     }
     async getLatestCheckpoints(asset) {
@@ -1421,7 +1714,7 @@ export class IndexerGraphQLClient {
             if (!cp)
                 return null;
             return {
-                event_count: toIntSafe(cp.eventCount, 0),
+                event_count: toExactSafeInteger(cp.eventCount, 'checkpoint.eventCount', 0),
                 digest: normalizeHexDigest(cp.digest) ?? cp.digest,
                 created_at: toIsoFromUnixSeconds(cp.createdAt),
             };
@@ -1473,13 +1766,17 @@ export class IndexerGraphQLClient {
             feedback_hash: normalizeHexDigest(e.feedbackHash),
             responder: e.responder ?? undefined,
             response_hash: normalizeHexDigest(e.responseHash),
-            response_count: e.responseCount != null ? toNumberSafe(e.responseCount, 0) : null,
-            revoke_count: e.revokeCount != null ? toNumberSafe(e.revokeCount, 0) : null,
+            response_count: e.responseCount != null
+                ? toLosslessIntegerValue(e.responseCount, 'responseCount', 0)
+                : null,
+            revoke_count: e.revokeCount != null
+                ? toLosslessIntegerValue(e.revokeCount, 'revokeCount', 0)
+                : null,
         }));
         return {
             events,
             hasMore: Boolean(page.hasMore),
-            nextFromCount: toNumberSafe(page.nextFromCount, fromCount),
+            nextFromCount: toExactSafeInteger(page.nextFromCount, 'nextFromCount', fromCount),
         };
     }
     async getFeedbacksAtIndices(asset, indices) {
@@ -1525,7 +1822,8 @@ export class IndexerGraphQLClient {
             result.set(offset, null);
         }
         await Promise.all(offsets.map(async (offset) => {
-            const page = await this.getReplayData(asset, 'response', offset, offset + 1, 1);
+            const replayCount = offset + 1;
+            const page = await this.getReplayData(asset, 'response', replayCount, replayCount + 1, 1);
             const e = page.events[0];
             if (!e)
                 return;
@@ -1555,8 +1853,7 @@ export class IndexerGraphQLClient {
         await Promise.all(revokeCounts.map(async (c) => {
             if (!Number.isFinite(c) || c < 1)
                 return;
-            const idx = c - 1;
-            const page = await this.getReplayData(asset, 'revoke', idx, idx + 1, 1);
+            const page = await this.getReplayData(asset, 'revoke', c, c + 1, 1);
             const e = page.events[0];
             if (!e)
                 return;
@@ -1571,7 +1868,7 @@ export class IndexerGraphQLClient {
                 atom_enabled: false,
                 had_impact: false,
                 running_digest: e.running_digest,
-                revoke_count: e.revoke_count ?? idx,
+                revoke_count: e.revoke_count ?? c,
                 tx_signature: '',
                 created_at: new Date(0).toISOString(),
             });

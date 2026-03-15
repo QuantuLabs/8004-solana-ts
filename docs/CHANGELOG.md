@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+## v0.8.1 (2026-03-15)
+
+**Indexer Read Safety:**
+- Hardened GraphQL indexer reads so large count/index fields keep exact semantics instead of silently truncating via JavaScript number coercion.
+
+**Docs + Defaults:**
+- Documented the built-in secondary public indexer endpoints (`dev2` / `main2`) used by the SDK fallback lists for REST and GraphQL.
+
 **Docs Cleanup:**
 - Standardized registry terminology across docs.
 - Updated quickstart registration examples to use `registerAgent(..., { collectionPointer })`.

@@ -18,6 +18,7 @@ export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
+export * from './extras/proofpass.js';
 export { SolanaClient, UnsupportedRpcError, RpcNetworkError, SOLANA_DEVNET_RPC, SOLANA_TESTNET_RPC, SOLANA_MAINNET_RPC, SOLANA_LOCALNET_RPC, RECOMMENDED_RPC_PROVIDERS, createDevnetClient, } from './core/client.js';
 export type { Cluster, SolanaClientConfig } from './core/client.js';
 export { SolanaSDK } from './core/sdk-solana.js';

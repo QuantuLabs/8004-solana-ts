@@ -598,10 +598,13 @@ describe('SolanaSDK', () => {
       expect(result).toEqual({ id: '123' });
     });
 
-    it('getFeedbackById should reject non-numeric ids', async () => {
+    it('getFeedbackById should resolve canonical ids via scoped lookup', async () => {
+      mockIndexerClient.getFeedback.mockResolvedValueOnce({ id: 'asset1:client1:7' });
+
       const result = await sdk.getFeedbackById('asset1:client1:7');
-      expect(result).toBeNull();
+      expect(mockIndexerClient.getFeedback).toHaveBeenCalledWith('asset1', 'client1', 7n);
       expect(mockIndexerClient.getFeedbackById).not.toHaveBeenCalled();
+      expect(result).toEqual({ id: 'asset1:client1:7' });
     });
 
     it('getFeedbackById should return null when direct method is unavailable', async () => {
@@ -633,10 +636,13 @@ describe('SolanaSDK', () => {
       );
     });
 
-    it('getFeedbackResponsesByFeedbackId should reject non-numeric ids', async () => {
+    it('getFeedbackResponsesByFeedbackId should resolve canonical ids via scoped lookup', async () => {
+      mockIndexerClient.getFeedbackResponsesFor.mockResolvedValueOnce([{ id: 'r1' }]);
+
       const result = await sdk.getFeedbackResponsesByFeedbackId('asset1:client1:7', 5);
-      expect(result).toEqual([]);
+      expect(mockIndexerClient.getFeedbackResponsesFor).toHaveBeenCalledWith('asset1', 'client1', 7n, 5);
       expect(mockIndexerClient.getFeedbackResponsesByFeedbackId).not.toHaveBeenCalled();
+      expect(result).toEqual([{ id: 'r1' }]);
     });
 
     it('getFeedbackResponsesByFeedbackId should return [] when direct method is unavailable', async () => {

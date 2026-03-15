@@ -25,6 +25,7 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     private shouldFallbackEndpoint;
     private requestAgainstEndpoint;
     private shouldUseLegacyCollectionRead;
+    private shouldFallbackGlobalStatsExtendedFields;
     private resolveCollectionCreatorScope;
     private shouldFallbackAgentIdField;
     private shouldFallbackAgentIdVariableType;
@@ -58,6 +59,7 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
         offset?: number;
     }): Promise<IndexedFeedback[]>;
     getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
+    getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null>;
     getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
     getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
     getFeedbacksByEndpoint(endpoint: string): Promise<IndexedFeedback[]>;
@@ -67,6 +69,7 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     }): Promise<IndexedFeedback[]>;
     getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
     getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
+    getFeedbackResponsesByFeedbackId(feedbackId: string, limit?: number): Promise<IndexedFeedbackResponse[]>;
     getPendingValidations(_validator: string): Promise<IndexedValidation[]>;
     getAgentReputation(asset: string): Promise<IndexedAgentReputation | null>;
     getLastFeedbackDigest(asset: string): Promise<{

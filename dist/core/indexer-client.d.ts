@@ -98,7 +98,7 @@ export interface IndexerReadClient {
         offset?: number;
     }): Promise<IndexedFeedback[]>;
     getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
-    /** Accepts sequential numeric backend feedback id. */
+    /** Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids. */
     getFeedbackById?(feedbackId: string): Promise<IndexedFeedback | null>;
     getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
     getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
@@ -109,7 +109,7 @@ export interface IndexerReadClient {
     }): Promise<IndexedFeedback[]>;
     getLastFeedbackIndex(asset: string, client: string): Promise<bigint>;
     getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
-    /** Accepts sequential numeric backend feedback id. */
+    /** Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids. */
     getFeedbackResponsesByFeedbackId?(feedbackId: string, limit?: number): Promise<IndexedFeedbackResponse[]>;
     getPendingValidations(validator: string): Promise<IndexedValidation[]>;
     getAgentReputation(asset: string): Promise<IndexedAgentReputation | null>;
@@ -309,7 +309,6 @@ export interface GlobalStats {
     total_agents: number;
     total_collections: number;
     total_feedbacks: number;
-    total_validations: number;
     platinum_agents: number;
     gold_agents: number;
     avg_quality: number | null;
@@ -352,7 +351,7 @@ export interface ReplayEventData {
     feedback_hash?: string | null;
     responder?: string;
     response_hash?: string | null;
-    response_count?: number | null;
+    response_count?: number | string | null;
     revoke_count?: number | string | null;
 }
 export interface ReplayDataPage {
@@ -408,6 +407,9 @@ export declare class IndexerClient implements IndexerReadClient {
      */
     private buildQuery;
     private parseCountValue;
+    private getReplayEventCount;
+    private getReplayEventAt;
+    private getLastReplayDigest;
     private resolveCollectionCreatorScope;
     private shouldUseLegacyCollectionRead;
     private shouldUsePublicRestReadFallback;
@@ -490,7 +492,7 @@ export declare class IndexerClient implements IndexerReadClient {
     getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
     /**
      * Get a single feedback by feedback identifier.
-     * Accepts sequential numeric backend feedback ids.
+     * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
      */
     getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null>;
     /**
@@ -591,7 +593,7 @@ export declare class IndexerClient implements IndexerReadClient {
     getFeedbackResponsesFor(asset: string, client: string, feedbackIndex: number | bigint, limit?: number): Promise<IndexedFeedbackResponse[]>;
     /**
      * Get responses by feedback identifier.
-     * Accepts sequential numeric backend feedback ids.
+     * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
      * Uses a two-step lookup for REST compatibility:
      * 1) resolve feedback asset from `feedbacks` by `feedback_id`
      * 2) query `feedback_responses` by `asset + feedback_id`

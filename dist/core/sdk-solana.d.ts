@@ -27,7 +27,7 @@ export interface SolanaSDKConfig {
     rpcUrl?: string;
     signer?: Keypair;
     ipfsClient?: IPFSClient;
-    /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or cluster primary public endpoint) */
+    /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or the cluster fallback list primary endpoint) */
     indexerGraphqlUrl?: string;
     /**
      * @deprecated Legacy Supabase REST API URL (override via INDEXER_URL env)
@@ -495,12 +495,12 @@ export declare class SolanaSDK {
     encodeResponseId(asset: PublicKey | string, client: PublicKey | string, feedbackIndex: number | bigint, responder: PublicKey | string, responseCountOrTxSig: number | bigint | string): string;
     /**
      * Read feedback by indexer feedback id.
-     * Accepts sequential numeric backend feedback ids.
+     * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
      */
     getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null>;
     /**
      * Read responses by indexer feedback id.
-     * Accepts sequential numeric backend feedback ids.
+     * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
      */
     getFeedbackResponsesByFeedbackId(feedbackId: string, limit?: number): Promise<import('./indexer-client.js').IndexedFeedbackResponse[]>;
     /**

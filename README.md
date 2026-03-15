@@ -195,8 +195,10 @@ Indexer validation reads are archived (`v0.5.0+`). Legacy validation read method
 Default backend is **GraphQL v2** (public read-only reference deployment).
 
 Built-in public endpoints:
-- `mainnet-beta`: `https://8004-indexer-main.qnt.sh`
-- `devnet`/`testnet`: `https://8004-indexer-dev.qnt.sh`
+- `mainnet-beta` primary: `https://8004-indexer-main.qnt.sh`
+- `mainnet-beta` secondary fallback: `https://8004-indexer-main2.qnt.sh`
+- `devnet`/`testnet` primary: `https://8004-indexer-dev.qnt.sh`
+- `devnet`/`testnet` secondary fallback: `https://8004-indexer-dev2.qnt.sh`
 
 Legacy public endpoints may still exist for migration/debugging, but SDK defaults do not fall back to them implicitly.
 
@@ -266,8 +268,8 @@ const sdk = new SolanaSDK({
 
 Environment variables (optional):
 
-- `INDEXER_GRAPHQL_URL`: override GraphQL endpoint
-- `INDEXER_URL`: override REST v1 endpoint (legacy mode)
+- `INDEXER_GRAPHQL_URL`: override the GraphQL endpoint list with a single explicit endpoint
+- `INDEXER_URL`: override the REST v1 endpoint list with a single explicit endpoint (legacy mode)
 - `INDEXER_API_KEY`: optional auth token for REST v1 if required by your endpoint
 
 Read by backend sequence id:

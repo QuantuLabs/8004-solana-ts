@@ -64,6 +64,7 @@ import {
   GlobalStats,
   CollectionPointerRecord,
   encodeCanonicalFeedbackId,
+  decodeCanonicalFeedbackId,
   encodeCanonicalResponseId,
 } from './indexer-client.js';
 import type { ReplayEventData, CheckpointSet } from './indexer-client.js';
@@ -254,7 +255,7 @@ export interface SolanaSDKConfig {
   // Storage configuration
   ipfsClient?: IPFSClient;
   // Indexer configuration (v0.4.0) - all optional with sensible defaults
-  /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or cluster primary public endpoint) */
+  /** GraphQL v2 endpoint (default: env INDEXER_GRAPHQL_URL or the cluster fallback list primary endpoint) */
   indexerGraphqlUrl?: string;
   /**
    * @deprecated Legacy Supabase REST API URL (override via INDEXER_URL env)
@@ -1388,10 +1389,14 @@ export class SolanaSDK {
 
   /**
    * Read feedback by indexer feedback id.
-   * Accepts sequential numeric backend feedback ids.
+   * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
    */
   async getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null> {
     const normalizedId = feedbackId.trim();
+    const canonical = decodeCanonicalFeedbackId(normalizedId);
+    if (canonical) {
+      return this.indexerClient.getFeedback(canonical.asset, canonical.client, BigInt(canonical.index));
+    }
     if (!/^\d+$/.test(normalizedId)) return null;
 
     if (!this.indexerClient.getFeedbackById) return null;
@@ -1400,13 +1405,22 @@ export class SolanaSDK {
 
   /**
    * Read responses by indexer feedback id.
-   * Accepts sequential numeric backend feedback ids.
+   * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
    */
   async getFeedbackResponsesByFeedbackId(
     feedbackId: string,
     limit: number = 100
   ): Promise<import('./indexer-client.js').IndexedFeedbackResponse[]> {
     const normalizedId = feedbackId.trim();
+    const canonical = decodeCanonicalFeedbackId(normalizedId);
+    if (canonical) {
+      return this.indexerClient.getFeedbackResponsesFor(
+        canonical.asset,
+        canonical.client,
+        BigInt(canonical.index),
+        limit,
+      );
+    }
     if (!/^\d+$/.test(normalizedId)) return [];
 
     if (!this.indexerClient.getFeedbackResponsesByFeedbackId) return [];
@@ -4076,14 +4090,48 @@ export class SolanaSDK {
         return parseHexDigest32(value, label);
       };
 
-      const parseRequiredOrZeroHexDigest32 = (
+      const parseRequiredHexDigest32 = (
         value: string | null | undefined,
         label: string,
       ): Buffer => {
         if (value === null || value === undefined || value === '') {
-          return Buffer.alloc(32);
+          throw new Error(`Missing ${label}: expected 32-byte hex digest`);
         }
         return parseHexDigest32(value, label);
+      };
+
+      const replayStartCounts: Record<'feedback' | 'response' | 'revoke', number> = {
+        feedback: 0,
+        response: 0,
+        revoke: 0,
+      };
+
+      const getReplayWindowStart = (
+        chainType: 'feedback' | 'response' | 'revoke',
+        startCount: number,
+      ): number => {
+        if (chainType === 'feedback') return startCount;
+        return startCount === 0 ? 0 : startCount + 1;
+      };
+
+      const getReplayUpperBoundExclusive = (
+        chainType: 'feedback' | 'response' | 'revoke',
+        onChainCount: bigint,
+      ): number => {
+        const count = Number(onChainCount);
+        return chainType === 'feedback' ? count : count + 1;
+      };
+
+      const formatMismatchEventNumber = (
+        chainType: 'feedback' | 'response' | 'revoke',
+        mismatchAt: number | undefined,
+      ): string => {
+        if (mismatchAt === undefined) return 'unknown';
+        const replayStart = replayStartCounts[chainType];
+        if (chainType === 'feedback') {
+          return String(replayStart + mismatchAt);
+        }
+        return String((replayStart === 0 ? 1 : replayStart) + mismatchAt);
       };
 
       const replayChainFromIndexer = async (
@@ -4100,11 +4148,13 @@ export class SolanaSDK {
         }
 
         const allEvents: ReplayEventData[] = [];
-        let fromCount = startCount;
         const target = Number(onChainCount);
+        const replayUpperBoundExclusive = getReplayUpperBoundExclusive(chainType, onChainCount);
+        let fromCount = getReplayWindowStart(chainType, startCount);
+        replayStartCounts[chainType] = fromCount;
 
-        while (fromCount < target) {
-          const toCount = Math.min(fromCount + batchSize, target);
+        while (fromCount < replayUpperBoundExclusive) {
+          const toCount = Math.min(fromCount + batchSize, replayUpperBoundExclusive);
           const page = await this.indexerClient.getReplayData!(assetStr, chainType, fromCount, toCount, batchSize);
           allEvents.push(...page.events);
           onProgress?.(chainType, allEvents.length + startCount, target);
@@ -4117,7 +4167,7 @@ export class SolanaSDK {
             asset: Buffer.from(bs58.decode(e.asset)),
             client: Buffer.from(bs58.decode(e.client)),
             feedbackIndex: BigInt(e.feedback_index),
-            sealHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
+            sealHash: parseRequiredHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
             slot: BigInt(e.slot),
             storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
           }));
@@ -4128,8 +4178,8 @@ export class SolanaSDK {
             client: Buffer.from(bs58.decode(e.client)),
             feedbackIndex: BigInt(e.feedback_index),
             responder: e.responder ? Buffer.from(bs58.decode(e.responder)) : Buffer.alloc(32),
-            responseHash: parseRequiredOrZeroHexDigest32(e.response_hash, `response_hash[${index}]`),
-            feedbackHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
+            responseHash: parseRequiredHexDigest32(e.response_hash, `response_hash[${index}]`),
+            feedbackHash: parseRequiredHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
             slot: BigInt(e.slot),
             storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
           }));
@@ -4139,7 +4189,7 @@ export class SolanaSDK {
             asset: Buffer.from(bs58.decode(e.asset)),
             client: Buffer.from(bs58.decode(e.client)),
             feedbackIndex: BigInt(e.feedback_index),
-            feedbackHash: parseRequiredOrZeroHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
+            feedbackHash: parseRequiredHexDigest32(e.feedback_hash, `feedback_hash[${index}]`),
             slot: BigInt(e.slot),
             storedDigest: parseOptionalHexDigest32(e.running_digest, `running_digest[${index}]`),
           }));
@@ -4228,9 +4278,9 @@ export class SolanaSDK {
 
       if (status === 'corrupted') {
         const mismatchChains = [
-          !feedbackReplay.valid && `feedback (mismatch at event ${feedbackReplay.mismatchAt})`,
-          !responseReplay.valid && `response (mismatch at event ${responseReplay.mismatchAt})`,
-          !revokeReplay.valid && `revoke (mismatch at event ${revokeReplay.mismatchAt})`,
+          !feedbackReplay.valid && `feedback (mismatch at event ${formatMismatchEventNumber('feedback', feedbackReplay.mismatchAt)})`,
+          !responseReplay.valid && `response (mismatch at event ${formatMismatchEventNumber('response', responseReplay.mismatchAt)})`,
+          !revokeReplay.valid && `revoke (mismatch at event ${formatMismatchEventNumber('revoke', revokeReplay.mismatchAt)})`,
           !feedbackDigestMatch && feedbackReplay.valid && 'feedback (final digest mismatch)',
           !responseDigestMatch && responseReplay.valid && 'response (final digest mismatch)',
           !revokeDigestMatch && revokeReplay.valid && 'revoke (final digest mismatch)',

@@ -123,6 +123,20 @@ jest.unstable_mockModule('../../src/core/indexer-client.js', () => ({
       sequenceOrSig: number | bigint | string
     ) => `${asset}:${client}:${index.toString()}:${responder}:${sequenceOrSig.toString()}`
   ),
+  decodeCanonicalFeedbackId: jest.fn((id: string) => {
+    const parts = id.split(':');
+    if (parts.length === 3) {
+      const [asset, client, index] = parts;
+      if (!asset || !client || !index || asset === 'sol') return null;
+      return { asset, client, index };
+    }
+    if (parts.length === 4 && parts[0] === 'sol') {
+      const [, asset, client, index] = parts;
+      if (!asset || !client || !index) return null;
+      return { asset, client, index };
+    }
+    return null;
+  }),
 }));
 
 jest.unstable_mockModule('../../src/core/indexer-types.js', () => ({
@@ -456,6 +470,70 @@ describe('SolanaSDK deep tests', () => {
       expect(result.checkpointsUsed).toBe(true);
     });
 
+    it('should resume response replay strictly after the checkpoint count', async () => {
+      const { replayResponseChain } = await import('../../src/core/hash-chain-replay.js');
+      const originalFeedbackCount = mockAgentAccount.feedback_count;
+      const originalResponseCount = mockAgentAccount.response_count;
+      const originalRevokeCount = mockAgentAccount.revoke_count;
+      mockAgentAccount.feedback_count = 0n;
+      mockAgentAccount.response_count = 5n;
+      mockAgentAccount.revoke_count = 0n;
+
+      mockIndexerClient.getLatestCheckpoints.mockResolvedValueOnce({
+        feedback: null,
+        response: { digest: 'aa'.repeat(32), event_count: 3 },
+        revoke: null,
+      });
+
+      await sdk.verifyIntegrityFull(mockAssetKey, { useCheckpoints: true });
+
+      const responseReplayCall = mockIndexerClient.getReplayData.mock.calls.find(([, chainType]) => chainType === 'response');
+      expect(responseReplayCall).toEqual([
+        mockAssetKey.toBase58(),
+        'response',
+        4,
+        6,
+        1000,
+      ]);
+      expect(replayResponseChain).toHaveBeenCalledWith([], expect.any(Buffer), 3);
+
+      mockAgentAccount.feedback_count = originalFeedbackCount;
+      mockAgentAccount.response_count = originalResponseCount;
+      mockAgentAccount.revoke_count = originalRevokeCount;
+    });
+
+    it('should resume revoke replay strictly after the checkpoint count', async () => {
+      const { replayRevokeChain } = await import('../../src/core/hash-chain-replay.js');
+      const originalFeedbackCount = mockAgentAccount.feedback_count;
+      const originalResponseCount = mockAgentAccount.response_count;
+      const originalRevokeCount = mockAgentAccount.revoke_count;
+      mockAgentAccount.feedback_count = 0n;
+      mockAgentAccount.response_count = 0n;
+      mockAgentAccount.revoke_count = 4n;
+
+      mockIndexerClient.getLatestCheckpoints.mockResolvedValueOnce({
+        feedback: null,
+        response: null,
+        revoke: { digest: 'aa'.repeat(32), event_count: 2 },
+      });
+
+      await sdk.verifyIntegrityFull(mockAssetKey, { useCheckpoints: true });
+
+      const revokeReplayCall = mockIndexerClient.getReplayData.mock.calls.find(([, chainType]) => chainType === 'revoke');
+      expect(revokeReplayCall).toEqual([
+        mockAssetKey.toBase58(),
+        'revoke',
+        3,
+        5,
+        1000,
+      ]);
+      expect(replayRevokeChain).toHaveBeenCalledWith([], expect.any(Buffer), 2);
+
+      mockAgentAccount.feedback_count = originalFeedbackCount;
+      mockAgentAccount.response_count = originalResponseCount;
+      mockAgentAccount.revoke_count = originalRevokeCount;
+    });
+
     it('should return error when checkpoint digest is not 32-byte hex', async () => {
       mockIndexerClient.getLatestCheckpoints.mockResolvedValueOnce({
         feedback: { digest: 'abc', event_count: 3 },
@@ -466,6 +544,59 @@ describe('SolanaSDK deep tests', () => {
       const result = await sdk.verifyIntegrityFull(mockAssetKey, { useCheckpoints: true });
       expect(result.status).toBe('error');
       expect(result.error?.message).toContain('Invalid feedback checkpoint digest');
+    });
+
+    it('should report checkpointed response mismatchAt using the absolute replay event number', async () => {
+      const { replayResponseChain } = await import('../../src/core/hash-chain-replay.js');
+      const originalFeedbackCount = mockAgentAccount.feedback_count;
+      const originalResponseCount = mockAgentAccount.response_count;
+      const originalRevokeCount = mockAgentAccount.revoke_count;
+      mockAgentAccount.feedback_count = 0n;
+      mockAgentAccount.response_count = 5n;
+      mockAgentAccount.revoke_count = 0n;
+
+      mockIndexerClient.getLatestCheckpoints.mockResolvedValueOnce({
+        feedback: null,
+        response: { digest: 'aa'.repeat(32), event_count: 3 },
+        revoke: null,
+      });
+      (replayResponseChain as jest.Mock).mockResolvedValueOnce({
+        finalDigest: Buffer.from('ab'.repeat(32), 'hex'),
+        count: 4,
+        valid: false,
+        mismatchAt: 0,
+      });
+
+      const result = await sdk.verifyIntegrityFull(mockAssetKey, { useCheckpoints: true });
+      expect(result.status).toBe('corrupted');
+      expect(result.error?.message).toContain('response (mismatch at event 4)');
+
+      mockAgentAccount.feedback_count = originalFeedbackCount;
+      mockAgentAccount.response_count = originalResponseCount;
+      mockAgentAccount.revoke_count = originalRevokeCount;
+    });
+
+    it('should fail closed when replay data omits required digests', async () => {
+      const originalFeedbackCount = mockAgentAccount.feedback_count;
+      mockAgentAccount.feedback_count = 1n;
+      mockIndexerClient.getReplayData.mockResolvedValueOnce({
+        events: [{
+          asset: mockAssetKey.toBase58(),
+          client: PublicKey.unique().toBase58(),
+          feedback_index: '0',
+          feedback_hash: null,
+          running_digest: 'aa'.repeat(32),
+          slot: '1',
+        }],
+        hasMore: false,
+        nextFromCount: 1,
+      });
+
+      const result = await sdk.verifyIntegrityFull(mockAssetKey);
+      expect(result.status).toBe('error');
+      expect(result.error?.message).toContain('Missing feedback_hash[0]');
+
+      mockAgentAccount.feedback_count = originalFeedbackCount;
     });
 
     it('should call onProgress callback', async () => {

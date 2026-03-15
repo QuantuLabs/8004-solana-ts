@@ -186,7 +186,7 @@ export interface IndexerReadClient {
   // Feedbacks
   getFeedbacks(asset: string, options?: { includeRevoked?: boolean; limit?: number; offset?: number }): Promise<IndexedFeedback[]>;
   getFeedback(asset: string, client: string, feedbackIndex: number | bigint): Promise<IndexedFeedback | null>;
-  /** Accepts sequential numeric backend feedback id. */
+  /** Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids. */
   getFeedbackById?(feedbackId: string): Promise<IndexedFeedback | null>;
   getFeedbacksByClient(client: string): Promise<IndexedFeedback[]>;
   getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]>;
@@ -201,7 +201,7 @@ export interface IndexerReadClient {
     feedbackIndex: number | bigint,
     limit?: number
   ): Promise<IndexedFeedbackResponse[]>;
-  /** Accepts sequential numeric backend feedback id. */
+  /** Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids. */
   getFeedbackResponsesByFeedbackId?(feedbackId: string, limit?: number): Promise<IndexedFeedbackResponse[]>;
 
   // Validations
@@ -228,6 +228,22 @@ export interface IndexerReadClient {
   triggerReplay?(asset: string): Promise<ServerReplayResult>;
 }
 
+function deriveReadyUrlFromRestBase(baseUrl: string): string | null {
+  try {
+    const url = new URL(baseUrl);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    const rootPath = pathname.endsWith('/rest/v1')
+      ? pathname.slice(0, -'/rest/v1'.length)
+      : pathname;
+    url.pathname = `${rootPath || ''}/ready`;
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export interface CanonicalFeedbackIdParts {
   asset: string;
   client: string;
@@ -240,6 +256,49 @@ export interface CanonicalResponseIdParts {
   index: string;
   responder: string;
   sequenceOrSig: string;
+}
+
+function normalizeFeedbackRowId<T extends Pick<IndexedFeedback, 'id' | 'asset' | 'client_address' | 'feedback_index'>>(row: T): T {
+  if (
+    typeof row.asset === 'string' &&
+    typeof row.client_address === 'string' &&
+    row.feedback_index !== null &&
+    row.feedback_index !== undefined
+  ) {
+    return {
+      ...row,
+      id: encodeCanonicalFeedbackId(row.asset, row.client_address, row.feedback_index),
+    };
+  }
+  return row;
+}
+
+function normalizeFeedbackResponseRowId<
+  T extends Pick<IndexedFeedbackResponse, 'id' | 'asset' | 'client_address' | 'feedback_index' | 'responder' | 'tx_signature' | 'response_count'>
+>(row: T): T {
+  if (
+    typeof row.asset === 'string' &&
+    typeof row.client_address === 'string' &&
+    row.feedback_index !== null &&
+    row.feedback_index !== undefined &&
+    typeof row.responder === 'string' &&
+    row.responder.length > 0
+  ) {
+    const sequenceOrSig = row.tx_signature || row.response_count;
+    if (sequenceOrSig !== null && sequenceOrSig !== undefined && `${sequenceOrSig}`.length > 0) {
+      return {
+        ...row,
+        id: encodeCanonicalResponseId(
+          row.asset,
+          row.client_address,
+          row.feedback_index,
+          row.responder,
+          sequenceOrSig,
+        ),
+      };
+    }
+  }
+  return row;
 }
 
 export function encodeCanonicalFeedbackId(
@@ -467,7 +526,6 @@ export interface GlobalStats {
   total_agents: number;
   total_collections: number;
   total_feedbacks: number;
-  total_validations: number;
   platinum_agents: number;
   gold_agents: number;
   avg_quality: number | null;
@@ -517,7 +575,7 @@ export interface ReplayEventData {
   feedback_hash?: string | null;
   responder?: string;
   response_hash?: string | null;
-  response_count?: number | null;
+  response_count?: number | string | null;
   revoke_count?: number | string | null;
 }
 
@@ -740,21 +798,104 @@ export class IndexerClient implements IndexerReadClient {
     return queryString ? `?${queryString}` : '';
   }
 
-  private parseCountValue(value: unknown, fallback: number): number {
+  private parseCountValue(value: unknown, fallback: number, fieldName = 'count'): number {
     if (typeof value === 'number' && Number.isFinite(value)) {
+      if (!Number.isSafeInteger(value)) {
+        throw new IndexerError(
+          `${fieldName} exceeds JS safe integer range`,
+          IndexerErrorCode.INVALID_RESPONSE,
+        );
+      }
       return Math.max(0, Math.trunc(value));
     }
     if (typeof value === 'string' && /^-?\d+$/.test(value)) {
       try {
         const n = BigInt(value);
         if (n < 0n) return 0;
-        if (n > BigInt(Number.MAX_SAFE_INTEGER)) return Number.MAX_SAFE_INTEGER;
+        if (n > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new IndexerError(
+            `${fieldName} exceeds JS safe integer range`,
+            IndexerErrorCode.INVALID_RESPONSE,
+          );
+        }
         return Number(n);
-      } catch {
+      } catch (error) {
+        if (error instanceof IndexerError) {
+          throw error;
+        }
         return fallback;
       }
     }
     return fallback;
+  }
+
+  private getReplayEventCount(
+    chainType: 'feedback' | 'response' | 'revoke',
+    event: ReplayEventData,
+  ): number {
+    if (chainType === 'feedback') {
+      return this.parseCountValue(event.feedback_index, 0, 'feedback_index');
+    }
+    if (chainType === 'response') {
+      return this.parseCountValue(event.response_count, 0, 'response_count');
+    }
+    return this.parseCountValue(event.revoke_count, 0, 'revoke_count');
+  }
+
+  private async getReplayEventAt(
+    asset: string,
+    chainType: 'feedback' | 'response' | 'revoke',
+    count: number,
+  ): Promise<ReplayEventData | null> {
+    if (!Number.isFinite(count) || count < 0) return null;
+    if (chainType !== 'feedback' && count < 1) return null;
+
+    const page = await this.getReplayData(asset, chainType, count, count + 1, 1);
+    const event = page.events[0];
+    if (!event) return null;
+    return this.getReplayEventCount(chainType, event) === count ? event : null;
+  }
+
+  private async getLastReplayDigest(
+    asset: string,
+    chainType: 'feedback' | 'response' | 'revoke',
+  ): Promise<{ digest: string | null; count: number }> {
+    const cache = new Map<number, ReplayEventData | null>();
+    const firstCount = chainType === 'feedback' ? 0 : 1;
+
+    const load = async (count: number): Promise<ReplayEventData | null> => {
+      if (!cache.has(count)) {
+        cache.set(count, await this.getReplayEventAt(asset, chainType, count));
+      }
+      return cache.get(count) ?? null;
+    };
+
+    const firstEvent = await load(firstCount);
+    if (!firstEvent) {
+      return { digest: null, count: 0 };
+    }
+
+    let low = firstCount;
+    let high = chainType === 'feedback' ? 1 : 2;
+    while (await load(high)) {
+      low = high;
+      high *= 2;
+    }
+
+    while (low + 1 < high) {
+      const mid = low + Math.floor((high - low) / 2);
+      if (await load(mid)) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    const lastEvent = await load(low);
+    return {
+      digest: lastEvent?.running_digest ?? null,
+      count: chainType === 'feedback' ? low + 1 : low,
+    };
   }
 
   private async resolveCollectionCreatorScope(
@@ -857,11 +998,44 @@ export class IndexerClient implements IndexerReadClient {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      await this.request<IndexedAgent[]>('/agents?limit=1');
-      return true;
+      for (const baseUrl of this.baseUrls) {
+        const readyUrl = deriveReadyUrlFromRestBase(baseUrl);
+        if (readyUrl) {
+          try {
+            const headers: Record<string, string> = {};
+            if (this.apiKey) {
+              headers.apikey = this.apiKey;
+              headers.Authorization = `Bearer ${this.apiKey}`;
+            }
+            const response = await fetch(readyUrl, { headers, redirect: 'error' });
+            if (response.ok || response.status === 503) {
+              let payload: any = null;
+              try {
+                payload = await response.json();
+              } catch {
+                payload = null;
+              }
+              if (payload?.status === 'ready') {
+                return true;
+              }
+              continue;
+            }
+          } catch {
+            // Fall through to the legacy accessibility probe for this endpoint.
+          }
+        }
+
+        try {
+          await this.requestAgainstBaseUrl<IndexedAgent[]>(baseUrl, '/agents?limit=1');
+          return true;
+        } catch {
+          // Try next configured endpoint.
+        }
+      }
     } catch {
       return false;
     }
+    return false;
   }
 
   /**
@@ -1057,24 +1231,19 @@ export class IndexerClient implements IndexerReadClient {
     limit?: number;
     cursorSortKey?: string;
   }): Promise<IndexedAgent[]> {
-    const params: Record<string, string | number | undefined> = {
-      order: 'sort_key.desc',
-      limit: options?.limit || 50,
-    };
-
-    if (options?.collection) {
-      params.collection = `eq.${options.collection}`;
-    }
-    if (options?.minTier !== undefined) {
-      params.trust_tier = `gte.${options.minTier}`;
-    }
-    // Keyset pagination: get agents with sort_key < cursor
     if (options?.cursorSortKey) {
-      params.sort_key = `lt.${options.cursorSortKey}`;
+      return this.getLeaderboardRPC(options);
     }
 
-    const query = this.buildQuery(params);
-    return this.request<IndexedAgent[]>(`/agents${query}`);
+    const params = new URLSearchParams();
+    params.set('limit', String(options?.limit || 50));
+    if (options?.collection) params.set('collection', `eq.${options.collection}`);
+
+    const rows = await this.request<IndexedAgent[]>(`/leaderboard?${params.toString()}`);
+    if (options?.minTier === undefined) {
+      return rows;
+    }
+    return rows.filter((row) => this.parseCountValue((row as any).trust_tier, 0, 'trust_tier') >= options.minTier!);
   }
 
   /**
@@ -1125,7 +1294,8 @@ export class IndexerClient implements IndexerReadClient {
     }
 
     const query = this.buildQuery(params);
-    return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    const rows = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    return rows.map((row) => normalizeFeedbackRowId(row));
   }
 
   /**
@@ -1144,15 +1314,19 @@ export class IndexerClient implements IndexerReadClient {
       limit: 1,
     });
     const results = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
-    return results.length > 0 ? results[0] : null;
+    return results.length > 0 ? normalizeFeedbackRowId(results[0]) : null;
   }
 
   /**
    * Get a single feedback by feedback identifier.
-   * Accepts sequential numeric backend feedback ids.
+   * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
    */
   async getFeedbackById(feedbackId: string): Promise<IndexedFeedback | null> {
     const normalizedId = feedbackId.trim();
+    const canonical = decodeCanonicalFeedbackId(normalizedId);
+    if (canonical) {
+      return this.getFeedback(canonical.asset, canonical.client, BigInt(canonical.index));
+    }
     if (!/^\d+$/.test(normalizedId)) return null;
 
     const byIdQuery = this.buildQuery({
@@ -1163,7 +1337,7 @@ export class IndexerClient implements IndexerReadClient {
     if (byId.length > 1) {
       throw new Error('Ambiguous feedback id.');
     }
-    return byId.length === 1 ? byId[0] : null;
+    return byId.length === 1 ? normalizeFeedbackRowId(byId[0]) : null;
   }
 
   /**
@@ -1174,7 +1348,8 @@ export class IndexerClient implements IndexerReadClient {
       client_address: `eq.${client}`,
       order: 'feedback_id.desc',
     });
-    return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    const rows = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    return rows.map((row) => normalizeFeedbackRowId(row));
   }
 
   /**
@@ -1183,7 +1358,8 @@ export class IndexerClient implements IndexerReadClient {
   async getFeedbacksByTag(tag: string): Promise<IndexedFeedback[]> {
     // Search in both tag1 and tag2
     const query = `?or=(tag1.eq.${encodeURIComponent(tag)},tag2.eq.${encodeURIComponent(tag)})&order=feedback_id.desc`;
-    return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    const rows = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    return rows.map((row) => normalizeFeedbackRowId(row));
   }
 
   /**
@@ -1194,7 +1370,8 @@ export class IndexerClient implements IndexerReadClient {
       endpoint: `eq.${endpoint}`,
       order: 'feedback_id.desc',
     });
-    return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    const rows = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    return rows.map((row) => normalizeFeedbackRowId(row));
   }
 
   /**
@@ -1217,7 +1394,8 @@ export class IndexerClient implements IndexerReadClient {
     }
 
     const query = this.buildQuery(params);
-    return this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    const rows = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
+    return rows.map((row) => normalizeFeedbackRowId(row));
   }
 
   async getLastFeedbackIndex(asset: string, client: string): Promise<bigint> {
@@ -1385,7 +1563,7 @@ export class IndexerClient implements IndexerReadClient {
 
     try {
       const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${primaryQuery}`);
-      return this.parseCountValue(row?.asset_count, 0);
+      return this.parseCountValue(row?.asset_count, 0, 'asset_count');
     } catch (error) {
       if (!this.shouldUseLegacyCollectionRead(error)) {
         throw error;
@@ -1396,7 +1574,7 @@ export class IndexerClient implements IndexerReadClient {
         creator: `eq.${creatorScope}`,
       });
       const row = await this.request<{ asset_count?: number | string }>(`/collection_asset_count${legacyQuery}`);
-      return this.parseCountValue(row?.asset_count, 0);
+      return this.parseCountValue(row?.asset_count, 0, 'asset_count');
     }
   }
 
@@ -1461,7 +1639,6 @@ export class IndexerClient implements IndexerReadClient {
       total_agents: 0,
       total_collections: 0,
       total_feedbacks: 0,
-      total_validations: 0,
       platinum_agents: 0,
       gold_agents: 0,
       avg_quality: null,
@@ -1472,7 +1649,6 @@ export class IndexerClient implements IndexerReadClient {
     return {
       ...fallback,
       ...row,
-      total_validations: this.parseCountValue(row.total_validations, 0),
     };
   }
 
@@ -1509,7 +1685,8 @@ export class IndexerClient implements IndexerReadClient {
       asset: `eq.${asset}`,
       order: 'response_id.desc',
     });
-    return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+    const rows = await this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+    return rows.map((row) => normalizeFeedbackResponseRowId(row));
   }
 
   /**
@@ -1532,12 +1709,13 @@ export class IndexerClient implements IndexerReadClient {
       order: 'response_id.asc',
       limit,
     });
-    return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+    const rows = await this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+    return rows.map((row) => normalizeFeedbackResponseRowId(row));
   }
 
   /**
    * Get responses by feedback identifier.
-   * Accepts sequential numeric backend feedback ids.
+   * Accepts canonical `asset:client:index` ids and legacy sequential numeric backend feedback ids.
    * Uses a two-step lookup for REST compatibility:
    * 1) resolve feedback asset from `feedbacks` by `feedback_id`
    * 2) query `feedback_responses` by `asset + feedback_id`
@@ -1548,6 +1726,15 @@ export class IndexerClient implements IndexerReadClient {
     limit: number = 100
   ): Promise<IndexedFeedbackResponse[]> {
     const normalizedId = feedbackId.trim();
+    const canonical = decodeCanonicalFeedbackId(normalizedId);
+    if (canonical) {
+      return this.getFeedbackResponsesFor(
+        canonical.asset,
+        canonical.client,
+        BigInt(canonical.index),
+        limit,
+      );
+    }
     if (!/^\d+$/.test(normalizedId)) return [];
 
     const feedbackLookupQuery = this.buildQuery({
@@ -1580,7 +1767,8 @@ export class IndexerClient implements IndexerReadClient {
       order: 'response_id.asc',
       limit,
     });
-    return this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+    const rows = await this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
+    return rows.map((row) => normalizeFeedbackResponseRowId(row));
   }
 
   async getRevocations(asset: string): Promise<IndexedRevocation[]> {
@@ -1592,48 +1780,15 @@ export class IndexerClient implements IndexerReadClient {
   }
 
   async getLastFeedbackDigest(asset: string): Promise<{ digest: string | null; count: number }> {
-    // Get the truly last feedback by block_slot (hash-chain is ordered by slot, not index)
-    const lastQuery = this.buildQuery({
-      asset: `eq.${asset}`,
-      order: 'block_slot.desc',
-      limit: 1,
-    });
-    const lastFeedback = await this.request<IndexedFeedback[]>(`/feedbacks${lastQuery}`);
-    if (lastFeedback.length === 0) {
-      return { digest: null, count: 0 };
-    }
-    // feedback_index is zero-based, so chain count is lastIndex + 1.
-    const lastIndex = this.parseCountValue(lastFeedback[0].feedback_index, 0);
-    const count = lastIndex + 1;
-    return { digest: lastFeedback[0].running_digest, count };
+    return this.getLastReplayDigest(asset, 'feedback');
   }
 
   async getLastResponseDigest(asset: string): Promise<{ digest: string | null; count: number }> {
-    const query = this.buildQuery({
-      asset: `eq.${asset}`,
-      order: 'block_slot.desc',
-      limit: 1,
-    });
-    const responses = await this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
-    if (responses.length === 0) {
-      return { digest: null, count: 0 };
-    }
-    const count = this.parseCountValue(responses[0].response_count, 1);
-    return { digest: responses[0].running_digest, count };
+    return this.getLastReplayDigest(asset, 'response');
   }
 
   async getLastRevokeDigest(asset: string): Promise<{ digest: string | null; count: number }> {
-    const query = this.buildQuery({
-      asset: `eq.${asset}`,
-      order: 'revoke_count.desc',
-      limit: 1,
-    });
-    const revocations = await this.request<IndexedRevocation[]>(`/revocations${query}`);
-    if (revocations.length === 0) {
-      return { digest: null, count: 0 };
-    }
-    const count = this.parseCountValue(revocations[0].revoke_count, 1);
-    return { digest: revocations[0].running_digest, count };
+    return this.getLastReplayDigest(asset, 'revoke');
   }
 
   // ============================================================================
@@ -1650,26 +1805,38 @@ export class IndexerClient implements IndexerReadClient {
     asset: string,
     indices: number[]
   ): Promise<Map<number, IndexedFeedback | null>> {
-    if (indices.length === 0) return new Map();
-
-    // PostgREST IN query: feedback_index=in.(0,5,10,15)
-    const inClause = `in.(${indices.join(',')})`;
-    const query = this.buildQuery({
-      asset: `eq.${asset}`,
-      feedback_index: inClause,
-      order: 'feedback_index.asc',
-    });
-
-    const feedbacks = await this.request<IndexedFeedback[]>(`/feedbacks${query}`);
-
-    // Build result map
     const result = new Map<number, IndexedFeedback | null>();
+    if (indices.length === 0) return result;
+
     for (const idx of indices) {
       result.set(idx, null);
     }
-    for (const fb of feedbacks) {
-      result.set(Number(fb.feedback_index), fb);
-    }
+
+    await Promise.all(indices.map(async (idx) => {
+      const event = await this.getReplayEventAt(asset, 'feedback', idx);
+      if (!event) return;
+      result.set(idx, {
+        id: '',
+        asset,
+        client_address: event.client,
+        feedback_index: idx,
+        value: '0',
+        value_decimals: 0,
+        score: null,
+        tag1: null,
+        tag2: null,
+        endpoint: null,
+        feedback_uri: null,
+        feedback_hash: event.feedback_hash ?? null,
+        running_digest: event.running_digest,
+        is_revoked: false,
+        revoked_at: null,
+        block_slot: event.slot,
+        tx_signature: '',
+        created_at: new Date(0).toISOString(),
+      });
+    }));
+
     return result;
   }
 
@@ -1690,28 +1857,30 @@ export class IndexerClient implements IndexerReadClient {
     asset: string,
     offsets: number[]
   ): Promise<Map<number, IndexedFeedbackResponse | null>> {
-    if (offsets.length === 0) return new Map();
-
     const result = new Map<number, IndexedFeedbackResponse | null>();
+    if (offsets.length === 0) return result;
+
     for (const offset of offsets) {
       result.set(offset, null);
     }
 
-    // Fetch each offset individually (PostgREST doesn't support IN on offsets)
-    await Promise.all(
-      offsets.map(async (offset) => {
-        const query = this.buildQuery({
-          asset: `eq.${asset}`,
-          order: 'response_id.asc',
-          offset,
-          limit: 1,
-        });
-        const responses = await this.request<IndexedFeedbackResponse[]>(`/feedback_responses${query}`);
-        if (responses.length > 0) {
-          result.set(offset, responses[0]);
-        }
-      })
-    );
+    await Promise.all(offsets.map(async (offset) => {
+      const event = await this.getReplayEventAt(asset, 'response', offset + 1);
+      if (!event) return;
+      result.set(offset, {
+        id: '',
+        asset,
+        client_address: event.client,
+        feedback_index: this.parseCountValue(event.feedback_index, 0, 'feedback_index'),
+        responder: event.responder ?? '',
+        response_uri: null,
+        response_hash: event.response_hash ?? null,
+        running_digest: event.running_digest,
+        block_slot: event.slot,
+        tx_signature: '',
+        created_at: new Date(0).toISOString(),
+      });
+    }));
 
     return result;
   }
@@ -1726,26 +1895,33 @@ export class IndexerClient implements IndexerReadClient {
     asset: string,
     revokeCounts: number[]
   ): Promise<Map<number, IndexedRevocation | null>> {
-    if (revokeCounts.length === 0) return new Map();
-
-    // PostgREST IN query: revoke_count=in.(1,5,10)
-    const inClause = `in.(${revokeCounts.join(',')})`;
-    const query = this.buildQuery({
-      asset: `eq.${asset}`,
-      revoke_count: inClause,
-      order: 'revoke_count.asc',
-    });
-
-    const revocations = await this.request<IndexedRevocation[]>(`/revocations${query}`);
-
-    // Build result map
     const result = new Map<number, IndexedRevocation | null>();
+    if (revokeCounts.length === 0) return result;
+
     for (const rc of revokeCounts) {
       result.set(rc, null);
     }
-    for (const rev of revocations) {
-      result.set(Number(rev.revoke_count), rev);
-    }
+
+    await Promise.all(revokeCounts.map(async (revokeCount) => {
+      const event = await this.getReplayEventAt(asset, 'revoke', revokeCount);
+      if (!event) return;
+      result.set(revokeCount, {
+        id: '',
+        asset,
+        client_address: event.client,
+        feedback_index: this.parseCountValue(event.feedback_index, 0, 'feedback_index'),
+        feedback_hash: event.feedback_hash ?? null,
+        slot: event.slot,
+        original_score: null,
+        atom_enabled: false,
+        had_impact: false,
+        running_digest: event.running_digest,
+        revoke_count: revokeCount,
+        tx_signature: '',
+        created_at: new Date(0).toISOString(),
+      });
+    }));
+
     return result;
   }
 
@@ -1782,7 +1958,7 @@ export class IndexerClient implements IndexerReadClient {
     const nextFromCount = Array.isArray(payload)
       ? (events.length > 0 ? fromCount + events.length : fromCount)
       : payload?.nextFromCount !== undefined
-        ? this.parseCountValue(payload.nextFromCount, fromCount)
+        ? this.parseCountValue(payload.nextFromCount, fromCount, 'nextFromCount')
         : (events.length > 0 ? fromCount + events.length : fromCount);
     return {
       events,

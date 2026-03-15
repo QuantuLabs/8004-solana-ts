@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-03-15
+### Fixed
+- Hardened GraphQL indexer reads against integer precision loss by preserving exact count/index values and throwing on unsafe JavaScript integer ranges instead of silently coercing them.
+
+### Documentation
+- Documented the built-in secondary public indexer fallbacks (`dev2` / `main2`) that are already shipped in the SDK defaults for REST and GraphQL reads.
+
 ## [0.8.0] - 2026-03-06
 ### Fixed
 - Hardened GraphQL seal-hash reads by chunking feedback lookup pagination so live `appendResponseBySealHash(...)` works against the indexer’s complexity limits.

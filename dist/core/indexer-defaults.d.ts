@@ -9,6 +9,10 @@
  * - INDEXER_URL: Custom REST API URL
  * - INDEXER_API_KEY: Optional API key/bearer token (only if your endpoint requires it)
  * - FORCE_ON_CHAIN: Set to 'true' to bypass indexer
+ *
+ * Built-in public endpoint order:
+ * - devnet/testnet: primary `8004-indexer-dev`, then fallback `8004-indexer-dev2`
+ * - mainnet-beta: primary `8004-indexer-main`, then fallback `8004-indexer-main2`
  */
 import type { Cluster } from './client.js';
 export declare function getDefaultIndexerUrl(cluster: Cluster): string;

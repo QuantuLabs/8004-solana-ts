@@ -135,6 +135,20 @@ const mockIndexerClient = {
 jest.unstable_mockModule('../../src/core/indexer-client.js', () => ({
   IndexerClient: jest.fn().mockImplementation(() => mockIndexerClient),
   encodeCanonicalFeedbackId: jest.fn((asset: string, client: string, index: number | bigint | string) => `${asset}:${client}:${index.toString()}`),
+  decodeCanonicalFeedbackId: jest.fn((id: string) => {
+    const parts = id.split(':');
+    if (parts.length === 3) {
+      const [asset, client, index] = parts;
+      if (!asset || !client || !index || asset === 'sol') return null;
+      return { asset, client, index };
+    }
+    if (parts.length === 4 && parts[0] === 'sol') {
+      const [, asset, client, index] = parts;
+      if (!asset || !client || !index) return null;
+      return { asset, client, index };
+    }
+    return null;
+  }),
   encodeCanonicalResponseId: jest.fn(
     (
       asset: string,

@@ -29,11 +29,13 @@ export * from './core/programs.js';
 export * from './core/pda-helpers.js';
 export * from './core/borsh-schemas.js';
 export * from './core/feedback-normalizer.js';
-// feedback-auth.ts removed - not used by on-chain program (uses native Signer constraint)
 export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
+
+// Export optional extras
+export * from './extras/proofpass.js';
 
 // Export Solana client with RPC detection
 export {
