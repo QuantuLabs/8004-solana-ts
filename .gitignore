@@ -81,4 +81,5 @@ formal.md
 suivi-sdk.md
 # Local assistant settings (may contain secrets)
 .claude/settings.local.json
+.claude/CLAUDE.md
 artifacts/
