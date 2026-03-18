@@ -12,7 +12,7 @@ TypeScript SDK for 8004 Agent Registry on Solana.
 
 ## Features
 
-- **Collect requester-driven verified feedback** with [`ProofPass`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/PROOFPASS.md)
+- **Collect requester-driven verified feedback** with [`ProofPass`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md)
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
 - **Submit and query reputation feedback** with SEAL v1 integrity verification
@@ -45,7 +45,7 @@ import {
 import { Keypair } from '@solana/web3.js';
 
 const signer = Keypair.fromSecretKey(/* your key */);
-const pinataJwt = process.env.PINATA_JWT;
+const pinataJwt = 'your-pinata-jwt';
 const ipfs = pinataJwt
   ? new IPFSClient({ pinataEnabled: true, pinataJwt })
   : new IPFSClient({ url: 'http://localhost:5001' });
@@ -190,107 +190,38 @@ const agent = await sdk.loadAgent(assetPubkey);
 const summary = await sdk.getSummary(assetPubkey);
 ```
 
-## Indexer
+## ProofPass
 
-The SDK uses an indexer by default for search and query operations (feedbacks, collections/pointers, agent listings). This provides fast off-chain queries without scanning the blockchain.
-Indexer validation reads are archived (`v0.5.0+`). Legacy validation read methods remain available for compatibility but intentionally throw archived-feature errors.
+`ProofPass` is the requester-driven verified feedback flow for `8004-solana`.
 
-Default backend is **GraphQL v2** (public read-only reference deployment).
-
-Built-in public endpoints:
-- `mainnet-beta` primary: `https://8004-indexer-main.qnt.sh`
-- `mainnet-beta` secondary fallback: `https://8004-indexer-main2.qnt.sh`
-- `devnet`/`testnet` primary: `https://8004-indexer-dev.qnt.sh`
-- `devnet`/`testnet` secondary fallback: `https://8004-indexer-dev2.qnt.sh`
-
-Legacy public endpoints may still exist for migration/debugging, but SDK defaults do not fall back to them implicitly.
-
-You can self-host your own indexer: [github.com/QuantuLabs/8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
-
-### Network + Program Configuration
-
-- `cluster: 'devnet'` uses built-in devnet IDs:
-  - Agent Registry: `8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C`
-  - ATOM Engine: `AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF`
-- `cluster: 'mainnet-beta'` uses built-in mainnet IDs:
-  - Agent Registry: `8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ`
-  - ATOM Engine: `AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb`
-- `cluster: 'localnet'` is supported; set your deployed `programIds`.
+A service opens a feedback request, then the reviewer finalizes a real `giveFeedback()` later.
+The final feedback is still attributed to the `reviewer`, not to the `ProofPass` program.
 
 ```typescript
-// Mainnet-beta (default mainnet program IDs + default mainnet indexer)
-const sdk = new SolanaSDK({
-  cluster: 'mainnet-beta',
-  signer,
+import { openProofPass, giveFeedbackWithProof } from '8004-solana';
+
+const flow = await openProofPass({
+  connection,
+  creator: serviceWallet.publicKey,
+  reviewer: customerWallet.publicKey,
+  targetAgent: agent.asset,
+  contextRef: `request:${requestId}`,
 });
 
-// Devnet (default devnet program IDs + default devnet indexer)
-const sdk = new SolanaSDK({
-  cluster: 'devnet',
-  signer,
-});
-
-// Localnet custom config + local indexer endpoint
-const sdk = new SolanaSDK({
-  cluster: 'localnet',
-  rpcUrl: 'http://127.0.0.1:8899',
-  signer,
-  programIds: {
-    agentRegistry: 'YourRegistryProgramId',
-    atomEngine: 'YourAtomProgramId',
-    // mplCore is optional (defaults to canonical Metaplex Core ID)
+const finalizeIx = await giveFeedbackWithProof({
+  connection,
+  session: flow.sessionPda,
+  reviewer: customerWallet.publicKey,
+  feedback: {
+    value: '42',
+    tag1: 'quality',
   },
-  indexerGraphqlUrl: 'http://127.0.0.1:3005/v2/graphql',
-});
-
-// If you upgrade an existing self-hosted indexer DB:
-// - PostgreSQL / Supabase: apply the pending SQL files in 8004-solana-indexer/supabase/migrations/
-// - local SQLite: run `npx prisma migrate deploy` in the indexer repo against the same persisted DB file
-// - do not use `prisma db push` for upgrade flows
-
-// Custom GraphQL indexer override (recommended)
-const sdk = new SolanaSDK({
-  cluster: 'mainnet-beta',
-  indexerGraphqlUrl: 'https://your-indexer.example.com/v2/graphql',
-});
-
-// Legacy REST v1 (deprecated but supported for now)
-const sdk = new SolanaSDK({
-  cluster: 'devnet',
-  indexerUrl: 'https://your-indexer.example.com/rest/v1',
-  // optional: only if your endpoint requires auth
-  indexerApiKey: process.env.INDEXER_API_KEY,
-});
-
-// Force on-chain reads when possible (indexer-only methods will still require an indexer)
-const sdk = new SolanaSDK({
-  cluster: 'devnet',
-  forceOnChain: true,
 });
 ```
 
-Environment variables (optional):
-
-- `INDEXER_GRAPHQL_URL`: override the GraphQL endpoint list with a single explicit endpoint
-- `INDEXER_URL`: override the REST v1 endpoint list with a single explicit endpoint (legacy mode)
-- `INDEXER_API_KEY`: optional auth token for REST v1 if required by your endpoint
-
-Read by backend sequence id:
-
-```typescript
-// GraphQL: sequence id (Agent.agentId / legacy agentid)
-const indexed = await sdk.getAgentByAgentId(42);
-
-// REST: sequence id (`agent_id`)
-const indexedRest = await sdk.getAgentByAgentId(42);
-
-// Backward-compatible alias (same backend-specific semantics)
-const indexedLegacy = await sdk.getAgentByIndexerId(42);
-```
-
-`getAgentByAgentId()` semantics depend on backend:
-- REST (`indexerUrl`): uses numeric `agent_id`
-- GraphQL (`indexerGraphqlUrl`): uses sequence id fields (`agentId`, with legacy fallback `agentid`)
+See the public examples:
+- [ProofPass Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md)
+- [ProofPass + x402 Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass-x402.md)
 
 ## Feedback System
 
@@ -426,11 +357,29 @@ const sdk = new SolanaSDK({
 | [`proofpass.md`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md) | Generic requester-driven ProofPass flow |
 | [`proofpass-x402.md`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass-x402.md) | Compact x402-compatible ProofPass flow |
 
+### Indexer
+
+The SDK uses the indexer for search, collection reads, sequential ids, and large reads.
+Default backend is **GraphQL v2**.
+
+```typescript
+const indexed = await sdk.getAgentByAgentId(42);
+```
+
+Built-in public endpoints:
+- `mainnet-beta`: `https://8004-indexer-main.qnt.sh`
+- `devnet` / `testnet`: `https://8004-indexer-dev.qnt.sh`
+
+Self-hosting:
+- [8004-solana-indexer](https://github.com/QuantuLabs/8004-solana-indexer)
+
+If you upgrade a self-hosted indexer with a persisted DB, apply the pending DB migrations before restart.
+
 ## Documentation
 
 - [API Reference](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/METHODS.md) - All methods with examples
 - [Feedback Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md) - Tags, value/decimals, advanced patterns
-- [ProofPass Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/PROOFPASS.md) - Asset-first requester-driven verified feedback flow
+- [ProofPass Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md) - Generic requester-driven verified feedback flow
 - [ProofPass + x402 Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass-x402.md) - Compact x402-compatible flow
 - [Collection Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/COLLECTION.md) - Collection pointer and parent association rules
 - [Quickstart](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/QUICKSTART.md) - Step-by-step guide
