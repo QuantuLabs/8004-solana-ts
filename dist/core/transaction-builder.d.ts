@@ -304,16 +304,17 @@ export declare class ReputationTransactionBuilder {
     setFeedbackTags(_asset: PublicKey, _feedbackIndex: bigint, _tag1: string, _tag2: string, _options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
 }
 /**
+ * @deprecated Validation is archived. This builder remains only as a compatibility shim.
  * Transaction builder for Validation Registry operations
  * v0.3.0 - Asset-based identification
  */
 export declare class ValidationTransactionBuilder {
     private connection;
     private payer?;
-    private instructionBuilder;
     private readonly programIds;
     constructor(connection: Connection, payer?: Keypair | undefined, programIds?: TransactionBuilderProgramIdOverrides);
     /**
+     * @deprecated Validation is archived. This compatibility shim always returns an archived error.
      * Request validation for an agent - v0.3.0
      * @param asset - Agent Core asset
      * @param validatorAddress - Validator public key
@@ -324,6 +325,7 @@ export declare class ValidationTransactionBuilder {
      */
     requestValidation(asset: PublicKey, validatorAddress: PublicKey, nonce: number, requestUri: string, requestHash: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
+     * @deprecated Validation is archived. This compatibility shim always returns an archived error.
      * Respond to validation request - v0.3.0
      * @param asset - Agent Core asset
      * @param nonce - Request nonce

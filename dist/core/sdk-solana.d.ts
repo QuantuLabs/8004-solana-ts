@@ -297,7 +297,6 @@ export declare class SolanaSDK {
     private readonly ipfsClient?;
     private readonly identityTxBuilder;
     private readonly reputationTxBuilder;
-    private readonly validationTxBuilder;
     private readonly atomTxBuilder;
     private mintResolver?;
     private baseCollection?;
@@ -705,6 +704,7 @@ export declare class SolanaSDK {
     /** @deprecated Use getAgentByAgentId(agentId) */
     getAgentByIndexerId(agentId: string | number | bigint): Promise<IndexedAgent | null>;
     /**
+     * @deprecated Validation is archived. This compatibility shim always throws.
      * Get pending validations for a validator - indexer only
      * @param validator - Validator pubkey string
      * @returns Array of pending validation requests
@@ -912,6 +912,7 @@ export declare class SolanaSDK {
      */
     appendResponseBySealHash(asset: PublicKey, client: PublicKey, sealHash: Buffer, responseUri: string, responseHash?: Buffer, options?: WriteOptions): Promise<TransactionResult | PreparedTransaction>;
     /**
+     * @deprecated Validation is archived. This compatibility shim always throws.
      * Request validation (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param validator - Validator public key
@@ -920,13 +921,14 @@ export declare class SolanaSDK {
      *   - nonce: Auto-generated if not provided (timestamp-based)
      *   - requestHash: Optional, defaults to zeros (acceptable for IPFS URIs)
      */
-    requestValidation(asset: PublicKey, validator: PublicKey, requestUri: string, options?: WriteOptions & {
+    requestValidation(_asset: PublicKey, _validator: PublicKey, _requestUri: string, _options?: WriteOptions & {
         nonce?: number;
         requestHash?: Buffer;
     }): Promise<(TransactionResult & {
         nonce?: bigint;
     }) | PreparedTransaction>;
     /**
+     * @deprecated Validation is archived. This compatibility shim always throws.
      * Respond to validation request (write operation) - v0.3.0
      * @param asset - Agent Core asset pubkey
      * @param nonce - Request nonce (from requestValidation result)
@@ -936,11 +938,12 @@ export declare class SolanaSDK {
      *   - responseHash: Optional, defaults to zeros (acceptable for IPFS URIs)
      *   - tag: Optional response tag (max 32 bytes)
      */
-    respondToValidation(asset: PublicKey, nonce: number | bigint, score: number, responseUri: string, options?: WriteOptions & {
+    respondToValidation(_asset: PublicKey, _nonce: number | bigint, _score: number, _responseUri: string, _options?: WriteOptions & {
         responseHash?: Buffer;
         tag?: string;
     }): Promise<TransactionResult | PreparedTransaction>;
     /**
+     * @deprecated Validation is archived. This compatibility shim always throws.
      * Read validation request (read operation) - v0.4.2
      * Reads ValidationRequest directly from on-chain (no indexer required)
      * Returns normalized data with user-friendly properties
@@ -949,8 +952,9 @@ export declare class SolanaSDK {
      * @param nonce - Request nonce (number or bigint)
      * @returns NormalizedValidation or null if not found
      */
-    readValidation(asset: PublicKey, validator: PublicKey, nonce: number | bigint): Promise<NormalizedValidation | null>;
+    readValidation(_asset: PublicKey, _validator: PublicKey, _nonce: number | bigint): Promise<NormalizedValidation | null>;
     /**
+     * @deprecated Validation is archived. This compatibility shim always throws.
      * Wait for validation request to be available on-chain (with retry)
      * Useful for handling blockchain finalization delays
      * @param asset - Agent Core asset pubkey
@@ -959,7 +963,7 @@ export declare class SolanaSDK {
      * @param options - Wait options (timeout, waitForResponse)
      * @returns NormalizedValidation or null if timeout
      */
-    waitForValidation(asset: PublicKey, validator: PublicKey, nonce: number | bigint, options?: WaitForValidationOptions): Promise<NormalizedValidation | null>;
+    waitForValidation(_asset: PublicKey, _validator: PublicKey, _nonce: number | bigint, _options?: WaitForValidationOptions): Promise<NormalizedValidation | null>;
     /**
      * Transfer agent ownership (write operation) - v0.3.0
      * Overload 1 (recommended): base collection is resolved automatically.

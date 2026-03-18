@@ -12,7 +12,7 @@ import { PublicKey, Transaction, TransactionInstruction, Keypair, ComputeBudgetP
 import { PDAHelpers } from './pda-helpers.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { writeBigUInt64LE } from '../utils/buffer-utils.js';
-import { IdentityInstructionBuilder, ReputationInstructionBuilder, ValidationInstructionBuilder, AtomInstructionBuilder, } from './instruction-builder.js';
+import { IdentityInstructionBuilder, ReputationInstructionBuilder, AtomInstructionBuilder, } from './instruction-builder.js';
 import { getProgramIds } from './programs.js';
 import { AgentAccount } from './borsh-schemas.js';
 import { fetchRootConfig } from './config-reader.js';
@@ -1217,21 +1217,21 @@ export class ReputationTransactionBuilder {
     }
 }
 /**
+ * @deprecated Validation is archived. This builder remains only as a compatibility shim.
  * Transaction builder for Validation Registry operations
  * v0.3.0 - Asset-based identification
  */
 export class ValidationTransactionBuilder {
     connection;
     payer;
-    instructionBuilder;
     programIds;
     constructor(connection, payer, programIds) {
         this.connection = connection;
         this.payer = payer;
         this.programIds = getProgramIds(programIds);
-        this.instructionBuilder = new ValidationInstructionBuilder(this.programIds.agentRegistry);
     }
     /**
+     * @deprecated Validation is archived. This compatibility shim always returns an archived error.
      * Request validation for an agent - v0.3.0
      * @param asset - Agent Core asset
      * @param validatorAddress - Validator public key
@@ -1254,6 +1254,7 @@ export class ValidationTransactionBuilder {
         };
     }
     /**
+     * @deprecated Validation is archived. This compatibility shim always returns an archived error.
      * Respond to validation request - v0.3.0
      * @param asset - Agent Core asset
      * @param nonce - Request nonce

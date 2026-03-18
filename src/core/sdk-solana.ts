@@ -19,11 +19,10 @@ import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIdsForCluster, type ProgramIdOverrides } from './programs.js';
 import { sha256 } from '../utils/crypto-utils.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
-import { AgentAccount, MetadataEntryPda, ValidationRequest } from './borsh-schemas.js';
+import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
 import {
   IdentityTransactionBuilder,
   ReputationTransactionBuilder,
-  ValidationTransactionBuilder,
   AtomTransactionBuilder,
   validateCollectionPointer,
   TransactionResult,
@@ -36,7 +35,7 @@ import {
 import { AgentMintResolver } from './agent-mint-resolver.js';
 import { getBaseCollection, fetchRegistryConfig } from './config-reader.js';
 import { RegistryConfig } from './borsh-schemas.js';
-import { isBlockedUri, validateNonce } from '../utils/validation.js';
+import { isBlockedUri } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import {
   buildSignedPayload,
@@ -547,7 +546,6 @@ export class SolanaSDK {
   private readonly ipfsClient?: IPFSClient;
   private readonly identityTxBuilder: IdentityTransactionBuilder;
   private readonly reputationTxBuilder: ReputationTransactionBuilder;
-  private readonly validationTxBuilder: ValidationTransactionBuilder;
   private readonly atomTxBuilder: AtomTransactionBuilder;
   private mintResolver?: AgentMintResolver;
   private baseCollection?: PublicKey;
@@ -605,7 +603,6 @@ export class SolanaSDK {
       this.indexerClient,
       this.programIds
     );
-    this.validationTxBuilder = new ValidationTransactionBuilder(connection, this.signer, this.programIds);
     this.atomTxBuilder = new AtomTransactionBuilder(connection, this.signer, this.programIds);
     this.feedbackManager.setIndexerClient(this.indexerClient);
     this.useIndexer = config.useIndexer ?? true;
@@ -1976,6 +1973,7 @@ export class SolanaSDK {
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always throws.
    * Get pending validations for a validator - indexer only
    * @param validator - Validator pubkey string
    * @returns Array of pending validation requests
@@ -2749,6 +2747,7 @@ export class SolanaSDK {
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always throws.
    * Request validation (write operation) - v0.3.0
    * @param asset - Agent Core asset pubkey
    * @param validator - Validator public key
@@ -2758,15 +2757,16 @@ export class SolanaSDK {
    *   - requestHash: Optional, defaults to zeros (acceptable for IPFS URIs)
    */
   async requestValidation(
-    asset: PublicKey,
-    validator: PublicKey,
-    requestUri: string,
-    options?: WriteOptions & { nonce?: number; requestHash?: Buffer }
+    _asset: PublicKey,
+    _validator: PublicKey,
+    _requestUri: string,
+    _options?: WriteOptions & { nonce?: number; requestHash?: Buffer }
   ): Promise<(TransactionResult & { nonce?: bigint }) | PreparedTransaction> {
     throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always throws.
    * Respond to validation request (write operation) - v0.3.0
    * @param asset - Agent Core asset pubkey
    * @param nonce - Request nonce (from requestValidation result)
@@ -2777,16 +2777,17 @@ export class SolanaSDK {
    *   - tag: Optional response tag (max 32 bytes)
    */
   async respondToValidation(
-    asset: PublicKey,
-    nonce: number | bigint,
-    score: number,
-    responseUri: string,
-    options?: WriteOptions & { responseHash?: Buffer; tag?: string }
+    _asset: PublicKey,
+    _nonce: number | bigint,
+    _score: number,
+    _responseUri: string,
+    _options?: WriteOptions & { responseHash?: Buffer; tag?: string }
   ): Promise<TransactionResult | PreparedTransaction> {
     throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always throws.
    * Read validation request (read operation) - v0.4.2
    * Reads ValidationRequest directly from on-chain (no indexer required)
    * Returns normalized data with user-friendly properties
@@ -2796,14 +2797,15 @@ export class SolanaSDK {
    * @returns NormalizedValidation or null if not found
    */
   async readValidation(
-    asset: PublicKey,
-    validator: PublicKey,
-    nonce: number | bigint
+    _asset: PublicKey,
+    _validator: PublicKey,
+    _nonce: number | bigint
   ): Promise<NormalizedValidation | null> {
     throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always throws.
    * Wait for validation request to be available on-chain (with retry)
    * Useful for handling blockchain finalization delays
    * @param asset - Agent Core asset pubkey
@@ -2813,10 +2815,10 @@ export class SolanaSDK {
    * @returns NormalizedValidation or null if timeout
    */
   async waitForValidation(
-    asset: PublicKey,
-    validator: PublicKey,
-    nonce: number | bigint,
-    options?: WaitForValidationOptions
+    _asset: PublicKey,
+    _validator: PublicKey,
+    _nonce: number | bigint,
+    _options?: WaitForValidationOptions
   ): Promise<NormalizedValidation | null> {
     throw new Error(VALIDATION_ARCHIVED_ERROR);
   }

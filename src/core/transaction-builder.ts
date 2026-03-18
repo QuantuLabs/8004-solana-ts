@@ -26,7 +26,6 @@ import { writeBigUInt64LE } from '../utils/buffer-utils.js';
 import {
   IdentityInstructionBuilder,
   ReputationInstructionBuilder,
-  ValidationInstructionBuilder,
   AtomInstructionBuilder,
   UpdateAtomConfigParams,
 } from './instruction-builder.js';
@@ -37,7 +36,7 @@ export type { UpdateAtomConfigParams };
 import { AgentAccount } from './borsh-schemas.js';
 import { fetchRootConfig } from './config-reader.js';
 import { getAtomConfigPDA, getAtomStatsPDA } from './atom-pda.js';
-import { validateByteLength, validateNonce } from '../utils/validation.js';
+import { validateByteLength } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import type { IndexerReadClient } from './indexer-client.js';
 import { resolveScore } from './feedback-normalizer.js';
@@ -1848,11 +1847,11 @@ export class ReputationTransactionBuilder {
 }
 
 /**
+ * @deprecated Validation is archived. This builder remains only as a compatibility shim.
  * Transaction builder for Validation Registry operations
  * v0.3.0 - Asset-based identification
  */
 export class ValidationTransactionBuilder {
-  private instructionBuilder: ValidationInstructionBuilder;
   private readonly programIds: ReturnType<typeof getProgramIds>;
 
   constructor(
@@ -1861,10 +1860,10 @@ export class ValidationTransactionBuilder {
     programIds?: TransactionBuilderProgramIdOverrides
   ) {
     this.programIds = getProgramIds(programIds);
-    this.instructionBuilder = new ValidationInstructionBuilder(this.programIds.agentRegistry);
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always returns an archived error.
    * Request validation for an agent - v0.3.0
    * @param asset - Agent Core asset
    * @param validatorAddress - Validator public key
@@ -1895,6 +1894,7 @@ export class ValidationTransactionBuilder {
   }
 
   /**
+   * @deprecated Validation is archived. This compatibility shim always returns an archived error.
    * Respond to validation request - v0.3.0
    * @param asset - Agent Core asset
    * @param nonce - Request nonce

@@ -12,7 +12,7 @@ TypeScript SDK for 8004 Agent Registry on Solana.
 
 ## Features
 
-- **Collect requester-driven verified feedback** with [`ProofPass`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md)
+- **Collect requester-driven verified feedback** with [`ProofPass`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/PROOFPASS.md)
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
 - **Submit and query reputation feedback** with SEAL v1 integrity verification
@@ -430,7 +430,7 @@ const sdk = new SolanaSDK({
 
 - [API Reference](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/METHODS.md) - All methods with examples
 - [Feedback Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md) - Tags, value/decimals, advanced patterns
-- [ProofPass Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md) - Generic requester-driven verified feedback flow
+- [ProofPass Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/PROOFPASS.md) - Asset-first requester-driven verified feedback flow
 - [ProofPass + x402 Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass-x402.md) - Compact x402-compatible flow
 - [Collection Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/COLLECTION.md) - Collection pointer and parent association rules
 - [Quickstart](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/QUICKSTART.md) - Step-by-step guide
