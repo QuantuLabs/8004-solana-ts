@@ -184,10 +184,13 @@ console.log(report.liveServices, report.deadServices);
 ### Read-Only Mode
 
 ```typescript
-const sdk = new SolanaSDK({ cluster: 'devnet' }); // No signer = read-only
+import { PublicKey } from '@solana/web3.js';
 
-const agent = await sdk.loadAgent(assetPubkey);
-const summary = await sdk.getSummary(assetPubkey);
+const sdk = new SolanaSDK({ cluster: 'devnet' }); // No signer = read-only
+const asset = new PublicKey('YourAgentAssetPubkey...');
+
+const agent = await sdk.loadAgent(asset);
+const summary = await sdk.getSummary(asset);
 ```
 
 ## ProofPass
