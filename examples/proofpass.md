@@ -34,7 +34,7 @@ const flow = await openProofPass({
 console.log(flow.sessionAddress);
 ```
 
-If you only have a backend sequential `agentId`, resolve it through the indexer first, then pass the resulting agent asset pubkey into `openProofPass(...)`. That is also the case where custom `indexerClient` / `indexerGraphqlUrl` overrides become relevant.
+If you only have a backend sequential `agentId`, the preferred flow is still to resolve it to the agent asset pubkey first. For compatibility, `openProofPass(...)` also still accepts a sequential `targetAgent` together with `indexerClient` / `indexerGraphqlUrl`.
 
 ## Finalize
 

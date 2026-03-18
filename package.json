@@ -96,6 +96,8 @@
   },
   "files": [
     "dist/**/*",
+    "docs/**/*.md",
+    "examples/**/*.md",
     "README.md",
     "LICENSE",
     "package.json"

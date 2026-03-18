@@ -1,7 +1,7 @@
 /**
  * 8004-solana-ts SDK
  * TypeScript SDK for 8004 on Solana
- * v0.7.9 - ATOM Engine + Indexer + collection pointer architecture
+ * v0.8.2 - ATOM Engine + Indexer + ProofPass
  * Main entry point - exports public API
  */
 export * from './models/index.js';

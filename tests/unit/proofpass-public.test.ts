@@ -254,6 +254,31 @@ describe('proofpass public surface', () => {
     expect(flow.targetAgent).toBe(targetAsset.toBase58());
   });
 
+  it('openProofPass falls back to explicit targetAsset on custom registries without building a default indexer client', async () => {
+    const connection = {
+      getAccountInfo: jest.fn().mockResolvedValue({
+        data: makeProofPassConfig({
+          treasury,
+          registryProgram,
+        }),
+      }),
+    };
+
+    const typedParams: sdk.OpenProofPassParams = {
+      connection: connection as any,
+      creator,
+      reviewer,
+      targetAgent: '42',
+      targetAsset,
+      contextRef: 'proofpass:test:custom-registry-target-asset-fallback',
+    };
+
+    const flow = await sdk.openProofPass(typedParams);
+
+    expect(flow.targetAsset).toBe(targetAsset.toBase58());
+    expect(flow.targetAgent).toBe(targetAsset.toBase58());
+  });
+
   it('openProofPass forwards reviewer-paid fee mode into the built flow', async () => {
     const connection = {
       getAccountInfo: jest.fn().mockResolvedValue({

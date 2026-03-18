@@ -203,7 +203,7 @@ const ipfsLocal = new IPFSClient({ url: 'http://localhost:5001' });
 
 For this release, the main async agent-scoped SDK surface is asset-pubkey-first.
 
-If you only have a backend sequential `agentId`, resolve it through the indexer first, then keep using the agent asset pubkey for the main SDK methods.
+If you only have a backend sequential `agentId`, the preferred flow is still to resolve it to the agent asset pubkey first. For compatibility, helpers like `openProofPass(...)` can also accept a sequential `targetAgent` together with indexer-based resolution.
 
 After registration, keep the returned asset and use it directly:
 

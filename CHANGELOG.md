@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-03-18
+### Added
+- Added the public `ProofPass` flow:
+  - `openProofPass(...)`
+  - `giveFeedbackWithProof(...)`
+  - `getLiveProofPass(...)`
+  - `getLiveProofPassesByCreator(...)`
+  - `closeProofPass(...)`
+
+### Changed
+- Documented the current validated `ProofPass` fee model:
+  - `open_fee = 0`
+  - `finalize_fee = 10_000`
+  - default `creator_pays_all`
+- Kept the public docs/examples asset-pubkey-first while retaining sequential lookup compatibility as secondary behavior.
+
+### Documentation
+- Added `ProofPass` docs/examples to the main SDK documentation set.
+- Simplified revoke and asset-first guidance across the new release docs.
+
 ## [0.8.1] - 2026-03-15
 ### Fixed
 - Hardened GraphQL indexer reads against integer precision loss by preserving exact count/index values and throwing on unsafe JavaScript integer ranges instead of silently coercing them.

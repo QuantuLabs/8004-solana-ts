@@ -42,6 +42,7 @@ export interface OpenProofPassParams {
     creator: ProofPassPublicKeyInput;
     reviewer: ProofPassPublicKeyInput;
     targetAgent: ProofPassTargetAgentInput;
+    targetAsset?: ProofPassPublicKeyInput;
     contextType?: number;
     contextRef?: ProofPassContextRefInput;
     contextRefHash?: ProofPassBytesInput;

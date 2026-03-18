@@ -100,6 +100,17 @@ describe('proofpass doc examples', () => {
     expect(markdown).not.toContain('8004-reputation');
   });
 
+  it('keeps the public ProofPass guide asset-first while documenting compatibility correctly', () => {
+    const markdown = fs.readFileSync(
+      path.resolve('docs/PROOFPASS.md'),
+      'utf8'
+    );
+
+    expect(markdown).toContain('agent asset pubkey directly');
+    expect(markdown).toContain('also still accepts a sequential `targetAgent`');
+    expect(markdown).toContain('defaults to `0`');
+  });
+
   it('matches the generic proofpass example call shape', async () => {
     const openConnection = {
       getAccountInfo: jest.fn().mockResolvedValue({

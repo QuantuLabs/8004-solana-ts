@@ -6,7 +6,7 @@ A service opens a feedback request, then the reviewer finalizes a real `giveFeed
 
 For this release, the examples pass the agent asset pubkey directly.
 
-If you only have a backend sequential `agentId`, resolve it through the indexer first and then pass the agent asset pubkey into `openProofPass(...)`.
+If you only have a backend sequential `agentId`, the preferred flow is still to resolve it to the agent asset pubkey first. For compatibility, `openProofPass(...)` also still accepts a sequential `targetAgent` together with `indexerClient` / `indexerGraphqlUrl`.
 
 Examples:
 
@@ -102,13 +102,13 @@ const finalizeIx = await giveFeedbackWithProof({
 - `reviewer`: wallet expected to finalize the feedback later
 - `targetAgent`: the agent asset public key for the request target
 - `contextRef`: business reference used to bind the request to your off-chain flow
-- `contextType`: optional compact context discriminator, defaults to `3`
+- `contextType`: optional compact context discriminator, defaults to `0`
 - `ttlSlots`: optional expiry window in slots
 - `feeMode`: optional fee model, defaults to `creator_pays_all`
 - `endpoint`: optional service endpoint hint merged into finalize
 - `feedbackUri`: optional service feedback artifact URI merged into finalize
 - `feedbackFileHash`: optional 32-byte file hash merged into finalize
-- `indexerClient` / `indexerGraphqlUrl`: optional advanced overrides when you intentionally resolve a backend sequential `agentId` before opening
+- `indexerClient` / `indexerGraphqlUrl`: optional compatibility overrides when you intentionally pass a backend sequential `agentId` into `openProofPass(...)`
 
 `giveFeedbackWithProof(...)` arguments:
 

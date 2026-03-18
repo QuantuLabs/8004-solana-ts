@@ -139,6 +139,7 @@ export interface OpenProofPassParams {
   creator: ProofPassPublicKeyInput;
   reviewer: ProofPassPublicKeyInput;
   targetAgent: ProofPassTargetAgentInput;
+  targetAsset?: ProofPassPublicKeyInput;
   contextType?: number;
   contextRef?: ProofPassContextRefInput;
   contextRefHash?: ProofPassBytesInput;
@@ -656,16 +657,24 @@ async function resolveOpenProofPassTargetAgent(
   }
 
   const normalizedLookup = normalizeSequentialAgentLookupValue(targetAgent);
-  const client = indexerClient ?? createProofPassIndexerClient(registryProgram, indexerGraphqlUrl);
   let resolutionError: unknown = null;
+  let client: Pick<IndexerReadClient, 'getAgentByAgentId'> | null = null;
 
   try {
-    const agent = await client.getAgentByAgentId(normalizedLookup);
-    if (agent?.asset) {
-      return agent.asset;
-    }
+    client = indexerClient ?? createProofPassIndexerClient(registryProgram, indexerGraphqlUrl);
   } catch (error) {
     resolutionError = error;
+  }
+
+  if (client) {
+    try {
+      const agent = await client.getAgentByAgentId(normalizedLookup);
+      if (agent?.asset) {
+        return agent.asset;
+      }
+    } catch (error) {
+      resolutionError = error;
+    }
   }
 
   if (targetAsset !== undefined) {

@@ -328,16 +328,24 @@ async function resolveOpenProofPassTargetAgent(targetAgent, targetAsset, registr
         return targetAgent;
     }
     const normalizedLookup = normalizeSequentialAgentLookupValue(targetAgent);
-    const client = indexerClient ?? createProofPassIndexerClient(registryProgram, indexerGraphqlUrl);
     let resolutionError = null;
+    let client = null;
     try {
-        const agent = await client.getAgentByAgentId(normalizedLookup);
-        if (agent?.asset) {
-            return agent.asset;
-        }
+        client = indexerClient ?? createProofPassIndexerClient(registryProgram, indexerGraphqlUrl);
     }
     catch (error) {
         resolutionError = error;
+    }
+    if (client) {
+        try {
+            const agent = await client.getAgentByAgentId(normalizedLookup);
+            if (agent?.asset) {
+                return agent.asset;
+            }
+        }
+        catch (error) {
+            resolutionError = error;
+        }
     }
     if (targetAsset !== undefined) {
         return targetAsset;
