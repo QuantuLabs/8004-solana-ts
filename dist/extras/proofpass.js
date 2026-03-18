@@ -1,151 +1,82 @@
 import { PublicKey, SystemProgram, TransactionInstruction, } from '@solana/web3.js';
-import { MAINNET_AGENT_REGISTRY_PROGRAM_ID, MAINNET_ATOM_ENGINE_PROGRAM_ID, } from '../core/programs.js';
+import bs58 from 'bs58';
+import { getRandomBytes } from '../utils/crypto-utils.js';
+import { DEVNET_AGENT_REGISTRY_PROGRAM_ID, DEVNET_ATOM_ENGINE_PROGRAM_ID, MAINNET_AGENT_REGISTRY_PROGRAM_ID, MAINNET_ATOM_ENGINE_PROGRAM_ID, } from '../core/programs.js';
+import { getBaseCollection } from '../core/config-reader.js';
+import { getDefaultIndexerGraphqlUrls } from '../core/indexer-defaults.js';
+import { IndexerGraphQLClient } from '../core/indexer-graphql-client.js';
 import { PDAHelpers } from '../core/pda-helpers.js';
 import { getAtomConfigPDAWithProgram, getAtomStatsPDAWithProgram, } from '../core/atom-pda.js';
-import { serializeString, writeBigUInt64LE } from '../utils/buffer-utils.js';
-import { PROOFPASS_BLIND_COMMITMENT_DOMAIN, PROOFPASS_BYTES32_LEN, PROOFPASS_MODE_8004, computeProofPassBlindCommitment, computeProofPassSessionBlindCommitment as computeProofPassSessionBlindCommitmentInternal, createProofPassBlindNonce, createProofPassNonce, hashProofPassContextRef, normalizeProofPassPayload, resolveProofPassExpirySlot as resolveProofPassExpirySlotInternal, } from './internal/proofpass-internals.js';
-export { PROOFPASS_BLIND_COMMITMENT_DOMAIN, PROOFPASS_BYTES32_LEN, PROOFPASS_MODE_8004, computeProofPassBlindCommitment, createProofPassBlindNonce, createProofPassNonce, hashProofPassContextRef, normalizeProofPassPayload, resolveProofPassExpirySlotInternal as resolveProofPassExpirySlot, };
-export const PROOFPASS_PROGRAM_ID = new PublicKey('9Znyj5x92Pr5LhUmGTLk2uKEhyoZyTzW85mim9cZam4h');
+import { MAX_ENDPOINT_LEN, MAX_URI_LEN } from '../core/seal.js';
+import { serializeString } from '../utils/buffer-utils.js';
+import { PROOFPASS_BYTES32_LEN, hashProofPassContextRef, normalizeProofPassPayload, } from './internal/proofpass-internals.js';
+export const PROOFPASS_PROGRAM_ID = new PublicKey('72WFGnAp9EjPok7JbadCEC1j83TZe3ti8k6ax25dQVzG');
 export const PROOFPASS_CONFIG_SEED = 'proofpass_config';
 export const PROOFPASS_SESSION_SEED = 'proofpass_session';
-export const DEFAULT_PROOFPASS_OPEN_FEE_LAMPORTS = 25000n;
-export const DEFAULT_PROOFPASS_FINALIZE_FEE_LAMPORTS = 25000n;
+export const DEFAULT_PROOFPASS_OPEN_FEE_LAMPORTS = 0n;
+export const DEFAULT_PROOFPASS_FINALIZE_FEE_LAMPORTS = 10000n;
 export const DEFAULT_PROOFPASS_TTL_SLOTS = 512n;
 const PROOFPASS_UPGRADEABLE_LOADER_PROGRAM_ID = new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111');
 const PROOFPASS_IX_INITIALIZE_CONFIG = 0;
 const PROOFPASS_IX_OPEN_SESSION = 1;
-const PROOFPASS_IX_ACCEPT_SESSION = 2;
-const PROOFPASS_IX_CANCEL_BEFORE_ACCEPT = 3;
-const PROOFPASS_IX_CANCEL_EXPIRED = 4;
+const PROOFPASS_IX_CLOSE_OPEN = 3;
+const PROOFPASS_IX_CLOSE_EXPIRED = 4;
 const PROOFPASS_IX_FINALIZE_AND_GIVE_FEEDBACK = 5;
 const PROOFPASS_IX_UPDATE_TREASURY = 6;
+const PROOFPASS_SESSION_ACCOUNT_DISCRIMINATOR = Buffer.from('ppassess', 'ascii');
+const PROOFPASS_CONFIG_ACCOUNT_DISCRIMINATOR = Buffer.from('ppasconf', 'ascii');
+const PROOFPASS_CONFIG_ACCOUNT_SIZE = 136;
+const PROOFPASS_SESSION_ACCOUNT_SIZE = 736;
+const PROOFPASS_MAX_ENDPOINT_LEN = 250;
+const PROOFPASS_MAX_FEEDBACK_URI_LEN = 250;
+const PROOFPASS_STATUS_OPEN = 1;
+const PROOFPASS_FEE_MODE_CREATOR_PAYS_ALL = 0;
+const PROOFPASS_FEE_MODE_REVIEWER_PAYS_FINALIZE = 1;
+const PROOFPASS_SESSION_OFFSETS = {
+    discriminator: 0,
+    version: 8,
+    status: 9,
+    contextType: 10,
+    feedbackUriLen: 11,
+    endpointLen: 12,
+    hasFeedbackFileHashHint: 13,
+    feeMode: 14,
+    openedSlot: 16,
+    lockedFinalizeFeeLamports: 24,
+    expirySlot: 32,
+    creator: 40,
+    reviewer: 72,
+    targetAsset: 104,
+    contextRefHash: 136,
+    feedbackFileHashHint: 168,
+    nonce: 200,
+    feedbackUriHint: 232,
+    endpointHint: 482,
+};
+const PROOFPASS_CONFIG_OFFSETS = {
+    discriminator: 0,
+    authority: 8,
+    treasury: 40,
+    registryProgram: 72,
+    openFeeLamports: 104,
+    finalizeFeeLamports: 112,
+    maxExpirySlots: 120,
+    paused: 128,
+    bump: 129,
+    version: 130,
+};
 const I128_MIN = -(1n << 127n);
 const I128_MAX = (1n << 127n) - 1n;
-export function resolveProofPassFeeConfig(feeConfig) {
-    return {
-        openFeeLamports: toNonNegativeBigInt(feeConfig?.openFeeLamports ?? DEFAULT_PROOFPASS_OPEN_FEE_LAMPORTS, 'openFeeLamports'),
-        finalizeFeeLamports: toNonNegativeBigInt(feeConfig?.finalizeFeeLamports ?? DEFAULT_PROOFPASS_FINALIZE_FEE_LAMPORTS, 'finalizeFeeLamports'),
-    };
-}
-export function resolveProofPassIntentTiming(params = {}) {
-    const currentSlot = params.currentSlot === undefined
-        ? null
-        : toNonNegativeBigInt(params.currentSlot, 'currentSlot');
-    const explicitExpirySlot = params.expirySlot === undefined
-        ? null
-        : toNonNegativeBigInt(params.expirySlot, 'expirySlot');
-    const explicitTtlSlots = params.ttlSlots === undefined
-        ? null
-        : toPositiveBigInt(params.ttlSlots, 'ttlSlots');
-    if (explicitExpirySlot !== null && explicitTtlSlots !== null) {
-        throw new Error('Provide either expirySlot or ttlSlots, not both');
-    }
-    if (explicitExpirySlot !== null) {
-        if (currentSlot === null) {
-            return {
-                ttlSlots: null,
-                expirySlot: explicitExpirySlot,
-            };
-        }
-        if (explicitExpirySlot <= currentSlot) {
-            throw new Error('expirySlot must be greater than currentSlot');
-        }
-        return {
-            ttlSlots: explicitExpirySlot - currentSlot,
-            expirySlot: explicitExpirySlot,
-        };
-    }
-    if (explicitTtlSlots !== null) {
-        return {
-            ttlSlots: explicitTtlSlots,
-            expirySlot: currentSlot === null ? null : currentSlot + explicitTtlSlots,
-        };
-    }
-    if (currentSlot === null) {
-        return {
-            ttlSlots: null,
-            expirySlot: null,
-        };
-    }
-    return {
-        ttlSlots: DEFAULT_PROOFPASS_TTL_SLOTS,
-        expirySlot: currentSlot + DEFAULT_PROOFPASS_TTL_SLOTS,
-    };
-}
-export function getProofPassSessionBinding(intent) {
-    return {
-        client: intent.client,
-        asset: intent.asset,
-        contextType: intent.contextType,
-        contextRefHash: Buffer.from(intent.contextRefHash),
-    };
-}
-export function computeProofPassSessionBlindCommitment(binding, contentHash, blindNonce, domain = PROOFPASS_BLIND_COMMITMENT_DOMAIN) {
-    return computeProofPassSessionBlindCommitmentInternal({
-        reviewer: binding.client,
-        asset: binding.asset,
-        contextType: binding.contextType,
-        contextRefHash: binding.contextRefHash,
-    }, contentHash, blindNonce, domain);
-}
-export function buildProofPassIntent(params) {
-    if (params.contextRef === undefined && params.contextRefHash === undefined) {
-        throw new Error('ProofPass intent requires contextRef or contextRefHash');
-    }
-    const feedback = normalizeProofPassPayload(params.feedback);
-    const contentHash = Buffer.from(feedback.sealHashPreview);
-    const contextType = normalizeContextType(params.contextType);
-    const contextRefHash = resolveContextRefHash(params.contextRef, params.contextRefHash);
-    const client = normalizePublicKey(params.client, 'client');
-    const asset = normalizePublicKey(params.asset, 'asset');
-    const blindNonce = params.advanced?.blindNonce === undefined
-        ? createProofPassBlindNonce()
-        : ensureFixedBytes(params.advanced.blindNonce, PROOFPASS_BYTES32_LEN, 'blindNonce');
-    const nonce = params.advanced?.nonce === undefined
-        ? createProofPassNonce()
-        : ensureFixedBytes(params.advanced.nonce, PROOFPASS_BYTES32_LEN, 'nonce');
-    const timing = resolveProofPassIntentTiming({
-        currentSlot: params.currentSlot,
-        ttlSlots: params.ttlSlots,
-        expirySlot: params.expirySlot,
-    });
-    return {
-        mode: PROOFPASS_MODE_8004,
-        asset,
-        client,
-        contextType,
-        contextRefHash,
-        sessionBinding: {
-            client,
-            asset,
-            contextType,
-            contextRefHash: Buffer.from(contextRefHash),
-        },
-        feedback,
-        contentHash,
-        sealHashPreview: Buffer.from(feedback.sealHashPreview),
-        blindNonce,
-        blindCommitment: computeProofPassSessionBlindCommitment({
-            client,
-            asset,
-            contextType,
-            contextRefHash,
-        }, contentHash, blindNonce, params.advanced?.blindCommitmentDomain),
-        nonce,
-        issuedAt: normalizeIssuedAt(params.issuedAt),
-        ttlSlots: timing.ttlSlots,
-        expirySlot: timing.expirySlot,
-        feeConfig: resolveProofPassFeeConfig(params.feeConfig),
-    };
-}
+const ZERO_BYTES32 = Buffer.alloc(PROOFPASS_BYTES32_LEN, 0);
 export function getProofPassConfigPda(proofPassProgramId = PROOFPASS_PROGRAM_ID) {
     return PublicKey.findProgramAddressSync([Buffer.from(PROOFPASS_CONFIG_SEED)], toPublicKey(proofPassProgramId, 'proofPassProgramId'));
 }
-export function getProofPassSessionPda(reviewer, revieweeAsset, nonce, proofPassProgramId = PROOFPASS_PROGRAM_ID) {
+export function getProofPassSessionPda(creator, reviewer, targetAsset, nonce, proofPassProgramId = PROOFPASS_PROGRAM_ID) {
     return PublicKey.findProgramAddressSync([
         Buffer.from(PROOFPASS_SESSION_SEED),
+        toPublicKey(creator, 'creator').toBuffer(),
         toPublicKey(reviewer, 'reviewer').toBuffer(),
-        toPublicKey(revieweeAsset, 'revieweeAsset').toBuffer(),
+        toPublicKey(targetAsset, 'targetAsset').toBuffer(),
         ensureFixedBytes(nonce, PROOFPASS_BYTES32_LEN, 'nonce'),
     ], toPublicKey(proofPassProgramId, 'proofPassProgramId'));
 }
@@ -156,7 +87,7 @@ export function buildInitializeProofPassConfigInstruction(params) {
     const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
     const authority = toPublicKey(params.authority, 'authority');
     const treasury = toPublicKey(params.treasury, 'treasury');
-    const registryProgram = toPublicKey(params.registryProgramId ?? MAINNET_AGENT_REGISTRY_PROGRAM_ID, 'registryProgramId');
+    const registryProgram = requireRegistryProgramId(params.registryProgramId);
     const [config] = getProofPassConfigPda(programId);
     const [programData] = getProofPassProgramDataPda(programId);
     const data = Buffer.concat([
@@ -179,88 +110,52 @@ export function buildInitializeProofPassConfigInstruction(params) {
     });
 }
 export function buildProofPassOpenSessionInstruction(params) {
+    const request = resolveProofPassRequest(params);
     const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    const reviewer = new PublicKey(params.intent.client);
-    const revieweeAsset = new PublicKey(params.intent.asset);
-    const treasury = toPublicKey(params.treasury, 'treasury');
+    return createOpenInstruction(request, toPublicKey(params.treasury, 'treasury'), programId);
+}
+function createOpenInstruction(request, treasury, programId) {
+    const creator = new PublicKey(request.creator);
+    const targetAsset = new PublicKey(request.targetAsset);
     const [config] = getProofPassConfigPda(programId);
-    const [session] = getProofPassSessionPda(reviewer, revieweeAsset, params.intent.blindNonce, programId);
-    const ttlSlots = resolveOpenSessionTtlSlots(params.intent, params.ttlSlots);
+    const [session] = getProofPassSessionPda(request.creator, request.reviewer, request.targetAsset, request.nonce, programId);
     const data = Buffer.concat([
         Buffer.from([PROOFPASS_IX_OPEN_SESSION]),
-        Buffer.from([params.intent.contextType]),
-        Buffer.from(params.intent.contextRefHash),
-        Buffer.from(params.intent.blindCommitment),
-        Buffer.from(params.intent.blindNonce),
-        u64ToBuffer(ttlSlots, 'ttlSlots'),
+        new PublicKey(request.reviewer).toBuffer(),
+        Buffer.from([request.contextType]),
+        Buffer.from(request.contextRefHash),
+        Buffer.from([request.feedbackFileHash ? 1 : 0]),
+        Buffer.from(request.feedbackFileHash ?? ZERO_BYTES32),
+        Buffer.from(request.nonce),
+        u64ToBuffer(request.ttlSlots, 'ttlSlots'),
+        serializeString(request.feedbackUri),
+        serializeString(request.endpoint),
+        Buffer.from([serializeFeeMode(request.feeMode)]),
     ]);
     return new TransactionInstruction({
         programId,
         keys: [
-            { pubkey: reviewer, isSigner: true, isWritable: true },
+            { pubkey: creator, isSigner: true, isWritable: true },
             { pubkey: config, isSigner: false, isWritable: false },
             { pubkey: treasury, isSigner: false, isWritable: true },
             { pubkey: session, isSigner: false, isWritable: true },
-            { pubkey: revieweeAsset, isSigner: false, isWritable: false },
+            { pubkey: targetAsset, isSigner: false, isWritable: false },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data,
     });
 }
-export function buildProofPassAcceptSessionInstruction(params) {
-    const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    const revieweeApprover = toPublicKey(params.revieweeApprover, 'revieweeApprover');
-    const revieweeAsset = new PublicKey(params.intent.asset);
-    const [session] = getProofPassSessionPda(params.intent.client, params.intent.asset, params.intent.blindNonce, programId);
-    return new TransactionInstruction({
-        programId,
-        keys: [
-            { pubkey: revieweeApprover, isSigner: true, isWritable: false },
-            { pubkey: session, isSigner: false, isWritable: true },
-            { pubkey: revieweeAsset, isSigner: false, isWritable: false },
-        ],
-        data: Buffer.from([PROOFPASS_IX_ACCEPT_SESSION]),
-    });
-}
-export function buildProofPassCancelBeforeAcceptInstruction(params) {
-    const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    const reviewer = new PublicKey(params.intent.client);
-    const [session] = getProofPassSessionPda(params.intent.client, params.intent.asset, params.intent.blindNonce, programId);
-    return new TransactionInstruction({
-        programId,
-        keys: [
-            { pubkey: reviewer, isSigner: true, isWritable: true },
-            { pubkey: session, isSigner: false, isWritable: true },
-        ],
-        data: Buffer.from([PROOFPASS_IX_CANCEL_BEFORE_ACCEPT]),
-    });
-}
-export function buildProofPassCancelExpiredInstruction(params) {
-    const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    const reviewer = new PublicKey(params.intent.client);
-    const [session] = getProofPassSessionPda(params.intent.client, params.intent.asset, params.intent.blindNonce, programId);
-    return new TransactionInstruction({
-        programId,
-        keys: [
-            { pubkey: reviewer, isSigner: false, isWritable: true },
-            { pubkey: session, isSigner: false, isWritable: true },
-        ],
-        data: Buffer.from([PROOFPASS_IX_CANCEL_EXPIRED]),
-    });
-}
 export function buildProofPassFinalizeAndGiveFeedbackInstruction(params) {
     const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    const registryProgram = toPublicKey(params.registryProgramId ?? MAINNET_AGENT_REGISTRY_PROGRAM_ID, 'registryProgramId');
-    const atomEngineProgram = toPublicKey(params.atomEngineProgramId ?? MAINNET_ATOM_ENGINE_PROGRAM_ID, 'atomEngineProgramId');
-    const reviewer = new PublicKey(params.intent.client);
-    const asset = new PublicKey(params.intent.asset);
+    const creator = toPublicKey(params.creator, 'creator');
+    const reviewer = toPublicKey(params.reviewer, 'reviewer');
+    const session = toPublicKey(params.session, 'session');
+    const asset = toPublicKey(params.asset, 'asset');
     const treasury = toPublicKey(params.treasury, 'treasury');
     const agentAccount = toPublicKey(params.agentAccount, 'agentAccount');
     const collection = toPublicKey(params.collection, 'collection');
-    const [config] = getProofPassConfigPda(programId);
-    const [session] = getProofPassSessionPda(reviewer, asset, params.intent.blindNonce, programId);
-    // These are ABI-compat trailing accounts for the current 8004 giveFeedback CPI surface.
-    // Callers can ignore them conceptually and rely on defaults/overrides here.
+    const registryProgram = requireRegistryProgramId(params.registryProgramId);
+    const atomEngineProgram = resolveAtomEngineProgramId(registryProgram, params.atomEngineProgramId);
     const atomConfig = params.atomConfig === undefined
         ? getAtomConfigPDAWithProgram(atomEngineProgram)[0]
         : toPublicKey(params.atomConfig, 'atomConfig');
@@ -270,11 +165,11 @@ export function buildProofPassFinalizeAndGiveFeedbackInstruction(params) {
     const registryAuthority = params.registryAuthority === undefined
         ? PDAHelpers.getAtomCpiAuthorityPDA(registryProgram)[0]
         : toPublicKey(params.registryAuthority, 'registryAuthority');
+    const [config] = getProofPassConfigPda(programId);
+    const feedback = normalizeProofPassPayload(params.feedback);
     const data = Buffer.concat([
         Buffer.from([PROOFPASS_IX_FINALIZE_AND_GIVE_FEEDBACK]),
-        Buffer.from(params.intent.contentHash),
-        Buffer.from(params.intent.blindNonce),
-        serializeProofPassGiveFeedbackArgs(params.intent.feedback),
+        serializeProofPassGiveFeedbackArgs(feedback),
     ]);
     return new TransactionInstruction({
         programId,
@@ -282,6 +177,7 @@ export function buildProofPassFinalizeAndGiveFeedbackInstruction(params) {
             { pubkey: reviewer, isSigner: true, isWritable: true },
             { pubkey: config, isSigner: false, isWritable: false },
             { pubkey: treasury, isSigner: false, isWritable: true },
+            { pubkey: creator, isSigner: false, isWritable: true },
             { pubkey: session, isSigner: false, isWritable: true },
             { pubkey: agentAccount, isSigner: false, isWritable: true },
             { pubkey: asset, isSigner: false, isWritable: false },
@@ -296,20 +192,398 @@ export function buildProofPassFinalizeAndGiveFeedbackInstruction(params) {
         data,
     });
 }
-export function buildProofPassUpdateTreasuryInstruction(params) {
+export function buildProofPassCloseOpenInstruction(params) {
     const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    const authority = toPublicKey(params.authority, 'authority');
-    const newTreasury = toPublicKey(params.newTreasury, 'newTreasury');
-    const [config] = getProofPassConfigPda(programId);
+    const creator = toPublicKey(params.creator, 'creator');
+    const session = toPublicKey(params.session, 'session');
     return new TransactionInstruction({
         programId,
         keys: [
-            { pubkey: authority, isSigner: true, isWritable: false },
-            { pubkey: config, isSigner: false, isWritable: true },
-            { pubkey: newTreasury, isSigner: false, isWritable: false },
+            { pubkey: creator, isSigner: true, isWritable: true },
+            { pubkey: session, isSigner: false, isWritable: true },
         ],
-        data: Buffer.from([PROOFPASS_IX_UPDATE_TREASURY]),
+        data: Buffer.from([PROOFPASS_IX_CLOSE_OPEN]),
     });
+}
+export function buildProofPassCloseExpiredInstruction(params) {
+    const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
+    const creator = toPublicKey(params.creator, 'creator');
+    const session = toPublicKey(params.session, 'session');
+    return new TransactionInstruction({
+        programId,
+        keys: [
+            { pubkey: creator, isSigner: false, isWritable: true },
+            { pubkey: session, isSigner: false, isWritable: true },
+        ],
+        data: Buffer.from([PROOFPASS_IX_CLOSE_EXPIRED]),
+    });
+}
+export function buildProofPassUpdateTreasuryInstruction(params) {
+    const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
+    const authority = toPublicKey(params.authority, 'authority');
+    const newTreasury = params.newTreasury === undefined
+        ? null
+        : toPublicKey(params.newTreasury, 'newTreasury');
+    const newAuthority = params.newAuthority === undefined
+        ? null
+        : toPublicKey(params.newAuthority, 'newAuthority');
+    const [config] = getProofPassConfigPda(programId);
+    const updateTreasury = newTreasury !== null;
+    const updateRegistryProgram = params.registryProgramId !== undefined;
+    const updatePaused = params.paused !== undefined;
+    const updateOpenFee = params.openFeeLamports !== undefined;
+    const updateFinalizeFee = params.finalizeFeeLamports !== undefined;
+    const updateAuthority = newAuthority !== null;
+    const updateMaxExpiry = params.maxExpirySlots !== undefined;
+    if (!updateTreasury
+        && !updateRegistryProgram
+        && !updatePaused
+        && !updateOpenFee
+        && !updateFinalizeFee
+        && !updateAuthority
+        && !updateMaxExpiry) {
+        throw new Error('ProofPass update config requires at least one of newTreasury, newAuthority, registryProgramId, paused, openFeeLamports, finalizeFeeLamports or maxExpirySlots');
+    }
+    const flags = (updateRegistryProgram ? 1 : 0)
+        | (updatePaused ? 2 : 0)
+        | (updateOpenFee ? 4 : 0)
+        | (updateFinalizeFee ? 8 : 0)
+        | (updateTreasury ? 16 : 0)
+        | (updateAuthority ? 32 : 0)
+        | (updateMaxExpiry ? 64 : 0);
+    const registryProgram = updateRegistryProgram
+        ? toPublicKey(params.registryProgramId, 'registryProgramId').toBuffer()
+        : ZERO_BYTES32;
+    const chunks = [Buffer.from([PROOFPASS_IX_UPDATE_TREASURY]), Buffer.from([flags])];
+    if (updateRegistryProgram) {
+        chunks.push(registryProgram);
+    }
+    if (updatePaused) {
+        chunks.push(Buffer.from([params.paused ? 1 : 0]));
+    }
+    if (updateOpenFee) {
+        chunks.push(u64ToBuffer(params.openFeeLamports, 'openFeeLamports'));
+    }
+    if (updateFinalizeFee) {
+        chunks.push(u64ToBuffer(params.finalizeFeeLamports, 'finalizeFeeLamports'));
+    }
+    if (updateMaxExpiry) {
+        chunks.push(u64ToBuffer(params.maxExpirySlots, 'maxExpirySlots'));
+    }
+    const keys = [
+        { pubkey: authority, isSigner: true, isWritable: false },
+        { pubkey: config, isSigner: false, isWritable: true },
+    ];
+    if (newTreasury) {
+        keys.push({ pubkey: newTreasury, isSigner: false, isWritable: false });
+    }
+    if (newAuthority) {
+        keys.push({ pubkey: newAuthority, isSigner: false, isWritable: false });
+    }
+    return new TransactionInstruction({
+        programId,
+        keys,
+        data: Buffer.concat(chunks),
+    });
+}
+export async function openProofPass(params) {
+    const programId = PROOFPASS_PROGRAM_ID;
+    const config = await fetchProofPassConfig(params.connection, programId);
+    if (config.paused) {
+        throw new Error('ProofPass is currently paused');
+    }
+    const resolvedTargetAgent = await resolveOpenProofPassTargetAgent(params.targetAgent, params.targetAsset, config.registryProgram, params.indexerClient, params.indexerGraphqlUrl);
+    const request = resolveProofPassRequest({
+        creator: params.creator,
+        reviewer: params.reviewer,
+        targetAgent: resolvedTargetAgent,
+        targetAsset: params.targetAsset,
+        treasury: config.treasury,
+        feeMode: params.feeMode,
+        contextType: params.contextType,
+        contextRef: params.contextRef,
+        contextRefHash: params.contextRefHash,
+        ttlSlots: params.ttlSlots,
+        endpoint: params.endpoint,
+        feedbackUri: params.feedbackUri,
+        feedbackFileHashHint: params.feedbackFileHash,
+    });
+    if (request.ttlSlots > config.maxExpirySlots) {
+        throw new Error(`ProofPass ttlSlots exceeds configured maxExpirySlots (${config.maxExpirySlots.toString()})`);
+    }
+    const [configPda] = getProofPassConfigPda(programId);
+    const [sessionPda] = getProofPassSessionPda(request.creator, request.reviewer, request.targetAsset, request.nonce, programId);
+    return {
+        ...request,
+        targetAgent: request.targetAsset,
+        configPda,
+        sessionPda,
+        sessionAddress: sessionPda.toBase58(),
+        treasury: config.treasury,
+        openInstruction: createOpenInstruction(request, config.treasury, programId),
+    };
+}
+async function resolveOpenProofPassTargetAgent(targetAgent, targetAsset, registryProgram, indexerClient, indexerGraphqlUrl) {
+    if (!isSequentialAgentLookup(targetAgent)) {
+        return targetAgent;
+    }
+    const normalizedLookup = normalizeSequentialAgentLookupValue(targetAgent);
+    const client = indexerClient ?? createProofPassIndexerClient(registryProgram, indexerGraphqlUrl);
+    let resolutionError = null;
+    try {
+        const agent = await client.getAgentByAgentId(normalizedLookup);
+        if (agent?.asset) {
+            return agent.asset;
+        }
+    }
+    catch (error) {
+        resolutionError = error;
+    }
+    if (targetAsset !== undefined) {
+        return targetAsset;
+    }
+    if (typeof normalizedLookup === 'string') {
+        try {
+            return normalizePublicKey(normalizedLookup, 'targetAgent');
+        }
+        catch {
+            // Preserve the more specific indexer failure below when available.
+        }
+    }
+    if (resolutionError) {
+        throw new Error(`Unable to resolve targetAgent ${String(normalizedLookup)} to an agent asset: ${resolutionError instanceof Error ? resolutionError.message : String(resolutionError)}`);
+    }
+    throw new Error(`Unable to resolve targetAgent ${String(normalizedLookup)} to an agent asset`);
+}
+export async function giveFeedbackWithProof(params) {
+    const session = await requireLiveProofPass(params.connection, params.session);
+    let currentSlot = params.currentSlot === undefined
+        ? null
+        : toNonNegativeBigInt(params.currentSlot, 'currentSlot');
+    if (currentSlot === null && params.connection.getSlot) {
+        const slot = await params.connection.getSlot();
+        if (slot !== undefined && slot !== null) {
+            currentSlot = BigInt(slot);
+        }
+    }
+    if (currentSlot === null) {
+        throw new Error('giveFeedbackWithProof requires currentSlot or connection.getSlot() to verify the session has not expired');
+    }
+    if (currentSlot > session.expirySlot) {
+        throw new Error(`ProofPass session ${session.sessionAddress} has expired and must be closed instead of finalized`);
+    }
+    const config = await fetchProofPassConfig(params.connection, PROOFPASS_PROGRAM_ID);
+    if (config.paused) {
+        throw new Error('ProofPass is currently paused');
+    }
+    const registryProgramId = config.registryProgram;
+    const asset = new PublicKey(session.targetAsset);
+    const [agentAccount] = PDAHelpers.getAgentPDA(asset, registryProgramId);
+    const collection = await getBaseCollection(params.connection, registryProgramId);
+    if (!collection) {
+        throw new Error(`Unable to resolve base collection for registry ${registryProgramId.toBase58()}`);
+    }
+    return buildProofPassFinalizeAndGiveFeedbackInstruction({
+        session: session.session,
+        creator: session.creator,
+        reviewer: params.reviewer,
+        asset,
+        treasury: config.treasury,
+        agentAccount,
+        collection,
+        registryProgramId,
+        atomEngineProgramId: params.atomEngineProgramId,
+        feedback: mergeServiceFeedbackHints(session, params.feedback),
+        proofPassProgramId: PROOFPASS_PROGRAM_ID,
+    });
+}
+export async function getLiveProofPass(params) {
+    const session = toPublicKey(params.session, 'session');
+    const account = await params.connection.getAccountInfo(session);
+    return decodeProofPassLiveAccount(session, account);
+}
+export async function getLiveProofPassesByCreator(params) {
+    const creator = toPublicKey(params.creator, 'creator');
+    const accounts = await params.connection.getProgramAccounts(PROOFPASS_PROGRAM_ID, {
+        filters: [
+            {
+                memcmp: {
+                    offset: PROOFPASS_SESSION_OFFSETS.discriminator,
+                    bytes: bs58.encode(PROOFPASS_SESSION_ACCOUNT_DISCRIMINATOR),
+                },
+            },
+            {
+                memcmp: {
+                    offset: PROOFPASS_SESSION_OFFSETS.creator,
+                    bytes: creator.toBase58(),
+                },
+            },
+            {
+                dataSize: PROOFPASS_SESSION_ACCOUNT_SIZE,
+            },
+        ],
+    });
+    return accounts
+        .map(({ pubkey, account }) => decodeProofPassLiveAccount(pubkey, account))
+        .filter((request) => request !== null)
+        .sort((left, right) => {
+        if (left.openedSlot > right.openedSlot)
+            return -1;
+        if (left.openedSlot < right.openedSlot)
+            return 1;
+        return left.sessionAddress.localeCompare(right.sessionAddress);
+    });
+}
+export async function closeProofPass(params) {
+    const session = toPublicKey(params.session, 'session');
+    const request = await getLiveProofPass({
+        connection: params.connection,
+        session,
+    });
+    if (!request) {
+        throw new Error(`No live ProofPass request found for session ${session.toBase58()}`);
+    }
+    let currentSlot = params.currentSlot === undefined
+        ? null
+        : toNonNegativeBigInt(params.currentSlot, 'currentSlot');
+    if (currentSlot === null && params.connection.getSlot) {
+        const slot = await params.connection.getSlot();
+        if (slot !== undefined && slot !== null) {
+            currentSlot = BigInt(slot);
+        }
+    }
+    if (currentSlot === null) {
+        throw new Error('closeProofPass requires currentSlot or connection.getSlot() to determine whether the request is expired');
+    }
+    if (currentSlot <= request.expirySlot) {
+        return {
+            request,
+            closeMode: 'open',
+            instruction: buildProofPassCloseOpenInstruction({
+                creator: request.creator,
+                session,
+            }),
+        };
+    }
+    return {
+        request,
+        closeMode: 'expired',
+        instruction: buildProofPassCloseExpiredInstruction({
+            creator: request.creator,
+            session,
+        }),
+    };
+}
+function resolveProofPassRequest(params) {
+    if (params.contextRef === undefined && params.contextRefHash === undefined) {
+        throw new Error('ProofPass open requires contextRef or contextRefHash');
+    }
+    const creator = normalizePublicKey(params.creator, 'creator');
+    const reviewer = normalizePublicKey(params.reviewer, 'reviewer');
+    const targetAsset = resolveProofPassTargetAsset(params);
+    const contextType = normalizeContextType(params.contextType);
+    const contextRefHash = resolveContextRefHash(params.contextRef, params.contextRefHash);
+    const nonce = params.nonce === undefined
+        ? Buffer.from(getRandomBytes(PROOFPASS_BYTES32_LEN))
+        : ensureFixedBytes(params.nonce, PROOFPASS_BYTES32_LEN, 'nonce');
+    const ttlSlots = params.ttlSlots === undefined
+        ? DEFAULT_PROOFPASS_TTL_SLOTS
+        : toPositiveBigInt(params.ttlSlots, 'ttlSlots');
+    const feeMode = normalizeFeeMode(params.feeMode);
+    const feedbackFileHashHint = params.feedbackFileHashHint === undefined || params.feedbackFileHashHint === null
+        ? null
+        : ensureFixedBytes(params.feedbackFileHashHint, PROOFPASS_BYTES32_LEN, 'feedbackFileHashHint');
+    const endpoint = normalizeEndpointHint(params.endpoint);
+    const feedbackUri = normalizeFeedbackUri(params.feedbackUri);
+    return {
+        creator,
+        reviewer,
+        targetAsset,
+        contextType,
+        contextRefHash,
+        endpoint,
+        feedbackUri,
+        feedbackFileHash: feedbackFileHashHint,
+        nonce,
+        ttlSlots,
+        feeMode,
+    };
+}
+function resolveProofPassTargetAsset(params) {
+    const asset = params.targetAsset === undefined
+        ? null
+        : normalizePublicKey(params.targetAsset, 'targetAsset');
+    const agent = params.targetAgent === undefined
+        ? null
+        : normalizePublicKey(params.targetAgent, 'targetAgent');
+    if (!asset && !agent) {
+        throw new Error('ProofPass open requires targetAgent');
+    }
+    if (asset && agent && asset !== agent) {
+        throw new Error('targetAgent and targetAsset must match when both are provided');
+    }
+    return agent ?? asset;
+}
+function isSequentialAgentLookup(value) {
+    if (typeof value === 'number' || typeof value === 'bigint') {
+        return true;
+    }
+    if (typeof value !== 'string') {
+        return false;
+    }
+    const normalized = normalizeSequentialAgentLookupValue(value);
+    return typeof normalized === 'string' && /^\d+$/.test(normalized);
+}
+function normalizeSequentialAgentLookupValue(value) {
+    if (typeof value !== 'string') {
+        return value;
+    }
+    const trimmed = value.trim();
+    if (trimmed.startsWith('sol:')) {
+        const stripped = trimmed.slice(4).trim();
+        if (stripped) {
+            return stripped;
+        }
+    }
+    return trimmed;
+}
+function createProofPassIndexerClient(registryProgram, indexerGraphqlUrl) {
+    const graphqlUrl = indexerGraphqlUrl ?? getDefaultIndexerGraphqlUrls(resolveRegistryCluster(registryProgram));
+    return new IndexerGraphQLClient({ graphqlUrl });
+}
+function resolveRegistryCluster(registryProgram) {
+    if (registryProgram.equals(DEVNET_AGENT_REGISTRY_PROGRAM_ID)) {
+        return 'devnet';
+    }
+    if (registryProgram.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)) {
+        return 'mainnet-beta';
+    }
+    throw new Error(`targetAgent sequential lookup requires indexerClient or indexerGraphqlUrl for registry ${registryProgram.toBase58()}`);
+}
+function normalizeFeeMode(feeMode) {
+    return feeMode ?? 'creator_pays_all';
+}
+function serializeFeeMode(feeMode) {
+    switch (feeMode) {
+        case 'creator_pays_all':
+            return PROOFPASS_FEE_MODE_CREATOR_PAYS_ALL;
+        case 'reviewer_pays_finalize':
+            return PROOFPASS_FEE_MODE_REVIEWER_PAYS_FINALIZE;
+        default:
+            throw new Error(`Unsupported ProofPass feeMode: ${String(feeMode)}`);
+    }
+}
+function decodeFeeMode(feeModeCode, version) {
+    if (version < 3) {
+        return 'reviewer_pays_finalize';
+    }
+    if (feeModeCode === PROOFPASS_FEE_MODE_CREATOR_PAYS_ALL) {
+        return 'creator_pays_all';
+    }
+    if (feeModeCode === PROOFPASS_FEE_MODE_REVIEWER_PAYS_FINALIZE) {
+        return 'reviewer_pays_finalize';
+    }
+    return null;
 }
 function resolveContextRefHash(contextRef, contextRefHash) {
     if (contextRef !== undefined && contextRefHash !== undefined) {
@@ -322,6 +596,199 @@ function resolveContextRefHash(contextRef, contextRefHash) {
         return hashProofPassContextRef(contextRef);
     }
     throw new Error('contextRef or contextRefHash is required');
+}
+function requireRegistryProgramId(registryProgramId) {
+    if (registryProgramId === undefined) {
+        throw new Error('registryProgramId is required');
+    }
+    return toPublicKey(registryProgramId, 'registryProgramId');
+}
+function resolveAtomEngineProgramId(registryProgramId, atomEngineProgramId) {
+    if (atomEngineProgramId !== undefined) {
+        return toPublicKey(atomEngineProgramId, 'atomEngineProgramId');
+    }
+    if (registryProgramId.equals(DEVNET_AGENT_REGISTRY_PROGRAM_ID)) {
+        return DEVNET_ATOM_ENGINE_PROGRAM_ID;
+    }
+    if (registryProgramId.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)) {
+        return MAINNET_ATOM_ENGINE_PROGRAM_ID;
+    }
+    throw new Error(`atomEngineProgramId is required for registry ${registryProgramId.toBase58()}`);
+}
+function serializeProofPassGiveFeedbackArgs(payload) {
+    return Buffer.concat([
+        serializeI128(payload.value),
+        Buffer.from([payload.valueDecimals]),
+        serializeOptionU8(payload.score),
+        serializeOption32Bytes(payload.feedbackFileHash),
+        serializeString(payload.tag1),
+        serializeString(payload.tag2),
+        serializeString(payload.endpoint),
+        serializeString(payload.feedbackUri),
+    ]);
+}
+function serializeI128(value) {
+    if (value < I128_MIN || value > I128_MAX) {
+        throw new Error(`value ${value} exceeds i128 range`);
+    }
+    let encoded = value;
+    if (encoded < 0n) {
+        encoded = (1n << 128n) + encoded;
+    }
+    const out = Buffer.alloc(16);
+    for (let index = 0; index < 16; index += 1) {
+        out[index] = Number((encoded >> BigInt(index * 8)) & 0xffn);
+    }
+    return out;
+}
+function serializeOptionU8(value) {
+    if (value === null) {
+        return Buffer.from([0]);
+    }
+    return Buffer.from([1, value]);
+}
+function serializeOption32Bytes(value) {
+    if (value === null) {
+        return Buffer.from([0]);
+    }
+    const bytes = ensureFixedBytes(value, PROOFPASS_BYTES32_LEN, 'feedbackFileHash');
+    return Buffer.concat([Buffer.from([1]), bytes]);
+}
+function decodeProofPassLiveAccount(session, account) {
+    if (!account) {
+        return null;
+    }
+    const data = Buffer.from(account.data);
+    if (data.length !== PROOFPASS_SESSION_ACCOUNT_SIZE) {
+        return null;
+    }
+    if (!data.subarray(0, 8).equals(PROOFPASS_SESSION_ACCOUNT_DISCRIMINATOR)) {
+        return null;
+    }
+    const statusCode = data[PROOFPASS_SESSION_OFFSETS.status];
+    if (statusCode !== PROOFPASS_STATUS_OPEN) {
+        return null;
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const hasFeedbackFileHashHint = data[PROOFPASS_SESSION_OFFSETS.hasFeedbackFileHashHint];
+    const feedbackFileHashHint = data.subarray(PROOFPASS_SESSION_OFFSETS.feedbackFileHashHint, PROOFPASS_SESSION_OFFSETS.feedbackFileHashHint + PROOFPASS_BYTES32_LEN);
+    const feedbackUriLen = data[PROOFPASS_SESSION_OFFSETS.feedbackUriLen];
+    const endpointLen = data[PROOFPASS_SESSION_OFFSETS.endpointLen];
+    const version = data[PROOFPASS_SESSION_OFFSETS.version];
+    const feeMode = decodeFeeMode(data[PROOFPASS_SESSION_OFFSETS.feeMode], version);
+    if (feedbackUriLen > PROOFPASS_MAX_FEEDBACK_URI_LEN) {
+        return null;
+    }
+    if (endpointLen > PROOFPASS_MAX_ENDPOINT_LEN) {
+        return null;
+    }
+    if (hasFeedbackFileHashHint !== 0 && hasFeedbackFileHashHint !== 1) {
+        return null;
+    }
+    if (!feeMode) {
+        return null;
+    }
+    const lockedFinalizeFeeLamports = view.getBigUint64(PROOFPASS_SESSION_OFFSETS.lockedFinalizeFeeLamports, true);
+    return {
+        session,
+        sessionAddress: session.toBase58(),
+        creator: new PublicKey(data.subarray(PROOFPASS_SESSION_OFFSETS.creator, PROOFPASS_SESSION_OFFSETS.creator + 32)).toBase58(),
+        reviewer: new PublicKey(data.subarray(PROOFPASS_SESSION_OFFSETS.reviewer, PROOFPASS_SESSION_OFFSETS.reviewer + 32)).toBase58(),
+        targetAsset: new PublicKey(data.subarray(PROOFPASS_SESSION_OFFSETS.targetAsset, PROOFPASS_SESSION_OFFSETS.targetAsset + 32)).toBase58(),
+        targetAgent: new PublicKey(data.subarray(PROOFPASS_SESSION_OFFSETS.targetAsset, PROOFPASS_SESSION_OFFSETS.targetAsset + 32)).toBase58(),
+        version,
+        status: 'open',
+        statusCode,
+        contextType: data[PROOFPASS_SESSION_OFFSETS.contextType],
+        openedSlot: view.getBigUint64(PROOFPASS_SESSION_OFFSETS.openedSlot, true),
+        answeredSlot: null,
+        feeMode,
+        lockedFinalizeFeeLamports: version >= 3 ? lockedFinalizeFeeLamports : 0n,
+        expirySlot: view.getBigUint64(PROOFPASS_SESSION_OFFSETS.expirySlot, true),
+        contextRefHash: Buffer.from(data.subarray(PROOFPASS_SESSION_OFFSETS.contextRefHash, PROOFPASS_SESSION_OFFSETS.contextRefHash + PROOFPASS_BYTES32_LEN)),
+        feedbackFileHashHint: hasFeedbackFileHashHint === 0 ? null : Buffer.from(feedbackFileHashHint),
+        feedbackUriHint: data
+            .subarray(PROOFPASS_SESSION_OFFSETS.feedbackUriHint, PROOFPASS_SESSION_OFFSETS.feedbackUriHint + feedbackUriLen)
+            .toString('utf8'),
+        endpointHint: data
+            .subarray(PROOFPASS_SESSION_OFFSETS.endpointHint, PROOFPASS_SESSION_OFFSETS.endpointHint + endpointLen)
+            .toString('utf8'),
+        nonce: Buffer.from(data.subarray(PROOFPASS_SESSION_OFFSETS.nonce, PROOFPASS_SESSION_OFFSETS.nonce + PROOFPASS_BYTES32_LEN)),
+    };
+}
+async function fetchProofPassConfig(connection, programId = PROOFPASS_PROGRAM_ID) {
+    const [configPda] = getProofPassConfigPda(programId);
+    const account = await connection.getAccountInfo(configPda);
+    if (!account) {
+        throw new Error(`ProofPass config ${configPda.toBase58()} is not initialized`);
+    }
+    const data = Buffer.from(account.data);
+    if (data.length !== PROOFPASS_CONFIG_ACCOUNT_SIZE
+        || !data.subarray(0, 8).equals(PROOFPASS_CONFIG_ACCOUNT_DISCRIMINATOR)) {
+        throw new Error(`Invalid ProofPass config account at ${configPda.toBase58()}`);
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    return {
+        treasury: new PublicKey(data.subarray(PROOFPASS_CONFIG_OFFSETS.treasury, PROOFPASS_CONFIG_OFFSETS.treasury + 32)),
+        registryProgram: new PublicKey(data.subarray(PROOFPASS_CONFIG_OFFSETS.registryProgram, PROOFPASS_CONFIG_OFFSETS.registryProgram + 32)),
+        openFeeLamports: view.getBigUint64(PROOFPASS_CONFIG_OFFSETS.openFeeLamports, true),
+        finalizeFeeLamports: view.getBigUint64(PROOFPASS_CONFIG_OFFSETS.finalizeFeeLamports, true),
+        maxExpirySlots: view.getBigUint64(PROOFPASS_CONFIG_OFFSETS.maxExpirySlots, true),
+        paused: data[PROOFPASS_CONFIG_OFFSETS.paused] !== 0,
+    };
+}
+async function requireLiveProofPass(connection, session) {
+    const live = await getLiveProofPass({
+        connection,
+        session,
+    });
+    if (!live) {
+        throw new Error(`No live ProofPass request found for session ${toPublicKey(session, 'session').toBase58()}`);
+    }
+    return live;
+}
+function mergeServiceFeedbackHints(session, feedback) {
+    const providedEndpoint = feedback.endpoint && feedback.endpoint !== ''
+        ? feedback.endpoint
+        : undefined;
+    const providedFeedbackUri = feedback.feedbackUri && feedback.feedbackUri !== ''
+        ? feedback.feedbackUri
+        : undefined;
+    if (session.endpointHint
+        && providedEndpoint !== undefined
+        && providedEndpoint !== session.endpointHint) {
+        throw new Error('feedback.endpoint does not match the service-provided ProofPass endpoint');
+    }
+    if (session.feedbackUriHint
+        && providedFeedbackUri !== undefined
+        && providedFeedbackUri !== session.feedbackUriHint) {
+        throw new Error('feedback.feedbackUri does not match the service-provided ProofPass attachment');
+    }
+    if (session.feedbackFileHashHint
+        && feedback.feedbackFileHash !== undefined
+        && !Buffer.from(feedback.feedbackFileHash).equals(session.feedbackFileHashHint)) {
+        throw new Error('feedback.feedbackFileHash does not match the service-provided ProofPass attachment');
+    }
+    return {
+        ...feedback,
+        endpoint: providedEndpoint ?? (session.endpointHint || undefined),
+        feedbackUri: providedFeedbackUri ?? (session.feedbackUriHint || undefined),
+        feedbackFileHash: feedback.feedbackFileHash ?? session.feedbackFileHashHint ?? undefined,
+    };
+}
+function normalizeEndpointHint(value) {
+    const resolved = value ?? '';
+    if (Buffer.byteLength(resolved, 'utf8') > MAX_ENDPOINT_LEN) {
+        throw new Error(`endpoint exceeds ${MAX_ENDPOINT_LEN} UTF-8 bytes`);
+    }
+    return resolved;
+}
+function normalizeFeedbackUri(value) {
+    const resolved = value ?? '';
+    if (Buffer.byteLength(resolved, 'utf8') > MAX_URI_LEN) {
+        throw new Error(`feedbackUri exceeds ${MAX_URI_LEN} UTF-8 bytes`);
+    }
+    return resolved;
 }
 function normalizePublicKey(value, fieldName) {
     return toPublicKey(value, fieldName).toBase58();
@@ -348,91 +815,24 @@ function normalizeContextType(contextType) {
     }
     return resolved;
 }
-function normalizeIssuedAt(issuedAt) {
-    if (issuedAt === undefined) {
-        return Date.now();
-    }
-    if (issuedAt instanceof Date) {
-        const value = issuedAt.getTime();
-        if (!Number.isFinite(value)) {
-            throw new Error('issuedAt must be a valid timestamp');
-        }
-        return value;
-    }
-    if (!Number.isFinite(issuedAt)) {
-        throw new Error('issuedAt must be a finite timestamp');
-    }
-    return issuedAt;
-}
-function resolveOpenSessionTtlSlots(intent, ttlSlots) {
-    if (ttlSlots !== undefined) {
-        return toPositiveBigInt(ttlSlots, 'ttlSlots');
-    }
-    if (intent.ttlSlots === null) {
-        throw new Error('ttlSlots is required to build open_session when intent has no resolved TTL');
-    }
-    return intent.ttlSlots;
-}
-function serializeProofPassGiveFeedbackArgs(payload) {
-    return Buffer.concat([
-        serializeI128(payload.value),
-        Buffer.from([payload.valueDecimals]),
-        serializeOptionU8(payload.score),
-        serializeOption32Bytes(payload.feedbackFileHash),
-        serializeString(payload.tag1),
-        serializeString(payload.tag2),
-        serializeString(payload.endpoint),
-        serializeString(payload.feedbackUri),
-    ]);
-}
-function serializeI128(value) {
-    if (value < I128_MIN || value > I128_MAX) {
-        throw new Error(`value ${value} exceeds i128 range`);
-    }
-    let encoded = value;
-    if (encoded < 0n) {
-        encoded = (1n << 128n) + encoded;
-    }
-    const out = Buffer.alloc(16);
-    for (let i = 0; i < 16; i += 1) {
-        out[i] = Number((encoded >> BigInt(i * 8)) & 0xffn);
-    }
-    return out;
-}
-function serializeOptionU8(value) {
-    if (value === null) {
-        return Buffer.from([0]);
-    }
-    return Buffer.from([1, value]);
-}
-function serializeOption32Bytes(value) {
-    if (value === null) {
-        return Buffer.from([0]);
-    }
-    const bytes = ensureFixedBytes(value, PROOFPASS_BYTES32_LEN, 'feedbackFileHash');
-    return Buffer.concat([Buffer.from([1]), bytes]);
-}
 function toNonNegativeBigInt(value, fieldName) {
-    if (typeof value === 'bigint') {
-        if (value < 0n) {
-            throw new Error(`${fieldName} must be >= 0`);
-        }
-        return value;
+    const normalized = typeof value === 'bigint' ? value : BigInt(value);
+    if (normalized < 0n) {
+        throw new Error(`${fieldName} must be non-negative`);
     }
-    if (!Number.isInteger(value) || !Number.isSafeInteger(value) || value < 0) {
-        throw new Error(`${fieldName} must be a non-negative safe integer or bigint`);
-    }
-    return BigInt(value);
+    return normalized;
 }
 function toPositiveBigInt(value, fieldName) {
     const normalized = toNonNegativeBigInt(value, fieldName);
     if (normalized === 0n) {
-        throw new Error(`${fieldName} must be > 0`);
+        throw new Error(`${fieldName} must be greater than 0`);
     }
     return normalized;
 }
 function u64ToBuffer(value, fieldName) {
     const normalized = toNonNegativeBigInt(value, fieldName);
-    return Buffer.from(writeBigUInt64LE(normalized));
+    const out = Buffer.alloc(8);
+    out.writeBigUInt64LE(normalized);
+    return out;
 }
 //# sourceMappingURL=proofpass.js.map

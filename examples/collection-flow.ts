@@ -27,23 +27,29 @@ import type {
 
 const DEFAULT_AGENT_COUNT = 20;
 const DEFAULT_DRY_COLLECTION_POINTER = 'c1:dryruncollectionflow000000000000000000000001';
+const RPC_URL = 'https://api.devnet.solana.com';
+const SOLANA_PRIVATE_KEY_JSON = '';
+const PINATA_JWT = '';
+const IPFS_API_URL = '';
+const DRY_RUN = true;
+const AGENT_COUNT = 20;
+const DRY_RUN_UPLOAD_COLLECTION = false;
+const DRY_COLLECTION_POINTER = DEFAULT_DRY_COLLECTION_POINTER;
 
 function parseKeypair(secretKey: string): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
 }
 
 function buildIpfsClient(): IPFSClient | undefined {
-  const pinataJwt = process.env.PINATA_JWT;
-  if (pinataJwt) {
+  if (PINATA_JWT) {
     return new IPFSClient({
       pinataEnabled: true,
-      pinataJwt,
+      pinataJwt: PINATA_JWT,
     });
   }
 
-  const ipfsApiUrl = process.env.IPFS_API_URL;
-  if (ipfsApiUrl) {
-    return new IPFSClient({ url: ipfsApiUrl });
+  if (IPFS_API_URL) {
+    return new IPFSClient({ url: IPFS_API_URL });
   }
 
   return undefined;
@@ -98,26 +104,25 @@ function describeResult(result: unknown): string {
 }
 
 async function main() {
-  const dryRun = process.env.DRY_RUN === '1';
-  const agentCount = Number.parseInt(process.env.AGENT_COUNT ?? String(DEFAULT_AGENT_COUNT), 10);
+  const dryRun = DRY_RUN;
+  const agentCount = AGENT_COUNT ?? DEFAULT_AGENT_COUNT;
   if (!Number.isInteger(agentCount) || agentCount <= 0) {
     throw new Error('AGENT_COUNT must be a positive integer');
   }
 
-  const secretKey = process.env.SOLANA_PRIVATE_KEY;
-  if (!secretKey && !dryRun) {
-    throw new Error('SOLANA_PRIVATE_KEY is required when DRY_RUN is not enabled');
+  if (!SOLANA_PRIVATE_KEY_JSON && !dryRun) {
+    throw new Error('SOLANA_PRIVATE_KEY_JSON is required when DRY_RUN is not enabled');
   }
 
-  const signer = secretKey ? parseKeypair(secretKey) : Keypair.generate();
-  if (!secretKey && dryRun) {
-    console.log('DRY_RUN enabled without SOLANA_PRIVATE_KEY: using ephemeral signer public key');
+  const signer = SOLANA_PRIVATE_KEY_JSON ? parseKeypair(SOLANA_PRIVATE_KEY_JSON) : Keypair.generate();
+  if (!SOLANA_PRIVATE_KEY_JSON && dryRun) {
+    console.log('DRY_RUN enabled without SOLANA_PRIVATE_KEY_JSON: using ephemeral signer public key');
   }
 
   const ipfsClient = buildIpfsClient();
   const sdk = new SolanaSDK({
     signer,
-    rpcUrl: process.env.SOLANA_RPC_URL,
+    rpcUrl: RPC_URL,
     ...(ipfsClient ? { ipfsClient } : {}),
   });
 
@@ -129,14 +134,14 @@ async function main() {
     image: 'ipfs://bafybeiquantucollection/logo.png',
   };
 
-  const uploadCollectionToIpfs = !!ipfsClient && (!dryRun || process.env.DRY_RUN_UPLOAD_COLLECTION === '1');
+  const uploadCollectionToIpfs = !!ipfsClient && (!dryRun || DRY_RUN_UPLOAD_COLLECTION);
   const collection = await sdk.createCollection(collectionMetadata, {
     uploadToIpfs: uploadCollectionToIpfs,
   });
 
   const collectionPointer =
     collection.pointer ??
-    process.env.DRY_COLLECTION_POINTER ??
+    DRY_COLLECTION_POINTER ??
     DEFAULT_DRY_COLLECTION_POINTER;
 
   if (!collection.pointer && !dryRun) {

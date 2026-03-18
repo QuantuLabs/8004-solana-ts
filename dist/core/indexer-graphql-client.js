@@ -592,6 +592,7 @@ function mapGqlFeedback(row, fallbackAsset = '') {
         feedback_uri: row.feedbackURI ?? null,
         running_digest: normalizeHexDigest(row?.solana?.runningDigest),
         feedback_hash: normalizeHexDigest(row.feedbackHash),
+        proof_pass_auth: row?.solana?.proofPassAuth ?? false,
         is_revoked: Boolean(row.isRevoked),
         revoked_at: row.revokedAt ? toIsoFromUnixSeconds(row.revokedAt) : null,
         block_slot: toNumberSafe(row?.solana?.blockSlot, 0),
@@ -652,6 +653,7 @@ export class IndexerGraphQLClient {
     }
     async requestAgainstEndpoint(endpoint, query, variables) {
         let lastError = null;
+        let currentQuery = query;
         for (let attempt = 0; attempt <= this.retries; attempt++) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -662,7 +664,7 @@ export class IndexerGraphQLClient {
                         'content-type': 'application/json',
                         ...this.headers,
                     },
-                    body: JSON.stringify({ query, variables }),
+                    body: JSON.stringify({ query: currentQuery, variables }),
                     signal: controller.signal,
                     redirect: 'error',
                 });
@@ -700,6 +702,13 @@ export class IndexerGraphQLClient {
                 const json = (await response.json());
                 if (json.errors && json.errors.length > 0) {
                     const msg = json.errors.map(e => e?.message).filter(Boolean).join('; ') || 'GraphQL error';
+                    if (this.shouldFallbackUnsupportedProofPassAuth(msg)) {
+                        const fallbackQuery = this.stripUnsupportedProofPassAuthSelections(currentQuery);
+                        if (fallbackQuery !== currentQuery) {
+                            currentQuery = fallbackQuery;
+                            continue;
+                        }
+                    }
                     throw new IndexerError(msg, IndexerErrorCode.INVALID_RESPONSE);
                 }
                 if (!json.data) {
@@ -744,6 +753,14 @@ export class IndexerGraphQLClient {
             || /Unknown argument ['"]creator['"] on field ['"]Query\.collections['"]/.test(msg)
             || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssetCount['"]/.test(msg)
             || /Unknown argument ['"]creator['"] on field ['"]Query\.collectionAssets['"]/.test(msg));
+    }
+    shouldFallbackUnsupportedProofPassAuth(error) {
+        if (typeof error !== 'string')
+            return false;
+        return /Cannot query field ['"]proofPassAuth['"] on type ['"]SolanaFeedbackExtension['"]/.test(error);
+    }
+    stripUnsupportedProofPassAuthSelections(query) {
+        return query.replace(/\s+proofPassAuth\b/g, '');
     }
     shouldFallbackGlobalStatsExtendedFields(error) {
         if (!(error instanceof IndexerError))
@@ -1368,7 +1385,7 @@ export class IndexerGraphQLClient {
             isRevoked
             createdAt
             revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
           }
         }`, { where });
             const page = data.feedbacks.map((f) => mapGqlFeedback(f, asset));
@@ -1393,7 +1410,7 @@ export class IndexerGraphQLClient {
       isRevoked
       createdAt
       revokedAt
-      solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+      solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
     }
   }`, { id: feedbackId(asset, client, feedbackIndex) });
         if (!data.feedback)
@@ -1422,7 +1439,7 @@ export class IndexerGraphQLClient {
           isRevoked
           createdAt
           revokedAt
-          solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+          solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
         }
       }`, { id: normalizedId });
         if (!data.feedback)
@@ -1450,7 +1467,7 @@ export class IndexerGraphQLClient {
             isRevoked
             createdAt
             revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
           }
         }`, { client });
             const page = data.feedbacks ?? [];
@@ -1493,7 +1510,7 @@ export class IndexerGraphQLClient {
               isRevoked
               createdAt
               revokedAt
-              solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+              solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
             }
           }`, { tag });
                 const page = data.feedbacks ?? [];
@@ -1543,7 +1560,7 @@ export class IndexerGraphQLClient {
             isRevoked
             createdAt
             revokedAt
-            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+            solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
           }
         }`, { endpoint });
             const page = data.feedbacks ?? [];
@@ -1575,7 +1592,7 @@ export class IndexerGraphQLClient {
           isRevoked
           createdAt
           revokedAt
-          solana { valueRaw valueDecimals score txSignature blockSlot runningDigest }
+          solana { valueRaw valueDecimals score txSignature blockSlot runningDigest proofPassAuth }
         }
       }`, { where: Object.keys(where).length ? where : null });
         return data.feedbacks.map((f) => mapGqlFeedback(f));

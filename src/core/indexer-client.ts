@@ -43,7 +43,10 @@ function normalizeSequentialIdForRead(
     }
     parsed = BigInt(value);
   } else if (typeof value === 'string') {
-    const trimmed = value.trim();
+    const normalizedInput = value.trim();
+    const trimmed = normalizedInput.startsWith('sol:')
+      ? normalizedInput.slice(4).trim()
+      : normalizedInput;
     if (!/^-?\d+$/.test(trimmed)) {
       throw new IndexerError(`${fieldName} must be an integer`, IndexerErrorCode.INVALID_RESPONSE);
     }
@@ -413,6 +416,7 @@ export interface IndexedFeedback {
   feedback_uri: string | null;
   running_digest: string | null;
   feedback_hash: string | null;
+  proof_pass_auth?: boolean | null;
   is_revoked: boolean;
   revoked_at: string | null;
   block_slot: number;
@@ -1140,7 +1144,7 @@ export class IndexerClient implements IndexerReadClient {
    * Get agent by indexer agent_id
    */
   async getAgentByAgentId(agentId: string | number | bigint): Promise<IndexedAgent | null> {
-    const id = typeof agentId === 'bigint' ? agentId.toString() : String(agentId);
+    const id = normalizeSequentialIdForRead(agentId, 'agentId');
     const query = this.buildQuery({ agent_id: `eq.${id}` });
     const result = await this.request<IndexedAgent[]>(`/agents${query}`);
     return result.length > 0 ? result[0] : null;

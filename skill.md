@@ -1,7 +1,7 @@
 ---
 name: 8004-solana-sdk
 description: "TypeScript SDK for the 8004 Trustless Agent Registry on Solana. Covers agent registration, feedback/SEAL v1, ATOM reputation engine, signing, indexer queries, x402 payment feedback, and skipSend server-mode patterns."
-version: 0.8.0
+version: 0.8.2
 homepage: "https://github.com/QuantuLabs/8004-solana-ts"
 metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA_PRIVATE_KEY"]},"primaryEnv":"SOLANA_PRIVATE_KEY","os":["darwin","linux","windows"]}}
 ---
@@ -10,7 +10,7 @@ metadata: {"openclaw":{"emoji":"🔗","requires":{"bins":["node"],"env":["SOLANA
 
 You are an AI agent with access to the `8004-solana` TypeScript SDK. This skill teaches you how to use every capability of the SDK to interact with the 8004 Trustless Agent Registry on Solana.
 
-Version note (SDK `0.8.0`):
+Version note (SDK `0.8.2`):
 - `mainnet-beta` is first-class in SDK defaults (program IDs + indexer endpoints).
 - Cluster-aware indexer defaults are built in:
   - `devnet`/`testnet`: `https://8004-indexer-dev.qnt.sh/rest/v1` and `/v2/graphql`
@@ -62,6 +62,13 @@ import {
   // Tag helpers
   isKnownTag,
   getTagDescription,
+
+  // ProofPass
+  openProofPass,
+  giveFeedbackWithProof,
+  closeProofPass,
+  getLiveProofPass,
+  getLiveProofPassesByCreator,
 
   // Signing
   buildSignedPayload,
@@ -192,6 +199,25 @@ const ipfsLocal = new IPFSClient({ url: 'http://localhost:5001' });
 
 ---
 
+## Asset-First Rule
+
+For this release, the main async agent-scoped SDK surface is asset-pubkey-first.
+
+If you only have a backend sequential `agentId`, resolve it through the indexer first, then keep using the agent asset pubkey for the main SDK methods.
+
+After registration, keep the returned asset and use it directly:
+
+```typescript
+const result = await sdk.registerAgent(`ipfs://${cid}`);
+
+const agentAsset = result.asset;
+const targetAgent = agentAsset; // asset pubkey used by the public SDK surface in this release
+```
+
+Use `agentAsset` only for flows that truly require the real pubkey, such as `sign(...)`.
+
+---
+
 ## 2. Register an Agent
 
 ### Step 1: Build metadata
@@ -235,7 +261,7 @@ const withAtom = await sdk.registerAgent(`ipfs://${cid}`, {
 
 ```typescript
 const opWallet = Keypair.generate();
-await sdk.setAgentWallet(result.asset, opWallet);
+await sdk.setAgentWallet(targetAgent, opWallet);
 ```
 
 ### Collection + Parent Association (CID-first)
@@ -245,8 +271,6 @@ A collection is unique only when the minting creator is the same and the collect
 For indexer reads, you can also use sequential `collection_id` helpers (`getCollectionPointerById`, `getCollectionAssetCountById`, `getCollectionAssetsById`).
 
 ```typescript
-const { asset } = result; // from registerAgent(...)
-
 // Build JSON payload (off-chain)
 const collectionData = sdk.createCollectionData({
   name: 'CasterCorp Agents',
@@ -260,10 +284,10 @@ const { pointer, uri } = await sdk.createCollection(collectionData);
 // uri -> ipfs://...
 
 // Attach pointer to the agent (string pointer, not pubkey)
-await sdk.setCollectionPointer(asset, pointer!); // lock=true by default
+await sdk.setCollectionPointer(targetAgent, pointer!); // lock=true by default
 
 // Parent hierarchy (advanced)
-await sdk.setParentAsset(childAsset, parentAsset, { lock: false });
+await sdk.setParentAsset(targetAgent, parentAsset, { lock: false });
 ```
 
 Rules enforced on-chain:
@@ -279,20 +303,20 @@ Rules enforced on-chain:
 
 ```typescript
 // Load agent
-const agent = await sdk.loadAgent(assetPubkey);
+const agent = await sdk.loadAgent(targetAgent);
 // agent.getOwnerPublicKey(), agent.getAgentWalletPublicKey(), agent.agent_uri, etc.
 
 // Check existence
-const exists = await sdk.agentExists(assetPubkey);
+const exists = await sdk.agentExists(targetAgent);
 
 // Get owner
-const owner = await sdk.getAgentOwner(assetPubkey);
+const owner = await sdk.getAgentOwner(targetAgent);
 
 // Check ownership
-const isMine = await sdk.isAgentOwner(assetPubkey, myPubkey);
+const isMine = await sdk.isAgentOwner(targetAgent, myPubkey);
 
 // On-chain metadata
-const version = await sdk.getMetadata(assetPubkey, 'version');
+const version = await sdk.getMetadata(targetAgent, 'version');
 ```
 
 ### Bulk queries (requires premium RPC: Helius, QuickNode, Alchemy)
@@ -309,26 +333,26 @@ const myAgents = await sdk.getAgentsByOwner(ownerPubkey);
 
 ```typescript
 // Update metadata URI
-await sdk.setAgentUri(assetPubkey, `ipfs://${newCid}`); // base registry account auto-resolved
+await sdk.setAgentUri(targetAgent, `ipfs://${newCid}`); // base registry account auto-resolved
 
 // Set on-chain key-value metadata
-await sdk.setMetadata(assetPubkey, 'version', '2.0.0');
+await sdk.setMetadata(targetAgent, 'version', '2.0.0');
 // First call: ~0.00319 SOL (PDA rent). Updates: ~0.000005 SOL (tx fee only)
 
 // Immutable metadata (permanent, cannot change or delete)
-await sdk.setMetadata(assetPubkey, 'certification', 'audited-2026', true);
+await sdk.setMetadata(targetAgent, 'certification', 'audited-2026', true);
 
 // Delete metadata (recovers rent)
-await sdk.deleteMetadata(assetPubkey, 'version');
+await sdk.deleteMetadata(targetAgent, 'version');
 
 // Transfer ownership
-await sdk.transferAgent(assetPubkey, newOwnerPubkey); // base registry account auto-resolved
+await sdk.transferAgent(targetAgent, newOwnerPubkey); // base registry account auto-resolved
 
 // Sync owner after external NFT transfer
-await sdk.syncOwner(assetPubkey);
+await sdk.syncOwner(targetAgent);
 
 // Burn agent Core asset (irreversible)
-await sdk.burnAgent(assetPubkey);
+await sdk.burnAgent(targetAgent);
 // Note: burnAgent burns the Core asset; AgentAccount PDA remains until an on-chain unregister exists.
 ```
 
@@ -340,7 +364,7 @@ await sdk.burnAgent(assetPubkey);
 
 ```typescript
 // Decimal string auto-encodes: "99.77" -> { value: 9977n, valueDecimals: 2 }
-await sdk.giveFeedback(assetPubkey, {
+await sdk.giveFeedback(targetAgent, {
   value: '99.77',
   tag1: Tag.uptime,
   tag2: Tag.day,
@@ -402,22 +426,22 @@ Context-dependent tags (require explicit score): `reachable`, `ownerVerified`, `
 
 ```typescript
 // Single feedback
-const fb = await sdk.readFeedback(assetPubkey, clientPubkey, 0);
+const fb = await sdk.readFeedback(targetAgent, clientPubkey, 0);
 // fb.value, fb.valueDecimals, fb.score, fb.tag1, fb.tag2, fb.sealHash
 
 // All feedbacks for agent (indexer-backed)
-const all = await sdk.readAllFeedback(assetPubkey);
-const withRevoked = await sdk.readAllFeedback(assetPubkey, true);
+const all = await sdk.readAllFeedback(targetAgent);
+const withRevoked = await sdk.readAllFeedback(targetAgent, true);
 
 // Last feedback index for a specific client (NOT a count)
-const lastIndex = await sdk.getLastIndex(assetPubkey, clientPubkey);
+const lastIndex = await sdk.getLastIndex(targetAgent, clientPubkey);
 const nextIndex = lastIndex + 1n; // if no feedback yet: lastIndex = -1n, nextIndex = 0n
 
 // All clients who gave feedback (indexer-backed)
-const clients = await sdk.getClients(assetPubkey);
+const clients = await sdk.getClients(targetAgent);
 
 // Via indexer (faster, no premium RPC needed)
-const feedbacks = await sdk.getFeedbacksFromIndexer(assetPubkey, { limit: 50 });
+const feedbacks = await sdk.getFeedbacksFromIndexer(targetAgent, { limit: 50 });
 const byEndpoint = await sdk.getFeedbacksByEndpoint('/api/generate');
 const byTag = await sdk.getFeedbacksByTag('uptime');
 ```
@@ -425,25 +449,23 @@ const byTag = await sdk.getFeedbacksByTag('uptime');
 ### Revoke feedback
 
 ```typescript
-// Requires the sealHash from the original feedback
-const fb = await sdk.readFeedback(assetPubkey, clientPubkey, 0);
-await sdk.revokeFeedback(assetPubkey, 0, fb.sealHash!);
+// Normal flow: pass the agent and feedback index
+await sdk.revokeFeedback(targetAgent, 0);
 ```
 
 ### Respond to feedback (as agent owner)
 
 ```typescript
 await sdk.appendResponse(
-  assetPubkey,
+  targetAgent,
   clientPubkey,
   0,                          // feedbackIndex
-  fb.sealHash!,               // sealHash from the feedback
   `ipfs://${responseCid}`,    // response URI
 );
 
 // Read responses
-const responses = await sdk.readResponses(assetPubkey, clientPubkey, 0);
-const count = await sdk.getResponseCount(assetPubkey, clientPubkey, 0);
+const responses = await sdk.readResponses(targetAgent, clientPubkey, 0);
+const count = await sdk.getResponseCount(targetAgent, clientPubkey, 0);
 ```
 
 ---
@@ -453,21 +475,21 @@ const count = await sdk.getResponseCount(assetPubkey, clientPubkey, 0);
 ### Quick reputation summary
 
 ```typescript
-const summary = await sdk.getSummary(assetPubkey);
+const summary = await sdk.getSummary(targetAgent);
 // summary.averageScore      -> 0-100
 // summary.totalFeedbacks
 // summary.positiveCount     -> score >= 50
 // summary.negativeCount     -> score < 50
 
 // With filters
-const filtered = await sdk.getSummary(assetPubkey, 70);  // minScore=70
-const byClient = await sdk.getSummary(assetPubkey, undefined, clientPubkey);
+const filtered = await sdk.getSummary(targetAgent, 70);  // minScore=70
+const byClient = await sdk.getSummary(targetAgent, undefined, clientPubkey);
 ```
 
 ### ATOM stats (on-chain reputation engine)
 
 ```typescript
-const atom = await sdk.getAtomStats(assetPubkey);
+const atom = await sdk.getAtomStats(targetAgent);
 if (atom) {
   atom.quality_score;             // 0-10000 (divide by 100 for percentage)
   atom.confidence;                // 0-10000
@@ -490,7 +512,7 @@ if (atom) {
 ### Trust tier
 
 ```typescript
-const tier = await sdk.getTrustTier(assetPubkey);
+const tier = await sdk.getTrustTier(targetAgent);
 // TrustTier.Unrated   = 0
 // TrustTier.Bronze    = 1
 // TrustTier.Silver    = 2
@@ -503,7 +525,7 @@ const name = trustTierToString(tier); // "Gold"
 ### Enriched summary (ATOM + raw feedback combined)
 
 ```typescript
-const enriched = await sdk.getEnrichedSummary(assetPubkey);
+const enriched = await sdk.getEnrichedSummary(targetAgent);
 if (enriched) {
   enriched.trustTier;
   enriched.qualityScore;     // 0-10000
@@ -524,7 +546,7 @@ if (enriched) {
 ### Reputation from indexer
 
 ```typescript
-const rep = await sdk.getAgentReputationFromIndexer(assetPubkey);
+const rep = await sdk.getAgentReputationFromIndexer(targetAgent);
 ```
 
 ---
@@ -534,7 +556,8 @@ const rep = await sdk.getAgentReputationFromIndexer(assetPubkey);
 ### Sign data with agent wallet
 
 ```typescript
-const signedJson = sdk.sign(assetPubkey, {
+const agentAsset = agent.getAssetPublicKey();
+const signedJson = sdk.sign(agentAsset, {
   action: 'authorize',
   target: 'task-123',
   timestamp: Date.now(),
@@ -546,19 +569,19 @@ const signedJson = sdk.sign(assetPubkey, {
 
 ```typescript
 // From JSON string
-const isValidFromJson = await sdk.verify(signedJson, assetPubkey);
+const isValidFromJson = await sdk.verify(signedJson, targetAgent);
 
 // From IPFS URI
-const isValidFromIpfs = await sdk.verify('ipfs://QmPayload...', assetPubkey);
+const isValidFromIpfs = await sdk.verify('ipfs://QmPayload...', targetAgent);
 
 // From HTTPS URL
-const isValidFromHttps = await sdk.verify('https://example.com/signed.json', assetPubkey);
+const isValidFromHttps = await sdk.verify('https://example.com/signed.json', targetAgent);
 
 // From file path
-const isValidFromFile = await sdk.verify('./signed-payload.json', assetPubkey);
+const isValidFromFile = await sdk.verify('./signed-payload.json', targetAgent);
 
 // With explicit public key
-const isValidWithPubkey = await sdk.verify(signedJson, assetPubkey, walletPubkey);
+const isValidWithPubkey = await sdk.verify(signedJson, targetAgent, walletPubkey);
 ```
 
 ### SignedPayloadV1 format
@@ -580,13 +603,13 @@ const exampleSignedPayload = {
 ## 8. Liveness Check
 
 ```typescript
-const defaultReport = await sdk.isItAlive(assetPubkey);
+const defaultReport = await sdk.isItAlive(targetAgent);
 // report.status: 'live' | 'partially' | 'not_live'
 // report.okCount, report.totalPinged, report.skippedCount
 // report.liveServices[], report.deadServices[], report.skippedServices[]
 
 // With options
-const tunedReport = await sdk.isItAlive(assetPubkey, {
+const tunedReport = await sdk.isItAlive(targetAgent, {
   timeoutMs: 10000,
   concurrency: 2,
   treatAuthAsAlive: true,           // 401/403 = alive
@@ -625,7 +648,7 @@ const valid = verifySealHash({ ...params, sealHash });  // true
 
 // Compute feedback leaf (for hash-chain verification)
 const leaf = computeFeedbackLeafV1(
-  assetPubkey.toBuffer(),
+  agentAsset.toBuffer(),
   clientPubkey.toBuffer(),
   0n,           // feedbackIndex
   sealHash,
@@ -649,7 +672,7 @@ const leaf = computeFeedbackLeafV1(
 ### Quick check (O(1))
 
 ```typescript
-const integrity = await sdk.verifyIntegrity(assetPubkey);
+const integrity = await sdk.verifyIntegrity(targetAgent);
 // integrity.valid        -> boolean
 // integrity.status       -> 'valid' | 'syncing' | 'corrupted' | 'error'
 // integrity.trustworthy  -> boolean
@@ -660,7 +683,7 @@ const integrity = await sdk.verifyIntegrity(assetPubkey);
 ### Deep verification (spot checks)
 
 ```typescript
-const deep = await sdk.verifyIntegrityDeep(assetPubkey, {
+const deep = await sdk.verifyIntegrityDeep(targetAgent, {
   spotChecks: 10,
   checkBoundaries: true,
   verifyContent: false,  // true = also verify IPFS content hashes (slow)
@@ -671,7 +694,7 @@ const deep = await sdk.verifyIntegrityDeep(assetPubkey, {
 ### Full hash-chain replay
 
 ```typescript
-const full = await sdk.verifyIntegrityFull(assetPubkey, {
+const full = await sdk.verifyIntegrityFull(targetAgent, {
   onProgress: (chain, count, total) => {
     console.log(`${chain}: ${count}/${total}`);
   },
@@ -967,7 +990,7 @@ const prepared = await sdk.registerAgent(uri, {
 
 // For agent wallet (browser wallet flow)
 const { message, complete } = await sdk.prepareSetAgentWallet(
-  assetPubkey,
+  targetAgent,
   walletPubkey,
   { signer: ownerPubkey } // optional if SDK was initialized with signer
 );
@@ -996,12 +1019,12 @@ const leaderboard = await indexer.getLeaderboard({ minTier: 3 });
 ### Wait for indexer sync after write
 
 ```typescript
-await sdk.giveFeedback(assetPubkey, feedbackParams);
+await sdk.giveFeedback(targetAgent, feedbackParams);
 
 // Poll until indexer catches up (returns true if synced, false on timeout)
 const synced = await sdk.waitForIndexerSync(
   async () => {
-    const fbs = await sdk.getFeedbacksFromIndexer(assetPubkey);
+    const fbs = await sdk.getFeedbacksFromIndexer(targetAgent);
     return fbs.length >= expectedCount;
   },
   { timeout: 30000 }  // ms, default 30s
@@ -1010,7 +1033,43 @@ const synced = await sdk.waitForIndexerSync(
 
 ---
 
-## 21. Error Handling
+## 21. ProofPass
+
+Use `ProofPass` when a service should open a feedback request first, then let a reviewer finalize a real `giveFeedback(...)` later.
+
+Keep the public flow short here and use [docs/PROOFPASS.md](./docs/PROOFPASS.md) for the full argument reference.
+
+```typescript
+import { openProofPass, giveFeedbackWithProof } from '8004-solana';
+
+const flow = await openProofPass({
+  connection,
+  creator: serviceWallet.publicKey,
+  reviewer: customerWallet.publicKey,
+  targetAgent,
+  contextRef: `request:${requestId}`,
+  contextType: 3,
+  ttlSlots: 1_200,
+  feeMode: 'creator_pays_all',
+  endpoint: '/api/v1/generate',
+  feedbackUri: 'ipfs://QmServiceProof...',
+  feedbackFileHash: new Uint8Array(32),
+});
+
+await giveFeedbackWithProof({
+  connection,
+  session: flow.sessionPda,
+  reviewer: customerWallet.publicKey,
+  feedback: {
+    value: '42',
+    tag1: 'quality',
+  },
+});
+```
+
+---
+
+## 22. Error Handling
 
 ```typescript
 import {
@@ -1046,7 +1105,7 @@ Indexer-backed reads (`readAllFeedback()`, `getClients()`, `getLastIndex()`, `re
 
 ---
 
-## 22. Operation Costs (Solana devnet)
+## 23. Operation Costs (Solana devnet)
 
 | Operation | Cost | Notes |
 |-----------|------|-------|
@@ -1063,14 +1122,14 @@ Indexer-backed reads (`readAllFeedback()`, `getClients()`, `getLastIndex()`, `re
 
 ---
 
-## 23. Common Patterns
+## 24. Common Patterns
 
 ### Monitor agent health
 
 ```typescript
-const report = await sdk.isItAlive(assetPubkey);
+const report = await sdk.isItAlive(targetAgent);
 if (report.status !== 'live') {
-  await sdk.giveFeedback(assetPubkey, {
+  await sdk.giveFeedback(targetAgent, {
     value: 0,
     valueDecimals: 0,
     tag1: Tag.reachable,
@@ -1084,7 +1143,7 @@ if (report.status !== 'live') {
 
 ```typescript
 const uptimePercent = calculateUptime(); // your logic
-await sdk.giveFeedback(assetPubkey, {
+await sdk.giveFeedback(targetAgent, {
   value: uptimePercent.toFixed(2),  // "99.75" auto-encodes
   tag1: Tag.uptime,
   tag2: Tag.day,
@@ -1095,7 +1154,7 @@ await sdk.giveFeedback(assetPubkey, {
 ### Trust-gated interaction
 
 ```typescript
-const tier = await sdk.getTrustTier(assetPubkey);
+const tier = await sdk.getTrustTier(targetAgent);
 if (tier < TrustTier.Silver) {
   throw new Error('Agent trust too low for this operation');
 }
@@ -1104,11 +1163,16 @@ if (tier < TrustTier.Silver) {
 ### x402 payment feedback (full flow)
 
 ```typescript
+const clientAgentAsset = clientAgent.asset;
+
 // 1. Build the feedback file JSON (off-chain proof of payment)
+// In this raw x402 payload, `agentId` is the real on-chain asset mint.
+// It is not the backend sequential `agentId` used by some indexer reads.
 const feedbackFile = {
   version: '1.0',
   type: 'x402-feedback',
-  agent: assetPubkey.toBase58(),
+  agentId: agentAsset.toBase58(),
+  agent: agentAsset.toBase58(),
   client: clientPubkey.toBase58(),
   endpoint: '/api/generate',
   timestamp: new Date().toISOString(),
@@ -1141,7 +1205,7 @@ const feedbackFileHash = await SolanaSDK.computeHash(
 );
 
 // 4. Submit on-chain feedback with proof link
-await sdk.giveFeedback(assetPubkey, {
+await sdk.giveFeedback(targetAgent, {
   value: '100.00',
   tag1: Tag.x402ResourceDelivered,
   tag2: Tag.x402Svm,
@@ -1152,7 +1216,7 @@ await sdk.giveFeedback(assetPubkey, {
 });
 
 // Agent-side: report good payer
-await sdk.giveFeedback(clientAgentPubkey, {
+await sdk.giveFeedback(clientAgentAsset, {
   value: '1',
   valueDecimals: 0,
   tag1: Tag.x402GoodPayer,
@@ -1162,10 +1226,12 @@ await sdk.giveFeedback(clientAgentPubkey, {
 });
 ```
 
+For the requester-driven verified flow, use `openProofPass(...)` and `giveFeedbackWithProof(...)`. Keep the short public contract here and defer the details to [docs/PROOFPASS.md](./docs/PROOFPASS.md).
+
 ### Verify before trusting indexer data
 
 ```typescript
-const integrity = await sdk.verifyIntegrity(assetPubkey);
+const integrity = await sdk.verifyIntegrity(targetAgent);
 if (!integrity.trustworthy) {
   console.warn(`Indexer data not trustworthy: ${integrity.status}`);
   // Fall back to on-chain queries
@@ -1174,7 +1240,7 @@ if (!integrity.trustworthy) {
 
 ---
 
-## 24. Program IDs
+## 25. Program IDs
 
 ```typescript
 import {

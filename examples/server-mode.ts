@@ -10,7 +10,8 @@
 import { Keypair, PublicKey, Transaction, Connection } from '@solana/web3.js';
 import { SolanaSDK, PreparedTransaction } from '../src/index.js';
 
-const DEFAULT_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+const DEFAULT_RPC_URL = 'https://api.devnet.solana.com';
+const DEMO_AGENT_ASSET = '';
 
 // =============================================================================
 // SERVER SIDE - Build transactions without signing
@@ -214,9 +215,9 @@ async function main() {
   console.log('User wallet:', userWallet.publicKey.toBase58());
 
   // Example agent asset (replace with actual value)
-  const agentAsset = process.env.DEMO_AGENT_ASSET;
+  const agentAsset = DEMO_AGENT_ASSET;
   if (!agentAsset) {
-    console.log('Set DEMO_AGENT_ASSET to run server write-transaction build demo');
+    console.log('Set DEMO_AGENT_ASSET in this file to run server write-transaction build demo');
     return;
   }
 

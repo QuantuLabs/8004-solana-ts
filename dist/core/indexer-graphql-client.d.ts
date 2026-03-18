@@ -25,6 +25,8 @@ export declare class IndexerGraphQLClient implements IndexerReadClient {
     private shouldFallbackEndpoint;
     private requestAgainstEndpoint;
     private shouldUseLegacyCollectionRead;
+    private shouldFallbackUnsupportedProofPassAuth;
+    private stripUnsupportedProofPassAuthSelections;
     private shouldFallbackGlobalStatsExtendedFields;
     private resolveCollectionCreatorScope;
     private shouldFallbackAgentIdField;

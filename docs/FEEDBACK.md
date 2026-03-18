@@ -7,16 +7,23 @@ The 8004 feedback system enables rich reputation tracking with standardized tags
 ## Quick Reference
 
 ```typescript
-await sdk.giveFeedback(agent.asset, {
-  score: 85,                      // 0-100, optional (null = inferred from tag)
-  value: 15000n,                  // i128: raw metric value
-  valueDecimals: 2,               // 0-18: decimal precision
-  tag1: 'revenues',               // primary category (8004 standard)
-  tag2: 'month',                  // secondary qualifier (day/week/month/year)
-  endpoint: '/api/v1/generate',   // endpoint called (max 250 bytes)
-  feedbackUri: 'ipfs://Qm...',    // detailed feedback file
+import { PublicKey } from '@solana/web3.js';
+
+const agentAsset = new PublicKey('YourAgentAssetPubkey...');
+
+await sdk.giveFeedback(agentAsset, {
+  score: 85,
+  value: '150.00',
+  tag1: 'revenues',
+  tag2: 'month',
+  endpoint: '/api/v1/generate',
+  feedbackUri: 'ipfs://Qm...',
 });
 ```
+
+The main SDK surface in this release is asset-pubkey-first.
+
+If you only have a backend sequential `agentId`, resolve it first with `getAgentByAgentId()` / `searchAgents()` and then use the returned asset pubkey for the main agent-scoped methods.
 
 ## Fields
 
@@ -83,13 +90,13 @@ As defined in the [8004 specification](https://github.com/erc-8004/erc-8004-cont
 
 ```typescript
 // Quality rating
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: 85,
   tag1: 'starred',
 });
 
 // Response time tracking (explicit score required)
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: 95,            // Fast response = high score
   value: 250n,          // 250ms
   valueDecimals: 0,
@@ -98,7 +105,7 @@ await sdk.giveFeedback(agent.asset, {
 });
 
 // Revenue tracking
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: 90,
   value: 15000n,        // $150.00
   valueDecimals: 2,
@@ -107,7 +114,7 @@ await sdk.giveFeedback(agent.asset, {
 });
 
 // Trading yield
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: 75,
   value: 1250n,         // 12.50%
   valueDecimals: 2,
@@ -116,7 +123,7 @@ await sdk.giveFeedback(agent.asset, {
 });
 
 // Uptime monitoring
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: null,
   value: 9975n,         // 99.75%
   valueDecimals: 2,
@@ -170,7 +177,7 @@ When `score` is `null` or `undefined`, ATOM will:
 
 ```typescript
 // Score inferred from tag
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: null,
   tag1: 'uptime',
   value: 9999n,
@@ -206,7 +213,7 @@ Then reference it:
 ```typescript
 const cid = await ipfs.addJson(feedbackJson);
 
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(agentAsset, {
   score: 85,
   value: 15000n,
   valueDecimals: 2,
@@ -219,13 +226,13 @@ await sdk.giveFeedback(agent.asset, {
 
 ```typescript
 // Read single feedback
-const feedback = await sdk.readFeedback(agent.asset, clientAddress, 0);
+const feedback = await sdk.readFeedback(agentAsset, clientAddress, 0);
 console.log(feedback.score);         // 85 or null
 console.log(feedback.value);         // 15000n
 console.log(feedback.valueDecimals); // 2
 
 // List all feedbacks for an agent (indexer-backed)
-const feedbacks = await sdk.readAllFeedback(agent.asset);
+const feedbacks = await sdk.readAllFeedback(agentAsset);
 const latest10 = feedbacks.slice(0, 10);
 
 // Read by indexer feedback row id (sequential numeric id only)
@@ -237,9 +244,31 @@ const responsesById = await sdk.getFeedbackResponsesByFeedbackId('123', 10); // 
 // (throws IndexerError with code INVALID_RESPONSE)
 
 // Get reputation summary
-const summary = await sdk.getSummary(agent.asset);
+const summary = await sdk.getSummary(agentAsset);
 console.log(summary.averageScore);
 console.log(summary.totalFeedbacks);
+```
+
+## Revoke Feedback
+
+For the normal flow, keep it simple:
+
+```typescript
+const agentAsset = new PublicKey('YourAgentAssetPubkey...');
+const feedbackIndex = 12;
+
+await sdk.revokeFeedback(agentAsset, feedbackIndex);
+```
+
+`revokeFeedback()` resolves the indexed `sealHash` for you by default.
+
+Use the explicit `sealHash` form only for manual or server-side workflows where you already store that hash:
+
+```typescript
+await sdk.revokeFeedback(agentAsset, 12, sealHash, {
+  verifyFeedbackClient: false,
+  waitForIndexerSync: false,
+});
 ```
 
 ## x402 Protocol Integration
@@ -276,8 +305,11 @@ The x402 protocol extends 8004 for payment-based agent interactions. Use these t
 ```typescript
 import { Tag } from '8004-solana';
 
+const providerAgentAsset = providerAgent.asset;
+const clientAgentAsset = clientAgent.asset;
+
 // Client feedback after successful delivery
-await sdk.giveFeedback(agent.asset, {
+await sdk.giveFeedback(providerAgentAsset, {
   score: 95,
   value: 100n,           // Payment amount in cents
   valueDecimals: 2,
@@ -286,7 +318,7 @@ await sdk.giveFeedback(agent.asset, {
 });
 
 // Agent feedback for good payer
-await sdk.giveFeedback(client.asset, {
+await sdk.giveFeedback(clientAgentAsset, {
   score: 100,
   tag1: Tag.x402GoodPayer,
   tag2: Tag.x402Evm,     // EVM settlement

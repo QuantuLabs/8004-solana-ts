@@ -12,23 +12,24 @@ import {
 } from '../src/index.js';
 import type { RegistrationFile } from '../src/index.js';
 
-async function main() {
-  const rpcUrl = process.env.SOLANA_RPC_URL;
-  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
-    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
+const CLUSTER = 'devnet' as const;
+const RPC_URL = 'https://api.devnet.solana.com';
+const EXAMPLE_AGENT_ASSET = 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ';
+const SOLANA_PRIVATE_KEY_JSON = '';
+const PINATA_JWT = '';
+const IPFS_API_URL = 'http://localhost:5001';
 
+async function main() {
   // === READ OPERATIONS ===
   // Create SDK (devnet by default, force on-chain reads to avoid indexer schema drift)
   const sdk = new SolanaSDK({
-    cluster,
-    ...(rpcUrl ? { rpcUrl } : {}),
+    cluster: CLUSTER,
+    rpcUrl: RPC_URL,
     forceOnChain: true,
   });
 
   // Example agent asset (replace with actual asset PublicKey)
-  const agentAsset = new PublicKey(
-    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
-  );
+  const agentAsset = new PublicKey(EXAMPLE_AGENT_ASSET);
 
   // Load an agent by asset
   const agent = await sdk.loadAgent(agentAsset);
@@ -43,30 +44,28 @@ async function main() {
     const summary = await sdk.getSummary(agentAsset);
     console.log(`Score: ${summary.averageScore}/100 (${summary.totalFeedbacks} reviews)`);
   } catch {
-    console.log('Reputation summary unavailable with current indexer setup; set INDEXER_GRAPHQL_URL/INDEXER_URL');
+    console.log('Reputation summary unavailable with current indexer setup; configure a custom indexer URL in the SDK constructor if needed');
   }
 
   // === WRITE OPERATIONS ===
   // Requires signer
-  const secretKey = process.env.SOLANA_PRIVATE_KEY;
-  if (!secretKey) {
-    console.log('Set SOLANA_PRIVATE_KEY for write operations');
+  if (!SOLANA_PRIVATE_KEY_JSON) {
+    console.log('Set SOLANA_PRIVATE_KEY_JSON in this file for write operations');
     return;
   }
 
-  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
-  const pinataJwt = process.env.PINATA_JWT;
-  const ipfs = pinataJwt
+  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(SOLANA_PRIVATE_KEY_JSON)));
+  const ipfs = PINATA_JWT
     ? new IPFSClient({
         pinataEnabled: true,
-        pinataJwt,
+        pinataJwt: PINATA_JWT,
       })
     : new IPFSClient({
-        url: process.env.IPFS_API_URL || 'http://localhost:5001',
+        url: IPFS_API_URL,
       });
   const writeSdk = new SolanaSDK({
-    cluster,
-    ...(rpcUrl ? { rpcUrl } : {}),
+    cluster: CLUSTER,
+    rpcUrl: RPC_URL,
     signer,
     ipfsClient: ipfs,
   });

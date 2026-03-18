@@ -2,7 +2,28 @@
 
 > Note: Canonical release changelog is maintained in the repository root `CHANGELOG.md`.
 
-## Unreleased
+## v0.8.2 (2026-03-18)
+
+**ProofPass:**
+- Added the requester-driven `ProofPass` public flow:
+  - `openProofPass(...)`
+  - `giveFeedbackWithProof(...)`
+  - `getLiveProofPass(...)`
+  - `getLiveProofPassesByCreator(...)`
+  - `closeProofPass(...)`
+- Documented the current validated ProofPass fee model:
+  - `open_fee = 0`
+  - `finalize_fee = 10_000`
+  - default `creator_pays_all`
+
+**Asset-first Docs + Lookup Helpers:**
+- Kept the public docs/examples asset-pubkey-first for this release.
+- Documented indexer sequence-id lookup helpers as secondary/advanced material instead of the primary SDK flow.
+
+**Docs Cleanup:**
+- Moved ProofPass into the main SDK docs/examples set.
+- Reduced the README ATOM / RPC provider sections and linked to dedicated docs for details.
+- Simplified revoke examples to the normal `targetAgent + feedbackIndex` path and moved advanced seal-hash details to `FEEDBACK.md`.
 
 ## v0.8.1 (2026-03-15)
 

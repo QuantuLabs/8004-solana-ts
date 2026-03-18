@@ -6,10 +6,13 @@
 
 TypeScript SDK for 8004 Agent Registry on Solana.
 
-> **Autonomous Agents** (Clawbot, Moltbot, etc.): See [`skill.md`](./skill.md) for the complete SDK reference designed for autonomous AI agent consumption.
+> **Autonomous Agents** (Clawbot, Moltbot, etc.): See [`skill.md`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/skill.md) for the complete SDK reference designed for autonomous AI agent consumption.
 >
-> **New here?** Follow the [Quickstart Guide](./docs/QUICKSTART.md) to register your first agent in 5 minutes.
+> **New here?** Follow the [Quickstart Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/QUICKSTART.md) to register your first agent in 5 minutes.
 
+## Features
+
+- **Collect requester-driven verified feedback** with [`ProofPass`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md)
 - **Register agents as NFTs** on Solana blockchain
 - **Manage agent metadata** and endpoints (MCP, A2A)
 - **Submit and query reputation feedback** with SEAL v1 integrity verification
@@ -129,8 +132,8 @@ const pointer = collectionUpload.pointer;  // c1:b...
 // Use `cid` / `uri` in your asset creation pipeline.
 ```
 
-Collection and parent association rules are documented in [`docs/COLLECTION.md`](./docs/COLLECTION.md).  
-Advanced end-to-end usage is shown in [`examples/collection-flow.ts`](examples/collection-flow.ts).
+Collection and parent association rules are documented in [`docs/COLLECTION.md`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/COLLECTION.md).  
+Advanced end-to-end usage is shown in [`examples/collection-flow.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/collection-flow.ts).
 
 ### Web3 Wallet (Phantom, Solflare)
 
@@ -333,7 +336,7 @@ await sdk.revokeFeedback(agent.asset, 12n, sealHash, {
 });
 ```
 
-See [FEEDBACK.md](./docs/FEEDBACK.md) for all 8004 tags and patterns.
+See [FEEDBACK.md](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md) for all 8004 tags and patterns.
 
 ## Tags
 
@@ -359,7 +362,7 @@ await sdk.giveFeedback(asset, {
 });
 ```
 
-See [FEEDBACK.md](./docs/FEEDBACK.md) for the complete tag reference.
+See [FEEDBACK.md](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md) for the complete tag reference.
 
 ## ATOM Engine
 
@@ -391,7 +394,7 @@ await sdk.burnAgent(asset); // irreversible burn
 
 `burnAgent()` burns the Core asset only (it does not close the on-chain `AgentAccount` PDA).
 
-SEAL helper methods and examples are documented in [`docs/METHODS.md#seal-v1-methods`](./docs/METHODS.md#seal-v1-methods).
+SEAL helper methods and examples are documented in [`docs/METHODS.md#seal-v1-methods`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/METHODS.md#seal-v1-methods).
 
 ## RPC Provider Recommendations
 
@@ -414,22 +417,26 @@ const sdk = new SolanaSDK({
 
 | Example | Description |
 |---------|-------------|
-| [`quick-start.ts`](examples/quick-start.ts) | Basic read/write with IPFS upload |
-| [`collection-flow.ts`](examples/collection-flow.ts) | Full collection metadata + create 20 associated agent assets |
-| [`feedback-usage.ts`](examples/feedback-usage.ts) | Submit and read feedback |
-| [`agent-update.ts`](examples/agent-update.ts) | On-chain metadata & URI update |
-| [`transfer-agent.ts`](examples/transfer-agent.ts) | Transfer agent ownership (also possible via standard token wallet transfer) |
-| [`server-mode.ts`](examples/server-mode.ts) | Server/client architecture with skipSend |
+| [`quick-start.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/quick-start.ts) | Basic read/write with IPFS upload |
+| [`collection-flow.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/collection-flow.ts) | Full collection metadata + create 20 associated agent assets |
+| [`feedback-usage.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/feedback-usage.ts) | Submit and read feedback |
+| [`agent-update.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/agent-update.ts) | On-chain metadata & URI update |
+| [`transfer-agent.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/transfer-agent.ts) | Transfer agent ownership (also possible via standard token wallet transfer) |
+| [`server-mode.ts`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/server-mode.ts) | Server/client architecture with skipSend |
+| [`proofpass.md`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md) | Generic requester-driven ProofPass flow |
+| [`proofpass-x402.md`](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass-x402.md) | Compact x402-compatible ProofPass flow |
 
 ## Documentation
 
-- [API Reference](./docs/METHODS.md) - All methods with examples
-- [Feedback Guide](./docs/FEEDBACK.md) - Tags, value/decimals, advanced patterns
-- [Collection Guide](./docs/COLLECTION.md) - Collection pointer and parent association rules
-- [Quickstart](./docs/QUICKSTART.md) - Step-by-step guide
-- [Costs](./docs/COSTS.md) - Transaction costs
-- [OASF Taxonomies](./docs/OASF.md) - Skills & domains reference
-- [AI Agent Skill](./skill.md) - SDK reference for AI agents (MCP/LLM)
+- [API Reference](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/METHODS.md) - All methods with examples
+- [Feedback Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md) - Tags, value/decimals, advanced patterns
+- [ProofPass Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass.md) - Generic requester-driven verified feedback flow
+- [ProofPass + x402 Example](https://github.com/QuantuLabs/8004-solana-ts/blob/main/examples/proofpass-x402.md) - Compact x402-compatible flow
+- [Collection Guide](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/COLLECTION.md) - Collection pointer and parent association rules
+- [Quickstart](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/QUICKSTART.md) - Step-by-step guide
+- [Costs](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/COSTS.md) - Transaction costs
+- [OASF Taxonomies](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/OASF.md) - Skills & domains reference
+- [AI Agent Skill](https://github.com/QuantuLabs/8004-solana-ts/blob/main/skill.md) - SDK reference for AI agents (MCP/LLM)
 
 ## Community & Support
 

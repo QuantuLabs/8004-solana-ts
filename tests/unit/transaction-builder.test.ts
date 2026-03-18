@@ -981,98 +981,29 @@ describe('ValidationTransactionBuilder', () => {
   });
 
   describe('requestValidation', () => {
-    it('should return PreparedTransaction when skipSend', async () => {
+    it('should return archived error', async () => {
       const result = await builder.requestValidation(
         PublicKey.unique(), PublicKey.unique(),
         42, 'ipfs://request', Buffer.alloc(32),
         { skipSend: true, signer: payer.publicKey }
       );
-      expect('transaction' in result).toBe(true);
-    });
-
-    it('should validate nonce range (negative)', async () => {
-      const result = await builder.requestValidation(
-        PublicKey.unique(), PublicKey.unique(),
-        -1, 'ipfs://request', Buffer.alloc(32)
-      );
       if ('success' in result) {
         expect(result.success).toBe(false);
-      }
-    });
-
-    it('should validate requestHash length', async () => {
-      const result = await builder.requestValidation(
-        PublicKey.unique(), PublicKey.unique(),
-        42, 'ipfs://request', Buffer.alloc(16)
-      );
-      if ('success' in result) {
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('32 bytes');
-      }
-    });
-
-    it('should validate requestUri length', async () => {
-      const longUri = 'x'.repeat(300);
-      const result = await builder.requestValidation(
-        PublicKey.unique(), PublicKey.unique(),
-        42, longUri, Buffer.alloc(32)
-      );
-      if ('success' in result) {
-        expect(result.success).toBe(false);
-      }
-    });
-
-    it('should fail without signer', async () => {
-      const readOnlyBuilder = new ValidationTransactionBuilder(conn);
-      const result = await readOnlyBuilder.requestValidation(
-        PublicKey.unique(), PublicKey.unique(),
-        42, 'ipfs://req', Buffer.alloc(32)
-      );
-      if ('success' in result) {
-        expect(result.success).toBe(false);
+        expect(result.error).toContain('archived');
       }
     });
   });
 
   describe('respondToValidation', () => {
-    it('should return PreparedTransaction when skipSend', async () => {
+    it('should return archived error', async () => {
       const result = await builder.respondToValidation(
         PublicKey.unique(), 42, 85,
         'ipfs://response', Buffer.alloc(32), 'quality',
         { skipSend: true, signer: payer.publicKey }
       );
-      expect('transaction' in result).toBe(true);
-    });
-
-    it('should reject response > 100', async () => {
-      const result = await builder.respondToValidation(
-        PublicKey.unique(), 42, 101,
-        'ipfs://response', Buffer.alloc(32), 'tag'
-      );
       if ('success' in result) {
         expect(result.success).toBe(false);
-        expect(result.error).toContain('between 0 and 100');
-      }
-    });
-
-    it('should reject response < 0', async () => {
-      const result = await builder.respondToValidation(
-        PublicKey.unique(), 42, -1,
-        'ipfs://response', Buffer.alloc(32), 'tag'
-      );
-      if ('success' in result) {
-        expect(result.success).toBe(false);
-      }
-    });
-
-    it('should validate tag length', async () => {
-      const longTag = 'x'.repeat(50);
-      const result = await builder.respondToValidation(
-        PublicKey.unique(), 42, 50,
-        'ipfs://response', Buffer.alloc(32), longTag
-      );
-      if ('success' in result) {
-        expect(result.success).toBe(false);
+        expect(result.error).toContain('archived');
       }
     });
   });

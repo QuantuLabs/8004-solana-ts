@@ -44,6 +44,9 @@ import { resolveScore } from './feedback-normalizer.js';
 import type { GiveFeedbackParams } from '../models/interfaces.js';
 import { encodeReputationValue } from '../utils/value-encoding.js';
 
+const VALIDATION_ARCHIVED_ERROR =
+  'Validation feature is archived (v0.5.0+) and is not exposed by the public SDK.';
+
 
 /**
  * Send and confirm a transaction via HTTP polling.
@@ -1878,72 +1881,17 @@ export class ValidationTransactionBuilder {
     requestHash: Buffer,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
-    try {
-      const signerPubkey = options?.signer || this.payer?.publicKey;
-      if (!signerPubkey) {
-        throw new Error('signer required when SDK has no signer configured');
-      }
-
-      // Security: Validate nonce range (u32)
-      validateNonce(nonce);
-      // Security: Use byte length validation for UTF-8 strings
-      validateByteLength(requestUri, 250, 'requestUri');
-      if (requestHash.length !== 32) {
-        throw new Error('requestHash must be 32 bytes');
-      }
-
-      // Derive PDAs (v0.3.0 - uses asset, not agent_id)
-      const [validationConfigPda] = PDAHelpers.getValidationConfigPDA(this.programIds.agentRegistry);
-      const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
-      const [validationRequestPda, bump] = PDAHelpers.getValidationRequestPDA(
-        asset,
-        validatorAddress,
-        nonce,
-        this.programIds.agentRegistry
-      );
-
-      logger.debug(`requestValidation - Creating validation request: Asset=${asset.toBase58()}, Validator=${validatorAddress.toBase58()}, Nonce=${nonce}, PDA=${validationRequestPda.toBase58()}, Bump=${bump}`);
-
-      const instruction = this.instructionBuilder.buildRequestValidation(
-        validationConfigPda,
-        signerPubkey,       // requester (must be agent owner)
-        signerPubkey,       // payer
-        agentPda,           // agent_account (before asset in v0.4.2)
-        asset,              // Core asset
-        validationRequestPda,
-        validatorAddress,
-        nonce,
-        requestUri,
-        requestHash
-      );
-
-      const transaction = new Transaction().add(instruction);
-
-      // If skipSend, return serialized transaction
-      if (options?.skipSend) {
-        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-      }
-
-      // Normal mode: send transaction
-      if (!this.payer) {
-        throw new Error('No signer configured - SDK is read-only');
-      }
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.payer]
-      );
-
-      return { signature, success: true };
-    } catch (error) {
-      return {
-        signature: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    void asset;
+    void validatorAddress;
+    void nonce;
+    void requestUri;
+    void requestHash;
+    void options;
+    return {
+      signature: '',
+      success: false,
+      error: VALIDATION_ARCHIVED_ERROR,
+    };
   }
 
   /**
@@ -1965,73 +1913,18 @@ export class ValidationTransactionBuilder {
     tag: string,
     options?: WriteOptions
   ): Promise<TransactionResult | PreparedTransaction> {
-    try {
-      const signerPubkey = options?.signer || this.payer?.publicKey;
-      if (!signerPubkey) {
-        throw new Error('signer required when SDK has no signer configured');
-      }
-
-      if (response < 0 || response > 100) {
-        throw new Error('Response must be between 0 and 100');
-      }
-      // Security: Validate nonce range (u32)
-      validateNonce(nonce);
-      // Security: Use byte length validation for UTF-8 strings
-      validateByteLength(responseUri, 250, 'responseUri');
-      if (responseHash.length !== 32) {
-        throw new Error('responseHash must be 32 bytes');
-      }
-      validateByteLength(tag, 32, 'tag');
-
-      const [validationConfigPda] = PDAHelpers.getValidationConfigPDA(this.programIds.agentRegistry);
-      const [agentPda] = PDAHelpers.getAgentPDA(asset, this.programIds.agentRegistry);
-      const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(
-        asset,
-        signerPubkey, // validator
-        nonce,
-        this.programIds.agentRegistry
-      );
-
-      const instruction = this.instructionBuilder.buildRespondToValidation(
-        validationConfigPda,
-        signerPubkey,
-        agentPda,
-        asset,
-        validationRequestPda,
-        nonce,
-        response,
-        responseUri,
-        responseHash,
-        tag
-      );
-
-      const transaction = new Transaction().add(instruction);
-
-      // If skipSend, return serialized transaction
-      if (options?.skipSend) {
-        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
-        return serializeTransaction(transaction, signerPubkey, blockhash, lastValidBlockHeight);
-      }
-
-      // Normal mode: send transaction
-      if (!this.payer) {
-        throw new Error('No signer configured - SDK is read-only');
-      }
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [this.payer]
-      );
-
-      return { signature, success: true };
-    } catch (error) {
-      return {
-        signature: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    void asset;
+    void nonce;
+    void response;
+    void responseUri;
+    void responseHash;
+    void tag;
+    void options;
+    return {
+      signature: '',
+      success: false,
+      error: VALIDATION_ARCHIVED_ERROR,
+    };
   }
 
   /**

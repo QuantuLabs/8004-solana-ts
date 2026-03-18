@@ -74,6 +74,7 @@ describe('indexer-types', () => {
         endpoint: '/api/chat',
         feedback_uri: 'ipfs://fb',
         feedback_hash: 'aa'.repeat(32),
+        proof_pass_auth: true,
         block_slot: '200',
         tx_signature: 'sig456',
       };
@@ -93,6 +94,7 @@ describe('indexer-types', () => {
       expect(result.feedbackUri).toBe('ipfs://fb');
       expect(result.sealHash).toBeDefined();
       expect(result.sealHash!.length).toBe(32);
+      expect(result.proofPassAuth).toBe(true);
       expect(result.blockSlot).toBe(200n);
     });
 

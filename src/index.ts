@@ -34,8 +34,25 @@ export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
 
-// Export optional extras
-export * from './extras/proofpass.js';
+// Export optional extras (minimal public ProofPass surface)
+export {
+  openProofPass,
+  giveFeedbackWithProof,
+  closeProofPass,
+  getLiveProofPass,
+  getLiveProofPassesByCreator,
+} from './extras/proofpass.js';
+export type {
+  OpenProofPassParams,
+  ProofPassFlow,
+  GiveFeedbackWithProofParams,
+  CloseProofPassParams,
+  CloseProofPassResult,
+  GetLiveProofPassParams,
+  GetLiveProofPassesByCreatorParams,
+  ProofPassLive,
+  ProofPassLiveStatus,
+} from './extras/proofpass.js';
 
 // Export Solana client with RPC detection
 export {

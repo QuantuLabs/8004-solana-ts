@@ -426,112 +426,35 @@ describe('SolanaSDK extended', () => {
   // ==================== Validation Methods ====================
 
   describe('requestValidation', () => {
-    it('should throw without signer', async () => {
+    it('should throw because validation is archived', async () => {
       await expect(sdk.requestValidation(mockAssetKey, PublicKey.unique(), 'ipfs://req'))
-        .rejects.toThrow('read-only');
-    });
-
-    it('should delegate to validationTxBuilder with auto-nonce', async () => {
-      const result = await signerSdk.requestValidation(mockAssetKey, PublicKey.unique(), 'ipfs://req');
-      expect(mockValidationTxBuilder.requestValidation).toHaveBeenCalled();
-      if ('nonce' in result) {
-        expect(typeof result.nonce).toBe('bigint');
-      }
-    });
-
-    it('should use provided nonce', async () => {
-      await signerSdk.requestValidation(mockAssetKey, PublicKey.unique(), 'ipfs://req', { nonce: 42 });
-      expect(mockValidationTxBuilder.requestValidation).toHaveBeenCalledWith(
-        expect.any(PublicKey),
-        expect.any(PublicKey),
-        42,
-        'ipfs://req',
-        expect.anything(),
-        expect.anything()
-      );
-    });
-
-    it('should allow skipSend without signer', async () => {
-      await sdk.requestValidation(mockAssetKey, PublicKey.unique(), 'ipfs://req', {
-        skipSend: true,
-        signer: PublicKey.unique(),
-      });
-      expect(mockValidationTxBuilder.requestValidation).toHaveBeenCalled();
+        .rejects.toThrow('Validation feature is archived');
+      expect(mockValidationTxBuilder.requestValidation).not.toHaveBeenCalled();
     });
   });
 
   describe('respondToValidation', () => {
-    it('should throw without signer', async () => {
+    it('should throw because validation is archived', async () => {
       await expect(sdk.respondToValidation(mockAssetKey, 1, 80, 'ipfs://resp'))
-        .rejects.toThrow('read-only');
-    });
-
-    it('should delegate to validationTxBuilder', async () => {
-      await signerSdk.respondToValidation(mockAssetKey, 1, 80, 'ipfs://resp');
-      expect(mockValidationTxBuilder.respondToValidation).toHaveBeenCalled();
-    });
-
-    it('should accept bigint nonce', async () => {
-      await signerSdk.respondToValidation(mockAssetKey, 1000n, 80, 'ipfs://resp');
-      const call = mockValidationTxBuilder.respondToValidation.mock.calls[0];
-      expect(call[1]).toBe(1000); // nonce converted to number
-      expect(call[2]).toBe(80);   // score
-      expect(call[3]).toBe('ipfs://resp'); // URI
-      expect(call[5]).toBe('');   // default tag
-    });
-
-    it('should throw on oversized bigint nonce', async () => {
-      await expect(
-        signerSdk.respondToValidation(mockAssetKey, BigInt(Number.MAX_SAFE_INTEGER) + 1n, 80, 'ipfs://resp')
-      ).rejects.toThrow('Nonce exceeds safe integer range');
-    });
-
-    it('should pass tag option', async () => {
-      await signerSdk.respondToValidation(mockAssetKey, 1, 80, 'ipfs://resp', { tag: 'quality' });
-      expect(mockValidationTxBuilder.respondToValidation).toHaveBeenCalledWith(
-        expect.any(PublicKey), 1, 80, 'ipfs://resp', expect.anything(), 'quality', expect.anything()
-      );
+        .rejects.toThrow('Validation feature is archived');
+      expect(mockValidationTxBuilder.respondToValidation).not.toHaveBeenCalled();
     });
   });
 
   describe('readValidation', () => {
-    it('should return normalized validation when found', async () => {
-      const result = await sdk.readValidation(mockAssetKey, PublicKey.unique(), 1000);
-      expect(result).not.toBeNull();
-      expect(result!.nonce).toBe(1000);
-      expect(result!.score).toBe(85);
-      expect(result!.responded).toBe(false);
-    });
-
-    it('should return null when account not found', async () => {
-      mockSolanaClient.getAccount.mockResolvedValueOnce(null);
-      const result = await sdk.readValidation(mockAssetKey, PublicKey.unique(), 999);
-      expect(result).toBeNull();
-    });
-
-    it('should accept bigint nonce', async () => {
-      const result = await sdk.readValidation(mockAssetKey, PublicKey.unique(), 1000n);
-      expect(result).not.toBeNull();
-    });
-
-    it('should return null on error', async () => {
-      mockSolanaClient.getAccount.mockRejectedValueOnce(new Error('rpc'));
-      const result = await sdk.readValidation(mockAssetKey, PublicKey.unique(), 1);
-      expect(result).toBeNull();
+    it('should throw because validation is archived', async () => {
+      await expect(
+        sdk.readValidation(mockAssetKey, PublicKey.unique(), 1000)
+      ).rejects.toThrow('Validation feature is archived');
     });
   });
 
   describe('waitForValidation', () => {
-    it('should return validation when found immediately', async () => {
-      const result = await sdk.waitForValidation(mockAssetKey, PublicKey.unique(), 1000, { timeout: 2000 });
-      expect(result).not.toBeNull();
+    it('should throw because validation is archived', async () => {
+      await expect(
+        sdk.waitForValidation(mockAssetKey, PublicKey.unique(), 1000, { timeout: 2000 })
+      ).rejects.toThrow('Validation feature is archived');
     });
-
-    it('should return null on timeout', async () => {
-      mockSolanaClient.getAccount.mockResolvedValue(null);
-      const result = await sdk.waitForValidation(mockAssetKey, PublicKey.unique(), 999, { timeout: 500 });
-      expect(result).toBeNull();
-    }, 5000);
   });
 
   // ==================== Signature Methods ====================

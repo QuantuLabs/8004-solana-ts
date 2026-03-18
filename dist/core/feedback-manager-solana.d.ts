@@ -49,6 +49,7 @@ export interface SolanaFeedback {
     feedbackUri?: string;
     feedbackFileHash?: Buffer;
     sealHash?: Buffer;
+    proofPassAuth?: boolean;
     blockSlot?: bigint;
     txSignature?: string;
 }

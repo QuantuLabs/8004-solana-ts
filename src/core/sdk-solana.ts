@@ -2763,29 +2763,7 @@ export class SolanaSDK {
     requestUri: string,
     options?: WriteOptions & { nonce?: number; requestHash?: Buffer }
   ): Promise<(TransactionResult & { nonce?: bigint }) | PreparedTransaction> {
-    if (!options?.skipSend && !this.signer) {
-      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
-    }
-
-    // Auto-generate nonce if not provided (timestamp-based, fits in u32)
-    const nonce = options?.nonce ?? (Date.now() % 0xFFFFFFFF);
-    // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
-    const requestHash = options?.requestHash ?? await this.computeUriHash(requestUri);
-
-    const result = await this.validationTxBuilder.requestValidation(
-      asset,
-      validator,
-      nonce,
-      requestUri,
-      requestHash,
-      options
-    );
-
-    // Add nonce to result for use in respondToValidation
-    if ('success' in result) {
-      return { ...result, nonce: BigInt(nonce) };
-    }
-    return result;
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
@@ -2805,27 +2783,7 @@ export class SolanaSDK {
     responseUri: string,
     options?: WriteOptions & { responseHash?: Buffer; tag?: string }
   ): Promise<TransactionResult | PreparedTransaction> {
-    if (!options?.skipSend && !this.signer) {
-      throw new Error('No signer configured - SDK is read-only. Use skipSend: true with a signer option for server mode.');
-    }
-
-    if (typeof nonce === 'bigint' && nonce > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error('Nonce exceeds safe integer range');
-    }
-    const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
-    // Auto-generate hash: zeros for IPFS (CID contains hash), SHA-256 of URI otherwise
-    const responseHash = options?.responseHash ?? await this.computeUriHash(responseUri);
-    const tag = options?.tag ?? '';
-
-    return await this.validationTxBuilder.respondToValidation(
-      asset,
-      nonceNum,
-      score,
-      responseUri,
-      responseHash,
-      tag,
-      options
-    );
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
@@ -2842,39 +2800,7 @@ export class SolanaSDK {
     validator: PublicKey,
     nonce: number | bigint
   ): Promise<NormalizedValidation | null> {
-    try {
-      const nonceNum = typeof nonce === 'bigint' ? Number(nonce) : nonce;
-      validateNonce(nonceNum);
-      const [validationRequestPda] = PDAHelpers.getValidationRequestPDA(
-        asset,
-        validator,
-        nonce,
-        this.programIds.agentRegistry
-      );
-
-      const accountData = await this.client.getAccount(validationRequestPda);
-
-      if (!accountData) {
-        return null;
-      }
-
-      const raw = ValidationRequest.deserialize(Buffer.from(accountData));
-
-      // Convert to normalized format
-      return {
-        asset: new PublicKey(raw.asset).toBase58(),
-        validator: new PublicKey(raw.validator_address).toBase58(),
-        nonce: raw.nonce,
-        score: raw.response,
-        response: raw.response,
-        responded: raw.responded_at > BigInt(0),
-        responded_at: raw.responded_at,
-        request_hash: Buffer.from(raw.request_hash).toString('hex'),
-      };
-    } catch (error) {
-      logger.error('Error reading validation request:', error);
-      return null;
-    }
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**
@@ -2892,27 +2818,7 @@ export class SolanaSDK {
     nonce: number | bigint,
     options?: WaitForValidationOptions
   ): Promise<NormalizedValidation | null> {
-    const timeout = options?.timeout ?? 30000;
-    const waitForResponse = options?.waitForResponse ?? false;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const validation = await this.readValidation(asset, validator, nonce);
-
-      if (validation !== null) {
-        // If waitForResponse, keep waiting until responded_at > 0
-        if (waitForResponse && !validation.responded) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-        return validation;
-      }
-
-      // Wait 1 second before retry
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    return null;
+    throw new Error(VALIDATION_ARCHIVED_ERROR);
   }
 
   /**

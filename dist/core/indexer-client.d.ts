@@ -202,6 +202,7 @@ export interface IndexedFeedback {
     feedback_uri: string | null;
     running_digest: string | null;
     feedback_hash: string | null;
+    proof_pass_auth?: boolean | null;
     is_revoked: boolean;
     revoked_at: string | null;
     block_slot: number;

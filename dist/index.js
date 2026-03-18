@@ -25,8 +25,8 @@ export * from './core/instruction-discriminators.js';
 export * from './core/instruction-builder.js';
 export * from './core/metaplex-helpers.js';
 export * from './core/transaction-builder.js';
-// Export optional extras
-export * from './extras/proofpass.js';
+// Export optional extras (minimal public ProofPass surface)
+export { openProofPass, giveFeedbackWithProof, closeProofPass, getLiveProofPass, getLiveProofPassesByCreator, } from './extras/proofpass.js';
 // Export Solana client with RPC detection
 export { SolanaClient, UnsupportedRpcError, RpcNetworkError, SOLANA_DEVNET_RPC, SOLANA_TESTNET_RPC, SOLANA_MAINNET_RPC, SOLANA_LOCALNET_RPC, RECOMMENDED_RPC_PROVIDERS, createDevnetClient, } from './core/client.js';
 // Export Solana SDK

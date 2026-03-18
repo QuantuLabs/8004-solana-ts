@@ -66,6 +66,7 @@ export interface SolanaFeedback {
   feedbackUri?: string;
   feedbackFileHash?: Buffer;   // SEAL v1: Optional hash of feedback file content
   sealHash?: Buffer;           // SEAL v1: On-chain computed hash (trustless)
+  proofPassAuth?: boolean;
   blockSlot?: bigint;
   txSignature?: string;
 }

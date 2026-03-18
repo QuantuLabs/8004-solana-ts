@@ -16,28 +16,27 @@ import {
   ServiceType,
 } from '../src/index.js';
 
-async function main() {
-  const rpcUrl = process.env.SOLANA_RPC_URL;
-  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
-    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
+const CLUSTER = 'devnet' as const;
+const RPC_URL = 'https://api.devnet.solana.com';
+const SOLANA_PRIVATE_KEY_JSON = '';
+const EXAMPLE_AGENT_ASSET = 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ';
+const PINATA_JWT = '';
 
-  const secretKey = process.env.SOLANA_PRIVATE_KEY;
-  if (!secretKey) {
-    console.log('Set SOLANA_PRIVATE_KEY');
+async function main() {
+  if (!SOLANA_PRIVATE_KEY_JSON) {
+    console.log('Set SOLANA_PRIVATE_KEY_JSON in this file');
     return;
   }
 
-  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
+  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(SOLANA_PRIVATE_KEY_JSON)));
   const sdk = new SolanaSDK({
-    cluster,
-    ...(rpcUrl ? { rpcUrl } : {}),
+    cluster: CLUSTER,
+    rpcUrl: RPC_URL,
     signer,
   });
 
   // Example agent asset (replace with actual PublicKey)
-  const agentAsset = new PublicKey(
-    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
-  );
+  const agentAsset = new PublicKey(EXAMPLE_AGENT_ASSET);
 
   // Load current agent
   const agent = await sdk.loadAgent(agentAsset);
@@ -50,10 +49,10 @@ async function main() {
   console.log(`Collection: ${agent.getCollectionPublicKey().toBase58()}`);
 
   // === UPDATE AGENT URI VIA IPFS ===
-  if (process.env.PINATA_JWT) {
+  if (PINATA_JWT) {
     const ipfs = new IPFSClient({
       pinataEnabled: true,
-      pinataJwt: process.env.PINATA_JWT,
+      pinataJwt: PINATA_JWT,
     });
 
     // Build updated metadata

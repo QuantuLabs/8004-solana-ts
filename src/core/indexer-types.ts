@@ -120,6 +120,7 @@ export function indexedFeedbackToSolanaFeedback(indexed: IndexedFeedback): Solan
     sealHash: indexed.feedback_hash
       ? Buffer.from(indexed.feedback_hash, 'hex')
       : undefined,
+    proofPassAuth: indexed.proof_pass_auth ?? undefined,
     blockSlot: BigInt(indexed.block_slot),
     txSignature: indexed.tx_signature,
   };

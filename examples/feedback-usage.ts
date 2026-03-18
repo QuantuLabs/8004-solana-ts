@@ -9,22 +9,21 @@
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { SolanaSDK } from '../src/index.js';
 
-async function main() {
-  const rpcUrl = process.env.SOLANA_RPC_URL;
-  const cluster = (process.env.SOLANA_CLUSTER as 'devnet' | 'localnet' | 'mainnet-beta' | undefined)
-    ?? (rpcUrl?.includes('127.0.0.1') ? 'localnet' : 'devnet');
+const CLUSTER = 'devnet' as const;
+const RPC_URL = 'https://api.devnet.solana.com';
+const EXAMPLE_AGENT_ASSET = 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ';
+const INDEXER_GRAPHQL_URL = 'https://8004-indexer-dev.qnt.sh/v2/graphql';
+const INDEXER_URL = '';
+const SOLANA_PRIVATE_KEY_JSON = '';
 
+async function main() {
   // Example agent asset (replace with actual PublicKey)
-  const agentAsset = new PublicKey(
-    process.env.EXAMPLE_AGENT_ASSET ?? 'Fxy2ScxgVyc7Tsh3yKBtFg4Mke2qQR2HqjwVaPqhkjnJ'
-  );
-  const indexerGraphqlUrl = process.env.INDEXER_GRAPHQL_URL;
-  const indexerUrl = process.env.INDEXER_URL;
+  const agentAsset = new PublicKey(EXAMPLE_AGENT_ASSET);
 
   // Read summary from on-chain to keep this step robust even if indexer schema differs.
   const sdk = new SolanaSDK({
-    cluster,
-    ...(rpcUrl ? { rpcUrl } : {}),
+    cluster: CLUSTER,
+    rpcUrl: RPC_URL,
     forceOnChain: true,
   });
 
@@ -34,7 +33,7 @@ async function main() {
     console.log(`Agent ${agentAsset.toBase58().slice(0, 8)}... - Score: ${summary.averageScore}/100`);
     console.log(`Total feedbacks: ${summary.count}`);
   } catch {
-    console.log('Summary unavailable with current indexer setup; set INDEXER_GRAPHQL_URL/INDEXER_URL');
+    console.log('Summary unavailable with current indexer setup; set a custom indexer URL constant in this file if needed');
   }
 
   // Read all feedback (requires custom RPC like Helius)
@@ -49,26 +48,25 @@ async function main() {
   }
 
   // === SUBMIT FEEDBACK ===
-  const secretKey = process.env.SOLANA_PRIVATE_KEY;
-  if (!secretKey) {
-    console.log('\nSet SOLANA_PRIVATE_KEY to submit feedback');
+  if (!SOLANA_PRIVATE_KEY_JSON) {
+    console.log('\nSet SOLANA_PRIVATE_KEY_JSON in this file to submit feedback');
     return;
   }
 
-  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey)));
+  const signer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(SOLANA_PRIVATE_KEY_JSON)));
 
   // Use explicit indexer config for response/revoke helper flows.
-  if (!indexerGraphqlUrl && !indexerUrl) {
-    console.log('\nSet INDEXER_GRAPHQL_URL or INDEXER_URL to run append/revoke examples');
+  if (!INDEXER_GRAPHQL_URL && !INDEXER_URL) {
+    console.log('\nSet one of the indexer URL constants in this file to run append/revoke examples');
     return;
   }
 
   const indexedSdk = new SolanaSDK({
-    cluster,
-    ...(rpcUrl ? { rpcUrl } : {}),
+    cluster: CLUSTER,
+    rpcUrl: RPC_URL,
     signer,
-    ...(indexerGraphqlUrl ? { indexerGraphqlUrl } : {}),
-    ...(indexerUrl ? { indexerUrl } : {}),
+    ...(INDEXER_GRAPHQL_URL ? { indexerGraphqlUrl: INDEXER_GRAPHQL_URL } : {}),
+    ...(INDEXER_URL ? { indexerUrl: INDEXER_URL } : {}),
   });
 
   // Pull existing feedbacks from indexer (current agent)

@@ -62,6 +62,7 @@ function mockFeedbackRows(count: number, startIndex = 0): Array<Record<string, u
         score: 90,
         txSignature: `sig-${i}`,
         blockSlot: String(1000 + i),
+        proofPassAuth: false,
       },
     };
   });
@@ -1937,6 +1938,23 @@ describe('IndexerGraphQLClient collection compatibility', () => {
 
     const rows = await client.getFeedbacks('AssetFeedback222', { includeRevoked: true, limit: 1, offset: 0 });
     expect(rows[0]?.feedback_hash).toBe('ab'.repeat(32));
+  });
+
+  it('getFeedbacks should surface proofPassAuth from GraphQL feedback reads', async () => {
+    const client = createClient();
+    const row = mockFeedbackRows(1, 0)[0] as Record<string, unknown>;
+    (row.solana as Record<string, unknown>).proofPassAuth = true;
+    mockFetch.mockResolvedValue(
+      mockGraphQLResponse({
+        data: {
+          feedbacks: [row],
+        },
+      }),
+    );
+
+    const rows = await client.getFeedbacks('AssetFeedback222', { includeRevoked: true, limit: 1, offset: 0 });
+    expect(rows[0]?.proof_pass_auth).toBe(true);
+    expect(getBody(0).query).toContain('proofPassAuth');
   });
 
   it('getAllFeedbacks should exclude revoked by default and include when requested', async () => {

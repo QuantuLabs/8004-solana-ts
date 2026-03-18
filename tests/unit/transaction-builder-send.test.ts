@@ -702,8 +702,8 @@ describe('ValidationTransactionBuilder - send mode', () => {
       42, 'ipfs://request', Buffer.alloc(32)
     );
     if ('success' in result) {
-      expect(result.success).toBe(true);
-      expect(result.signature).toBeTruthy();
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('archived');
     }
   });
 
@@ -716,7 +716,7 @@ describe('ValidationTransactionBuilder - send mode', () => {
     );
     if ('success' in result) {
       expect(result.success).toBe(false);
-      expect(result.error).toContain('read-only');
+      expect(result.error).toContain('archived');
     }
   });
 
@@ -726,7 +726,8 @@ describe('ValidationTransactionBuilder - send mode', () => {
       'ipfs://response', Buffer.alloc(32), 'quality'
     );
     if ('success' in result) {
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('archived');
     }
   });
 
@@ -738,7 +739,7 @@ describe('ValidationTransactionBuilder - send mode', () => {
     );
     if ('success' in result) {
       expect(result.success).toBe(false);
-      expect(result.error).toContain('signer');
+      expect(result.error).toContain('archived');
     }
   });
 
@@ -751,18 +752,18 @@ describe('ValidationTransactionBuilder - send mode', () => {
     );
     if ('success' in result) {
       expect(result.success).toBe(false);
-      expect(result.error).toContain('read-only');
+      expect(result.error).toContain('archived');
     }
   });
 
-  it('respondToValidation - validates responseHash length', async () => {
+  it('respondToValidation - returns archived error regardless of responseHash', async () => {
     const result = await builder.respondToValidation(
       PublicKey.unique(), 42, 85,
       'ipfs://response', Buffer.alloc(16), 'quality'
     );
     if ('success' in result) {
       expect(result.success).toBe(false);
-      expect(result.error).toContain('32 bytes');
+      expect(result.error).toContain('archived');
     }
   });
 });
