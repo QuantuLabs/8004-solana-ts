@@ -4,6 +4,8 @@
 
 The final feedback is still attributed to the `reviewer`, not to the `ProofPass` program.
 
+Use the immutable 8004 agent `creator` as `creator` below. Do not substitute the current live owner after a transfer.
+
 ## Fast Path
 
 1. Open a session

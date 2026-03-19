@@ -53,6 +53,8 @@ For the SDK calls in this release, keep using the same agent asset pubkey as `ta
 
 Open a request tied to the interaction you want to review later.
 
+Use the immutable 8004 agent `creator` as `creator` below. Do not substitute the current live owner after a transfer.
+
 ```ts
 import { openProofPass } from '8004-solana';
 

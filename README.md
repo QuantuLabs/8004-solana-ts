@@ -200,6 +200,9 @@ const summary = await sdk.getSummary(asset);
 A service opens a feedback request, then the reviewer finalizes a real `giveFeedback()` later.
 The final feedback is still attributed to the `reviewer`, not to the `ProofPass` program.
 
+`creator` must be the immutable `creator` recorded in the target agent's 8004 `AgentAccount`.
+It is not just any service wallet or the current live owner after a transfer.
+
 ```typescript
 import { openProofPass, giveFeedbackWithProof } from '8004-solana';
 

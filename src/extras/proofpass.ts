@@ -122,6 +122,8 @@ export interface BuildProofPassOpenSessionInstructionParams {
   reviewer: ProofPassPublicKeyInput;
   targetAgent: ProofPassPublicKeyInput;
   treasury: ProofPassPublicKeyInput;
+  registryProgramId?: ProofPassPublicKeyInput;
+  agentAccount?: ProofPassPublicKeyInput;
   contextType?: number;
   contextRef?: ProofPassContextRefInput;
   contextRefHash?: ProofPassBytesInput;
@@ -347,6 +349,12 @@ export function buildProofPassOpenSessionInstruction(
   }
 ): TransactionInstruction {
   const request = resolveProofPassRequest(params);
+  const registryProgramId = params.registryProgramId === undefined
+    ? undefined
+    : requireRegistryProgramId(params.registryProgramId);
+  const agentAccount = params.agentAccount === undefined
+    ? undefined
+    : toPublicKey(params.agentAccount, 'agentAccount');
   const programId = toPublicKey(
     params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID,
     'proofPassProgramId'
@@ -354,6 +362,8 @@ export function buildProofPassOpenSessionInstruction(
   return createOpenInstruction(
     request,
     toPublicKey(params.treasury, 'treasury'),
+    registryProgramId,
+    agentAccount,
     programId
   );
 }
@@ -361,10 +371,20 @@ export function buildProofPassOpenSessionInstruction(
 function createOpenInstruction(
   request: ProofPassRequest,
   treasury: PublicKey,
+  registryProgramId: PublicKey | undefined,
+  providedAgentAccount: PublicKey | undefined,
   programId: PublicKey
 ): TransactionInstruction {
   const creator = new PublicKey(request.creator);
   const targetAsset = new PublicKey(request.targetAsset);
+  const agentAccount = providedAgentAccount ?? (
+    registryProgramId === undefined
+      ? null
+      : PDAHelpers.getAgentPDA(targetAsset, registryProgramId)[0]
+  );
+  if (agentAccount === null) {
+    throw new Error('buildProofPassOpenSessionInstruction requires registryProgramId or agentAccount');
+  }
   const [config] = getProofPassConfigPda(programId);
   const [session] = getProofPassSessionPda(
     request.creator,
@@ -396,6 +416,7 @@ function createOpenInstruction(
       { pubkey: treasury, isSigner: false, isWritable: true },
       { pubkey: session, isSigner: false, isWritable: true },
       { pubkey: targetAsset, isSigner: false, isWritable: false },
+      { pubkey: agentAccount, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data,
@@ -590,13 +611,14 @@ export async function openProofPass(
 ): Promise<ProofPassFlow> {
   const programId = PROOFPASS_PROGRAM_ID;
   const config = await fetchProofPassConfig(params.connection, programId);
+  const registryProgramId = config.registryProgram;
   if (config.paused) {
     throw new Error('ProofPass is currently paused');
   }
   const resolvedTargetAgent = await resolveOpenProofPassTargetAgent(
     params.targetAgent,
     params.targetAsset,
-    config.registryProgram,
+    registryProgramId,
     params.indexerClient,
     params.indexerGraphqlUrl
   );
@@ -640,6 +662,8 @@ export async function openProofPass(
     openInstruction: createOpenInstruction(
       request,
       config.treasury,
+      registryProgramId,
+      undefined,
       programId
     ),
   };

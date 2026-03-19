@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-03-19
+### Changed
+- Updated the public SDK to follow the current `ProofPass` creator-based open flow after the devnet program upgrade.
+- Kept the high-level `openProofPass(...)` API stable while aligning the underlying instruction accounts with the new on-chain ABI.
+
+### Documentation
+- Restored the compact README layout and fixed the read-only snippet so the public docs match the current SDK flow.
+
 ## [0.8.2] - 2026-03-18
 ### Added
 - Added the public `ProofPass` flow:

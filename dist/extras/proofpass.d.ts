@@ -26,6 +26,8 @@ export interface BuildProofPassOpenSessionInstructionParams {
     reviewer: ProofPassPublicKeyInput;
     targetAgent: ProofPassPublicKeyInput;
     treasury: ProofPassPublicKeyInput;
+    registryProgramId?: ProofPassPublicKeyInput;
+    agentAccount?: ProofPassPublicKeyInput;
     contextType?: number;
     contextRef?: ProofPassContextRefInput;
     contextRefHash?: ProofPassBytesInput;

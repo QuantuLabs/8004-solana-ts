@@ -111,12 +111,24 @@ export function buildInitializeProofPassConfigInstruction(params) {
 }
 export function buildProofPassOpenSessionInstruction(params) {
     const request = resolveProofPassRequest(params);
+    const registryProgramId = params.registryProgramId === undefined
+        ? undefined
+        : requireRegistryProgramId(params.registryProgramId);
+    const agentAccount = params.agentAccount === undefined
+        ? undefined
+        : toPublicKey(params.agentAccount, 'agentAccount');
     const programId = toPublicKey(params.proofPassProgramId ?? PROOFPASS_PROGRAM_ID, 'proofPassProgramId');
-    return createOpenInstruction(request, toPublicKey(params.treasury, 'treasury'), programId);
+    return createOpenInstruction(request, toPublicKey(params.treasury, 'treasury'), registryProgramId, agentAccount, programId);
 }
-function createOpenInstruction(request, treasury, programId) {
+function createOpenInstruction(request, treasury, registryProgramId, providedAgentAccount, programId) {
     const creator = new PublicKey(request.creator);
     const targetAsset = new PublicKey(request.targetAsset);
+    const agentAccount = providedAgentAccount ?? (registryProgramId === undefined
+        ? null
+        : PDAHelpers.getAgentPDA(targetAsset, registryProgramId)[0]);
+    if (agentAccount === null) {
+        throw new Error('buildProofPassOpenSessionInstruction requires registryProgramId or agentAccount');
+    }
     const [config] = getProofPassConfigPda(programId);
     const [session] = getProofPassSessionPda(request.creator, request.reviewer, request.targetAsset, request.nonce, programId);
     const data = Buffer.concat([
@@ -140,6 +152,7 @@ function createOpenInstruction(request, treasury, programId) {
             { pubkey: treasury, isSigner: false, isWritable: true },
             { pubkey: session, isSigner: false, isWritable: true },
             { pubkey: targetAsset, isSigner: false, isWritable: false },
+            { pubkey: agentAccount, isSigner: false, isWritable: false },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data,
@@ -289,10 +302,11 @@ export function buildProofPassUpdateTreasuryInstruction(params) {
 export async function openProofPass(params) {
     const programId = PROOFPASS_PROGRAM_ID;
     const config = await fetchProofPassConfig(params.connection, programId);
+    const registryProgramId = config.registryProgram;
     if (config.paused) {
         throw new Error('ProofPass is currently paused');
     }
-    const resolvedTargetAgent = await resolveOpenProofPassTargetAgent(params.targetAgent, params.targetAsset, config.registryProgram, params.indexerClient, params.indexerGraphqlUrl);
+    const resolvedTargetAgent = await resolveOpenProofPassTargetAgent(params.targetAgent, params.targetAsset, registryProgramId, params.indexerClient, params.indexerGraphqlUrl);
     const request = resolveProofPassRequest({
         creator: params.creator,
         reviewer: params.reviewer,
@@ -320,7 +334,7 @@ export async function openProofPass(params) {
         sessionPda,
         sessionAddress: sessionPda.toBase58(),
         treasury: config.treasury,
-        openInstruction: createOpenInstruction(request, config.treasury, programId),
+        openInstruction: createOpenInstruction(request, config.treasury, registryProgramId, undefined, programId),
     };
 }
 async function resolveOpenProofPassTargetAgent(targetAgent, targetAsset, registryProgram, indexerClient, indexerGraphqlUrl) {

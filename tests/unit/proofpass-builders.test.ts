@@ -39,11 +39,16 @@ describe('proofpass builders', () => {
 
   it('encodes an open instruction with optional endpoint, feedback uri and file hash hints', () => {
     const feedbackFileHashHint = Buffer.alloc(32, 0x11);
+    const [derivedAgentAccount] = PublicKey.findProgramAddressSync(
+      [Buffer.from('agent'), targetAsset.toBuffer()],
+      registryProgram,
+    );
     const ix = buildProofPassOpenSessionInstruction({
       creator,
       reviewer,
       targetAgent: targetAsset,
       treasury,
+      registryProgramId: registryProgram,
       contextRef: 'x402:demo:builder-open',
       ttlSlots: 20n,
       nonce: Buffer.alloc(32, 0x22),
@@ -55,6 +60,7 @@ describe('proofpass builders', () => {
 
     expect(ix.keys[0]?.pubkey.toBase58()).toBe(creator.toBase58());
     expect(ix.keys[4]?.pubkey.toBase58()).toBe(targetAsset.toBase58());
+    expect(ix.keys[5]?.pubkey.toBase58()).toBe(derivedAgentAccount.toBase58());
     expect(ix.data[0]).toBe(1);
     expect(Buffer.from(ix.data.subarray(1, 33)).equals(reviewer.toBuffer())).toBe(true);
     expect(Buffer.from(ix.data).includes(Buffer.from('/service/builder-open'))).toBe(true);
@@ -69,6 +75,7 @@ describe('proofpass builders', () => {
       reviewer,
       targetAgent: targetAsset,
       treasury,
+      registryProgramId: registryProgram,
       contextRef: 'x402:demo:builder-open-alias',
     });
 
@@ -83,9 +90,22 @@ describe('proofpass builders', () => {
         targetAgent: targetAsset,
         targetAsset: PublicKey.unique(),
         treasury,
+        registryProgramId: registryProgram,
         contextRef: 'x402:demo:builder-open-mismatch',
       })
     ).toThrow('targetAgent and targetAsset must match when both are provided');
+  });
+
+  it('requires registryProgramId or agentAccount to build an open instruction', () => {
+    expect(() =>
+      buildProofPassOpenSessionInstruction({
+        creator,
+        reviewer,
+        targetAgent: targetAsset,
+        treasury,
+        contextRef: 'proofpass:test:missing-agent-account',
+      })
+    ).toThrow('buildProofPassOpenSessionInstruction requires registryProgramId or agentAccount');
   });
 
   it('requires an explicit registryProgramId when initializing ProofPass config', () => {

@@ -95,10 +95,13 @@ const finalizeIx = await giveFeedbackWithProof({
 });
 ```
 
+`creator` must match the immutable `creator` stored in the target agent's 8004 `AgentAccount`.
+It is not just any backend wallet and it does not switch to the live owner after an asset transfer.
+
 `openProofPass(...)` arguments:
 
 - `connection`: Solana connection used to read the active on-chain `ProofPass` config
-- `creator`: service wallet opening the request
+- `creator`: the immutable 8004 agent creator opening the request
 - `reviewer`: wallet expected to finalize the feedback later
 - `targetAgent`: the agent asset public key for the request target
 - `contextRef`: business reference used to bind the request to your off-chain flow

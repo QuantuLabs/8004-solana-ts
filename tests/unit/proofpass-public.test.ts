@@ -148,6 +148,9 @@ describe('proofpass public surface', () => {
     expect(flow.openInstruction.keys[0]?.pubkey.toBase58()).toBe(creator.toBase58());
     expect(flow.openInstruction.keys[2]?.pubkey.toBase58()).toBe(treasury.toBase58());
     expect(flow.openInstruction.keys[3]?.pubkey.toBase58()).toBe(flow.sessionPda.toBase58());
+    expect(flow.openInstruction.keys[5]?.pubkey.toBase58()).toBe(
+      PDAHelpers.getAgentPDA(targetAsset, registryProgram)[0].toBase58()
+    );
   });
 
   it('openProofPass accepts targetAgent as the friendly alias for targetAsset', async () => {
@@ -457,6 +460,9 @@ describe('proofpass public surface', () => {
       expect(request.targetAsset).toBe(targetAsset.toBase58());
       expect(request.openInstruction.keys[0]?.pubkey.toBase58()).toBe(creator.toBase58());
       expect(request.openInstruction.keys[2]?.pubkey.toBase58()).toBe(treasury.toBase58());
+      expect(request.openInstruction.keys[5]?.pubkey.toBase58()).toBe(
+        PDAHelpers.getAgentPDA(targetAsset, registryProgram)[0].toBase58()
+      );
     }
   });
 
