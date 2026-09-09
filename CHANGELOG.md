@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-09-09
+### Fixed
+- Updated `@solana/web3.js` to `^1.99.0` so SDK-created connections can decode transaction version 1 responses when callers pass `maxSupportedTransactionVersion: 1`.
+- Legacy and version 0 transaction reads remain supported; this release does not add version 1 transaction building or signing.
+
+### Changed
+- Raised the advertised Node.js minimum to 20.19.0, matching the existing `@noble/hashes` runtime requirement and the Solana codec dependencies used by the updated web3.js release.
+
 ## [0.8.3] - 2026-03-19
 ### Changed
 - Updated the public SDK to follow the current `ProofPass` creator-based open flow after the devnet program upgrade.

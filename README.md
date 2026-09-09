@@ -32,6 +32,23 @@ npm install 8004-solana
 - `localnet`: supported; set local deployed `programIds`.
 - See the [Indexer](#indexer) section for the combined network + indexer config snippet.
 
+## Transaction version 1 reads
+
+The SDK-created connection can read legacy, version 0, and version 1 transactions. Raw connection callers must opt into version 1 on each applicable RPC call:
+
+```typescript
+const connection = sdk.getSolanaClient().getConnection();
+
+const transaction = await connection.getTransaction(signature, {
+  maxSupportedTransactionVersion: 1,
+});
+const block = await connection.getBlock(slot, {
+  maxSupportedTransactionVersion: 1,
+});
+```
+
+This read compatibility does not add version 1 transaction building or signing support.
+
 ## Quick Start
 
 ```typescript
