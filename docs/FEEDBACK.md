@@ -249,6 +249,42 @@ console.log(summary.averageScore);
 console.log(summary.totalFeedbacks);
 ```
 
+## Independent File and SEAL Verification
+
+RPC history may be pruned, so replay the complete indexed history from zero. Both REST and GraphQL indexers expose replay data:
+
+```typescript
+const full = await sdk.verifyIntegrityFull(agentAsset, { useCheckpoints: false });
+const chainsValid = Object.values(full.chains).every(
+  (chain) => chain.match && chain.countIndexer === chain.countOnChain,
+);
+if (!full.valid || full.status !== 'valid' || full.totalLag !== 0n || !chainsValid) {
+  throw new Error('Reject unverified indexed history');
+}
+```
+
+Feedback records store the SEAL (`feedback_hash` in REST, `feedbackHash` in GraphQL, `sealHash` in the SDK), without a separate `feedbackFileHash` field. Local Prisma event logs can retain the original event, including its file hash, but these feedback APIs do not expose it. To verify that a published file was bound to a record, download and hash its original bytes:
+
+```typescript
+const response = await fetch(record.feedbackUri);
+if (!response.ok) throw new Error(`Feedback download failed: ${response.status}`);
+const originalBytes = Buffer.from(await response.arrayBuffer());
+const feedbackFileHash = await SolanaSDK.computeHash(originalBytes);
+
+const computedSealHash = computeSealHash({
+  value: BigInt(record.value),
+  valueDecimals: record.valueDecimals,
+  score: record.score,
+  tag1: record.tag1, tag2: record.tag2,
+  endpoint: record.endpoint, feedbackUri: record.feedbackUri,
+  feedbackFileHash,
+});
+if (!computedSealHash.equals(record.sealHash)) throw new Error('SEAL mismatch');
+```
+
+Use the exact indexed parameters and compare with the `sealHash` anchored by replay. Never parse and re-serialize JSON.
+For a record originally created without a file commitment, use `feedbackFileHash: null`; a matching SEAL then verifies its parameters, not any referenced file. The missing indexed field alone does not establish that the original commitment was null.
+
 ## Revoke Feedback
 
 For the normal flow, keep it simple:

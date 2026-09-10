@@ -291,6 +291,7 @@ await sdk.revokeFeedback(agent.asset, 12n, sealHash, {
 ```
 
 See [FEEDBACK.md](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md) for all 8004 tags and patterns.
+See [independent file and SEAL verification](https://github.com/QuantuLabs/8004-solana-ts/blob/main/docs/FEEDBACK.md#independent-file-and-seal-verification) for the full replay and original-byte checks.
 
 ## Tags
 
