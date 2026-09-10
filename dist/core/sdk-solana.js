@@ -15,7 +15,7 @@ import { SolanaFeedbackManager } from './feedback-manager-solana.js';
 import { EndpointCrawler } from './endpoint-crawler.js';
 import { PDAHelpers } from './pda-helpers.js';
 import { getProgramIdsForCluster } from './programs.js';
-import { sha256 } from '../utils/crypto-utils.js';
+import { keccak256, sha256 } from '../utils/crypto-utils.js';
 import { ACCOUNT_DISCRIMINATORS } from './instruction-discriminators.js';
 import { AgentAccount, MetadataEntryPda } from './borsh-schemas.js';
 import { IdentityTransactionBuilder, ReputationTransactionBuilder, AtomTransactionBuilder, validateCollectionPointer, } from './transaction-builder.js';
@@ -2389,20 +2389,17 @@ export class SolanaSDK {
     }
     // ==================== Hash Utilities ====================
     /**
-     * Compute SHA-256 hash from data (string or Buffer)
-     * Use this for feedback, validation, and response hashes
-     * Browser-compatible (async for WebCrypto support)
+     * Compute the Keccak-256 hash of feedback/file bytes.
+     * The async API is retained for compatibility.
      * @param data - String or Buffer to hash
-     * @returns 32-byte SHA-256 hash as Buffer
+     * @returns 32-byte Keccak-256 hash as Buffer
      *
      * @example
      * const feedbackHash = await SolanaSDK.computeHash('My feedback content');
      * const dataHash = await SolanaSDK.computeHash(Buffer.from(jsonData));
      */
     static async computeHash(data) {
-        const input = typeof data === 'string' ? data : new Uint8Array(data);
-        const hash = await sha256(input);
-        return Buffer.from(hash);
+        return keccak256(Buffer.from(data));
     }
     /**
      * Verify indexer integrity against on-chain hash-chain digests (O(1) verification)

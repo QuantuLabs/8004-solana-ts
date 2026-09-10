@@ -2028,14 +2028,34 @@ describe('SolanaSDK', () => {
   // ==================== Static Methods ====================
 
   describe('computeHash', () => {
-    it('should compute hash from string', async () => {
-      const hash = await SolanaSDK.computeHash('test data');
-      expect(hash.length).toBe(32);
+    it('should compute the fixed Keccak-256 vector from string and Buffer', async () => {
+      const data = '{"demo":"evidence"}';
+      const expected = 'f9c713bdb2ec0607ba673db5a805bd244eb4d24844c465c8371e1869a46316f9';
+      const stringHash = await SolanaSDK.computeHash(data);
+      const bufferHash = await SolanaSDK.computeHash(Buffer.from(data));
+
+      expect(stringHash).toBeInstanceOf(Buffer);
+      expect(stringHash.length).toBe(32);
+      expect(stringHash.toString('hex')).toBe(expected);
+      expect(bufferHash).toBeInstanceOf(Buffer);
+      expect(bufferHash.length).toBe(32);
+      expect(bufferHash.toString('hex')).toBe(expected);
     });
 
-    it('should compute hash from Buffer', async () => {
-      const hash = await SolanaSDK.computeHash(Buffer.from('test data'));
+    it('should compute the empty Keccak-256 vector', async () => {
+      const hash = await SolanaSDK.computeHash('');
+      expect(hash).toBeInstanceOf(Buffer);
       expect(hash.length).toBe(32);
+      expect(hash.toString('hex')).toBe(
+        'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470',
+      );
+    });
+
+    it('should hash non-ASCII strings as their UTF-8 bytes', async () => {
+      const data = 'évidence 🔐';
+      const stringHash = await SolanaSDK.computeHash(data);
+      const bufferHash = await SolanaSDK.computeHash(Buffer.from(data));
+      expect(stringHash.equals(bufferHash)).toBe(true);
     });
   });
 

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- `SolanaSDK.computeHash()` now hashes feedback/file bytes with Keccak-256, matching SEAL commitments. Its async `string | Buffer` to `Promise<Buffer>` signature is preserved, but digest output changes; existing SHA-256 commitments are not rewritten.
+
 ## [0.8.4] - 2026-09-09
 ### Fixed
 - Updated `@solana/web3.js` to `^1.99.0` so SDK-created connections can decode transaction version 1 responses when callers pass `maxSupportedTransactionVersion: 1`.

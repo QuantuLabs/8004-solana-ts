@@ -610,15 +610,33 @@ describe('Section 14: OASF Taxonomy', () => {
 
 describe('Section 15: Hash Utilities', () => {
   test('SolanaSDK.computeHash (string)', async () => {
-    const hash = await SolanaSDK.computeHash('My feedback content');
+    const hash = await SolanaSDK.computeHash('{"demo":"evidence"}');
     expect(hash).toBeInstanceOf(Buffer);
     expect(hash.length).toBe(32);
+    expect(hash.toString('hex')).toBe(
+      'f9c713bdb2ec0607ba673db5a805bd244eb4d24844c465c8371e1869a46316f9',
+    );
   });
 
   test('SolanaSDK.computeHash (Buffer)', async () => {
-    const bufHash = await SolanaSDK.computeHash(Buffer.from('json data'));
+    const bufHash = await SolanaSDK.computeHash(Buffer.from('{"demo":"evidence"}'));
     expect(bufHash).toBeInstanceOf(Buffer);
     expect(bufHash.length).toBe(32);
+    expect(bufHash.toString('hex')).toBe(
+      'f9c713bdb2ec0607ba673db5a805bd244eb4d24844c465c8371e1869a46316f9',
+    );
+  });
+
+  test('SolanaSDK.computeHash (empty and non-ASCII)', async () => {
+    const emptyHash = await SolanaSDK.computeHash('');
+    expect(emptyHash.toString('hex')).toBe(
+      'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470',
+    );
+
+    const data = 'évidence 🔐';
+    const stringHash = await SolanaSDK.computeHash(data);
+    const bufferHash = await SolanaSDK.computeHash(Buffer.from(data));
+    expect(stringHash.equals(bufferHash)).toBe(true);
   });
 
   test('SolanaSDK.computeUriHash (HTTPS)', async () => {
@@ -904,9 +922,11 @@ describe('Section 24: Program IDs', () => {
 
 describe('Cross-section: SEAL + computeHash integration', () => {
   test('feedbackFileHash = computeHash(JSON.stringify(file))', async () => {
-    const feedbackFile = { version: '1.0', type: 'x402-feedback', data: 'test' };
+    const feedbackFile = { demo: 'evidence' };
     const fileHash = await SolanaSDK.computeHash(JSON.stringify(feedbackFile));
-    expect(fileHash.length).toBe(32);
+    expect(fileHash.toString('hex')).toBe(
+      'f9c713bdb2ec0607ba673db5a805bd244eb4d24844c465c8371e1869a46316f9',
+    );
 
     const params = createSealParams(
       10000n, 2, 95,

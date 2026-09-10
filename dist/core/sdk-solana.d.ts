@@ -1063,11 +1063,10 @@ export declare class SolanaSDK {
      */
     getRpcUrl(): string;
     /**
-     * Compute SHA-256 hash from data (string or Buffer)
-     * Use this for feedback, validation, and response hashes
-     * Browser-compatible (async for WebCrypto support)
+     * Compute the Keccak-256 hash of feedback/file bytes.
+     * The async API is retained for compatibility.
      * @param data - String or Buffer to hash
-     * @returns 32-byte SHA-256 hash as Buffer
+     * @returns 32-byte Keccak-256 hash as Buffer
      *
      * @example
      * const feedbackHash = await SolanaSDK.computeHash('My feedback content');

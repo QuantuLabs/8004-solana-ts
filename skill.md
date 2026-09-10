@@ -386,7 +386,7 @@ await sdk.giveFeedback(targetAgent, {
 | `tag2` | `string` | No | Period/network tag (max 32 UTF-8 bytes) |
 | `endpoint` | `string` | No | Endpoint used (max 250 UTF-8 bytes) |
 | `feedbackUri` | `string` | No | URI to detailed feedback file (IPFS/HTTPS, max 250 bytes) |
-| `feedbackFileHash` | `Buffer` | No | SHA-256 of feedback file content (32 bytes). Binds file to on-chain SEAL |
+| `feedbackFileHash` | `Buffer` | No | Keccak-256 of feedback file bytes (32 bytes). Binds file to on-chain SEAL |
 
 ### Value encoding patterns
 
@@ -866,7 +866,7 @@ const domains = getAllDomains(); // 204 domains
 ## 15. Hash Utilities
 
 ```typescript
-// SHA-256 (async, browser-compatible via WebCrypto)
+// Keccak-256 of feedback/file bytes (async API retained)
 const hash = await SolanaSDK.computeHash('My feedback content');
 const bufHash = await SolanaSDK.computeHash(Buffer.from(jsonData));
 // Returns: Buffer (32 bytes)
