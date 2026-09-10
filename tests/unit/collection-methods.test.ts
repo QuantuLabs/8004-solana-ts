@@ -3,7 +3,7 @@
  * Tests getCollection, getCollections, getCollectionAgents
  */
 
-import { describe, it, expect, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterEach, jest } from '@jest/globals';
 import { PublicKey } from '@solana/web3.js';
 import { SolanaSDK, CollectionInfo } from '../../src/index.js';
 
@@ -16,12 +16,18 @@ describe('Collection Methods', () => {
     sdk = new SolanaSDK({ rpcUrl });
   });
 
+  afterEach(() => jest.restoreAllMocks());
+
   describe('getCollection', () => {
     it('should return null for non-existent collection', async () => {
       const fakeCollection = new PublicKey('11111111111111111111111111111111');
+      const getAccountInfo = jest
+        .spyOn(sdk.getSolanaClient().getConnection(), 'getAccountInfo')
+        .mockResolvedValueOnce(null);
       const result = await sdk.getCollection(fakeCollection);
 
       expect(result).toBeNull();
+      expect(getAccountInfo).toHaveBeenCalledTimes(1);
     });
 
     it('should have correct CollectionInfo interface', () => {
@@ -40,8 +46,8 @@ describe('Collection Methods', () => {
 
   describe('getCollections', () => {
     it('should require advanced RPC', async () => {
-      // When using default devnet RPC, should throw UnsupportedRpcError
-      const defaultSdk = new SolanaSDK();
+      // When using the explicit devnet RPC, should throw UnsupportedRpcError
+      const defaultSdk = new SolanaSDK({ cluster: 'devnet' });
 
       await expect(defaultSdk.getCollections()).rejects.toThrow(/not supported/i);
     });
@@ -49,7 +55,7 @@ describe('Collection Methods', () => {
 
   describe('getCollectionAgents', () => {
     it('should require advanced RPC', async () => {
-      const defaultSdk = new SolanaSDK();
+      const defaultSdk = new SolanaSDK({ cluster: 'devnet' });
       const fakeCollection = new PublicKey('11111111111111111111111111111111');
 
       await expect(defaultSdk.getCollectionAgents(fakeCollection)).rejects.toThrow(/not supported/i);

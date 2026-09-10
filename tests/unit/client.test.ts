@@ -70,11 +70,11 @@ describe('RpcNetworkError', () => {
 
 describe('SolanaClient', () => {
   describe('constructor', () => {
-    it('should use default devnet RPC when no rpcUrl provided', () => {
+    it('should use default mainnet RPC when no rpcUrl provided', () => {
       const client = new SolanaClient({});
-      expect(client.rpcUrl).toBe(SOLANA_DEVNET_RPC);
-      expect(client.cluster).toBe('devnet');
-      expect(client.isDefaultDevnetRpc).toBe(true);
+      expect(client.rpcUrl).toBe(SOLANA_MAINNET_RPC);
+      expect(client.cluster).toBe('mainnet-beta');
+      expect(client.isDefaultDevnetRpc).toBe(false);
     });
 
     it('should use provided rpcUrl', () => {
@@ -85,13 +85,13 @@ describe('SolanaClient', () => {
     });
 
     it('should detect default devnet RPC URL explicitly passed', () => {
-      const client = new SolanaClient({ rpcUrl: SOLANA_DEVNET_RPC });
+      const client = new SolanaClient({ cluster: 'devnet', rpcUrl: SOLANA_DEVNET_RPC });
       expect(client.isDefaultDevnetRpc).toBe(true);
     });
 
-    it('should default to devnet cluster', () => {
+    it('should default to mainnet-beta cluster', () => {
       const client = new SolanaClient({});
-      expect(client.cluster).toBe('devnet');
+      expect(client.cluster).toBe('mainnet-beta');
     });
 
     it('should accept explicit cluster', () => {
@@ -123,7 +123,7 @@ describe('SolanaClient', () => {
 
   describe('supportsAdvancedQueries', () => {
     it('should return false for default devnet RPC', () => {
-      const client = new SolanaClient({});
+      const client = new SolanaClient({ cluster: 'devnet' });
       expect(client.supportsAdvancedQueries()).toBe(false);
     });
 
@@ -135,7 +135,7 @@ describe('SolanaClient', () => {
 
   describe('requireAdvancedQueries', () => {
     it('should throw UnsupportedRpcError for default devnet RPC', () => {
-      const client = new SolanaClient({});
+      const client = new SolanaClient({ cluster: 'devnet' });
       expect(() => client.requireAdvancedQueries('getAllAgents')).toThrow(UnsupportedRpcError);
     });
 
@@ -145,7 +145,7 @@ describe('SolanaClient', () => {
     });
 
     it('should include operation name in thrown error', () => {
-      const client = new SolanaClient({});
+      const client = new SolanaClient({ cluster: 'devnet' });
       try {
         client.requireAdvancedQueries('getCollections');
         fail('Expected error');

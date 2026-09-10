@@ -557,7 +557,7 @@ export class SolanaSDK {
   private readonly forceOnChain: boolean;
 
   constructor(config: SolanaSDKConfig = {}) {
-    this.cluster = config.cluster || 'devnet';
+    this.cluster = config.cluster || 'mainnet-beta';
     this.programIds = getProgramIdsForCluster(this.cluster, config.programIds);
     this.signer = config.signer;
     this.ipfsClient = config.ipfsClient;

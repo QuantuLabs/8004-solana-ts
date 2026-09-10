@@ -4,33 +4,37 @@
  */
 import { PublicKey } from '@solana/web3.js';
 /**
- * Consolidated AgentRegistry8004 Program ID (devnet default)
+ * Consolidated AgentRegistry8004 Program IDs
  * Single program containing Identity, Reputation, and Validation modules
  */
 export const DEVNET_AGENT_REGISTRY_PROGRAM_ID = new PublicKey('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
 export const MAINNET_AGENT_REGISTRY_PROGRAM_ID = new PublicKey('8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ');
 /**
- * Backward-compatible alias for devnet default Agent Registry ID.
- * Override in SDK config for localnet/mainnet deployments.
+ * Backward-compatible alias for the mainnet default Agent Registry ID.
  */
-export const PROGRAM_ID = DEVNET_AGENT_REGISTRY_PROGRAM_ID;
+export const PROGRAM_ID = MAINNET_AGENT_REGISTRY_PROGRAM_ID;
 /**
  * Metaplex Core Program ID
  * Used for NFT asset creation and management
  */
 export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 /**
- * ATOM Engine Program ID (devnet default)
+ * ATOM Engine Program IDs
  * Agent Trust On-chain Model - reputation computation engine
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
 export const DEVNET_ATOM_ENGINE_PROGRAM_ID = new PublicKey('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
 export const MAINNET_ATOM_ENGINE_PROGRAM_ID = new PublicKey('AToMw53aiPQ8j7iHVb4fGt6nzUNxUhcPc3tbPBZuzVVb');
 /**
- * Backward-compatible alias for devnet default ATOM Engine ID.
- * Override in SDK config for localnet/mainnet deployments.
+ * Backward-compatible alias for the mainnet default ATOM Engine ID.
  */
-export const ATOM_ENGINE_PROGRAM_ID = DEVNET_ATOM_ENGINE_PROGRAM_ID;
+export const ATOM_ENGINE_PROGRAM_ID = MAINNET_ATOM_ENGINE_PROGRAM_ID;
+function isCluster(value) {
+    return value === 'devnet'
+        || value === 'testnet'
+        || value === 'mainnet-beta'
+        || value === 'localnet';
+}
 function getClusterProgramDefaults(cluster) {
     if (cluster === 'mainnet-beta') {
         return {
@@ -46,16 +50,18 @@ function getClusterProgramDefaults(cluster) {
     };
 }
 function toPublicKey(value) {
-    if (!value)
+    if (value === undefined)
         return undefined;
+    if (typeof value !== 'string' && (typeof value !== 'object' || value === null)) {
+        throw new TypeError('Program ID must be a string or PublicKey');
+    }
     return value instanceof PublicKey ? value : new PublicKey(value);
 }
-/**
- * Resolve program IDs.
- * Defaults target devnet and can be overridden per SDK instance.
- */
-export function getProgramIds(overrides = {}) {
-    return getProgramIdsForCluster('devnet', overrides);
+export function getProgramIds(clusterOrOverrides = {}, overrides) {
+    if (typeof clusterOrOverrides === 'string') {
+        return getProgramIdsForCluster(clusterOrOverrides, overrides);
+    }
+    return getProgramIdsForCluster('mainnet-beta', clusterOrOverrides);
 }
 /**
  * Resolve program IDs for a specific cluster.
@@ -63,6 +69,12 @@ export function getProgramIds(overrides = {}) {
  * - mainnet-beta defaults to mainnet IDs (overrideable)
  */
 export function getProgramIdsForCluster(cluster, overrides = {}) {
+    if (!isCluster(cluster)) {
+        throw new Error(`Unknown cluster "${String(cluster)}". Expected one of devnet, testnet, mainnet-beta, localnet.`);
+    }
+    if (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) {
+        throw new TypeError('Program ID overrides must be an object');
+    }
     const clusterDefaults = getClusterProgramDefaults(cluster);
     const agentRegistry = toPublicKey(overrides.agentRegistry) ?? clusterDefaults.agentRegistry;
     const identityRegistry = toPublicKey(overrides.identityRegistry) ?? agentRegistry;
@@ -81,7 +93,7 @@ export function getProgramIdsForCluster(cluster, overrides = {}) {
 }
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
- * Program IDs resolved to devnet defaults (legacy 3-program naming)
+ * Program IDs resolved to mainnet defaults (legacy 3-program naming)
  */
 export const PROGRAM_IDS = getProgramIds();
 /**

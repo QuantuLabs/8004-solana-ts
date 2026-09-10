@@ -115,7 +115,7 @@ export class SolanaClient {
   public readonly isDefaultDevnetRpc: boolean;
 
   constructor(config: SolanaClientConfig) {
-    this.cluster = config.cluster || 'devnet';
+    this.cluster = config.cluster || 'mainnet-beta';
     this.rpcUrl = config.rpcUrl || getDefaultRpcUrl(this.cluster);
     this.isDefaultDevnetRpc = this.cluster === 'devnet' && this.rpcUrl === SOLANA_DEVNET_RPC;
     this.connection = new Connection(this.rpcUrl, config.commitment || 'confirmed');

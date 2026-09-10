@@ -5,14 +5,13 @@
 import { PublicKey } from '@solana/web3.js';
 import type { Cluster } from './client.js';
 /**
- * Consolidated AgentRegistry8004 Program ID (devnet default)
+ * Consolidated AgentRegistry8004 Program IDs
  * Single program containing Identity, Reputation, and Validation modules
  */
 export declare const DEVNET_AGENT_REGISTRY_PROGRAM_ID: PublicKey;
 export declare const MAINNET_AGENT_REGISTRY_PROGRAM_ID: PublicKey;
 /**
- * Backward-compatible alias for devnet default Agent Registry ID.
- * Override in SDK config for localnet/mainnet deployments.
+ * Backward-compatible alias for the mainnet default Agent Registry ID.
  */
 export declare const PROGRAM_ID: PublicKey;
 /**
@@ -21,15 +20,14 @@ export declare const PROGRAM_ID: PublicKey;
  */
 export declare const MPL_CORE_PROGRAM_ID: PublicKey;
 /**
- * ATOM Engine Program ID (devnet default)
+ * ATOM Engine Program IDs
  * Agent Trust On-chain Model - reputation computation engine
  * v0.4.0 - Cross-program invocation for feedback/revoke operations
  */
 export declare const DEVNET_ATOM_ENGINE_PROGRAM_ID: PublicKey;
 export declare const MAINNET_ATOM_ENGINE_PROGRAM_ID: PublicKey;
 /**
- * Backward-compatible alias for devnet default ATOM Engine ID.
- * Override in SDK config for localnet/mainnet deployments.
+ * Backward-compatible alias for the mainnet default ATOM Engine ID.
  */
 export declare const ATOM_ENGINE_PROGRAM_ID: PublicKey;
 export type ProgramIdInput = PublicKey | string;
@@ -51,9 +49,14 @@ export interface ProgramIdSet {
 }
 /**
  * Resolve program IDs.
- * Defaults target devnet and can be overridden per SDK instance.
+ * Supported forms:
+ * - getProgramIds() -> mainnet-beta defaults
+ * - getProgramIds(overrides) -> mainnet-beta defaults with overrides
+ * - getProgramIds(cluster) -> cluster defaults
+ * - getProgramIds(cluster, overrides) -> cluster defaults with overrides
  */
 export declare function getProgramIds(overrides?: ProgramIdOverrides): ProgramIdSet;
+export declare function getProgramIds(cluster: Cluster, overrides?: ProgramIdOverrides): ProgramIdSet;
 /**
  * Resolve program IDs for a specific cluster.
  * - devnet/testnet/localnet default to devnet IDs (overrideable)
@@ -62,7 +65,7 @@ export declare function getProgramIds(overrides?: ProgramIdOverrides): ProgramId
 export declare function getProgramIdsForCluster(cluster: Cluster, overrides?: ProgramIdOverrides): ProgramIdSet;
 /**
  * @deprecated Use PROGRAM_ID instead - kept for backwards compatibility
- * Program IDs resolved to devnet defaults (legacy 3-program naming)
+ * Program IDs resolved to mainnet defaults (legacy 3-program naming)
  */
 export declare const PROGRAM_IDS: ProgramIdSet;
 /**

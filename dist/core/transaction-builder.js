@@ -172,6 +172,7 @@ export class IdentityTransactionBuilder {
      */
     async registerAgent(agentUri, options) {
         try {
+            validateByteLength(agentUri || '', 250, 'agentUri');
             // Determine the signer pubkey
             const signerPubkey = options?.signer || this.payer?.publicKey;
             if (!signerPubkey) {

@@ -363,9 +363,9 @@ describe('SolanaSDK', () => {
       expect(s.canWrite).toBe(true);
     });
 
-    it('should default to devnet cluster', () => {
+    it('should default to mainnet-beta cluster', () => {
       const s = new SolanaSDK();
-      expect(s.getCluster()).toBe('devnet');
+      expect(s.getCluster()).toBe('mainnet-beta');
     });
 
     it('should accept custom rpcUrl', () => {
@@ -397,11 +397,11 @@ describe('SolanaSDK', () => {
   describe('utility methods', () => {
     it('chainId should return solana-cluster string', async () => {
       const id = await sdk.chainId();
-      expect(id).toBe('solana-devnet');
+      expect(id).toBe('solana-mainnet-beta');
     });
 
     it('getCluster should return cluster', () => {
-      expect(sdk.getCluster()).toBe('devnet');
+      expect(sdk.getCluster()).toBe('mainnet-beta');
     });
 
     it('getProgramIds should return program IDs', () => {

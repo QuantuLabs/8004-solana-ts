@@ -5,6 +5,8 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { PublicKey, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY } from '@solana/web3.js';
 import {
   IdentityInstructionBuilder,
@@ -13,6 +15,7 @@ import {
   AtomInstructionBuilder,
 } from '../../src/core/instruction-builder.js';
 import { PROGRAM_ID, MPL_CORE_PROGRAM_ID, ATOM_ENGINE_PROGRAM_ID } from '../../src/core/programs.js';
+import { IDENTITY_DISCRIMINATORS } from '../../src/core/instruction-discriminators.js';
 
 const pk = () => PublicKey.unique();
 
@@ -31,15 +34,21 @@ describe('IdentityInstructionBuilder', () => {
       const ix = builder.buildRegister(rootConfig, registryConfig, agentAccount, asset, collection, owner, 'ipfs://test');
 
       expect(ix.programId).toEqual(PROGRAM_ID);
-      expect(ix.keys).toHaveLength(8);
-      expect(ix.keys[0].pubkey).toEqual(rootConfig);
-      expect(ix.keys[0].isWritable).toBe(false);
-      expect(ix.keys[3].pubkey).toEqual(asset);
-      expect(ix.keys[3].isSigner).toBe(true);
-      expect(ix.keys[5].pubkey).toEqual(owner);
-      expect(ix.keys[5].isSigner).toBe(true);
-      expect(ix.keys[6].pubkey).toEqual(SystemProgram.programId);
-      expect(ix.keys[7].pubkey).toEqual(MPL_CORE_PROGRAM_ID);
+      expect(ix.keys).toEqual([
+        { pubkey: rootConfig, isSigner: false, isWritable: false },
+        { pubkey: registryConfig, isSigner: false, isWritable: false },
+        { pubkey: agentAccount, isSigner: false, isWritable: true },
+        { pubkey: asset, isSigner: true, isWritable: true },
+        { pubkey: collection, isSigner: false, isWritable: true },
+        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: MPL_CORE_PROGRAM_ID, isSigner: false, isWritable: false },
+      ]);
+      expect(ix.data).toEqual(Buffer.concat([
+        IDENTITY_DISCRIMINATORS.register,
+        Buffer.from([11, 0, 0, 0]),
+        Buffer.from('ipfs://test'),
+      ]));
     });
 
     it('should serialize agentUri in data', () => {
@@ -62,6 +71,65 @@ describe('IdentityInstructionBuilder', () => {
       const uriLen = ix.data.readUInt32LE(8);
       expect(uriLen).toBe(0);
     });
+
+    it('should normalize genuine PublicKeys from the installed browser CJS entrypoint', () => {
+      const require = createRequire(import.meta.url);
+      const browserWeb3 = require(join(
+        dirname(require.resolve('@solana/web3.js')),
+        'index.browser.cjs.js'
+      )) as typeof import('@solana/web3.js');
+      expect(browserWeb3.PublicKey).not.toBe(PublicKey);
+
+      const externalKeys = Array.from(
+        { length: 6 },
+        () => new browserWeb3.PublicKey(pk().toBuffer())
+      );
+      const ix = builder.buildRegister(
+        ...externalKeys as [PublicKey, PublicKey, PublicKey, PublicKey, PublicKey, PublicKey],
+        'ipfs://test'
+      );
+
+      externalKeys.forEach((key, index) => {
+        expect(ix.keys[index].pubkey).toBeInstanceOf(PublicKey);
+        expect(ix.keys[index].pubkey.toBase58()).toBe(key.toBase58());
+      });
+    });
+
+    it('should reject malformed JS object calls with a clear error', () => {
+      const buildRegisterAsJavaScript = builder.buildRegister.bind(builder) as (...args: unknown[]) => unknown;
+      expect(() => buildRegisterAsJavaScript({ owner: pk(), asset: pk(), uri: 'ipfs://test' }))
+        .toThrow('rootConfig must be a PublicKey');
+    });
+
+    it('should reject every missing or invalid required account in both register variants', () => {
+      const names = ['rootConfig', 'registryConfig', 'agentAccount', 'asset', 'collection', 'owner'];
+      const calls = [
+        builder.buildRegister.bind(builder) as (...args: unknown[]) => unknown,
+        builder.buildRegisterWithOptions.bind(builder) as (...args: unknown[]) => unknown,
+      ];
+
+      for (const call of calls) {
+        names.forEach((name, index) => {
+          for (const invalid of [undefined, {}]) {
+            const args: unknown[] = [pk(), pk(), pk(), pk(), pk(), pk(), 'uri', true];
+            args[index] = invalid;
+            expect(() => call(...args)).toThrow(`${name} must be a PublicKey`);
+          }
+        });
+      }
+    });
+
+    it('should reject agentUri values above the on-chain limit', () => {
+      expect(() => builder.buildRegister(
+        pk(),
+        pk(),
+        pk(),
+        pk(),
+        pk(),
+        pk(),
+        'x'.repeat(251)
+      )).toThrow('agentUri must be <= 250 bytes');
+    });
   });
 
   describe('buildRegisterWithOptions', () => {
@@ -80,10 +148,38 @@ describe('IdentityInstructionBuilder', () => {
       expect(atomEnabledByte).toBe(0);
     });
 
-    it('should have same account structure as register', () => {
-      const ix = builder.buildRegisterWithOptions(pk(), pk(), pk(), pk(), pk(), pk(), 'uri', true);
+    it('should preserve account structure and option data', () => {
+      const accounts = [pk(), pk(), pk(), pk(), pk(), pk()] as const;
+      const ix = builder.buildRegisterWithOptions(...accounts, 'uri', true);
       expect(ix.keys).toHaveLength(8);
       expect(ix.programId).toEqual(PROGRAM_ID);
+      expect(ix.keys.slice(0, 6).map(({ pubkey, isSigner, isWritable }) => ({ pubkey, isSigner, isWritable }))).toEqual([
+        { pubkey: accounts[0], isSigner: false, isWritable: false },
+        { pubkey: accounts[1], isSigner: false, isWritable: false },
+        { pubkey: accounts[2], isSigner: false, isWritable: true },
+        { pubkey: accounts[3], isSigner: true, isWritable: true },
+        { pubkey: accounts[4], isSigner: false, isWritable: true },
+        { pubkey: accounts[5], isSigner: true, isWritable: true },
+      ]);
+      expect(ix.data).toEqual(Buffer.concat([
+        IDENTITY_DISCRIMINATORS.registerWithOptions,
+        Buffer.from([3, 0, 0, 0]),
+        Buffer.from('uri'),
+        Buffer.from([1]),
+      ]));
+    });
+
+    it('should reject agentUri values above the on-chain limit', () => {
+      expect(() => builder.buildRegisterWithOptions(
+        pk(),
+        pk(),
+        pk(),
+        pk(),
+        pk(),
+        pk(),
+        'x'.repeat(251),
+        true
+      )).toThrow('agentUri must be <= 250 bytes');
     });
   });
 

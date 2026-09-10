@@ -6,6 +6,7 @@ import {
   getAtomStatsPDAWithProgram,
   getAtomConfigPDAWithProgram,
 } from '../../src/core/atom-pda.js';
+import { DEVNET_ATOM_ENGINE_PROGRAM_ID, MAINNET_ATOM_ENGINE_PROGRAM_ID } from '../../src/core/programs.js';
 
 describe('atom-pda', () => {
   describe('getAtomConfigPDA', () => {
@@ -21,6 +22,14 @@ describe('atom-pda', () => {
       const [pda1] = getAtomConfigPDA();
       const [pda2] = getAtomConfigPDA();
       expect(pda1.equals(pda2)).toBe(true);
+    });
+
+    it('should default to mainnet while preserving explicit devnet derivation', () => {
+      const [implicit] = getAtomConfigPDA();
+      const [mainnet] = getAtomConfigPDAWithProgram(MAINNET_ATOM_ENGINE_PROGRAM_ID);
+      const [devnet] = getAtomConfigPDAWithProgram(DEVNET_ATOM_ENGINE_PROGRAM_ID);
+      expect(implicit.equals(mainnet)).toBe(true);
+      expect(implicit.equals(devnet)).toBe(false);
     });
   });
 

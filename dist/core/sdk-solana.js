@@ -196,7 +196,7 @@ export class SolanaSDK {
     indexerFallback;
     forceOnChain;
     constructor(config = {}) {
-        this.cluster = config.cluster || 'devnet';
+        this.cluster = config.cluster || 'mainnet-beta';
         this.programIds = getProgramIdsForCluster(this.cluster, config.programIds);
         this.signer = config.signer;
         this.ipfsClient = config.ipfsClient;

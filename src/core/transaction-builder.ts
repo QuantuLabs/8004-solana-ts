@@ -311,6 +311,8 @@ export class IdentityTransactionBuilder {
     options?: RegisterAgentOptions
   ): Promise<(TransactionResult & { asset?: PublicKey; signatures?: string[] }) | (PreparedTransaction & { asset: PublicKey })> {
     try {
+      validateByteLength(agentUri || '', 250, 'agentUri');
+
       // Determine the signer pubkey
       const signerPubkey = options?.signer || this.payer?.publicKey;
       if (!signerPubkey) {

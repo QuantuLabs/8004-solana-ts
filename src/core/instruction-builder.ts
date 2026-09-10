@@ -22,6 +22,58 @@ import { toBigInt } from './utils.js';
 import { serializeString } from '../utils/buffer-utils.js';
 import { validateByteLength } from '../utils/validation.js';
 
+function normalizePublicKey(value: unknown, name: string): PublicKey {
+  if (value instanceof PublicKey) {
+    return value;
+  }
+
+  if (
+    value !== null
+    && typeof value === 'object'
+    && typeof (value as { toBuffer?: unknown }).toBuffer === 'function'
+    && typeof (value as { toBase58?: unknown }).toBase58 === 'function'
+  ) {
+    try {
+      const bytes = (value as { toBuffer: () => Uint8Array }).toBuffer();
+      if (bytes instanceof Uint8Array && bytes.byteLength === 32) {
+        const normalized = new PublicKey(Buffer.from(bytes));
+        if (normalized.toBase58() === (value as { toBase58: () => string }).toBase58()) {
+          return normalized;
+        }
+      }
+    } catch {
+      // Fall through to the stable public error below.
+    }
+  }
+
+  throw new TypeError(`${name} must be a PublicKey`);
+}
+
+function normalizeRegisterAccounts(
+  rootConfig: unknown,
+  registryConfig: unknown,
+  agentAccount: unknown,
+  asset: unknown,
+  collection: unknown,
+  owner: unknown,
+): {
+  rootConfig: PublicKey;
+  registryConfig: PublicKey;
+  agentAccount: PublicKey;
+  asset: PublicKey;
+  collection: PublicKey;
+  owner: PublicKey;
+} {
+  return {
+    rootConfig: normalizePublicKey(rootConfig, 'rootConfig'),
+    registryConfig: normalizePublicKey(registryConfig, 'registryConfig'),
+    agentAccount: normalizePublicKey(agentAccount, 'agentAccount'),
+    asset: normalizePublicKey(asset, 'asset'),
+    collection: normalizePublicKey(collection, 'collection'),
+    owner: normalizePublicKey(owner, 'owner'),
+  };
+}
+
 /**
  * Instruction builder for Identity Registry (Metaplex Core)
  * Program: HvF3JqhahcX7JfhbDRYYCJ7S3f6nJdrqu5yi9shyTREp
@@ -52,6 +104,9 @@ export class IdentityInstructionBuilder {
     owner: PublicKey,
     agentUri: string = '',
   ): TransactionInstruction {
+    const accounts = normalizeRegisterAccounts(rootConfig, registryConfig, agentAccount, asset, collection, owner);
+    validateByteLength(agentUri, 250, 'agentUri');
+
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.register,
       serializeString(agentUri),
@@ -60,12 +115,12 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: rootConfig, isSigner: false, isWritable: false },
-        { pubkey: registryConfig, isSigner: false, isWritable: false },
-        { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: asset, isSigner: true, isWritable: true },
-        { pubkey: collection, isSigner: false, isWritable: true },
-        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: accounts.rootConfig, isSigner: false, isWritable: false },
+        { pubkey: accounts.registryConfig, isSigner: false, isWritable: false },
+        { pubkey: accounts.agentAccount, isSigner: false, isWritable: true },
+        { pubkey: accounts.asset, isSigner: true, isWritable: true },
+        { pubkey: accounts.collection, isSigner: false, isWritable: true },
+        { pubkey: accounts.owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: this.mplCoreProgramId, isSigner: false, isWritable: false },
       ],
@@ -89,6 +144,9 @@ export class IdentityInstructionBuilder {
     agentUri: string,
     atomEnabled: boolean,
   ): TransactionInstruction {
+    const accounts = normalizeRegisterAccounts(rootConfig, registryConfig, agentAccount, asset, collection, owner);
+    validateByteLength(agentUri, 250, 'agentUri');
+
     const data = Buffer.concat([
       IDENTITY_DISCRIMINATORS.registerWithOptions,
       serializeString(agentUri),
@@ -98,12 +156,12 @@ export class IdentityInstructionBuilder {
     return new TransactionInstruction({
       programId: this.programId,
       keys: [
-        { pubkey: rootConfig, isSigner: false, isWritable: false },
-        { pubkey: registryConfig, isSigner: false, isWritable: false },
-        { pubkey: agentAccount, isSigner: false, isWritable: true },
-        { pubkey: asset, isSigner: true, isWritable: true },
-        { pubkey: collection, isSigner: false, isWritable: true },
-        { pubkey: owner, isSigner: true, isWritable: true },
+        { pubkey: accounts.rootConfig, isSigner: false, isWritable: false },
+        { pubkey: accounts.registryConfig, isSigner: false, isWritable: false },
+        { pubkey: accounts.agentAccount, isSigner: false, isWritable: true },
+        { pubkey: accounts.asset, isSigner: true, isWritable: true },
+        { pubkey: accounts.collection, isSigner: false, isWritable: true },
+        { pubkey: accounts.owner, isSigner: true, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: this.mplCoreProgramId, isSigner: false, isWritable: false },
       ],

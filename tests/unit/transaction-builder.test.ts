@@ -271,6 +271,18 @@ describe('IdentityTransactionBuilder', () => {
       expect('transaction' in result).toBe(true);
     });
 
+    it('should reject agentUri values above the on-chain limit', async () => {
+      const result = await builder.registerAgent('x'.repeat(251), {
+        skipSend: true,
+        assetPubkey: PublicKey.unique(),
+        signer: payer.publicKey,
+      });
+      expect('success' in result && !result.success).toBe(true);
+      if ('error' in result) {
+        expect(result.error).toContain('agentUri must be <= 250 bytes');
+      }
+    });
+
     it('should return error when rootConfig not initialized', async () => {
       const { fetchRootConfig } = await import('../../src/core/config-reader.js');
       (fetchRootConfig as jest.Mock).mockResolvedValueOnce(null);

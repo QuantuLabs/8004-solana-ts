@@ -6,7 +6,7 @@
 import { SolanaSDK } from '8004-solana';
 import { Keypair } from '@solana/web3.js';
 
-// Default: devnet, read-only
+// Default: mainnet-beta, read-only
 const sdk = new SolanaSDK();
 
 // With signer (for write operations)
@@ -21,7 +21,7 @@ const sdk = new SolanaSDK({
   rpcUrl: 'https://...',  // Optional custom RPC
   signer: keypair,        // Optional signer for write operations
   indexerGraphqlUrl: 'https://your-indexer.example.com/v2/graphql',
-  programIds: {           // Override path for localnet/mainnet-beta deployments
+  programIds: {           // Optional program ID overrides
     agentRegistry: '...',
     atomEngine: '...',
   },
@@ -29,9 +29,9 @@ const sdk = new SolanaSDK({
 ```
 
 Network guidance:
+- `mainnet-beta`: implicit default; built-in mainnet program IDs are preconfigured.
 - `devnet`: built-in program IDs are preconfigured.
 - `localnet`: supported; provide your deployed `programIds`.
-- `mainnet-beta`: built-in mainnet program IDs are preconfigured.
 
 ## Utility Methods
 

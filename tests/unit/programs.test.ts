@@ -22,7 +22,7 @@ import {
 describe('programs', () => {
   describe('constants', () => {
     it('should have valid PROGRAM_ID', () => {
-      expect(PROGRAM_ID.toBase58()).toBe('8oo4J9tBB3Hna1jRQ3rWvJjojqM5DYTDJo5cejUuJy3C');
+      expect(PROGRAM_ID.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
     });
 
     it('should have valid mainnet agent registry default', () => {
@@ -34,7 +34,7 @@ describe('programs', () => {
     });
 
     it('should have valid ATOM_ENGINE_PROGRAM_ID', () => {
-      expect(ATOM_ENGINE_PROGRAM_ID.toBase58()).toBe('AToMufS4QD6hEXvcvBDg9m1AHeCLpmZQsyfYa5h9MwAF');
+      expect(ATOM_ENGINE_PROGRAM_ID.equals(MAINNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
     });
 
     it('should have valid mainnet atom engine default', () => {
@@ -58,10 +58,10 @@ describe('programs', () => {
   });
 
   describe('getProgramIds', () => {
-    it('should return devnet PROGRAM_IDS by default', () => {
+    it('should return mainnet PROGRAM_IDS by default', () => {
       const ids = getProgramIds();
-      expect(ids.agentRegistry.equals(DEVNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
-      expect(ids.atomEngine.equals(DEVNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
+      expect(ids.agentRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.atomEngine.equals(MAINNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
       expect(ids.mplCore).toBeDefined();
     });
 
@@ -81,6 +81,29 @@ describe('programs', () => {
       expect(ids.atomEngine.equals(customAtom)).toBe(true);
     });
 
+    it.each(['', null, false, 0])('should reject supplied agentRegistry value: %p', (agentRegistry) => {
+      expect(() => getProgramIds({ agentRegistry: agentRegistry as never })).toThrow();
+    });
+
+    it('should resolve mainnet defaults from getProgramIds(cluster)', () => {
+      const ids = getProgramIds('mainnet-beta');
+      expect(ids.agentRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.identityRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.reputationRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.validationRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.atomEngine.equals(MAINNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
+    });
+
+    it('should resolve cluster defaults with overrides from getProgramIds(cluster, overrides)', () => {
+      const customAgent = new PublicKey('11111111111111111111111111111111');
+      const ids = getProgramIds('mainnet-beta', { agentRegistry: customAgent });
+      expect(ids.agentRegistry.equals(customAgent)).toBe(true);
+      expect(ids.identityRegistry.equals(customAgent)).toBe(true);
+      expect(ids.reputationRegistry.equals(customAgent)).toBe(true);
+      expect(ids.validationRegistry.equals(customAgent)).toBe(true);
+      expect(ids.atomEngine.equals(MAINNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
+    });
+
     it('should resolve mainnet defaults when cluster=mainnet-beta', () => {
       const ids = getProgramIdsForCluster('mainnet-beta');
       expect(ids.agentRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
@@ -88,6 +111,25 @@ describe('programs', () => {
       expect(ids.reputationRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
       expect(ids.validationRegistry.equals(MAINNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
       expect(ids.atomEngine.equals(MAINNET_ATOM_ENGINE_PROGRAM_ID)).toBe(true);
+    });
+
+    it('should reject unknown cluster strings', () => {
+      expect(() => getProgramIds('not-a-cluster' as never)).toThrow(
+        'Unknown cluster "not-a-cluster"'
+      );
+    });
+
+    it.each([null, false, 0, []])('should reject invalid overrides: %p', (overrides) => {
+      const getProgramIdsAsJavaScript = getProgramIds as (...args: unknown[]) => unknown;
+      expect(() => getProgramIdsAsJavaScript(overrides)).toThrow(TypeError);
+      expect(() => getProgramIdsAsJavaScript('devnet', overrides)).toThrow(TypeError);
+    });
+
+    it('should preserve explicit devnet defaults and partial overrides', () => {
+      const customAtom = new PublicKey('SysvarRent111111111111111111111111111111111');
+      const ids = getProgramIds('devnet', { atomEngine: customAtom });
+      expect(ids.agentRegistry.equals(DEVNET_AGENT_REGISTRY_PROGRAM_ID)).toBe(true);
+      expect(ids.atomEngine.equals(customAtom)).toBe(true);
     });
   });
 

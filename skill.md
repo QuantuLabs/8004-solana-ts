@@ -118,7 +118,7 @@ import { Keypair, PublicKey } from '@solana/web3.js';
 ### Read-only (no wallet needed)
 
 ```typescript
-const sdk = new SolanaSDK({ cluster: 'devnet' });
+const sdk = new SolanaSDK(); // mainnet-beta
 ```
 
 ### With signer (for write operations)
@@ -1244,8 +1244,8 @@ if (!integrity.trustworthy) {
 
 ```typescript
 import {
-  PROGRAM_ID,                       // devnet default Agent Registry
-  ATOM_ENGINE_PROGRAM_ID,           // devnet default ATOM
+  PROGRAM_ID,                       // mainnet default Agent Registry
+  ATOM_ENGINE_PROGRAM_ID,           // mainnet default ATOM
   DEVNET_AGENT_REGISTRY_PROGRAM_ID,
   DEVNET_ATOM_ENGINE_PROGRAM_ID,
   MAINNET_AGENT_REGISTRY_PROGRAM_ID,
@@ -1255,5 +1255,6 @@ import {
 ```
 
 Cluster mapping in SDK defaults:
+- Omitted cluster: `mainnet-beta`.
 - `devnet` / `testnet` / `localnet`: devnet program defaults unless overridden.
 - `mainnet-beta`: mainnet program defaults.

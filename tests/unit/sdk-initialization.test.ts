@@ -32,10 +32,12 @@ describe('SolanaSDK Initialization', () => {
       expect(sdk.getRpcUrl()).toBe(customRpc);
     });
 
-    it('should default to devnet cluster', () => {
+    it('should default to mainnet-beta cluster and program IDs', () => {
       const sdk = new SolanaSDK();
 
-      expect(sdk.getCluster()).toBe('devnet');
+      expect(sdk.getCluster()).toBe('mainnet-beta');
+      expect(sdk.getRpcUrl()).toBe('https://api.mainnet-beta.solana.com');
+      expect(sdk.getProgramIds().agentRegistry.toBase58()).toBe('8oo4dC4JvBLwy5tGgiH3WwK4B9PWxL9Z4XjA2jzkQMbQ');
     });
 
     it('should accept explicit devnet cluster', () => {
@@ -221,7 +223,7 @@ describe('SolanaSDK Initialization', () => {
     });
 
     it('should detect default devnet RPC', () => {
-      const defaultSdk = new SolanaSDK();
+      const defaultSdk = new SolanaSDK({ cluster: 'devnet' });
       const customSdk = new SolanaSDK({ rpcUrl: 'https://custom.example.com' });
 
       expect(defaultSdk.isUsingDefaultDevnetRpc()).toBe(true);

@@ -10,6 +10,7 @@ import {
   bytes32ToString,
   stringToBytes32,
 } from '../../src/core/pda-helpers.js';
+import { DEVNET_AGENT_REGISTRY_PROGRAM_ID, MAINNET_AGENT_REGISTRY_PROGRAM_ID } from '../../src/core/programs.js';
 
 describe('pda-helpers', () => {
   const asset = new PublicKey('So11111111111111111111111111111111111111112');
@@ -53,6 +54,14 @@ describe('pda-helpers', () => {
         const [a] = PDAHelpers.getRootConfigPDA();
         const [b] = PDAHelpers.getRootConfigPDA();
         expect(a.equals(b)).toBe(true);
+      });
+
+      it('should default to mainnet while preserving explicit devnet derivation', () => {
+        const [implicit] = PDAHelpers.getRootConfigPDA();
+        const [mainnet] = PDAHelpers.getRootConfigPDA(MAINNET_AGENT_REGISTRY_PROGRAM_ID);
+        const [devnet] = PDAHelpers.getRootConfigPDA(DEVNET_AGENT_REGISTRY_PROGRAM_ID);
+        expect(implicit.equals(mainnet)).toBe(true);
+        expect(implicit.equals(devnet)).toBe(false);
       });
 
       it('should differ with different program IDs', () => {

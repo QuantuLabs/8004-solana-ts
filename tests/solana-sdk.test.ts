@@ -32,10 +32,10 @@ describe('SolanaSDK', () => {
       expect(sdk.isReadOnly).toBe(false);
     });
 
-    // Note: Currently only devnet is supported as Cluster type
-    it('should default to devnet cluster', () => {
+    // The SDK defaults to mainnet-beta when no cluster is provided.
+    it('should default to mainnet-beta cluster', () => {
       const sdk = new SolanaSDK({});
-      expect(sdk.getCluster()).toBe('devnet');
+      expect(sdk.getCluster()).toBe('mainnet-beta');
     });
 
     it('should accept custom RPC URL', () => {

@@ -27,8 +27,8 @@ npm install 8004-solana
 
 ## Network Defaults
 
-- `devnet`: fully configured by default.
-- `mainnet-beta`: fully configured by default.
+- `mainnet-beta`: the implicit default; RPC and program IDs are preconfigured.
+- `devnet`: fully configured when selected explicitly.
 - `localnet`: supported; set local deployed `programIds`.
 - See the [Indexer](#indexer) section for the combined network + indexer config snippet.
 
