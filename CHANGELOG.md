@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-09-10
+
 ### Fixed
 - `SolanaSDK.computeHash()` now hashes feedback/file bytes with Keccak-256, matching SEAL commitments. Its async `string | Buffer` to `Promise<Buffer>` signature is preserved, but digest output changes; existing SHA-256 commitments are not rewritten.
+- Registration builders reject malformed account arguments before creating instructions; `getProgramIds` resolves explicit clusters and overrides.
+
+### Changed
+- `mainnet-beta` is the consistent default for SDK/client/program IDs/PDA helpers; `devnet` remains supported when explicitly selected.
+
+### Documentation
+- Independent verification uses full indexed-history replay and SEAL recomputation from exact original file bytes, with missing-file-hash/`None` semantics explained.
 
 ## [0.8.4] - 2026-09-09
 ### Fixed
